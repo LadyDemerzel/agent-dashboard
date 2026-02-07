@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { StatusBadge } from "./StatusBadge";
 
 interface Deliverable {
@@ -40,26 +41,29 @@ export function DeliverableList({
   return (
     <div className="space-y-2">
       {deliverables.map((d) => (
-        <div
-          key={d.id}
-          className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 transition-colors"
-        >
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-lg">{TYPE_ICONS[d.type] || "📄"}</span>
-              <div>
-                <h4 className="text-white text-sm font-medium">{d.title}</h4>
-                <p className="text-zinc-500 text-xs mt-0.5">
-                  {d.agentName} &middot; {d.relativePath}
-                </p>
+        <Link key={d.id} href={`/deliverables/${d.id}`}>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 transition-colors cursor-pointer">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="text-lg flex-shrink-0">
+                  {TYPE_ICONS[d.type] || "📄"}
+                </span>
+                <div className="min-w-0">
+                  <h4 className="text-white text-sm font-medium truncate">
+                    {d.title}
+                  </h4>
+                  <p className="text-zinc-500 text-xs mt-0.5 truncate">
+                    {d.agentName} &middot; {d.relativePath}
+                  </p>
+                </div>
               </div>
+              <StatusBadge status={d.status} />
             </div>
-            <StatusBadge status={d.status} />
+            <div className="mt-2 text-xs text-zinc-600">
+              Updated {new Date(d.updatedAt).toLocaleDateString()}
+            </div>
           </div>
-          <div className="mt-2 text-xs text-zinc-600">
-            Updated {new Date(d.updatedAt).toLocaleDateString()}
-          </div>
-        </div>
+        </Link>
       ))}
     </div>
   );

@@ -14,7 +14,7 @@ export default function DeliverablesPage() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-white">Deliverables</h1>
         <p className="text-zinc-500 text-sm mt-1">
@@ -23,7 +23,7 @@ export default function DeliverablesPage() {
       </div>
 
       {/* Summary stats */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-8">
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
           <p className="text-zinc-500 text-xs font-medium uppercase tracking-wider">
             Total

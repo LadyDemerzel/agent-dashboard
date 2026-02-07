@@ -1,7 +1,10 @@
+import Link from "next/link";
 import { AGENTS } from "@/lib/agents";
 import { getAgentStats, getDeliverables } from "@/lib/files";
 import { AgentCard } from "@/components/AgentCard";
 import { DeliverableList } from "@/components/DeliverableList";
+import { Timeline } from "@/components/Timeline";
+import { buildTimelineEvents } from "@/lib/timeline";
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +19,21 @@ export default function Dashboard() {
     lastActivity: stats[agent.id]?.lastActivity ?? agent.lastActivity,
   }));
 
+  const agentIcons: Record<string, string> = {};
+  for (const a of AGENTS) {
+    agentIcons[a.id] = a.icon;
+  }
+
+  const timelineEvents = buildTimelineEvents(
+    deliverables.slice(0, 10),
+    agentIcons
+  );
+
   const activeCount = agents.filter((a) => a.status === "working").length;
   const totalDeliverables = deliverables.length;
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-white">Agent Dashboard</h1>
@@ -30,7 +43,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats bar */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-8">
         <StatCard label="Total Agents" value={agents.length} />
         <StatCard
           label="Active Now"
@@ -47,19 +60,36 @@ export default function Dashboard() {
       {/* Agent Grid */}
       <div className="mb-8">
         <h2 className="text-lg font-semibold text-white mb-4">Agents</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {agents.map((agent) => (
             <AgentCard key={agent.id} {...agent} />
           ))}
         </div>
       </div>
 
-      {/* Recent Deliverables */}
-      <div>
-        <h2 className="text-lg font-semibold text-white mb-4">
-          Recent Deliverables
-        </h2>
-        <DeliverableList deliverables={recentDeliverables} />
+      {/* Two column: Recent Deliverables + Timeline */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div>
+          <h2 className="text-lg font-semibold text-white mb-4">
+            Recent Deliverables
+          </h2>
+          <DeliverableList deliverables={recentDeliverables} />
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-white">
+              Activity Timeline
+            </h2>
+            <Link
+              href="/timeline"
+              className="text-zinc-500 hover:text-white text-xs transition-colors"
+            >
+              View all &rarr;
+            </Link>
+          </div>
+          <Timeline events={timelineEvents} />
+        </div>
       </div>
     </div>
   );
