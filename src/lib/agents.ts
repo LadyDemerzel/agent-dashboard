@@ -35,8 +35,7 @@ export const AGENTS: Agent[] = [
     name: "Ralph",
     domain: "Engineering",
     workspace: "engineering",
-    status: "working",
-    currentTask: "Building agent coordination dashboard",
+    status: "idle",
     lastActivity: new Date().toISOString(),
     deliverableCount: 0,
     description:
