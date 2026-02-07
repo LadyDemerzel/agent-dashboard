@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: "/research", label: "Research", icon: "📡" },
   { href: "/x-posts", label: "X Posts", icon: "✍️" },
   { href: "/timeline", label: "Timeline", icon: "⏱" },
+  { href: "/guidelines", label: "Guidelines", icon: "📝" },
 ];
 
 export function Sidebar() {
