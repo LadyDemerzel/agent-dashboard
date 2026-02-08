@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getAgent, AGENTS } from "@/lib/agents";
 import { getDeliverables, getAgentStats } from "@/lib/files";
 import { getAgentStatusWithSessions } from "@/lib/sessions";
-import { StatusBadge } from "@/components/StatusBadge";
+import { AgentStatus, AgentStatusStatic } from "@/components/AgentStatus";
 import { DeliverableList } from "@/components/DeliverableList";
 
 export const dynamic = "force-dynamic";
@@ -59,7 +59,11 @@ export default async function AgentPage({
               <p className="text-zinc-500">{agentWithStats.domain}</p>
             </div>
           </div>
-          <StatusBadge status={agentWithStats.status} />
+          <AgentStatus
+            agentId={agentWithStats.id}
+            size="lg"
+            showTask={false}
+          />
         </div>
 
         <p className="text-zinc-400 mt-4">{agentWithStats.description}</p>

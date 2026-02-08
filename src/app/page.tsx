@@ -75,7 +75,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Echo's Research Section */}
+      {/* Echo&apos;s Research Section */}
       {researchFiles.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">

@@ -1,5 +1,7 @@
+"use client";
+
 import Link from "next/link";
-import { StatusBadge } from "./StatusBadge";
+import { AgentStatus } from "./AgentStatus";
 
 interface AgentCardProps {
   id: string;
@@ -46,7 +48,7 @@ export function AgentCard({
               <p className="text-zinc-500 text-sm">{domain}</p>
             </div>
           </div>
-          <StatusBadge status={status} />
+          <AgentStatus agentId={id} size="sm" />
         </div>
 
         <p className="text-zinc-400 text-sm mb-4 line-clamp-2">
