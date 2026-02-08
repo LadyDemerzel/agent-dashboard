@@ -42,6 +42,20 @@ function extractAgentFromSessionKey(sessionKey: string): string | null {
   return null;
 }
 
+function extractAgentFromContent(content: string): string | null {
+  const lowerContent = content.toLowerCase();
+  
+  // Check for agent names in the task content
+  // Look for patterns like "have ralph", "ralph is", "assign to ralph", etc.
+  for (const [keyword, agentId] of Object.entries(AGENT_SESSION_MAP)) {
+    // Check if agent name appears in the content
+    if (lowerContent.includes(keyword)) {
+      return agentId;
+    }
+  }
+  return null;
+}
+
 function isSessionActive(lastActivity: string): boolean {
   const lastActivityTime = new Date(lastActivity).getTime();
   const now = Date.now();
@@ -85,11 +99,11 @@ export function getActiveAgentSessions(): Record<string, SessionInfo> {
         }
       }
 
-      // Check for subagent in the session key or file content
-      if (sessionKey.includes("subagent") || content.includes("subagent")) {
-        const agentId = extractAgentFromSessionKey(sessionKey);
-        if (agentId) {
-          const isActive = isSessionActive(lastActivity);
+      // Check for agent mentions in the session content
+      const agentId = extractAgentFromContent(content);
+      if (agentId) {
+        const isActive = isSessionActive(lastActivity);
+        if (isActive) {
           activeSessions[agentId] = {
             sessionKey,
             agentId,
