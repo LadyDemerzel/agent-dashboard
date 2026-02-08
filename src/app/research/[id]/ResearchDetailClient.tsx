@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { StatusBadge } from "@/components/StatusBadge";
 import { LineNumberedContent } from "@/components/LineNumberedContent";
-import { FeedbackSidebar } from "@/components/FeedbackSidebar";
+import { TopLevelComments } from "@/components/TopLevelComments";
 import { FeedbackThread as FeedbackThreadType } from "@/lib/feedback";
 
 interface ResearchFile {
@@ -39,6 +39,7 @@ export function ResearchDetailClient({
   const [threads, setThreads] = useState<FeedbackThreadType[]>([]);
   const [selectedRange, setSelectedRange] = useState<{ startLine: number; endLine: number } | null>(null);
   const [isCreatingThread, setIsCreatingThread] = useState(false);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedStatus, setSelectedStatus] = useState(file.status);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -70,7 +71,7 @@ export function ResearchDetailClient({
     setIsCreatingThread(false);
   }, []);
 
-  // Create new thread
+  // Create new inline thread (with line numbers)
   const handleCreateThread = async (startLine: number, endLine: number, content: string) => {
     const res = await fetch(`/api/research/${file.id}/feedback/threads`, {
       method: "POST",
@@ -81,6 +82,19 @@ export function ResearchDetailClient({
     if (res.ok) {
       await fetchThreads();
       setSelectedRange(null);
+    }
+  };
+
+  // Create new top-level thread (general comment)
+  const handleCreateTopLevelThread = async (content: string) => {
+    const res = await fetch(`/api/research/${file.id}/feedback/threads`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+
+    if (res.ok) {
+      await fetchThreads();
     }
   };
 
@@ -156,12 +170,12 @@ export function ResearchDetailClient({
 
   const openThreadsCount = threads.filter((t) => t.status === "open").length;
 
-  // Prepare highlight lines from threads
+  // Prepare highlight lines from inline threads only
   const highlightLines = threads
-    .filter((t) => t.status === "open")
+    .filter((t) => t.status === "open" && t.startLine !== null && t.endLine !== null)
     .map((t) => ({
-      startLine: t.startLine,
-      endLine: t.endLine,
+      startLine: t.startLine!,
+      endLine: t.endLine!,
       color: "bg-amber-500/15",
     }));
 
@@ -217,7 +231,7 @@ export function ResearchDetailClient({
             </div>
           </div>
 
-          {/* Content with Line Numbers */}
+          {/* Content with Line Numbers and Inline Comments */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
             <div className="px-6 py-4 border-b border-zinc-800">
               <div className="flex items-center justify-between">
@@ -256,6 +270,15 @@ export function ResearchDetailClient({
                     onLineRangeSelect={handleLineRangeSelect}
                     selectedRange={selectedRange}
                     highlightLines={highlightLines}
+                    threads={threads}
+                    onAddComment={handleAddComment}
+                    onResolveThread={handleResolveThread}
+                    onReopenThread={handleReopenThread}
+                    onCreateThread={handleCreateThread}
+                    isCreatingThread={isCreatingThread}
+                    setIsCreatingThread={setIsCreatingThread}
+                    activeThreadId={activeThreadId}
+                    setActiveThreadId={setActiveThreadId}
                   />
                 </div>
               ) : (
@@ -269,22 +292,6 @@ export function ResearchDetailClient({
 
         {/* Right Sidebar */}
         <div className="space-y-6">
-          {/* Feedback Sidebar */}
-          <FeedbackSidebar
-            threads={threads}
-            deliverableId={file.id}
-            onAddComment={handleAddComment}
-            onResolveThread={handleResolveThread}
-            onReopenThread={handleReopenThread}
-            onJumpToLine={(line) => {
-              console.log("Jump to line:", line);
-            }}
-            onCreateThread={handleCreateThread}
-            selectedRange={selectedRange}
-            isCreatingThread={isCreatingThread}
-            setIsCreatingThread={setIsCreatingThread}
-          />
-
           {/* Status History */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
             <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-4">
@@ -351,6 +358,16 @@ export function ResearchDetailClient({
               </div>
             </div>
           </div>
+
+          {/* Top-Level Comments */}
+          <TopLevelComments
+            threads={threads}
+            deliverableId={file.id}
+            onAddComment={handleAddComment}
+            onResolveThread={handleResolveThread}
+            onReopenThread={handleReopenThread}
+            onCreateThread={handleCreateTopLevelThread}
+          />
         </div>
       </div>
 

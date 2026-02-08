@@ -19,8 +19,8 @@ export interface FeedbackThread {
   id: string;
   deliverableId: string;
   agentId: string;
-  startLine: number;
-  endLine: number;
+  startLine: number | null;
+  endLine: number | null;
   createdAt: string;
   status: "open" | "resolved";
   comments: FeedbackComment[];
@@ -65,8 +65,8 @@ export function createThread(
   deliverableFilePath: string,
   deliverableId: string,
   agentId: string,
-  startLine: number,
-  endLine: number,
+  startLine: number | null,
+  endLine: number | null,
   content: string,
   author: "user" | "agent" = "user"
 ): FeedbackThread {
@@ -168,4 +168,15 @@ export function deleteThread(
     return true;
   }
   return false;
+}
+
+// Helper functions for inline vs top-level threads
+export function getInlineThreads(deliverableFilePath: string): FeedbackThread[] {
+  const feedback = readFeedback(deliverableFilePath);
+  return feedback.threads.filter((t) => t.startLine !== null && t.endLine !== null);
+}
+
+export function getTopLevelThreads(deliverableFilePath: string): FeedbackThread[] {
+  const feedback = readFeedback(deliverableFilePath);
+  return feedback.threads.filter((t) => t.startLine === null || t.endLine === null);
 }

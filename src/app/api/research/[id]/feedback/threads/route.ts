@@ -46,12 +46,15 @@ export async function POST(
   const body = await request.json();
   const { startLine, endLine, content, author = "user" } = body;
 
-  if (typeof startLine !== "number" || typeof endLine !== "number" || !content) {
+  if (!content) {
     return NextResponse.json(
-      { error: "startLine, endLine, and content are required" },
+      { error: "content is required" },
       { status: 400 }
     );
   }
+
+  // Allow null/undefined startLine and endLine for top-level comments
+  const hasLineNumbers = typeof startLine === "number" && typeof endLine === "number";
 
   const filePath = path.join(RESEARCH_DIR, file.filename);
   
@@ -59,8 +62,8 @@ export async function POST(
     filePath,
     id,
     "echo", // Research is done by Echo agent
-    startLine,
-    endLine,
+    hasLineNumbers ? startLine : null,
+    hasLineNumbers ? endLine : null,
     content,
     author
   );
