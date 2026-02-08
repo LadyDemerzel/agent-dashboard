@@ -1,17 +1,21 @@
 import Link from "next/link";
 import { AGENTS } from "@/lib/agents";
 import { getAgentStats, getDeliverables } from "@/lib/files";
+import { getResearchFiles } from "@/lib/research";
 import { AgentCard } from "@/components/AgentCard";
 import { DeliverableList } from "@/components/DeliverableList";
 import { Timeline } from "@/components/Timeline";
 import { buildTimelineEvents } from "@/lib/timeline";
+import { ResearchCard, ResearchStats } from "@/components/ResearchCard";
 
 export const dynamic = "force-dynamic";
 
 export default function Dashboard() {
   const stats = getAgentStats();
   const deliverables = getDeliverables();
-  const recentDeliverables = deliverables.slice(0, 5);
+  const researchFiles = getResearchFiles();
+  const recentResearch = researchFiles.slice(0, 3);
+  const recentDeliverables = deliverables.filter(d => d.agentId !== 'echo').slice(0, 5);
 
   const agents = AGENTS.map((agent) => ({
     ...agent,
@@ -66,6 +70,38 @@ export default function Dashboard() {
           ))}
         </div>
       </div>
+
+      {/* Echo's Research Section */}
+      {researchFiles.length > 0 && (
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">📡</span>
+              <h2 className="text-lg font-semibold text-white">
+                Echo&apos;s Research
+              </h2>
+            </div>
+            <Link
+              href="/research"
+              className="text-zinc-500 hover:text-white text-xs transition-colors"
+            >
+              View all &rarr;
+            </Link>
+          </div>
+          
+          {/* Research Stats */}
+          <div className="mb-4">
+            <ResearchStats files={researchFiles} />
+          </div>
+          
+          {/* Recent Research Cards */}
+          <div className="space-y-3">
+            {recentResearch.map((file) => (
+              <ResearchCard key={file.id} file={file} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Two column: Recent Deliverables + Timeline */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
