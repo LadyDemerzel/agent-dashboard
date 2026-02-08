@@ -2,24 +2,19 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { StatusBadge } from "@/components/StatusBadge";
 import { LineNumberedContent } from "@/components/LineNumberedContent";
 import { FeedbackSidebar } from "@/components/FeedbackSidebar";
 import { FeedbackThread as FeedbackThreadType } from "@/lib/feedback";
 
-interface Deliverable {
+interface ResearchFile {
   id: string;
-  agentId: string;
-  agentName: string;
   title: string;
-  type: string;
+  filename: string;
+  date: string;
   status: string;
-  filePath: string;
-  relativePath: string;
-  createdAt: string;
-  updatedAt: string;
   size: number;
+  updatedAt: string;
 }
 
 interface StatusLogEntry {
@@ -30,23 +25,22 @@ interface StatusLogEntry {
   note: string;
 }
 
-interface DeliverableDetailPageProps {
-  deliverable: Deliverable;
+interface ResearchDetailClientProps {
+  file: ResearchFile;
   content: string;
   statusLog: { logs: StatusLogEntry[] };
 }
 
-export function DeliverableDetailClient({
-  deliverable,
+export function ResearchDetailClient({
+  file,
   content,
   statusLog,
-}: DeliverableDetailPageProps) {
+}: ResearchDetailClientProps) {
   const [threads, setThreads] = useState<FeedbackThreadType[]>([]);
   const [selectedRange, setSelectedRange] = useState<{ startLine: number; endLine: number } | null>(null);
   const [isCreatingThread, setIsCreatingThread] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [selectedStatus, setSelectedStatus] = useState(deliverable.status);
-  const [showFeedbackWarning, setShowFeedbackWarning] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState(file.status);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -54,7 +48,7 @@ export function DeliverableDetailClient({
   // Fetch feedback threads
   const fetchThreads = useCallback(async () => {
     try {
-      const res = await fetch(`/api/deliverables/${deliverable.id}/feedback`);
+      const res = await fetch(`/api/research/${file.id}/feedback/threads`);
       if (res.ok) {
         const data = await res.json();
         setThreads(data.threads);
@@ -64,7 +58,7 @@ export function DeliverableDetailClient({
     } finally {
       setLoading(false);
     }
-  }, [deliverable.id]);
+  }, [file.id]);
 
   useEffect(() => {
     fetchThreads();
@@ -78,7 +72,7 @@ export function DeliverableDetailClient({
 
   // Create new thread
   const handleCreateThread = async (startLine: number, endLine: number, content: string) => {
-    const res = await fetch(`/api/deliverables/${deliverable.id}/feedback`, {
+    const res = await fetch(`/api/research/${file.id}/feedback/threads`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ startLine, endLine, content }),
@@ -92,7 +86,7 @@ export function DeliverableDetailClient({
 
   // Add comment to thread
   const handleAddComment = async (threadId: string, content: string) => {
-    const res = await fetch(`/api/deliverables/${deliverable.id}/feedback/${threadId}/comments`, {
+    const res = await fetch(`/api/research/${file.id}/feedback/threads/${threadId}/comments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content, author: "user" }),
@@ -105,7 +99,7 @@ export function DeliverableDetailClient({
 
   // Resolve thread
   const handleResolveThread = async (threadId: string) => {
-    const res = await fetch(`/api/deliverables/${deliverable.id}/feedback/${threadId}`, {
+    const res = await fetch(`/api/research/${file.id}/feedback/threads/${threadId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "resolved" }),
@@ -118,7 +112,7 @@ export function DeliverableDetailClient({
 
   // Reopen thread
   const handleReopenThread = async (threadId: string) => {
-    const res = await fetch(`/api/deliverables/${deliverable.id}/feedback/${threadId}`, {
+    const res = await fetch(`/api/research/${file.id}/feedback/threads/${threadId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "open" }),
@@ -132,12 +126,7 @@ export function DeliverableDetailClient({
   // Handle status change
   const handleStatusChange = async (newStatus: string) => {
     if (newStatus === "requested changes") {
-      const openThreads = threads.filter((t) => t.status === "open");
-      if (openThreads.length === 0) {
-        setShowFeedbackWarning(true);
-      } else {
-        setShowFeedbackModal(true);
-      }
+      setShowFeedbackModal(true);
     } else if (newStatus !== selectedStatus) {
       await submitStatusChange(newStatus, "");
     }
@@ -146,10 +135,10 @@ export function DeliverableDetailClient({
   const submitStatusChange = async (status: string, note: string) => {
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/deliverables/${deliverable.id}/status`, {
+      const res = await fetch(`/api/research/${file.id}/feedback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, note }),
+        body: JSON.stringify({ status, feedback: note }),
       });
 
       if (res.ok) {
@@ -161,7 +150,7 @@ export function DeliverableDetailClient({
     } finally {
       setSubmitting(false);
       setShowFeedbackModal(false);
-      setShowFeedbackWarning(false);
+      setFeedbackText("");
     }
   };
 
@@ -187,10 +176,10 @@ export function DeliverableDetailClient({
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl">
       <Link
-        href="/deliverables"
+        href="/research"
         className="text-zinc-500 hover:text-white text-sm mb-6 inline-flex items-center gap-1 transition-colors"
       >
-        &larr; Back to Deliverables
+        &larr; Back to Research
       </Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -200,32 +189,14 @@ export function DeliverableDetailClient({
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
             <div className="flex items-start justify-between mb-4">
               <div className="flex-1 min-w-0">
-                <h1 className="text-xl font-bold text-white">{deliverable.title}</h1>
+                <h1 className="text-xl font-bold text-white">{file.title}</h1>
                 <p className="text-zinc-500 text-sm mt-1">
-                  {formatDate(deliverable.createdAt)}
+                  {formatDate(file.date)}
                   {" · "}
-                  {deliverable.relativePath}
+                  {file.filename}
                 </p>
               </div>
               <StatusBadge status={selectedStatus} />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-              <div>
-                <span className="text-zinc-500">Agent: </span>
-                <Link
-                  href={`/agents/${deliverable.agentId}`}
-                  className="text-white hover:text-zinc-300 transition-colors"
-                >
-                  {deliverable.agentName}
-                </Link>
-              </div>
-              <div>
-                <span className="text-zinc-500">Type: </span>
-                <span className="text-zinc-300 capitalize">
-                  {deliverable.type}
-                </span>
-              </div>
             </div>
 
             {/* Status Change */}
@@ -251,7 +222,7 @@ export function DeliverableDetailClient({
             <div className="px-6 py-4 border-b border-zinc-800">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider">
-                  Full Deliverable
+                  Full Report
                 </h2>
                 {selectedRange && (
                   <div className="flex items-center gap-3">
@@ -289,7 +260,7 @@ export function DeliverableDetailClient({
                 </div>
               ) : (
                 <p className="text-zinc-500 text-sm p-6">
-                  Unable to load deliverable content.
+                  Unable to load research content.
                 </p>
               )}
             </div>
@@ -301,12 +272,11 @@ export function DeliverableDetailClient({
           {/* Feedback Sidebar */}
           <FeedbackSidebar
             threads={threads}
-            deliverableId={deliverable.id}
+            deliverableId={file.id}
             onAddComment={handleAddComment}
             onResolveThread={handleResolveThread}
             onReopenThread={handleReopenThread}
             onJumpToLine={(line) => {
-              // Could implement smooth scroll to line here
               console.log("Jump to line:", line);
             }}
             onCreateThread={handleCreateThread}
@@ -353,66 +323,36 @@ export function DeliverableDetailClient({
             <div className="space-y-3 text-sm">
               <div>
                 <span className="text-zinc-500">Agent: </span>
-                <span className="text-zinc-300">{deliverable.agentName}</span>
+                <span className="text-zinc-300">Echo</span>
               </div>
               <div>
-                <span className="text-zinc-500">Type: </span>
-                <span className="text-zinc-300 capitalize">{deliverable.type}</span>
+                <span className="text-zinc-500">File: </span>
+                <span className="text-zinc-400 font-mono text-xs break-all">
+                  {file.filename}
+                </span>
               </div>
               <div>
                 <span className="text-zinc-500">Size: </span>
                 <span className="text-zinc-300">
-                  {(deliverable.size / 1024).toFixed(1)} KB
+                  {(file.size / 1024).toFixed(1)} KB
                 </span>
               </div>
               <div>
                 <span className="text-zinc-500">Created: </span>
                 <span className="text-zinc-300">
-                  {new Date(deliverable.createdAt).toLocaleString()}
+                  {new Date(file.date).toLocaleString()}
                 </span>
               </div>
               <div>
                 <span className="text-zinc-500">Updated: </span>
                 <span className="text-zinc-300">
-                  {new Date(deliverable.updatedAt).toLocaleString()}
+                  {new Date(file.updatedAt).toLocaleString()}
                 </span>
               </div>
             </div>
           </div>
         </div>
       </div>
-
-      {/* Feedback Warning Modal */}
-      {showFeedbackWarning && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md mx-4">
-            <h3 className="text-white font-semibold text-lg mb-2">
-              No Feedback Added
-            </h3>
-            <p className="text-zinc-400 text-sm mb-4">
-              You haven&apos;t added any inline feedback yet. Consider adding comments
-              to specific lines before requesting changes for clearer guidance.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setShowFeedbackWarning(false)}
-                className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
-              >
-                Add Feedback First
-              </button>
-              <button
-                onClick={() => {
-                  setShowFeedbackWarning(false);
-                  setShowFeedbackModal(true);
-                }}
-                className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white font-medium rounded-lg text-sm transition-colors"
-              >
-                Continue Anyway
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Feedback Modal */}
       {showFeedbackModal && (
