@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getAgent, AGENTS } from "@/lib/agents";
 import { getDeliverables, getAgentStats } from "@/lib/files";
+import { getAgentStatusWithSessions } from "@/lib/sessions";
 import { StatusBadge } from "@/components/StatusBadge";
 import { DeliverableList } from "@/components/DeliverableList";
 
@@ -22,11 +23,14 @@ export default async function AgentPage({
 
   const stats = getAgentStats();
   const deliverables = getDeliverables(id);
+  const sessionStatus = getAgentStatusWithSessions();
 
   const agentWithStats = {
     ...agent,
     deliverableCount: stats[id]?.deliverableCount ?? 0,
     lastActivity: stats[id]?.lastActivity ?? agent.lastActivity,
+    status: sessionStatus[id]?.status ?? agent.status,
+    currentTask: sessionStatus[id]?.currentTask,
   };
 
   return (
