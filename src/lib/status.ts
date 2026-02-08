@@ -87,11 +87,16 @@ export function updateDeliverableStatus(
   let content = fs.readFileSync(deliverableFilePath, "utf-8");
 
   // Replace existing status line or add one
+  // Handle **Status:** value (colon outside bold)
   const statusRegex = /\*\*Status:\*\*\s*.+/i;
+  // Handle **Status: value** (colon inside bold)
+  const statusInsideBoldRegex = /\*\*Status:\s*[^*]+\*\*/i;
   const statusLineRegex = /^status:\s*.+$/im;
 
   if (statusRegex.test(content)) {
     content = content.replace(statusRegex, `**Status:** ${newStatus}`);
+  } else if (statusInsideBoldRegex.test(content)) {
+    content = content.replace(statusInsideBoldRegex, `**Status: ${newStatus}**`);
   } else if (statusLineRegex.test(content)) {
     content = content.replace(statusLineRegex, `status: ${newStatus}`);
   } else {

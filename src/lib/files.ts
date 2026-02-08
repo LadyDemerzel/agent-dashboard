@@ -13,7 +13,7 @@ export interface Deliverable {
   agentName: string;
   title: string;
   type: "research" | "code" | "content" | "strategy" | "operations";
-  status: "draft" | "review" | "approved" | "published";
+  status: "draft" | "needs review" | "requested changes" | "approved" | "published";
   filePath: string;
   relativePath: string;
   createdAt: string;
@@ -73,8 +73,10 @@ function inferStatus(content: string): Deliverable["status"] {
     return "published";
   if (lower.includes("status: approved") || lower.includes("[approved]"))
     return "approved";
-  if (lower.includes("status: review") || lower.includes("[review]"))
-    return "review";
+  if (lower.includes("status: requested changes") || lower.includes("[requested changes]"))
+    return "requested changes";
+  if (lower.includes("status: needs review") || lower.includes("[needs review]"))
+    return "needs review";
   return "draft";
 }
 

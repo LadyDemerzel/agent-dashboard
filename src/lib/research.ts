@@ -14,7 +14,7 @@ export interface ResearchFile {
   title: string;
   filename: string;
   date: string;
-  status: "draft" | "review" | "approved" | "published";
+  status: "draft" | "needs review" | "requested changes" | "approved" | "published";
   preview: string;
   size: number;
   updatedAt: string;
@@ -22,14 +22,18 @@ export interface ResearchFile {
 
 function inferStatus(
   content: string
-): "draft" | "review" | "approved" | "published" {
+): "draft" | "needs review" | "requested changes" | "approved" | "published" {
   const lower = content.toLowerCase();
-  if (lower.includes("status: published") || lower.includes("[published]"))
+  if (lower.includes("status: published") || lower.includes("[published]") || lower.includes("**status: published**"))
     return "published";
-  if (lower.includes("status: approved") || lower.includes("[approved]"))
+  if (lower.includes("status: approved") || lower.includes("[approved]") || lower.includes("**status: approved**"))
     return "approved";
-  if (lower.includes("status: review") || lower.includes("[review]"))
-    return "review";
+  if (lower.includes("status: requested changes") || lower.includes("[requested changes]") || lower.includes("**status: requested changes**"))
+    return "requested changes";
+  if (lower.includes("status: needs review") || lower.includes("[needs review]") || lower.includes("**status: needs review**"))
+    return "needs review";
+  if (lower.includes("status: review") || lower.includes("**status: review**"))
+    return "needs review";
   return "draft";
 }
 
@@ -104,4 +108,12 @@ export function getResearchContent(id: string): string | null {
   } catch {
     return null;
   }
+}
+
+// Get only approved research files (for Scribe to use when creating content)
+export function getApprovedResearch(): ResearchFile[] {
+  const allFiles = getResearchFiles();
+  return allFiles.filter(
+    (f) => f.status === "approved" || f.status === "published"
+  );
 }

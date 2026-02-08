@@ -34,8 +34,10 @@ function statusToAction(status: string): string {
   switch (status) {
     case "draft":
       return "created a draft";
-    case "review":
+    case "needs review":
       return "submitted for review";
+    case "requested changes":
+      return "received change requests for";
     case "approved":
       return "got approval for";
     case "published":

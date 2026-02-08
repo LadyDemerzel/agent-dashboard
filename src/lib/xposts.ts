@@ -31,7 +31,7 @@ export interface XPost {
   title: string;
   date: string;
   postNumber: number;
-  status: "draft" | "review" | "approved" | "published";
+  status: "draft" | "needs review" | "requested changes" | "approved" | "published";
   content: string;
   suggestedTime: string;
   category: string;
@@ -52,11 +52,18 @@ export interface Feedback {
 
 function inferStatus(
   content: string
-): "draft" | "review" | "approved" | "published" {
+): "draft" | "needs review" | "requested changes" | "approved" | "published" {
   const lower = content.toLowerCase();
-  if (lower.includes("status: published")) return "published";
-  if (lower.includes("status: approved")) return "approved";
-  if (lower.includes("status: review")) return "review";
+  if (lower.includes("status: published") || lower.includes("**status: published**"))
+    return "published";
+  if (lower.includes("status: approved") || lower.includes("**status: approved**"))
+    return "approved";
+  if (lower.includes("status: requested changes") || lower.includes("**status: requested changes**"))
+    return "requested changes";
+  if (lower.includes("status: needs review") || lower.includes("**status: needs review**"))
+    return "needs review";
+  if (lower.includes("status: review") || lower.includes("**status: review**"))
+    return "needs review";
   return "draft";
 }
 

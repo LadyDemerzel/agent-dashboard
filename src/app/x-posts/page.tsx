@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { getXPosts } from "@/lib/xposts";
+import { getApprovedResearch } from "@/lib/research";
 import { StatusBadge } from "@/components/StatusBadge";
 
 export const dynamic = "force-dynamic";
 
 export default function XPostsPage() {
   const posts = getXPosts();
+  const approvedResearch = getApprovedResearch();
 
   const byDate: Record<string, typeof posts> = {};
   for (const post of posts) {
@@ -34,12 +36,64 @@ export default function XPostsPage() {
         />
         <StatCard
           label="In Review"
-          value={posts.filter((p) => p.status === "review").length}
+          value={posts.filter((p) => p.status === "needs review").length}
         />
         <StatCard
           label="With Feedback"
           value={posts.filter((p) => p.feedbackCount > 0).length}
         />
+      </div>
+
+      {/* Approved Research Section */}
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 mb-8">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">📡</span>
+            <h2 className="text-sm font-medium text-zinc-300">
+              Approved Research
+            </h2>
+            <span className="text-xs text-zinc-600">
+              ({approvedResearch.length} available for content creation)
+            </span>
+          </div>
+          <Link
+            href="/research"
+            className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+          >
+            View all research →
+          </Link>
+        </div>
+        
+        {approvedResearch.length === 0 ? (
+          <p className="text-zinc-600 text-sm">
+            No approved research yet. Echo&apos;s research needs to be approved before Scribe can reference it for content.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {approvedResearch.slice(0, 3).map((research) => (
+              <Link
+                key={research.id}
+                href={`/research/${research.id}`}
+                className="flex items-center gap-3 p-2 rounded-lg bg-zinc-950/50 hover:bg-zinc-950 transition-colors"
+              >
+                <span className="text-emerald-500 text-xs">●</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-zinc-300 text-sm truncate">
+                    {research.title}
+                  </p>
+                  <p className="text-zinc-600 text-xs">
+                    {new Date(research.date).toLocaleDateString()}
+                  </p>
+                </div>
+              </Link>
+            ))}
+            {approvedResearch.length > 3 && (
+              <p className="text-zinc-600 text-xs text-center pt-1">
+                +{approvedResearch.length - 3} more approved research items
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {posts.length === 0 ? (

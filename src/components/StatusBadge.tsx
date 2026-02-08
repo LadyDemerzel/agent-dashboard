@@ -15,6 +15,16 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> =
       text: "text-amber-400",
       dot: "bg-amber-500",
     },
+    "needs review": {
+      bg: "bg-amber-950",
+      text: "text-amber-400",
+      dot: "bg-amber-500",
+    },
+    "requested changes": {
+      bg: "bg-red-950",
+      text: "text-red-400",
+      dot: "bg-red-500",
+    },
     blocked: {
       bg: "bg-red-950",
       text: "text-red-400",
@@ -47,7 +57,7 @@ export function StatusBadge({ status }: { status: string }) {
       <span
         className={`w-1.5 h-1.5 rounded-full ${style.dot} ${status === "working" ? "animate-pulse" : ""}`}
       />
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+      {status.replace(/\b\w/g, (c) => c.toUpperCase())}
     </span>
   );
 }

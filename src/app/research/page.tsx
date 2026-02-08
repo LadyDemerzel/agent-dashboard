@@ -24,7 +24,7 @@ export default function ResearchPage() {
         <StatCard label="Total Reports" value={files.length} />
         <StatCard
           label="In Review"
-          value={files.filter((f) => f.status === "review").length}
+          value={files.filter((f) => f.status === "needs review").length}
         />
         <StatCard
           label="Approved"

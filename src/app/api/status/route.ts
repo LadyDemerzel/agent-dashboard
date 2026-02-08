@@ -11,7 +11,8 @@ export async function GET() {
   const totalDeliverables = deliverables.length;
   const byStatus = {
     draft: deliverables.filter((d) => d.status === "draft").length,
-    review: deliverables.filter((d) => d.status === "review").length,
+    needsReview: deliverables.filter((d) => d.status === "needs review").length,
+    requestedChanges: deliverables.filter((d) => d.status === "requested changes").length,
     approved: deliverables.filter((d) => d.status === "approved").length,
     published: deliverables.filter((d) => d.status === "published").length,
   };

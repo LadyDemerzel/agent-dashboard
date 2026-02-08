@@ -53,7 +53,7 @@ export default function Dashboard() {
         <StatCard label="Deliverables" value={totalDeliverables} />
         <StatCard
           label="In Review"
-          value={deliverables.filter((d) => d.status === "review").length}
+          value={deliverables.filter((d) => d.status === "needs review").length}
         />
       </div>
 

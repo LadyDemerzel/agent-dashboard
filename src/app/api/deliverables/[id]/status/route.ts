@@ -40,7 +40,7 @@ export async function POST(
     );
   }
 
-  const filePath = path.join(BUSINESS_ROOT, deliverable.path);
+  const filePath = path.join(BUSINESS_ROOT, deliverable.relativePath);
   const oldStatus = deliverable.status;
   const newStatus = status as DeliverableStatus;
 
