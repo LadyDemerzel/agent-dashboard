@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AGENTS } from "@/lib/agents";
 import { getAgentStats, getDeliverables } from "@/lib/files";
 import { getResearchFiles } from "@/lib/research";
+import { getAgentStatusWithSessions } from "@/lib/sessions";
 import { AgentCard } from "@/components/AgentCard";
 import { DeliverableList } from "@/components/DeliverableList";
 import { Timeline } from "@/components/Timeline";
@@ -14,6 +15,7 @@ export default function Dashboard() {
   const stats = getAgentStats();
   const deliverables = getDeliverables();
   const researchFiles = getResearchFiles();
+  const sessionStatus = getAgentStatusWithSessions();
   const recentResearch = researchFiles.slice(0, 3);
   const recentDeliverables = deliverables.filter(d => d.agentId !== 'echo').slice(0, 5);
 
@@ -21,6 +23,8 @@ export default function Dashboard() {
     ...agent,
     deliverableCount: stats[agent.id]?.deliverableCount ?? 0,
     lastActivity: stats[agent.id]?.lastActivity ?? agent.lastActivity,
+    status: sessionStatus[agent.id]?.status ?? agent.status,
+    currentTask: sessionStatus[agent.id]?.currentTask,
   }));
 
   const agentIcons: Record<string, string> = {};
