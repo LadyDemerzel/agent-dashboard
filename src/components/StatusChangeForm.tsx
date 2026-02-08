@@ -10,6 +10,7 @@ interface StatusChangeFormProps {
 }
 
 const STATUS_OPTIONS = [
+  { value: "draft", label: "Draft", color: "text-zinc-400" },
   { value: "needs review", label: "Needs Review", color: "text-amber-400" },
   {
     value: "requested changes",
