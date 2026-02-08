@@ -75,7 +75,17 @@ function extractTaskDescription(content: string): string | undefined {
   try {
     const lines = content.trim().split("\n");
     
-    // Look for the first user message with content
+    // System/greeting phrases to filter out
+    const systemPhrases = [
+      "a new session was started",
+      "greet the user in your configured persona",
+      "be yourself",
+      "this is a new session",
+      "you are a helpful assistant",
+      "you are an ai assistant"
+    ];
+    
+    // Look for the first user message with meaningful content
     for (const line of lines) {
       const entry: SessionEntry = JSON.parse(line);
       
@@ -86,22 +96,55 @@ function extractTaskDescription(content: string): string | undefined {
           // Find text content
           const textContent = messageContent.find(c => c.type === "text" && c.text);
           if (textContent?.text) {
-            // Extract first line or sentence that's meaningful
             const text = textContent.text;
             
-            // Try to find a clear task description
-            // Look for the first substantial line (not just "Task:" or similar headers)
-            const lines_text = text.split("\n").filter(l => l.trim().length > 10);
-            if (lines_text.length > 0) {
-              // Get first meaningful line, truncate if too long
-              const description = lines_text[0].trim();
-              if (description.length > 120) {
-                return description.substring(0, 120) + "...";
-              }
-              return description;
+            // Skip system/greeting messages
+            const lowerText = text.toLowerCase();
+            if (systemPhrases.some(phrase => lowerText.includes(phrase))) {
+              continue;
             }
             
-            // Fallback: first 120 chars of text
+            // Look for task-related keywords that indicate actual work
+            const taskKeywords = [
+              "implement", "create", "build", "fix", "update", "add",
+              "improve", "change", "modify", "develop", "design",
+              "write", "generate", "make", "refactor", "optimize"
+            ];
+            
+            // Split into lines and find first substantial, meaningful line
+            const textLines = text.split("\n");
+            for (const textLine of textLines) {
+              const trimmed = textLine.trim();
+              // Must be reasonably long and contain task keywords or be substantial
+              if (trimmed.length > 20 && trimmed.length < 200) {
+                const hasTaskKeyword = taskKeywords.some(kw => 
+                  trimmed.toLowerCase().includes(kw)
+                );
+                // If it has a task keyword or is a very clear instruction
+                if (hasTaskKeyword || trimmed.length > 50) {
+                  if (trimmed.length > 120) {
+                    return trimmed.substring(0, 120) + "...";
+                  }
+                  return trimmed;
+                }
+              }
+            }
+            
+            // Fallback: get first substantial line that's not too long
+            const substantialLine = textLines.find(l => {
+              const trimmed = l.trim();
+              return trimmed.length > 30 && trimmed.length < 150;
+            });
+            
+            if (substantialLine) {
+              const trimmed = substantialLine.trim();
+              if (trimmed.length > 120) {
+                return trimmed.substring(0, 120) + "...";
+              }
+              return trimmed;
+            }
+            
+            // Last resort: first 120 chars of text
             if (text.length > 120) {
               return text.substring(0, 120) + "...";
             }
