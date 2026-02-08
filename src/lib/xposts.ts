@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { parseFrontMatter, generateFrontMatter, FrontMatter } from "./frontmatter";
 
 const POSTS_DIR = path.join(
   process.env.HOME || "/Users/ittaisvidler",
@@ -39,6 +40,7 @@ export interface XPost {
   hashtags: string;
   feedbackCount: number;
   filePath: string;
+  agent: string;
 }
 
 export interface Feedback {
@@ -50,21 +52,14 @@ export interface Feedback {
   learnings: string;
 }
 
-function inferStatus(
-  content: string
-): "draft" | "needs review" | "requested changes" | "approved" | "published" {
-  const lower = content.toLowerCase();
-  if (lower.includes("status: published") || lower.includes("**status: published**"))
-    return "published";
-  if (lower.includes("status: approved") || lower.includes("**status: approved**"))
-    return "approved";
-  if (lower.includes("status: requested changes") || lower.includes("**status: requested changes**"))
-    return "requested changes";
-  if (lower.includes("status: needs review") || lower.includes("**status: needs review**"))
-    return "needs review";
-  if (lower.includes("status: review") || lower.includes("**status: review**"))
-    return "needs review";
-  return "draft";
+function normalizeStatus(status: string | undefined): XPost['status'] {
+  if (!status) return 'draft';
+  const lower = status.toLowerCase();
+  if (lower === 'published') return 'published';
+  if (lower === 'approved') return 'approved';
+  if (lower === 'requested changes') return 'requested changes';
+  if (lower === 'needs review' || lower === 'review') return 'needs review';
+  return 'draft';
 }
 
 function extractField(content: string, field: string): string {
@@ -82,7 +77,9 @@ function extractSection(content: string, heading: string): string {
   return match ? match[1].trim() : "";
 }
 
-function extractTitle(content: string): string {
+function extractTitle(content: string, frontMatter?: FrontMatter): string {
+  if (frontMatter?.title) return frontMatter.title;
+  
   const match = content.match(/^#\s+(.+)$/m);
   return match ? match[1].trim() : "Untitled Post";
 }
@@ -107,21 +104,27 @@ export function getXPosts(): XPost[] {
       const postNumber = postNumMatch ? parseInt(postNumMatch[1]) : 0;
       const id = `${dateDir.name}_post-${postNumber}`;
 
+      // Try to parse YAML front matter
+      const parsed = parseFrontMatter(raw);
+      const frontMatter = parsed?.frontMatter;
+      const body = parsed?.body || raw;
+
       const feedbackFiles = getFeedbackForPost(postNumber);
 
       posts.push({
         id,
-        title: extractTitle(raw),
+        title: extractTitle(body, frontMatter),
         date: dateDir.name,
         postNumber,
-        status: inferStatus(raw),
-        content: extractSection(raw, "Content"),
-        suggestedTime: extractField(raw, "Suggested Time"),
-        category: extractField(raw, "Category"),
-        engagementStrategy: extractSection(raw, "Engagement Strategy"),
-        hashtags: extractSection(raw, "Hashtags"),
+        status: normalizeStatus(frontMatter?.status),
+        content: extractSection(body, "Content"),
+        suggestedTime: frontMatter?.suggestedTime || extractField(body, "Suggested Time"),
+        category: frontMatter?.category || extractField(body, "Category"),
+        engagementStrategy: frontMatter?.engagementStrategy || extractSection(body, "Engagement Strategy"),
+        hashtags: frontMatter?.hashtags || extractSection(body, "Hashtags"),
         feedbackCount: feedbackFiles.length,
         filePath,
+        agent: frontMatter?.agent || 'Scribe',
       });
     }
   }
