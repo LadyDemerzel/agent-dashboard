@@ -14,6 +14,13 @@ interface SessionEntry {
   content?: unknown;
   timestamp?: number;
   toolCalls?: unknown[];
+  message?: {
+    role: string;
+    content?: Array<{
+      type: string;
+      text?: string;
+    }>;
+  };
 }
 
 interface SessionInfo {
@@ -21,6 +28,7 @@ interface SessionInfo {
   agentId: string | null;
   lastActivity: string;
   isActive: boolean;
+  taskDescription?: string;
 }
 
 // Map session keys/names to agent IDs
@@ -61,6 +69,51 @@ function isSessionActive(lastActivity: string): boolean {
   const now = Date.now();
   const fiveMinutesAgo = now - 5 * 60 * 1000;
   return lastActivityTime > fiveMinutesAgo;
+}
+
+function extractTaskDescription(content: string): string | undefined {
+  try {
+    const lines = content.trim().split("\n");
+    
+    // Look for the first user message with content
+    for (const line of lines) {
+      const entry: SessionEntry = JSON.parse(line);
+      
+      // Check for user message with content
+      if (entry.role === "user" || entry.message?.role === "user") {
+        const messageContent = entry.message?.content;
+        if (Array.isArray(messageContent)) {
+          // Find text content
+          const textContent = messageContent.find(c => c.type === "text" && c.text);
+          if (textContent?.text) {
+            // Extract first line or sentence that's meaningful
+            const text = textContent.text;
+            
+            // Try to find a clear task description
+            // Look for the first substantial line (not just "Task:" or similar headers)
+            const lines_text = text.split("\n").filter(l => l.trim().length > 10);
+            if (lines_text.length > 0) {
+              // Get first meaningful line, truncate if too long
+              const description = lines_text[0].trim();
+              if (description.length > 120) {
+                return description.substring(0, 120) + "...";
+              }
+              return description;
+            }
+            
+            // Fallback: first 120 chars of text
+            if (text.length > 120) {
+              return text.substring(0, 120) + "...";
+            }
+            return text;
+          }
+        }
+      }
+    }
+  } catch {
+    // If parsing fails, return undefined
+  }
+  return undefined;
 }
 
 export function getActiveAgentSessions(): Record<string, SessionInfo> {
@@ -104,11 +157,13 @@ export function getActiveAgentSessions(): Record<string, SessionInfo> {
       if (agentId) {
         const isActive = isSessionActive(lastActivity);
         if (isActive) {
+          const taskDescription = extractTaskDescription(content);
           activeSessions[agentId] = {
             sessionKey,
             agentId,
             lastActivity,
             isActive,
+            taskDescription,
           };
         }
       }
@@ -140,7 +195,7 @@ export function getAgentStatusWithSessions(): Record<
     if (session.isActive) {
       statusMap[agentId] = {
         status: "working",
-        currentTask: `Active session: ${session.sessionKey}`,
+        currentTask: session.taskDescription || "Working on task",
       };
     }
   }
