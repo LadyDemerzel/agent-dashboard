@@ -1,11 +1,14 @@
 import { getDeliverables } from "@/lib/files";
+import { getResearchFiles } from "@/lib/research";
 import { AGENTS } from "@/lib/agents";
 import { DeliverableList } from "@/components/DeliverableList";
+import { ResearchList, ResearchStats } from "@/components/ResearchCard";
 
 export const dynamic = "force-dynamic";
 
 export default function DeliverablesPage() {
   const deliverables = getDeliverables();
+  const researchFiles = getResearchFiles();
 
   const byAgent: Record<string, typeof deliverables> = {};
   for (const d of deliverables) {
@@ -29,13 +32,16 @@ export default function DeliverablesPage() {
             Total
           </p>
           <p className="text-2xl font-bold text-white mt-1">
-            {deliverables.length}
+            {deliverables.length + researchFiles.length}
           </p>
         </div>
         {(["draft", "review", "approved", "published"] as const).map(
           (status) => {
-            const count = deliverables.filter(
+            const deliverableCount = deliverables.filter(
               (d) => d.status === status
+            ).length;
+            const researchCount = researchFiles.filter(
+              (f) => f.status === status || (status === "review" && f.status === "needs review")
             ).length;
             return (
               <div
@@ -45,7 +51,7 @@ export default function DeliverablesPage() {
                 <p className="text-zinc-500 text-xs font-medium uppercase tracking-wider">
                   {status}
                 </p>
-                <p className="text-2xl font-bold text-white mt-1">{count}</p>
+                <p className="text-2xl font-bold text-white mt-1">{deliverableCount + researchCount}</p>
               </div>
             );
           }
@@ -55,16 +61,29 @@ export default function DeliverablesPage() {
       {/* By Agent */}
       {AGENTS.map((agent) => {
         const agentDeliverables = byAgent[agent.id] || [];
+        const isEcho = agent.id === "echo";
+
         return (
           <div key={agent.id} className="mb-8">
             <div className="flex items-center gap-2 mb-3">
               <span className="text-lg">{agent.icon}</span>
               <h2 className="text-lg font-semibold text-white">{agent.name}</h2>
               <span className="text-zinc-500 text-sm">
-                ({agentDeliverables.length})
+                ({isEcho ? researchFiles.length : agentDeliverables.length})
               </span>
             </div>
-            <DeliverableList deliverables={agentDeliverables} />
+            
+            {isEcho ? (
+              // Echo uses ResearchCard for research deliverables
+              <ResearchList 
+                files={researchFiles} 
+                emptyMessage="No research files found yet."
+                emptySubMessage="Echo's research will appear here when available."
+              />
+            ) : (
+              // Other agents use DeliverableList
+              <DeliverableList deliverables={agentDeliverables} />
+            )}
           </div>
         );
       })}
