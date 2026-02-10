@@ -5,6 +5,7 @@ import {
   updateDeliverableStatus,
   DeliverableStatus,
 } from "@/lib/status";
+import { createThread } from "@/lib/feedback";
 import path from "path";
 
 const BUSINESS_ROOT = path.join(
@@ -31,7 +32,7 @@ export async function POST(
   }
 
   const body = await request.json();
-  const { status, note } = body;
+  const { status, note, updatedBy } = body;
 
   if (!status) {
     return NextResponse.json(
@@ -49,9 +50,13 @@ export async function POST(
     filePath,
     oldStatus,
     newStatus,
-    "ittai",
+    updatedBy || "ittai",
     note || `Status changed to ${status}`
   );
+
+  if (newStatus === "requested changes" && note) {
+    createThread(filePath, id, deliverable.agentId, null, null, note, "user");
+  }
 
   return NextResponse.json({
     success: true,
