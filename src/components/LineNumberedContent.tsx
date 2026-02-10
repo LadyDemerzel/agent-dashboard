@@ -143,6 +143,7 @@ export function LineNumberedContent({
   // Touch event handlers for mobile line selection
   const handleTouchStart = useCallback(
     (lineNumber: number, event: React.TouchEvent) => {
+      event.preventDefault();
       isTouchDeviceRef.current = true;
       touchStartLineRef.current = lineNumber;
       setIsDragging(true);
@@ -158,14 +159,16 @@ export function LineNumberedContent({
   const handleTouchMove = useCallback(
     (event: React.TouchEvent) => {
       if (!isDragging || touchStartLineRef.current === null) return;
-      
+
+      event.preventDefault();
+
       const touch = event.touches[0];
       if (!touch) return;
-      
+
       // Find the element at the touch position
       const element = document.elementFromPoint(touch.clientX, touch.clientY);
       if (!element) return;
-      
+
       // Find the closest line number element
       const lineNumberEl = element.closest('[data-line-number]');
       if (lineNumberEl) {
@@ -292,7 +295,7 @@ export function LineNumberedContent({
   return (
     <div
       ref={containerRef}
-      className="font-mono text-sm leading-relaxed"
+      className="font-mono text-sm leading-relaxed overscroll-behavior-none"
       onMouseUp={handleMouseUp}
       onTouchMove={handleTouchMove}
     >
@@ -331,6 +334,7 @@ export function LineNumberedContent({
                   sticky left-0
                   bg-zinc-950
                   transition-colors
+                  touch-action-none
                   ${inDragSelection ? "bg-zinc-800" : ""}
                   ${inConfirmedSelection ? "bg-zinc-700" : ""}
                   ${highlightColor ? "bg-zinc-900/50" : ""}

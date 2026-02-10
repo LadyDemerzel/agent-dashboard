@@ -63,3 +63,12 @@ html, body {
     font-size: 16px; /* Prevents iOS zoom on input focus */
   }
 }
+
+/* Touch action utilities for line selection */
+.touch-action-none {
+  touch-action: none;
+}
+
+.overscroll-behavior-none {
+  overscroll-behavior: none;
+}
