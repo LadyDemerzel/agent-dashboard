@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "10X Solo - Agent Dashboard",
-  description: "Coordination hub for the 10X Solo agent team",
+  title: "Agent Dashboard",
+  description: "Coordination hub for the agent team",
 };
 
 export default function RootLayout({
@@ -30,7 +30,7 @@ export default function RootLayout({
       >
         <div className="flex min-w-0">
           <Sidebar />
-          <main className="flex-1 mt-14 md:mt-0 md:ml-56 min-h-screen min-w-0 overflow-x-hidden">{children}</main>
+          <main className="flex-1 mt-16 md:mt-0 md:ml-56 min-h-screen min-w-0 overflow-x-hidden">{children}</main>
         </div>
       </body>
     </html>

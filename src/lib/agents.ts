@@ -39,7 +39,7 @@ export const AGENTS: Agent[] = [
     lastActivity: new Date().toISOString(),
     deliverableCount: 0,
     description:
-      "Build paywalled skills, tools, MCP servers, and the 10X Solo platform.",
+      "Build paywalled skills, tools, MCP servers, and the agent platform.",
     color: "#10b981",
     icon: "🔧",
     sendsTo: ["clerk", "oracle"],
@@ -99,7 +99,7 @@ export const AGENTS: Agent[] = [
     lastActivity: new Date().toISOString(),
     deliverableCount: 0,
     description:
-      "Coordinate the 10X Solo agent team and manage cross-agent workflows.",
+      "Coordinate the agent team and manage cross-agent workflows.",
     color: "#ec4899",
     icon: "🎯",
     sendsTo: ["oracle", "ralph", "scribe", "clerk", "echo"],

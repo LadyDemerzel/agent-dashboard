@@ -20,18 +20,18 @@ export function Sidebar() {
   return (
     <>
       {/* Mobile header bar */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-zinc-950 border-b border-zinc-800 flex items-center justify-between px-4 h-14">
+      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-zinc-950 border-b border-zinc-800 flex items-center justify-between px-4 h-16">
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
-          className="text-zinc-400 hover:text-white p-2 -ml-2"
+          className="text-zinc-400 hover:text-white p-3 -ml-3 min-w-[48px] min-h-[48px] flex items-center justify-center"
           aria-label={mobileOpen ? "Close menu" : "Open menu"}
         >
           <span className="text-3xl leading-none">{mobileOpen ? "✕" : "☰"}</span>
         </button>
-        <h1 className="text-white font-bold text-lg tracking-tight">
-          10X Solo
+        <h1 className="text-white font-bold text-xl tracking-tight">
+          Agent Dashboard
         </h1>
-        <div className="w-10" />{/* Spacer for layout balance */}
+        <div className="w-12" />{/* Spacer for layout balance */}
       </div>
 
       {/* Mobile overlay */}
@@ -45,20 +45,20 @@ export function Sidebar() {
       {/* Sidebar */}
       <aside
         className={`
-          fixed left-0 top-0 z-50 w-56 bg-zinc-950 border-r border-zinc-800 h-screen flex flex-col
+          fixed left-0 top-0 z-50 w-64 bg-zinc-950 border-r border-zinc-800 h-screen flex flex-col
           transition-transform duration-200
           ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
-          md:translate-x-0
+          md:translate-x-0 md:w-56
         `}
       >
         <div className="p-5 border-b border-zinc-800">
-          <h1 className="text-white font-bold text-lg tracking-tight">
-            10X Solo
+          <h1 className="text-white font-bold text-xl tracking-tight">
+            Agent Dashboard
           </h1>
-          <p className="text-zinc-500 text-xs mt-0.5">Agent Dashboard</p>
+          <p className="text-zinc-500 text-sm mt-1">Agent Team Hub</p>
         </div>
 
-        <nav className="flex-1 p-3 space-y-1">
+        <nav className="flex-1 p-4 space-y-2">
           {NAV_ITEMS.map((item) => {
             const isActive =
               pathname === item.href ||
@@ -68,13 +68,13 @@ export function Sidebar() {
                 key={item.href}
                 href={item.href}
                 onClick={() => setMobileOpen(false)}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base transition-colors min-h-[48px] ${
                   isActive
                     ? "bg-zinc-800 text-white"
                     : "text-zinc-400 hover:text-white hover:bg-zinc-900"
                 }`}
               >
-                <span>{item.icon}</span>
+                <span className="text-lg">{item.icon}</span>
                 {item.label}
               </Link>
             );
@@ -84,7 +84,7 @@ export function Sidebar() {
         <div className="p-4 border-t border-zinc-800">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-zinc-500 text-xs">System Active</span>
+            <span className="text-zinc-500 text-sm">System Active</span>
           </div>
         </div>
       </aside>

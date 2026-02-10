@@ -116,9 +116,13 @@ export function LineNumberedContent({
       const start = Math.min(dragStart, dragEnd);
       const end = Math.max(dragStart, dragEnd);
       onLineRangeSelect?.(start, end);
+      // Automatically show the comment form when selection completes
+      if (setIsCreatingThread) {
+        setIsCreatingThread(true);
+      }
     }
     setIsDragging(false);
-  }, [isDragging, dragStart, dragEnd, onLineRangeSelect]);
+  }, [isDragging, dragStart, dragEnd, onLineRangeSelect, setIsCreatingThread]);
 
   // Handle shift+click for range selection
   const handleLineNumberClick = useCallback(
@@ -186,10 +190,14 @@ export function LineNumberedContent({
       const start = Math.min(dragStart, dragEnd);
       const end = Math.max(dragStart, dragEnd);
       onLineRangeSelect?.(start, end);
+      // Automatically show the comment form when selection completes
+      if (setIsCreatingThread) {
+        setIsCreatingThread(true);
+      }
     }
     setIsDragging(false);
     touchStartLineRef.current = null;
-  }, [isDragging, dragStart, dragEnd, onLineRangeSelect]);
+  }, [isDragging, dragStart, dragEnd, onLineRangeSelect, setIsCreatingThread]);
 
   // Global mouse up handler
   useEffect(() => {
@@ -239,6 +247,26 @@ export function LineNumberedContent({
       setIsSubmitting(false);
     }
   };
+
+  // Handle canceling the new thread form
+  const handleCancelThread = useCallback(() => {
+    if (setIsCreatingThread) {
+      setIsCreatingThread(false);
+    }
+    setNewThreadContent("");
+  }, [setIsCreatingThread]);
+
+  // Keyboard shortcut to cancel form with Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isCreatingThread) {
+        handleCancelThread();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isCreatingThread, handleCancelThread]);
 
   // Helper for setting selected range (internal use)
   const setSelectedRange = onLineRangeSelect
@@ -379,10 +407,7 @@ export function LineNumberedContent({
                   />
                   <div className="flex items-center justify-end gap-2">
                     <button
-                      onClick={() => {
-                        if (setIsCreatingThread) setIsCreatingThread(false);
-                        setNewThreadContent("");
-                      }}
+                      onClick={handleCancelThread}
                       className="px-3 py-1.5 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
                     >
                       Cancel

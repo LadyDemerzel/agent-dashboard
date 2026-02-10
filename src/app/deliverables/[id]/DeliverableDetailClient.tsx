@@ -276,12 +276,6 @@ export function DeliverableDetailClient({
                         : `lines ${selectedRange.startLine}-${selectedRange.endLine}`}
                     </span>
                     <button
-                      onClick={() => setIsCreatingThread(true)}
-                      className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      Add Comment
-                    </button>
-                    <button
                       onClick={() => setSelectedRange(null)}
                       className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
                     >

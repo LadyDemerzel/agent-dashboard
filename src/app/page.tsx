@@ -46,7 +46,7 @@ export default function Dashboard() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-white">Agent Dashboard</h1>
         <p className="text-zinc-500 text-sm mt-1">
-          Coordination hub for the 10X Solo agent team
+          Coordination hub for the agent team
         </p>
       </div>
 
