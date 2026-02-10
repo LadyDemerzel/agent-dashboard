@@ -23,7 +23,9 @@ export default function ResearchPage() {
       <ResearchStats files={files} />
 
       {/* Research Files List */}
-      <ResearchList files={files} />
+      <div className="mt-6 space-y-4">
+        <ResearchList files={files} />
+      </div>
     </div>
   );
 }

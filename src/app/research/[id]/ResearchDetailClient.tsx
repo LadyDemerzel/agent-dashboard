@@ -297,11 +297,11 @@ export function ResearchDetailClient({
             <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-4">
               Status History
             </h2>
-            {statusLog.logs.length === 0 ? (
+            {statusLog?.logs?.length === 0 ? (
               <p className="text-zinc-500 text-sm">No status changes yet.</p>
             ) : (
               <div className="space-y-3">
-                {statusLog.logs.map((log, index) => (
+                {statusLog?.logs?.map((log, index) => (
                   <div key={index} className="text-sm">
                     <div className="flex items-center gap-2">
                       <span className="text-zinc-400">{log.by}</span>

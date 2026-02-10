@@ -23,12 +23,12 @@ export function ResearchCard({ file, href }: ResearchCardProps) {
   const linkHref = href || `/research/${file.id}`;
   
   return (
-    <Link href={linkHref}>
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700 transition-colors">
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex-1 min-w-0">
+    <Link href={linkHref} className="block w-full min-w-0">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700 transition-colors min-w-0">
+        <div className="flex items-start justify-between mb-3 gap-3">
+          <div className="flex-1 min-w-0 overflow-hidden">
             <h3 className="text-white font-medium truncate">{file.title}</h3>
-            <p className="text-zinc-500 text-xs mt-1">
+            <p className="text-zinc-500 text-xs mt-1 truncate">
               {new Date(file.date).toLocaleDateString("en-US", {
                 year: "numeric",
                 month: "long",
@@ -37,13 +37,15 @@ export function ResearchCard({ file, href }: ResearchCardProps) {
                 minute: "2-digit",
               })}
               {" · "}
-              {file.filename}
+              <span className="break-all">{file.filename}</span>
             </p>
           </div>
-          <StatusBadge status={file.status} />
+          <div className="flex-shrink-0">
+            <StatusBadge status={file.status} />
+          </div>
         </div>
 
-        <p className="text-zinc-400 text-sm line-clamp-2">{file.preview}</p>
+        <p className="text-zinc-400 text-sm line-clamp-2 break-words">{file.preview}</p>
       </div>
     </Link>
   );

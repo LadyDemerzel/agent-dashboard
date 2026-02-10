@@ -39,25 +39,27 @@ export function DeliverableList({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {deliverables.map((d) => (
-        <Link key={d.id} href={`/deliverables/${d.id}`}>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 transition-colors cursor-pointer">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3 min-w-0">
+        <Link key={d.id} href={`/deliverables/${d.id}`} className="block w-full min-w-0">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 transition-colors cursor-pointer min-w-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
                 <span className="text-lg flex-shrink-0">
                   {TYPE_ICONS[d.type] || "📄"}
                 </span>
-                <div className="min-w-0">
+                <div className="min-w-0 overflow-hidden">
                   <h4 className="text-white text-sm font-medium truncate">
                     {d.title}
                   </h4>
                   <p className="text-zinc-500 text-xs mt-0.5 truncate">
-                    {d.agentName} &middot; {d.relativePath}
+                    {d.agentName} &middot; <span className="break-all">{d.relativePath}</span>
                   </p>
                 </div>
               </div>
-              <StatusBadge status={d.status} />
+              <div className="flex-shrink-0">
+                <StatusBadge status={d.status} />
+              </div>
             </div>
             <div className="mt-2 text-xs text-zinc-600">
               Updated {new Date(d.updatedAt).toLocaleDateString()}

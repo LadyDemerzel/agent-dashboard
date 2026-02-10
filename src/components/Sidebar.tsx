@@ -10,7 +10,7 @@ const NAV_ITEMS = [
   { href: "/research", label: "Research", icon: "📡" },
   { href: "/x-posts", label: "X Posts", icon: "✍️" },
   { href: "/timeline", label: "Timeline", icon: "⏱" },
-  { href: "/guidelines", label: "Guidelines", icon: "📝" },
+  { href: "/agents", label: "Agents", icon: "🤖" },
 ];
 
 export function Sidebar() {
@@ -21,15 +21,17 @@ export function Sidebar() {
     <>
       {/* Mobile header bar */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-zinc-950 border-b border-zinc-800 flex items-center justify-between px-4 h-14">
+        <button
+          onClick={() => setMobileOpen(!mobileOpen)}
+          className="text-zinc-400 hover:text-white p-2 -ml-2"
+          aria-label={mobileOpen ? "Close menu" : "Open menu"}
+        >
+          <span className="text-3xl leading-none">{mobileOpen ? "✕" : "☰"}</span>
+        </button>
         <h1 className="text-white font-bold text-lg tracking-tight">
           10X Solo
         </h1>
-        <button
-          onClick={() => setMobileOpen(!mobileOpen)}
-          className="text-zinc-400 hover:text-white p-2"
-        >
-          {mobileOpen ? "✕" : "☰"}
-        </button>
+        <div className="w-10" />{/* Spacer for layout balance */}
       </div>
 
       {/* Mobile overlay */}

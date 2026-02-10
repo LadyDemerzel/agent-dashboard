@@ -27,6 +27,7 @@ const AGENT_TYPE_MAP: Record<string, Deliverable["type"]> = {
   content: "content",
   strategy: "strategy",
   operations: "operations",
+  coordination: "strategy",
 };
 
 const AGENT_NAME_MAP: Record<string, string> = {
@@ -35,6 +36,7 @@ const AGENT_NAME_MAP: Record<string, string> = {
   content: "Scribe",
   strategy: "Oracle",
   operations: "Clerk",
+  coordination: "Demerzel",
 };
 
 const AGENT_ID_MAP: Record<string, string> = {
@@ -43,6 +45,7 @@ const AGENT_ID_MAP: Record<string, string> = {
   content: "scribe",
   strategy: "oracle",
   operations: "clerk",
+  coordination: "demerzel",
 };
 
 function walkDir(dir: string): string[] {

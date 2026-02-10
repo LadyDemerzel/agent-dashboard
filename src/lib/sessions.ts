@@ -38,6 +38,7 @@ const AGENT_SESSION_MAP: Record<string, string> = {
   scribe: "scribe",
   oracle: "oracle",
   clerk: "clerk",
+  demerzel: "demerzel",
 };
 
 function extractAgentFromSessionKey(sessionKey: string): string | null {
@@ -232,6 +233,7 @@ export function getAgentStatusWithSessions(): Record<
     scribe: { status: "idle" },
     oracle: { status: "idle" },
     clerk: { status: "idle" },
+    demerzel: { status: "idle" },
   };
 
   for (const [agentId, session] of Object.entries(activeSessions)) {

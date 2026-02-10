@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   isValidAgent,
-  getGuidelineFiles,
-  saveGuidelineFile,
-} from "@/lib/guidelines";
+  getAgentFiles,
+  saveAgentFile,
+  AgentFileName,
+} from "@/lib/agent-files";
 
 export const dynamic = "force-dynamic";
+
+const VALID_FILES: AgentFileName[] = [
+  "SOUL.md",
+  "AGENTS.md",
+  "USER.md",
+  "TOOLS.md",
+  "BOOTSTRAP.md",
+  "HEARTBEAT.md",
+  "IDENTITY.md",
+  "MEMORY.md",
+];
 
 export async function GET(
   _request: NextRequest,
@@ -17,7 +29,7 @@ export async function GET(
     return NextResponse.json({ error: "Invalid agent" }, { status: 404 });
   }
 
-  const files = getGuidelineFiles(agentId);
+  const files = getAgentFiles(agentId);
   if (!files) {
     return NextResponse.json({ error: "Files not found" }, { status: 404 });
   }
@@ -45,14 +57,14 @@ export async function POST(
     );
   }
 
-  if (file !== "SOUL.md" && file !== "AGENTS.md") {
+  if (!VALID_FILES.includes(file as AgentFileName)) {
     return NextResponse.json(
-      { error: "Can only edit SOUL.md or AGENTS.md" },
+      { error: `Can only edit one of: ${VALID_FILES.join(", ")}` },
       { status: 400 }
     );
   }
 
-  const success = saveGuidelineFile(agentId, file, content);
+  const success = saveAgentFile(agentId, file as AgentFileName, content);
 
   if (!success) {
     return NextResponse.json(

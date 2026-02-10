@@ -77,8 +77,8 @@ export default function Dashboard() {
 
       {/* Echo&apos;s Research Section */}
       {researchFiles.length > 0 && (
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
+        <div className="mb-10">
+          <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
               <span className="text-xl">📡</span>
               <h2 className="text-lg font-semibold text-white">
@@ -94,12 +94,12 @@ export default function Dashboard() {
           </div>
           
           {/* Research Stats */}
-          <div className="mb-4">
+          <div className="mb-6">
             <ResearchStats files={researchFiles} />
           </div>
           
           {/* Recent Research Cards */}
-          <div className="space-y-3">
+          <div className="space-y-4">
             {recentResearch.map((file) => (
               <ResearchCard key={file.id} file={file} />
             ))}
@@ -108,15 +108,17 @@ export default function Dashboard() {
       )}
 
       {/* Two column: Recent Deliverables + Timeline */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+        <div className="space-y-5">
           <h2 className="text-lg font-semibold text-white mb-4">
             Recent Deliverables
           </h2>
-          <DeliverableList deliverables={recentDeliverables} />
+          <div className="space-y-4">
+            <DeliverableList deliverables={recentDeliverables} />
+          </div>
         </div>
 
-        <div>
+        <div className="space-y-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-white">
               Activity Timeline

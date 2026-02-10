@@ -28,7 +28,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function StatusLog({ logs }: { logs: StatusLogEntry[] }) {
-  if (logs.length === 0) {
+  if (!logs || logs.length === 0) {
     return (
       <div className="text-zinc-600 text-sm py-4">
         No status changes recorded yet.

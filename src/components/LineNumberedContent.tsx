@@ -45,6 +45,8 @@ export function LineNumberedContent({
   const [newThreadContent, setNewThreadContent] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const touchStartLineRef = useRef<number | null>(null);
+  const isTouchDeviceRef = useRef(false);
 
   // Calculate gutter width based on number of lines
   const gutterWidth = useMemo(() => {
@@ -138,10 +140,58 @@ export function LineNumberedContent({
     [dragStart, onLineRangeSelect, onLineClick, setActiveThreadId]
   );
 
+  // Touch event handlers for mobile line selection
+  const handleTouchStart = useCallback(
+    (lineNumber: number, event: React.TouchEvent) => {
+      isTouchDeviceRef.current = true;
+      touchStartLineRef.current = lineNumber;
+      setIsDragging(true);
+      setDragStart(lineNumber);
+      setDragEnd(lineNumber);
+      if (setIsCreatingThread) {
+        setIsCreatingThread(false);
+      }
+    },
+    [setIsCreatingThread]
+  );
+
+  const handleTouchMove = useCallback(
+    (event: React.TouchEvent) => {
+      if (!isDragging || touchStartLineRef.current === null) return;
+      
+      const touch = event.touches[0];
+      if (!touch) return;
+      
+      // Find the element at the touch position
+      const element = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (!element) return;
+      
+      // Find the closest line number element
+      const lineNumberEl = element.closest('[data-line-number]');
+      if (lineNumberEl) {
+        const lineNum = parseInt(lineNumberEl.getAttribute('data-line-number') || '0', 10);
+        if (lineNum > 0) {
+          setDragEnd(lineNum);
+        }
+      }
+    },
+    [isDragging]
+  );
+
+  const handleTouchEnd = useCallback(() => {
+    if (isDragging && dragStart !== null && dragEnd !== null) {
+      const start = Math.min(dragStart, dragEnd);
+      const end = Math.max(dragStart, dragEnd);
+      onLineRangeSelect?.(start, end);
+    }
+    setIsDragging(false);
+    touchStartLineRef.current = null;
+  }, [isDragging, dragStart, dragEnd, onLineRangeSelect]);
+
   // Global mouse up handler
   useEffect(() => {
     const handleGlobalMouseUp = () => {
-      if (isDragging) {
+      if (isDragging && !isTouchDeviceRef.current) {
         handleMouseUp();
       }
     };
@@ -149,6 +199,22 @@ export function LineNumberedContent({
     document.addEventListener("mouseup", handleGlobalMouseUp);
     return () => document.removeEventListener("mouseup", handleGlobalMouseUp);
   }, [isDragging, handleMouseUp]);
+
+  // Global touch end handler
+  useEffect(() => {
+    const handleGlobalTouchEnd = () => {
+      if (isDragging && isTouchDeviceRef.current) {
+        handleTouchEnd();
+      }
+    };
+
+    document.addEventListener("touchend", handleGlobalTouchEnd);
+    document.addEventListener("touchcancel", handleGlobalTouchEnd);
+    return () => {
+      document.removeEventListener("touchend", handleGlobalTouchEnd);
+      document.removeEventListener("touchcancel", handleGlobalTouchEnd);
+    };
+  }, [isDragging, handleTouchEnd]);
 
   // Handle creating a new thread
   const handleCreateThread = async () => {
@@ -228,6 +294,7 @@ export function LineNumberedContent({
       ref={containerRef}
       className="font-mono text-sm leading-relaxed"
       onMouseUp={handleMouseUp}
+      onTouchMove={handleTouchMove}
     >
       {lines.map((line, index) => {
         const lineNumber = index + 1;
@@ -254,6 +321,7 @@ export function LineNumberedContent({
             >
               {/* Line number gutter */}
               <div
+                data-line-number={lineNumber}
                 className={`
                   select-none text-right pr-4 pl-2 py-0.5
                   text-zinc-600 text-xs cursor-pointer
@@ -271,6 +339,7 @@ export function LineNumberedContent({
                 onMouseDown={(e) => handleLineNumberMouseDown(lineNumber, e)}
                 onMouseEnter={() => handleLineNumberMouseEnter(lineNumber)}
                 onClick={(e) => handleLineNumberClick(lineNumber, e)}
+                onTouchStart={(e) => handleTouchStart(lineNumber, e)}
               >
                 {lineNumber}
               </div>

@@ -59,34 +59,38 @@ export default function DeliverablesPage() {
       </div>
 
       {/* By Agent */}
-      {AGENTS.map((agent) => {
-        const agentDeliverables = byAgent[agent.id] || [];
-        const isEcho = agent.id === "echo";
+      <div className="space-y-10">
+        {AGENTS.map((agent) => {
+          const agentDeliverables = byAgent[agent.id] || [];
+          const isEcho = agent.id === "echo";
 
-        return (
-          <div key={agent.id} className="mb-8">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-lg">{agent.icon}</span>
-              <h2 className="text-lg font-semibold text-white">{agent.name}</h2>
-              <span className="text-zinc-500 text-sm">
-                ({isEcho ? researchFiles.length : agentDeliverables.length})
-              </span>
+          return (
+            <div key={agent.id}>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-lg">{agent.icon}</span>
+                <h2 className="text-lg font-semibold text-white">{agent.name}</h2>
+                <span className="text-zinc-500 text-sm">
+                  ({isEcho ? researchFiles.length : agentDeliverables.length})
+                </span>
+              </div>
+              
+              {isEcho ? (
+                // Echo uses ResearchCard for research deliverables
+                <ResearchList 
+                  files={researchFiles} 
+                  emptyMessage="No research files found yet."
+                  emptySubMessage="Echo's research will appear here when available."
+                />
+              ) : (
+                // Other agents use DeliverableList
+                <div className="space-y-4">
+                  <DeliverableList deliverables={agentDeliverables} />
+                </div>
+              )}
             </div>
-            
-            {isEcho ? (
-              // Echo uses ResearchCard for research deliverables
-              <ResearchList 
-                files={researchFiles} 
-                emptyMessage="No research files found yet."
-                emptySubMessage="Echo's research will appear here when available."
-              />
-            ) : (
-              // Other agents use DeliverableList
-              <DeliverableList deliverables={agentDeliverables} />
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }

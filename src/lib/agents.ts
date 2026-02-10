@@ -90,6 +90,21 @@ export const AGENTS: Agent[] = [
     sendsTo: ["demerzel", "oracle"],
     receivesFrom: ["ralph", "scribe", "demerzel"],
   },
+  {
+    id: "demerzel",
+    name: "Demerzel",
+    domain: "Coordination",
+    workspace: "coordination",
+    status: "idle",
+    lastActivity: new Date().toISOString(),
+    deliverableCount: 0,
+    description:
+      "Coordinate the 10X Solo agent team and manage cross-agent workflows.",
+    color: "#ec4899",
+    icon: "🎯",
+    sendsTo: ["oracle", "ralph", "scribe", "clerk", "echo"],
+    receivesFrom: ["oracle", "ralph", "scribe", "clerk", "echo"],
+  },
 ];
 
 export function getAgent(id: string): Agent | undefined {
