@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { readVersionHistory } from "./versions";
 
 const BUSINESS_ROOT = path.join(
   process.env.HOME || "/Users/ittaisvidler",
@@ -21,6 +22,9 @@ export interface FeedbackThread {
   agentId: string;
   startLine: number | null;
   endLine: number | null;
+  lineContent?: string;
+  contentVersion?: number;
+  outdated?: boolean;
   createdAt: string;
   status: "open" | "resolved";
   comments: FeedbackComment[];
@@ -71,16 +75,33 @@ export function createThread(
   author: "user" | "agent" = "user"
 ): FeedbackThread {
   const feedback = readFeedback(deliverableFilePath);
-  
+
   const threadId = `thread-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const commentId = `comment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  
+
+  // Capture referenced line content for outdated detection
+  let lineContent: string | undefined;
+  if (startLine !== null && endLine !== null) {
+    try {
+      const fileContent = fs.readFileSync(deliverableFilePath, "utf-8");
+      const lines = fileContent.split("\n");
+      lineContent = lines.slice(startLine - 1, endLine).join("\n");
+    } catch { /* ignore */ }
+  }
+
+  // Capture current version number
+  const history = readVersionHistory(deliverableFilePath);
+  const contentVersion = history.currentVersion || undefined;
+
   const newThread: FeedbackThread = {
     id: threadId,
     deliverableId,
     agentId,
     startLine,
     endLine,
+    lineContent,
+    contentVersion,
+    outdated: false,
     createdAt: new Date().toISOString(),
     status: "open",
     comments: [
@@ -93,10 +114,10 @@ export function createThread(
       },
     ],
   };
-  
+
   feedback.threads.push(newThread);
   writeFeedback(deliverableFilePath, feedback);
-  
+
   return newThread;
 }
 
@@ -179,4 +200,34 @@ export function getInlineThreads(deliverableFilePath: string): FeedbackThread[] 
 export function getTopLevelThreads(deliverableFilePath: string): FeedbackThread[] {
   const feedback = readFeedback(deliverableFilePath);
   return feedback.threads.filter((t) => t.startLine === null || t.endLine === null);
+}
+
+export function markOutdatedThreads(deliverableFilePath: string): void {
+  const feedback = readFeedback(deliverableFilePath);
+  if (feedback.threads.length === 0) return;
+
+  let fileContent: string;
+  try {
+    fileContent = fs.readFileSync(deliverableFilePath, "utf-8");
+  } catch {
+    return;
+  }
+  const lines = fileContent.split("\n");
+  let changed = false;
+
+  for (const thread of feedback.threads) {
+    if (thread.startLine === null || thread.endLine === null) continue;
+    if (thread.status === "resolved") continue;
+    if (!thread.lineContent) continue;
+
+    const currentContent = lines.slice(thread.startLine - 1, thread.endLine).join("\n");
+    if (currentContent !== thread.lineContent) {
+      thread.outdated = true;
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    writeFeedback(deliverableFilePath, feedback);
+  }
 }

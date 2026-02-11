@@ -6,6 +6,9 @@ import {
   DeliverableStatus,
 } from "@/lib/status";
 import { createThread } from "@/lib/feedback";
+import { snapshotVersionOnStatusChange } from "@/lib/version-ops";
+import { deleteDeliverable } from "@/lib/delete";
+import fs from "fs";
 import path from "path";
 
 const RESEARCH_DIR = path.join(
@@ -57,6 +60,8 @@ export async function POST(
     feedbackContent || `Status changed to ${status}`
   );
 
+  snapshotVersionOnStatusChange(filePath, oldStatus, newStatus, updatedBy || "ittai", feedbackContent);
+
   if (newStatus === "requested changes" && feedbackContent) {
     createThread(filePath, id, "echo", null, null, feedbackContent, "user");
   }
@@ -65,5 +70,27 @@ export async function POST(
     success: true,
     status: newStatus,
     logged: true,
+  });
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  // Decode base64url ID directly to handle archived files too
+  const filename = Buffer.from(id, "base64url").toString("utf-8");
+  const filePath = path.join(RESEARCH_DIR, filename);
+
+  if (!fs.existsSync(filePath)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const result = deleteDeliverable(filePath);
+
+  return NextResponse.json({
+    success: true,
+    deleted: result.deleted,
   });
 }

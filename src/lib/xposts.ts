@@ -32,7 +32,7 @@ export interface XPost {
   title: string;
   date: string;
   postNumber: number;
-  status: "draft" | "needs review" | "requested changes" | "approved" | "published";
+  status: "draft" | "needs review" | "requested changes" | "approved" | "published" | "archived";
   content: string;
   suggestedTime: string;
   category: string;
@@ -59,6 +59,7 @@ function normalizeStatus(status: string | undefined): XPost['status'] {
   if (lower === 'approved') return 'approved';
   if (lower === 'requested changes') return 'requested changes';
   if (lower === 'needs review' || lower === 'review') return 'needs review';
+  if (lower === 'archived') return 'archived';
   return 'draft';
 }
 
@@ -129,11 +130,13 @@ export function getXPosts(): XPost[] {
     }
   }
 
-  return posts.sort(
-    (a, b) =>
-      new Date(b.date).getTime() - new Date(a.date).getTime() ||
-      a.postNumber - b.postNumber
-  );
+  return posts
+    .filter((p) => p.status !== "archived")
+    .sort(
+      (a, b) =>
+        new Date(b.date).getTime() - new Date(a.date).getTime() ||
+        a.postNumber - b.postNumber
+    );
 }
 
 export function getXPost(id: string): XPost | null {

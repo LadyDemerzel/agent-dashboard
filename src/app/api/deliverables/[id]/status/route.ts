@@ -6,6 +6,9 @@ import {
   DeliverableStatus,
 } from "@/lib/status";
 import { createThread } from "@/lib/feedback";
+import { snapshotVersionOnStatusChange } from "@/lib/version-ops";
+import { deleteDeliverable } from "@/lib/delete";
+import fs from "fs";
 import path from "path";
 
 const BUSINESS_ROOT = path.join(
@@ -54,6 +57,8 @@ export async function POST(
     note || `Status changed to ${status}`
   );
 
+  snapshotVersionOnStatusChange(filePath, oldStatus, newStatus, updatedBy || "ittai", note);
+
   if (newStatus === "requested changes" && note) {
     createThread(filePath, id, deliverable.agentId, null, null, note, "user");
   }
@@ -62,5 +67,30 @@ export async function POST(
     success: true,
     status: newStatus,
     logged: true,
+  });
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  // Decode base64url ID directly to handle archived deliverables too
+  const relativePath = Buffer.from(id, "base64url").toString("utf-8");
+  const filePath = path.join(BUSINESS_ROOT, relativePath);
+
+  if (!fs.existsSync(filePath)) {
+    return NextResponse.json(
+      { error: "Deliverable not found" },
+      { status: 404 }
+    );
+  }
+
+  const result = deleteDeliverable(filePath);
+
+  return NextResponse.json({
+    success: true,
+    deleted: result.deleted,
   });
 }

@@ -12,7 +12,8 @@ export type DeliverableStatus =
   | "needs review"
   | "requested changes"
   | "approved"
-  | "published";
+  | "published"
+  | "archived";
 
 export interface StatusLogEntry {
   timestamp: string;

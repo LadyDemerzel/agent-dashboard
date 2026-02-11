@@ -13,7 +13,7 @@ export interface Deliverable {
   agentName: string;
   title: string;
   type: "research" | "code" | "content" | "strategy" | "operations";
-  status: "draft" | "needs review" | "requested changes" | "approved" | "published";
+  status: "draft" | "needs review" | "requested changes" | "approved" | "published" | "archived";
   filePath: string;
   relativePath: string;
   createdAt: string;
@@ -80,6 +80,8 @@ function inferStatus(content: string): Deliverable["status"] {
     return "requested changes";
   if (lower.includes("status: needs review") || lower.includes("[needs review]"))
     return "needs review";
+  if (lower.includes("status: archived") || lower.includes("[archived]"))
+    return "archived";
   return "draft";
 }
 
@@ -127,9 +129,11 @@ export function getDeliverables(agentFilter?: string): Deliverable[] {
     }
   }
 
-  return deliverables.sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-  );
+  return deliverables
+    .filter((d) => d.status !== "archived")
+    .sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
 }
 
 export function getDeliverableContent(id: string): string | null {

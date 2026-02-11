@@ -14,7 +14,7 @@ export interface ResearchFile {
   title: string;
   filename: string;
   date: string;
-  status: "draft" | "needs review" | "requested changes" | "approved" | "published";
+  status: "draft" | "needs review" | "requested changes" | "approved" | "published" | "archived";
   preview: string;
   size: number;
   updatedAt: string;
@@ -123,6 +123,7 @@ function normalizeStatus(status: string | undefined): ResearchFile['status'] {
   if (lower === 'approved') return 'approved';
   if (lower === 'requested changes') return 'requested changes';
   if (lower === 'needs review' || lower === 'review') return 'needs review';
+  if (lower === 'archived') return 'archived';
   return 'draft';
 }
 
@@ -199,9 +200,11 @@ export function getResearchFiles(): ResearchFile[] {
     });
   }
 
-  return results.sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
+  return results
+    .filter((r) => r.status !== "archived")
+    .sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
 }
 
 export function getResearchContent(id: string): string | null {

@@ -235,6 +235,14 @@ function TopLevelThreadCard({
         ${isResolved ? "border-zinc-700/50 bg-zinc-900/30" : "border-zinc-700 bg-zinc-900"}
       `}
     >
+      {/* Outdated Badge */}
+      {thread.outdated && !isResolved && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-950/50 border-b border-amber-600/30">
+          <span className="text-xs font-mono text-amber-400">OUTDATED</span>
+          <span className="text-xs text-amber-500/70">Content has changed since this comment</span>
+        </div>
+      )}
+
       {/* Thread Header */}
       <div
         className={`
@@ -248,10 +256,10 @@ function TopLevelThreadCard({
           <span
             className={`
               text-xs font-medium px-1.5 py-0.5 rounded
-              ${isResolved ? "bg-green-500/20 text-green-400" : "bg-blue-500/20 text-blue-400"}
+              ${isResolved ? "bg-green-500/20 text-green-400" : thread.outdated ? "bg-amber-500/20 text-amber-400" : "bg-blue-500/20 text-blue-400"}
             `}
           >
-            {isResolved ? "Resolved" : "Open"}
+            {isResolved ? "Resolved" : thread.outdated ? "Outdated" : "Open"}
           </span>
           <span className="text-xs text-zinc-600">
             {thread.comments.length} {thread.comments.length === 1 ? "comment" : "comments"}

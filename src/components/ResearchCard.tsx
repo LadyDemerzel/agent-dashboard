@@ -6,7 +6,7 @@ export interface ResearchFile {
   title: string;
   filename: string;
   date: string;
-  status: "draft" | "needs review" | "requested changes" | "approved" | "published";
+  status: "draft" | "needs review" | "requested changes" | "approved" | "published" | "archived";
   preview: string;
   size: number;
   updatedAt: string;

@@ -86,6 +86,14 @@ export function InlineFeedbackThread({
       `}
       onClick={onActivate}
     >
+      {/* Outdated Badge */}
+      {thread.outdated && !isResolved && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-950/50 border-b border-amber-600/30">
+          <span className="text-xs font-mono text-amber-400">OUTDATED</span>
+          <span className="text-xs text-amber-500/70">Content has changed since this comment</span>
+        </div>
+      )}
+
       {/* Thread Header */}
       <div
         className={`
@@ -93,7 +101,7 @@ export function InlineFeedbackThread({
           hover:bg-zinc-800/50 transition-colors
           ${isResolved ? "bg-zinc-800/20" : "bg-zinc-800/30"}
           border-l-2
-          ${isResolved ? "border-l-green-500/50" : "border-l-amber-500/50"}
+          ${isResolved ? "border-l-green-500/50" : thread.outdated ? "border-l-amber-400/50" : "border-l-amber-500/50"}
         `}
         onClick={() => setIsExpanded(!isExpanded)}
       >

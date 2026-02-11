@@ -1,12 +1,15 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { notFound } from "next/navigation";
 import { StatusBadge } from "@/components/StatusBadge";
 import { LineNumberedContent } from "@/components/LineNumberedContent";
 import { TopLevelComments } from "@/components/TopLevelComments";
+import { DiffViewer, VersionSelector } from "@/components/DiffViewer";
 import { FeedbackThread as FeedbackThreadType } from "@/lib/feedback";
+import { DiffResult } from "@/lib/versions";
 
 interface Deliverable {
   id: string;
@@ -41,6 +44,7 @@ export function DeliverableDetailClient({
   content,
   statusLog,
 }: DeliverableDetailPageProps) {
+  const router = useRouter();
   const [threads, setThreads] = useState<FeedbackThreadType[]>([]);
   const [selectedRange, setSelectedRange] = useState<{ startLine: number; endLine: number } | null>(null);
   const [isCreatingThread, setIsCreatingThread] = useState(false);
@@ -51,6 +55,63 @@ export function DeliverableDetailClient({
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Version/Diff state
+  type ViewMode = "content" | "changes";
+  const [viewMode, setViewMode] = useState<ViewMode>("content");
+  const [versions, setVersions] = useState<Array<{ version: number; timestamp: string; updatedBy: string; comment?: string }>>([]);
+  const [currentVersion, setCurrentVersion] = useState(0);
+  const [compareVersion, setCompareVersion] = useState<number | undefined>(undefined);
+  const [diffData, setDiffData] = useState<DiffResult | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
+  const diffAbortRef = useRef<AbortController | null>(null);
+
+  // Fetch versions
+  const fetchVersions = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/deliverables/${deliverable.id}/versions`);
+      if (res.ok) {
+        const data = await res.json();
+        setVersions(data.versions || []);
+        if (data.currentVersion) {
+          setCurrentVersion(data.currentVersion);
+          if (data.versions?.length >= 2) {
+            setCompareVersion(data.currentVersion - 1);
+          }
+        }
+      }
+    } catch { /* ignore */ }
+  }, [deliverable.id]);
+
+  // Load diff when version selection changes
+  const loadDiff = useCallback(async (from: number, to: number) => {
+    if (diffAbortRef.current) diffAbortRef.current.abort();
+    const controller = new AbortController();
+    diffAbortRef.current = controller;
+    setDiffLoading(true);
+    try {
+      const res = await fetch(`/api/deliverables/${deliverable.id}/diff?from=${from}&to=${to}`, {
+        signal: controller.signal,
+      });
+      if (res.ok) setDiffData(await res.json());
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return;
+    } finally {
+      setDiffLoading(false);
+    }
+  }, [deliverable.id]);
+
+  useEffect(() => {
+    fetchVersions();
+  }, [fetchVersions]);
+
+  useEffect(() => {
+    if (viewMode === "changes" && currentVersion && compareVersion) {
+      loadDiff(compareVersion, currentVersion);
+    }
+  }, [viewMode, currentVersion, compareVersion, loadDiff]);
 
   // Fetch feedback threads
   const fetchThreads = useCallback(async () => {
@@ -168,7 +229,8 @@ export function DeliverableDetailClient({
 
       if (res.ok) {
         setSelectedStatus(status);
-        window.location.reload();
+        await fetchThreads();
+        await fetchVersions();
       }
     } catch (error) {
       console.error("Failed to update status:", error);
@@ -189,6 +251,17 @@ export function DeliverableDetailClient({
       endLine: t.endLine!,
       color: "bg-amber-500/15",
     }));
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/deliverables/${deliverable.id}/status`, { method: "DELETE" });
+      if (res.ok) {
+        router.push("/deliverables");
+      }
+    } catch { /* ignore */ }
+    setDeleting(false);
+  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -256,65 +329,146 @@ export function DeliverableDetailClient({
                 <option value="requested changes">Requested Changes</option>
                 <option value="approved">Approved</option>
                 <option value="published">Published</option>
+                <option value="archived">Archived</option>
               </select>
+              <div className="ml-auto">
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="text-zinc-500 hover:text-red-400 text-sm transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Content with Line Numbers and Inline Comments */}
+          {/* Content / Changes Tabs */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-zinc-800">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider">
-                  Full Deliverable
-                </h2>
-                {selectedRange && (
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-zinc-500">
-                      Selected{" "}
-                      {selectedRange.startLine === selectedRange.endLine
-                        ? `line ${selectedRange.startLine}`
-                        : `lines ${selectedRange.startLine}-${selectedRange.endLine}`}
-                    </span>
-                    <button
-                      onClick={() => setSelectedRange(null)}
-                      className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="p-0">
-              {content ? (
-                <div className="bg-zinc-950 p-4">
-                  <LineNumberedContent
-                    content={content}
-                    onLineRangeSelect={handleLineRangeSelect}
-                    selectedRange={selectedRange}
-                    highlightLines={highlightLines}
-                    threads={threads}
-                    onAddComment={handleAddComment}
-                    onResolveThread={handleResolveThread}
-                    onReopenThread={handleReopenThread}
-                    onCreateThread={handleCreateThread}
-                    isCreatingThread={isCreatingThread}
-                    setIsCreatingThread={setIsCreatingThread}
-                    activeThreadId={activeThreadId}
-                    setActiveThreadId={setActiveThreadId}
-                  />
+            {/* Tab Bar */}
+            <div className="flex items-center gap-1 border-b border-zinc-800 px-6">
+              <button
+                onClick={() => setViewMode("content")}
+                className={`px-4 py-3 text-sm font-mono transition-colors border-b-2 ${
+                  viewMode === "content"
+                    ? "text-white border-emerald-500"
+                    : "text-zinc-500 border-transparent hover:text-zinc-300"
+                }`}
+              >
+                Content
+              </button>
+              <button
+                onClick={() => setViewMode("changes")}
+                className={`px-4 py-3 text-sm font-mono transition-colors border-b-2 ${
+                  viewMode === "changes"
+                    ? "text-white border-emerald-500"
+                    : "text-zinc-500 border-transparent hover:text-zinc-300"
+                }`}
+              >
+                Changes {versions.length >= 2 && `(${versions.length})`}
+              </button>
+              {viewMode === "content" && selectedRange && (
+                <div className="flex items-center gap-3 ml-auto">
+                  <span className="text-xs text-zinc-500">
+                    Selected{" "}
+                    {selectedRange.startLine === selectedRange.endLine
+                      ? `line ${selectedRange.startLine}`
+                      : `lines ${selectedRange.startLine}-${selectedRange.endLine}`}
+                  </span>
+                  <button
+                    onClick={() => setSelectedRange(null)}
+                    className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                  >
+                    Clear
+                  </button>
                 </div>
-              ) : (
-                <p className="text-zinc-500 text-sm p-6">
-                  Unable to load deliverable content.
-                </p>
               )}
             </div>
+
+            {/* Content View */}
+            {viewMode === "content" && (
+              <div className="p-0">
+                {content ? (
+                  <div className="bg-zinc-950 p-4">
+                    <LineNumberedContent
+                      content={content}
+                      onLineRangeSelect={handleLineRangeSelect}
+                      selectedRange={selectedRange}
+                      highlightLines={highlightLines}
+                      threads={threads}
+                      onAddComment={handleAddComment}
+                      onResolveThread={handleResolveThread}
+                      onReopenThread={handleReopenThread}
+                      onCreateThread={handleCreateThread}
+                      isCreatingThread={isCreatingThread}
+                      setIsCreatingThread={setIsCreatingThread}
+                      activeThreadId={activeThreadId}
+                      setActiveThreadId={setActiveThreadId}
+                    />
+                  </div>
+                ) : (
+                  <p className="text-zinc-500 text-sm p-6">
+                    Unable to load deliverable content.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Changes View */}
+            {viewMode === "changes" && (
+              <div className="p-4 space-y-4">
+                {versions.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="w-12 h-12 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <svg className="w-6 h-6 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      </svg>
+                    </div>
+                    <p className="text-sm text-zinc-400">No version history yet</p>
+                    <p className="text-xs text-zinc-600 mt-1">
+                      Versions are created when status changes to &quot;Needs Review&quot;
+                    </p>
+                  </div>
+                ) : versions.length < 2 ? (
+                  <div className="text-center py-12">
+                    <p className="text-sm text-zinc-400">Only one version exists</p>
+                    <p className="text-xs text-zinc-600 mt-1">
+                      A diff will be available after the next revision
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {diffLoading ? (
+                      <div className="text-center py-12">
+                        <div className="animate-spin w-6 h-6 border-2 border-zinc-600 border-t-zinc-300 rounded-full mx-auto" />
+                        <p className="text-sm text-zinc-500 mt-3">Loading diff...</p>
+                      </div>
+                    ) : diffData ? (
+                      <DiffViewer diff={diffData} />
+                    ) : (
+                      <p className="text-sm text-zinc-500 text-center py-8">
+                        Select versions to compare
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Right Sidebar */}
         <div className="space-y-6">
+          {/* Version Selector (shown when Changes tab is active) */}
+          {viewMode === "changes" && versions.length >= 2 && (
+            <VersionSelector
+              versions={versions}
+              currentVersion={currentVersion}
+              compareVersion={compareVersion}
+              onSelectCurrent={(v) => setCurrentVersion(v)}
+              onSelectCompare={(v) => setCompareVersion(v)}
+            />
+          )}
+
           {/* Status History */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
             <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-4">
@@ -480,6 +634,37 @@ export function DeliverableDetailClient({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md mx-4">
+            <h3 className="text-white font-semibold text-lg mb-2">Delete Deliverable</h3>
+            <p className="text-zinc-400 text-sm mb-1">
+              Are you sure you want to delete <span className="text-white font-medium">{deliverable.title}</span>?
+            </p>
+            <p className="text-zinc-500 text-xs mb-6">
+              This will permanently remove the file and all associated data (version history, status log, feedback).
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-medium rounded-lg text-sm transition-colors"
+              >
+                {deleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
           </div>
         </div>
       )}

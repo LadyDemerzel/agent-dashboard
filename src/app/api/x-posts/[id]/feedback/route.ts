@@ -6,6 +6,10 @@ import {
   DeliverableStatus,
 } from "@/lib/status";
 import { createThread } from "@/lib/feedback";
+import { snapshotVersionOnStatusChange } from "@/lib/version-ops";
+import { deleteDeliverable } from "@/lib/delete";
+import fs from "fs";
+import path from "path";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +45,8 @@ export async function POST(
       feedbackContent || `Status changed to ${status}`
     );
 
+    snapshotVersionOnStatusChange(post.filePath, oldStatus, newStatus, updatedBy || "ittai", feedbackContent);
+
     if (newStatus === "requested changes" && feedbackContent) {
       createThread(post.filePath, id, "scribe", null, null, feedbackContent, "user");
     }
@@ -71,4 +77,34 @@ export async function POST(
   );
 
   return NextResponse.json({ success: true, filename });
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  // Resolve file path directly from ID (YYYY-MM-DD_post-N) to handle archived posts too
+  const match = id.match(/^(\d{4}-\d{2}-\d{2})_post-(\d+)$/);
+  if (!match) {
+    return NextResponse.json({ error: "Invalid post ID" }, { status: 400 });
+  }
+
+  const postsDir = path.join(
+    process.env.HOME || "/Users/ittaisvidler",
+    "tenxsolo", "business", "content", "deliverables", "x-posts"
+  );
+  const filePath = path.join(postsDir, match[1], `post-${match[2]}.md`);
+
+  if (!fs.existsSync(filePath)) {
+    return NextResponse.json({ error: "Post not found" }, { status: 404 });
+  }
+
+  const result = deleteDeliverable(filePath);
+
+  return NextResponse.json({
+    success: true,
+    deleted: result.deleted,
+  });
 }
