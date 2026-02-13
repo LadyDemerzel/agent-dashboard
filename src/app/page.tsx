@@ -1,31 +1,87 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { usePolling } from "@/components/usePolling";
 import { AGENTS } from "@/lib/agents";
-import { getAgentStats, getDeliverables } from "@/lib/files";
-import { getResearchFiles } from "@/lib/research";
-import { getAgentStatusWithSessions } from "@/lib/sessions";
-import { AgentCard } from "@/components/AgentCard";
+import { AgentCardClient } from "@/components/AgentCardClient";
 import { DeliverableList } from "@/components/DeliverableList";
 import { Timeline } from "@/components/Timeline";
 import { buildTimelineEvents } from "@/lib/timeline";
-import { ResearchCard, ResearchStats } from "@/components/ResearchCard";
+import { ResearchCard, ResearchStats, ResearchFile } from "@/components/ResearchCard";
 
-export const dynamic = "force-dynamic";
+interface AgentStatusData {
+  status: "idle" | "working" | "review" | "blocked";
+  currentTask?: string;
+}
+
+interface AgentStatusResponse {
+  [agentId: string]: AgentStatusData;
+}
+
+interface Deliverable {
+  id: string;
+  agentId: string;
+  agentName: string;
+  title: string;
+  type: "research" | "code" | "content" | "strategy" | "operations";
+  status: "draft" | "needs review" | "requested changes" | "approved" | "published" | "archived";
+  filePath: string;
+  relativePath: string;
+  createdAt: string;
+  updatedAt: string;
+  size: number;
+}
+
+interface DashboardData {
+  stats: Record<string, { deliverableCount: number; lastActivity: string }>;
+  deliverables: Deliverable[];
+  researchFiles: ResearchFile[];
+  sessionStatus: AgentStatusResponse;
+}
 
 export default function Dashboard() {
-  const stats = getAgentStats();
-  const deliverables = getDeliverables();
-  const researchFiles = getResearchFiles();
-  const sessionStatus = getAgentStatusWithSessions();
+  const [initialData, setInitialData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch initial data on mount
+  useEffect(() => {
+    fetch("/api/dashboard", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        setInitialData(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  // Poll for real-time status updates every 3 seconds
+  const { data: liveStatus } = usePolling<AgentStatusResponse>("/api/agents/status", 3000);
+
+  if (loading || !initialData) {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8 flex items-center justify-center min-h-[50vh]">
+        <div className="text-zinc-500">Loading dashboard...</div>
+      </div>
+    );
+  }
+
+  const { stats, deliverables, researchFiles, sessionStatus } = initialData;
+  
   const recentResearch = researchFiles.slice(0, 3);
   const recentDeliverables = deliverables.filter(d => d.agentId !== 'echo').slice(0, 5);
 
-  const agents = AGENTS.map((agent) => ({
-    ...agent,
-    deliverableCount: stats[agent.id]?.deliverableCount ?? 0,
-    lastActivity: stats[agent.id]?.lastActivity ?? agent.lastActivity,
-    status: sessionStatus[agent.id]?.status ?? agent.status,
-    currentTask: sessionStatus[agent.id]?.currentTask,
-  }));
+  // Merge initial data with live status
+  const agents = AGENTS.map((agent) => {
+    const liveAgentStatus = liveStatus?.[agent.id];
+    return {
+      ...agent,
+      deliverableCount: stats[agent.id]?.deliverableCount ?? 0,
+      lastActivity: stats[agent.id]?.lastActivity ?? agent.lastActivity,
+      initialStatus: liveAgentStatus?.status ?? sessionStatus[agent.id]?.status ?? agent.status,
+      initialTask: liveAgentStatus?.currentTask ?? sessionStatus[agent.id]?.currentTask,
+    };
+  });
 
   const agentIcons: Record<string, string> = {};
   for (const a of AGENTS) {
@@ -37,7 +93,12 @@ export default function Dashboard() {
     agentIcons
   );
 
-  const activeCount = agents.filter((a) => a.status === "working").length;
+  // Calculate active count from live data
+  const activeCount = agents.filter((a) => {
+    const agentLiveStatus = liveStatus?.[a.id]?.status;
+    return agentLiveStatus === "working" || (!agentLiveStatus && a.initialStatus === "working");
+  }).length;
+  
   const totalDeliverables = deliverables.length;
 
   return (
@@ -48,6 +109,14 @@ export default function Dashboard() {
         <p className="text-zinc-500 text-sm mt-1">
           Coordination hub for the agent team
         </p>
+        {/* Live indicator */}
+        <div className="flex items-center gap-2 mt-2">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span className="text-xs text-zinc-500">Live updates</span>
+        </div>
       </div>
 
       {/* Stats bar */}
@@ -65,12 +134,24 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Agent Grid */}
+      {/* Agent Grid with Real-time Updates */}
       <div className="mb-8">
         <h2 className="text-lg font-semibold text-white mb-4">Agents</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {agents.map((agent) => (
-            <AgentCard key={agent.id} {...agent} />
+            <AgentCardClient 
+              key={agent.id} 
+              id={agent.id}
+              name={agent.name}
+              domain={agent.domain}
+              icon={agent.icon}
+              color={agent.color}
+              initialStatus={agent.initialStatus}
+              initialTask={agent.initialTask}
+              deliverableCount={agent.deliverableCount}
+              lastActivity={agent.lastActivity}
+              description={agent.description}
+            />
           ))}
         </div>
       </div>

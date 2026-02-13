@@ -8,6 +8,7 @@ import {
 import { createThread } from "@/lib/feedback";
 import { snapshotVersionOnStatusChange } from "@/lib/version-ops";
 import { deleteDeliverable } from "@/lib/delete";
+import { spawnAgentForFeedback, shouldSpawnAgent } from "@/lib/agent-spawn";
 import fs from "fs";
 import path from "path";
 
@@ -51,10 +52,26 @@ export async function POST(
       createThread(post.filePath, id, "scribe", null, null, feedbackContent, "user");
     }
 
+    // Spawn the agent if status changed to "requested changes"
+    let spawnResult = null;
+    if (shouldSpawnAgent(oldStatus, newStatus)) {
+      const relativePath = path.relative(
+        path.join(process.env.HOME || "/Users/ittaisvidler", "tenxsolo", "business"),
+        post.filePath
+      );
+      spawnResult = await spawnAgentForFeedback(
+        "scribe",
+        id,
+        relativePath,
+        updatedBy || "ittai"
+      );
+    }
+
     return NextResponse.json({
       success: true,
       status: newStatus,
       logged: true,
+      spawn: spawnResult,
     });
   }
 

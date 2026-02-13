@@ -1,23 +1,27 @@
 import fs from "fs";
 import path from "path";
 
-const SESSIONS_DIR = path.join(
+const AGENTS_DIR = path.join(
   process.env.HOME || "/Users/ittaisvidler",
   ".openclaw",
-  "agents",
-  "main",
-  "sessions"
+  "agents"
 );
 
+// List of agent IDs to check
+const AGENT_IDS = ["echo", "ralph", "scribe", "oracle", "clerk", "demerzel", "main"];
+
+// Activity threshold: session is "active" if last message was within this time
+const ACTIVITY_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
+
 interface SessionEntry {
-  role: string;
+  role?: string;
   content?: unknown;
   timestamp?: number;
-  toolCalls?: unknown[];
+  type?: string;
   message?: {
-    role: string;
+    role?: string;
     content?: Array<{
-      type: string;
+      type?: string;
       text?: string;
     }>;
   };
@@ -31,127 +35,41 @@ interface SessionInfo {
   taskDescription?: string;
 }
 
-// Map session keys/names to agent IDs
-const AGENT_SESSION_MAP: Record<string, string> = {
-  ralph: "ralph",
-  echo: "echo",
-  scribe: "scribe",
-  oracle: "oracle",
-  clerk: "clerk",
-  demerzel: "demerzel",
-};
-
-function extractAgentFromSessionKey(sessionKey: string): string | null {
-  const lowerKey = sessionKey.toLowerCase();
-  for (const [keyword, agentId] of Object.entries(AGENT_SESSION_MAP)) {
-    if (lowerKey.includes(keyword)) {
-      return agentId;
-    }
-  }
-  return null;
-}
-
-function extractAgentFromContent(content: string): string | null {
-  const lowerContent = content.toLowerCase();
-  
-  // Check for agent names in the task content
-  // Look for patterns like "have ralph", "ralph is", "assign to ralph", etc.
-  for (const [keyword, agentId] of Object.entries(AGENT_SESSION_MAP)) {
-    // Check if agent name appears in the content
-    if (lowerContent.includes(keyword)) {
-      return agentId;
-    }
-  }
-  return null;
-}
-
+/**
+ * Check if a session is active based on last activity time
+ */
 function isSessionActive(lastActivity: string): boolean {
   const lastActivityTime = new Date(lastActivity).getTime();
   const now = Date.now();
-  const fiveMinutesAgo = now - 5 * 60 * 1000;
-  return lastActivityTime > fiveMinutesAgo;
+  return lastActivityTime > (now - ACTIVITY_THRESHOLD_MS);
 }
 
-function extractTaskDescription(content: string): string | undefined {
+/**
+ * Extract the most recent user message content from session
+ */
+function extractLastUserMessage(content: string): string | undefined {
   try {
-    const lines = content.trim().split("\n");
+    const lines = content.trim().split("\n").filter(line => line.trim());
     
-    // System/greeting phrases to filter out
-    const systemPhrases = [
-      "a new session was started",
-      "greet the user in your configured persona",
-      "be yourself",
-      "this is a new session",
-      "you are a helpful assistant",
-      "you are an ai assistant"
-    ];
-    
-    // Look for the first user message with meaningful content
-    for (const line of lines) {
-      const entry: SessionEntry = JSON.parse(line);
-      
-      // Check for user message with content
-      if (entry.role === "user" || entry.message?.role === "user") {
-        const messageContent = entry.message?.content;
-        if (Array.isArray(messageContent)) {
-          // Find text content
-          const textContent = messageContent.find(c => c.type === "text" && c.text);
-          if (textContent?.text) {
-            const text = textContent.text;
-            
-            // Skip system/greeting messages
-            const lowerText = text.toLowerCase();
-            if (systemPhrases.some(phrase => lowerText.includes(phrase))) {
-              continue;
+    // Parse from the end to find the most recent user message
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const entry: SessionEntry = JSON.parse(lines[i]);
+        
+        // Check for user message
+        const isUserMessage = entry.role === "user" || entry.message?.role === "user";
+        
+        if (isUserMessage && entry.message?.content) {
+          const messageContent = entry.message.content;
+          if (Array.isArray(messageContent)) {
+            const textContent = messageContent.find(c => c.type === "text" && c.text);
+            if (textContent?.text) {
+              return textContent.text;
             }
-            
-            // Look for task-related keywords that indicate actual work
-            const taskKeywords = [
-              "implement", "create", "build", "fix", "update", "add",
-              "improve", "change", "modify", "develop", "design",
-              "write", "generate", "make", "refactor", "optimize"
-            ];
-            
-            // Split into lines and find first substantial, meaningful line
-            const textLines = text.split("\n");
-            for (const textLine of textLines) {
-              const trimmed = textLine.trim();
-              // Must be reasonably long and contain task keywords or be substantial
-              if (trimmed.length > 20 && trimmed.length < 200) {
-                const hasTaskKeyword = taskKeywords.some(kw => 
-                  trimmed.toLowerCase().includes(kw)
-                );
-                // If it has a task keyword or is a very clear instruction
-                if (hasTaskKeyword || trimmed.length > 50) {
-                  if (trimmed.length > 120) {
-                    return trimmed.substring(0, 120) + "...";
-                  }
-                  return trimmed;
-                }
-              }
-            }
-            
-            // Fallback: get first substantial line that's not too long
-            const substantialLine = textLines.find(l => {
-              const trimmed = l.trim();
-              return trimmed.length > 30 && trimmed.length < 150;
-            });
-            
-            if (substantialLine) {
-              const trimmed = substantialLine.trim();
-              if (trimmed.length > 120) {
-                return trimmed.substring(0, 120) + "...";
-              }
-              return trimmed;
-            }
-            
-            // Last resort: first 120 chars of text
-            if (text.length > 120) {
-              return text.substring(0, 120) + "...";
-            }
-            return text;
           }
         }
+      } catch {
+        continue;
       }
     }
   } catch {
@@ -160,73 +78,176 @@ function extractTaskDescription(content: string): string | undefined {
   return undefined;
 }
 
-export function getActiveAgentSessions(): Record<string, SessionInfo> {
-  const activeSessions: Record<string, SessionInfo> = {};
+/**
+ * Extract a meaningful task description from session content
+ */
+function extractTaskDescription(content: string): string | undefined {
+  const text = extractLastUserMessage(content);
+  if (!text) return undefined;
 
-  if (!fs.existsSync(SESSIONS_DIR)) {
-    return activeSessions;
+  // System/greeting phrases to filter out
+  const systemPhrases = [
+    "a new session was started",
+    "greet the user in your configured persona",
+    "be yourself",
+    "this is a new session",
+    "you are a helpful assistant",
+    "you are an ai assistant",
+    "heartbeat",
+    "read heartbeat.md",
+    "if nothing needs attention",
+  ];
+  
+  const lowerText = text.toLowerCase();
+  
+  // Skip system/greeting messages
+  if (systemPhrases.some(phrase => lowerText.includes(phrase))) {
+    return undefined;
+  }
+  
+  // Task-related keywords that indicate actual work
+  const taskKeywords = [
+    "implement", "create", "build", "fix", "update", "add",
+    "improve", "change", "modify", "develop", "design",
+    "write", "generate", "make", "refactor", "optimize",
+    "research", "investigate", "analyze", "review", "test",
+    "deploy", "configure", "setup", "integrate"
+  ];
+  
+  // Split into lines and find first substantial, meaningful line
+  const lines = text.split("\n");
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    
+    // Must be reasonably long
+    if (trimmed.length < 15) continue;
+    
+    // Skip lines that are just metadata or commands
+    if (trimmed.startsWith("[") && trimmed.includes("]")) {
+      // Extract content after the metadata bracket
+      const match = trimmed.match(/\[.*?\]\s*(.+)/);
+      if (match) {
+        const content = match[1].trim();
+        if (content.length > 15) {
+          return content.length > 120 ? content.substring(0, 120) + "..." : content;
+        }
+      }
+    }
+    
+    // Check for task keywords
+    const hasTaskKeyword = taskKeywords.some(kw => 
+      trimmed.toLowerCase().includes(kw)
+    );
+    
+    if (hasTaskKeyword && trimmed.length > 20) {
+      return trimmed.length > 120 ? trimmed.substring(0, 120) + "..." : trimmed;
+    }
+    
+    // If it's a substantial line without keywords, use it as fallback
+    if (trimmed.length > 50 && trimmed.length < 200) {
+      return trimmed.length > 120 ? trimmed.substring(0, 120) + "..." : trimmed;
+    }
+  }
+  
+  // Last resort: truncate the whole text
+  if (text.length > 120) {
+    return text.substring(0, 120) + "...";
+  }
+  return text;
+}
+
+/**
+ * Get session info for a specific agent
+ */
+function getAgentSessions(agentId: string): SessionInfo | null {
+  const sessionsDir = path.join(AGENTS_DIR, agentId, "sessions");
+  
+  if (!fs.existsSync(sessionsDir)) {
+    return null;
   }
 
   const sessionFiles = fs
-    .readdirSync(SESSIONS_DIR)
-    .filter((f) => f.endsWith(".jsonl"));
+    .readdirSync(sessionsDir)
+    .filter((f) => f.endsWith(".jsonl") && !f.includes(".deleted."));
+
+  let mostRecentSession: SessionInfo | null = null;
+  let mostRecentTime = 0;
 
   for (const file of sessionFiles) {
-    const sessionPath = path.join(SESSIONS_DIR, file);
+    const sessionPath = path.join(sessionsDir, file);
     try {
+      const stats = fs.statSync(sessionPath);
       const content = fs.readFileSync(sessionPath, "utf-8");
-      const lines = content.trim().split("\n");
+      const lines = content.trim().split("\n").filter(line => line.trim());
 
       if (lines.length === 0) continue;
 
-      // Parse session metadata from first line if it exists
-      let sessionKey = file.replace(".jsonl", "");
-      let lastActivity = new Date().toISOString();
+      const sessionKey = file.replace(".jsonl", "");
+      let maxTimestamp = stats.mtime.getTime(); // Fallback to file mtime
+      let lastActivity = new Date(maxTimestamp).toISOString();
 
       // Try to find the most recent timestamp in the session
       for (let i = lines.length - 1; i >= 0; i--) {
         try {
           const entry: SessionEntry = JSON.parse(lines[i]);
-          if (entry.timestamp) {
+          if (entry.timestamp && entry.timestamp > maxTimestamp) {
+            maxTimestamp = entry.timestamp;
             lastActivity = new Date(entry.timestamp).toISOString();
-            break;
           }
         } catch {
           continue;
         }
       }
 
-      // Check for agent mentions in the session content
-      const agentId = extractAgentFromContent(content);
-      if (agentId) {
+      // Track the most recent session for this agent
+      if (maxTimestamp > mostRecentTime) {
+        mostRecentTime = maxTimestamp;
         const isActive = isSessionActive(lastActivity);
-        if (isActive) {
-          const taskDescription = extractTaskDescription(content);
-          activeSessions[agentId] = {
-            sessionKey,
-            agentId,
-            lastActivity,
-            isActive,
-            taskDescription,
-          };
-        }
+        const taskDescription = isActive ? extractTaskDescription(content) : undefined;
+        
+        mostRecentSession = {
+          sessionKey,
+          agentId,
+          lastActivity,
+          isActive,
+          taskDescription,
+        };
       }
     } catch {
       continue;
     }
   }
 
+  return mostRecentSession;
+}
+
+/**
+ * Get all active agent sessions
+ */
+export function getActiveAgentSessions(): Record<string, SessionInfo> {
+  const activeSessions: Record<string, SessionInfo> = {};
+
+  for (const agentId of AGENT_IDS) {
+    const session = getAgentSessions(agentId);
+    if (session && session.isActive) {
+      activeSessions[agentId] = session;
+    }
+  }
+
   return activeSessions;
 }
 
+/**
+ * Get agent status map with current task info
+ */
 export function getAgentStatusWithSessions(): Record<
   string,
-  { status: "idle" | "working" | "review" | "blocked"; currentTask?: string }
+  { status: "idle" | "working" | "review" | "blocked"; currentTask?: string; lastActivity?: string }
 > {
-  const activeSessions = getActiveAgentSessions();
   const statusMap: Record<
     string,
-    { status: "idle" | "working" | "review" | "blocked"; currentTask?: string }
+    { status: "idle" | "working" | "review" | "blocked"; currentTask?: string; lastActivity?: string }
   > = {
     ralph: { status: "idle" },
     echo: { status: "idle" },
@@ -236,12 +257,17 @@ export function getAgentStatusWithSessions(): Record<
     demerzel: { status: "idle" },
   };
 
-  for (const [agentId, session] of Object.entries(activeSessions)) {
-    if (session.isActive) {
+  for (const agentId of Object.keys(statusMap)) {
+    const session = getAgentSessions(agentId);
+    if (session && session.isActive) {
       statusMap[agentId] = {
         status: "working",
         currentTask: session.taskDescription || "Working on task",
+        lastActivity: session.lastActivity,
       };
+    } else if (session) {
+      // Store last activity even if not currently active
+      statusMap[agentId].lastActivity = session.lastActivity;
     }
   }
 
