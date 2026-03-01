@@ -67,9 +67,9 @@ export function TopLevelComments({
   return (
     <Card className="overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-zinc-800">
+      <div className="px-5 py-4 border-b border-border">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider">
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
             Discussion
           </h2>
           <div className="flex items-center gap-2">
@@ -98,7 +98,7 @@ export function TopLevelComments({
       </div>
 
       {/* New Thread Button or Form */}
-      <div className="p-4 border-b border-zinc-800">
+      <div className="p-4 border-b border-border">
         {showNewThreadForm ? (
           <div className="space-y-3">
             <Textarea
@@ -131,7 +131,7 @@ export function TopLevelComments({
         ) : (
           <button
             onClick={() => setShowNewThreadForm(true)}
-            className="w-full py-3 border-2 border-dashed border-zinc-700 rounded-lg text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors text-sm"
+            className="w-full py-3 border-2 border-dashed border-border rounded-lg text-muted-foreground hover:text-foreground hover:border-border transition-colors text-sm"
           >
             + Add a general comment
           </button>
@@ -142,13 +142,13 @@ export function TopLevelComments({
       <div className="max-h-[500px] overflow-y-auto p-4">
         {topLevelThreads.length === 0 ? (
           <div className="text-center py-8">
-            <div className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-3">
-              <svg className="w-5 h-5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-10 h-10 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
             </div>
-            <p className="text-sm text-zinc-500">No general comments yet</p>
-            <p className="text-xs text-zinc-600 mt-1">Start a discussion about this deliverable</p>
+            <p className="text-sm text-muted-foreground">No general comments yet</p>
+            <p className="text-xs text-muted-foreground mt-1">Start a discussion about this deliverable</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -171,7 +171,7 @@ export function TopLevelComments({
               <div className="space-y-3">
                 <div className="flex items-center gap-2 pt-2">
                   <Separator className="flex-1" />
-                  <h3 className="text-xs font-medium text-zinc-600 uppercase tracking-wider">
+                  <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Resolved ({resolvedThreads.length})
                   </h3>
                   <Separator className="flex-1" />
@@ -194,7 +194,7 @@ export function TopLevelComments({
               <div className="space-y-3 pt-4">
                 <div className="flex items-center gap-2 pt-2">
                   <Separator className="flex-1" />
-                  <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                  <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Hidden ({hiddenCount})
                   </h3>
                   <Separator className="flex-1" />
@@ -204,9 +204,9 @@ export function TopLevelComments({
                   .map((thread) => (
                     <div
                       key={thread.id}
-                      className="flex items-center justify-between px-3 py-2 bg-zinc-800/30 border border-zinc-700/50 rounded-lg"
+                      className="flex items-center justify-between px-3 py-2 bg-muted/30 border border-border/50 rounded-lg"
                     >
-                      <span className="text-xs text-zinc-500">
+                      <span className="text-xs text-muted-foreground">
                         {thread.comments[0]?.content.substring(0, 50)}
                         {thread.comments[0]?.content.length > 50 ? "..." : ""}
                       </span>
@@ -280,7 +280,7 @@ function TopLevelThreadCard({
   };
 
   return (
-    <div className={`border rounded-lg overflow-hidden ${isResolved ? "border-zinc-700/50 bg-zinc-900/30" : "border-zinc-700 bg-zinc-900"}`}>
+    <div className={`border rounded-lg overflow-hidden ${isResolved ? "border-border/50 bg-muted/30" : "border-border bg-card"}`}>
       {thread.outdated && !isResolved && (
         <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-950/50 border-b border-amber-600/30">
           <Badge variant="warning" className="rounded text-[10px] px-1.5 py-0">OUTDATED</Badge>
@@ -289,20 +289,20 @@ function TopLevelThreadCard({
       )}
 
       <div
-        className={`flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-zinc-800/50 transition-colors ${isResolved ? "bg-zinc-800/20" : "bg-zinc-800/30"}`}
+        className={`flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors ${isResolved ? "bg-muted/20" : "bg-muted/30"}`}
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center gap-2">
           <Badge variant={isResolved ? "success" : thread.outdated ? "warning" : "info"}>
             {isResolved ? "Resolved" : thread.outdated ? "Outdated" : "Open"}
           </Badge>
-          <span className="text-xs text-zinc-600">
+          <span className="text-xs text-muted-foreground">
             {thread.comments.length} {thread.comments.length === 1 ? "comment" : "comments"}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-zinc-500 text-xs">{formatDate(thread.createdAt)}</span>
-          <svg className={`w-4 h-4 text-zinc-500 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <span className="text-muted-foreground text-xs">{formatDate(thread.createdAt)}</span>
+          <svg className={`w-4 h-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         </div>
@@ -318,11 +318,11 @@ function TopLevelThreadCard({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span className="font-medium text-sm text-zinc-200">{comment.author === "user" ? "Ittai" : "Agent"}</span>
-                    <span className="text-xs text-zinc-500">{formatDate(comment.createdAt)}</span>
+                    <span className="font-medium text-sm text-foreground">{comment.author === "user" ? "Ittai" : "Agent"}</span>
+                    <span className="text-xs text-muted-foreground">{formatDate(comment.createdAt)}</span>
                     {index === 0 && <Badge variant="default" className="text-[10px] px-1.5 py-0">Original</Badge>}
                   </div>
-                  <div className="text-sm text-zinc-300 whitespace-pre-wrap">{comment.content}</div>
+                  <div className="text-sm text-foreground whitespace-pre-wrap">{comment.content}</div>
                 </div>
               </div>
             ))}
@@ -338,19 +338,19 @@ function TopLevelThreadCard({
                 </div>
               </div>
             ) : (
-              <div className="flex items-center gap-2 pt-2 border-t border-zinc-800 pl-9">
+              <div className="flex items-center gap-2 pt-2 border-t border-border pl-9">
                 <Button variant="link" size="sm" className="h-auto p-0 text-xs text-blue-400" onClick={() => setShowReplyForm(true)}>Reply</Button>
-                <span className="text-zinc-600">·</span>
+                <span className="text-muted-foreground">·</span>
                 <Button variant="link" size="sm" className="h-auto p-0 text-xs text-green-400" onClick={() => onResolveThread(thread.id)}>Resolve</Button>
-                <span className="text-zinc-600">·</span>
-                <Button variant="link" size="sm" className="h-auto p-0 text-xs text-zinc-500" onClick={() => onHideThread(thread.id)}>Hide</Button>
+                <span className="text-muted-foreground">·</span>
+                <Button variant="link" size="sm" className="h-auto p-0 text-xs text-muted-foreground" onClick={() => onHideThread(thread.id)}>Hide</Button>
               </div>
             )
           ) : (
-            <div className="flex items-center gap-2 pt-2 border-t border-zinc-800 pl-9">
-              <Button variant="link" size="sm" className="h-auto p-0 text-xs text-zinc-400" onClick={() => onReopenThread(thread.id)}>Reopen thread</Button>
-              <span className="text-zinc-600">·</span>
-              <Button variant="link" size="sm" className="h-auto p-0 text-xs text-zinc-500" onClick={() => onHideThread(thread.id)}>Hide</Button>
+            <div className="flex items-center gap-2 pt-2 border-t border-border pl-9">
+              <Button variant="link" size="sm" className="h-auto p-0 text-xs text-muted-foreground" onClick={() => onReopenThread(thread.id)}>Reopen thread</Button>
+              <span className="text-muted-foreground">·</span>
+              <Button variant="link" size="sm" className="h-auto p-0 text-xs text-muted-foreground" onClick={() => onHideThread(thread.id)}>Hide</Button>
             </div>
           )}
         </div>

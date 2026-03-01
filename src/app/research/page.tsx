@@ -12,9 +12,9 @@ export default function ResearchPage() {
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-1">
           <span className="text-2xl">📡</span>
-          <h1 className="text-2xl font-bold text-white">Research</h1>
+          <h1 className="text-2xl font-bold text-foreground">Research</h1>
         </div>
-        <p className="text-zinc-500 text-sm mt-1">
+        <p className="text-muted-foreground text-sm mt-1">
           Echo&apos;s X research and market analysis
         </p>
       </div>

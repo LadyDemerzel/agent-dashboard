@@ -74,7 +74,7 @@ export function InlineFeedbackThread({
 
   return (
     <div
-      className={`border rounded-lg overflow-hidden ${isResolved ? "border-zinc-700/50 bg-zinc-900/30" : "border-zinc-700 bg-zinc-900"} ${isActive ? "ring-1 ring-amber-500/30" : ""} transition-all`}
+      className={`border rounded-lg overflow-hidden ${isResolved ? "border-border/50 bg-muted/30" : "border-border bg-card"} ${isActive ? "ring-1 ring-amber-500/30" : ""} transition-all`}
       onClick={onActivate}
     >
       {thread.outdated && !isResolved && (
@@ -85,21 +85,21 @@ export function InlineFeedbackThread({
       )}
 
       <div
-        className={`flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-zinc-800/50 transition-colors ${isResolved ? "bg-zinc-800/20" : "bg-zinc-800/30"} border-l-2 ${isResolved ? "border-l-green-500/50" : thread.outdated ? "border-l-amber-400/50" : "border-l-amber-500/50"}`}
+        className={`flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors ${isResolved ? "bg-muted/20" : "bg-muted/30"} border-l-2 ${isResolved ? "border-l-green-500/50" : thread.outdated ? "border-l-amber-400/50" : "border-l-amber-500/50"}`}
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center gap-2">
           <Badge variant={isResolved ? "success" : "warning"}>
             {isResolved ? "Resolved" : "Open"}
           </Badge>
-          <span className="text-xs text-zinc-500 font-mono">{lineRangeText}</span>
-          <span className="text-xs text-zinc-600">
+          <span className="text-xs text-muted-foreground font-mono">{lineRangeText}</span>
+          <span className="text-xs text-muted-foreground">
             {thread.comments.length} {thread.comments.length === 1 ? "comment" : "comments"}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-zinc-500 text-xs">{formatDate(thread.createdAt)}</span>
-          <svg className={`w-4 h-4 text-zinc-500 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <span className="text-muted-foreground text-xs">{formatDate(thread.createdAt)}</span>
+          <svg className={`w-4 h-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         </div>
@@ -115,10 +115,10 @@ export function InlineFeedbackThread({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span className="font-medium text-sm text-zinc-200">{comment.author === "user" ? "Ittai" : "Agent"}</span>
-                    <span className="text-xs text-zinc-500">{formatDate(comment.createdAt)}</span>
+                    <span className="font-medium text-sm text-foreground">{comment.author === "user" ? "Ittai" : "Agent"}</span>
+                    <span className="text-xs text-muted-foreground">{formatDate(comment.createdAt)}</span>
                   </div>
-                  <div className="text-sm text-zinc-300 whitespace-pre-wrap">{comment.content}</div>
+                  <div className="text-sm text-foreground whitespace-pre-wrap">{comment.content}</div>
                 </div>
               </div>
             ))}
@@ -134,20 +134,20 @@ export function InlineFeedbackThread({
                 </div>
               </div>
             ) : (
-              <div className="flex items-center gap-2 pt-2 border-t border-zinc-800">
+              <div className="flex items-center gap-2 pt-2 border-t border-border">
                 <Button variant="link" size="sm" className="h-auto p-0 text-xs text-blue-400" onClick={() => setShowReplyForm(true)}>Reply</Button>
-                <span className="text-zinc-600">·</span>
+                <span className="text-muted-foreground">·</span>
                 <Button variant="link" size="sm" className="h-auto p-0 text-xs text-green-400" onClick={handleResolve}>Resolve</Button>
-                <span className="text-zinc-600">·</span>
-                <Button variant="link" size="sm" className="h-auto p-0 text-xs text-zinc-500" onClick={() => onHideThread?.(thread.id)}>Hide</Button>
+                <span className="text-muted-foreground">·</span>
+                <Button variant="link" size="sm" className="h-auto p-0 text-xs text-muted-foreground" onClick={() => onHideThread?.(thread.id)}>Hide</Button>
               </div>
             )
           ) : (
             onReopenThread && (
-              <div className="flex items-center gap-2 pt-2 border-t border-zinc-800">
-                <Button variant="link" size="sm" className="h-auto p-0 text-xs text-zinc-400" onClick={handleReopen}>Reopen thread</Button>
-                <span className="text-zinc-600">·</span>
-                <Button variant="link" size="sm" className="h-auto p-0 text-xs text-zinc-500" onClick={() => onHideThread?.(thread.id)}>Hide</Button>
+              <div className="flex items-center gap-2 pt-2 border-t border-border">
+                <Button variant="link" size="sm" className="h-auto p-0 text-xs text-muted-foreground" onClick={handleReopen}>Reopen thread</Button>
+                <span className="text-muted-foreground">·</span>
+                <Button variant="link" size="sm" className="h-auto p-0 text-xs text-muted-foreground" onClick={() => onHideThread?.(thread.id)}>Hide</Button>
               </div>
             )
           )}

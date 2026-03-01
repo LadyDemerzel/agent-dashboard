@@ -77,8 +77,8 @@ export function FeedbackThread({
       {/* Thread Header */}
       <div
         className={cn(
-          "flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-zinc-800/50 transition-colors",
-          isResolved ? "bg-zinc-800/30" : "bg-zinc-800/50"
+          "flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors",
+          isResolved ? "bg-muted/30" : "bg-muted/50"
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
@@ -86,19 +86,19 @@ export function FeedbackThread({
           <Badge variant={isResolved ? "success" : "info"}>
             {isResolved ? "Resolved" : "Open"}
           </Badge>
-          <span className="text-xs text-zinc-500 font-mono">
+          <span className="text-xs text-muted-foreground font-mono">
             {lineRangeText}
           </span>
-          <span className="text-xs text-zinc-600">
+          <span className="text-xs text-muted-foreground">
             {thread.comments.length} {thread.comments.length === 1 ? "comment" : "comments"}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-zinc-500 text-xs">
+          <span className="text-muted-foreground text-xs">
             {formatDate(thread.createdAt)}
           </span>
           <svg
-            className={cn("w-4 h-4 text-zinc-500 transition-transform", isExpanded && "rotate-180")}
+            className={cn("w-4 h-4 text-muted-foreground transition-transform", isExpanded && "rotate-180")}
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -130,10 +130,10 @@ export function FeedbackThread({
                 {/* Comment Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="font-medium text-sm text-zinc-200">
+                    <span className="font-medium text-sm text-foreground">
                       {comment.author === "user" ? "Ittai" : "Agent"}
                     </span>
-                    <span className="text-xs text-zinc-500">
+                    <span className="text-xs text-muted-foreground">
                       {formatDate(comment.createdAt)}
                     </span>
                     {index === 0 && (
@@ -142,7 +142,7 @@ export function FeedbackThread({
                       </Badge>
                     )}
                   </div>
-                  <div className="text-sm text-zinc-300 whitespace-pre-wrap">
+                  <div className="text-sm text-foreground whitespace-pre-wrap">
                     {comment.content}
                   </div>
                 </div>
@@ -190,7 +190,7 @@ export function FeedbackThread({
                     >
                       Reply
                     </Button>
-                    <span className="text-zinc-600">{"\u00B7"}</span>
+                    <span className="text-muted-foreground">{"\u00B7"}</span>
                     <Button
                       variant="link"
                       size="sm"

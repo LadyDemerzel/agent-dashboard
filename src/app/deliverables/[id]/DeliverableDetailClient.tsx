@@ -284,7 +284,7 @@ export function DeliverableDetailClient({
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl">
-      <Link href="/deliverables" className="text-zinc-500 hover:text-white text-sm mb-6 inline-flex items-center gap-1 transition-colors">
+      <Link href="/deliverables" className="text-muted-foreground hover:text-foreground text-sm mb-6 inline-flex items-center gap-1 transition-colors">
         &larr; Back to Deliverables
       </Link>
 
@@ -295,8 +295,8 @@ export function DeliverableDetailClient({
           <Card className="p-6">
             <div className="flex items-start justify-between mb-4">
               <div className="flex-1 min-w-0">
-                <h1 className="text-xl font-bold text-white">{deliverable.title}</h1>
-                <p className="text-zinc-500 text-sm mt-1">
+                <h1 className="text-xl font-bold text-foreground">{deliverable.title}</h1>
+                <p className="text-muted-foreground text-sm mt-1">
                   {formatDate(deliverable.createdAt)} {" · "} {deliverable.relativePath}
                 </p>
               </div>
@@ -305,14 +305,14 @@ export function DeliverableDetailClient({
 
             <div className="grid grid-cols-2 gap-4 text-sm mb-4">
               <div>
-                <span className="text-zinc-500">Agent: </span>
-                <Link href={`/agents/${deliverable.agentId}`} className="text-white hover:text-zinc-300 transition-colors">
+                <span className="text-muted-foreground">Agent: </span>
+                <Link href={`/agents/${deliverable.agentId}`} className="text-foreground hover:text-foreground transition-colors">
                   {deliverable.agentName}
                 </Link>
               </div>
               <div>
-                <span className="text-zinc-500">Type: </span>
-                <span className="text-zinc-300 capitalize">{deliverable.type}</span>
+                <span className="text-muted-foreground">Type: </span>
+                <span className="text-foreground capitalize">{deliverable.type}</span>
               </div>
             </div>
 
@@ -364,7 +364,7 @@ export function DeliverableDetailClient({
                   </Button>
                 )}
                 {viewMode === "content" && (
-                  <div className="flex items-center bg-zinc-950 border border-zinc-700 rounded-lg p-1">
+                  <div className="flex items-center bg-background border border-border rounded-lg p-1">
                     <Button
                       variant={contentDisplayMode === "raw" ? "default" : "ghost"}
                       size="sm"
@@ -385,7 +385,7 @@ export function DeliverableDetailClient({
                 )}
                 {viewMode === "content" && selectedRange && (
                   <>
-                    <span className="text-xs text-zinc-500">
+                    <span className="text-xs text-muted-foreground">
                       Selected {selectedRange.startLine === selectedRange.endLine ? `line ${selectedRange.startLine}` : `lines ${selectedRange.startLine}-${selectedRange.endLine}`}
                     </span>
                     <Button variant="ghost" size="sm" className="h-auto text-xs" onClick={() => setSelectedRange(null)}>Clear</Button>
@@ -397,7 +397,7 @@ export function DeliverableDetailClient({
             {viewMode === "content" && (
               <div className="p-0">
                 {content ? (
-                  <div className="bg-zinc-950">
+                  <div className="bg-background">
                     {isEditing ? (
                       <div className="p-4">
                         <Textarea
@@ -406,8 +406,8 @@ export function DeliverableDetailClient({
                           className="h-[500px] font-mono resize-y"
                           spellCheck={false}
                         />
-                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-zinc-800">
-                          <span className="text-xs text-zinc-500">Editing directly - click Save to persist changes</span>
+                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
+                          <span className="text-xs text-muted-foreground">Editing directly - click Save to persist changes</span>
                           <div className="flex items-center gap-2">
                             <Button variant="ghost" size="sm" onClick={handleCancelEdit}>Cancel</Button>
                             <Button variant="success" size="sm" onClick={handleSaveEdit} disabled={savingEdit}>
@@ -445,7 +445,7 @@ export function DeliverableDetailClient({
                     )}
                   </div>
                 ) : (
-                  <p className="text-zinc-500 text-sm p-6">Unable to load deliverable content.</p>
+                  <p className="text-muted-foreground text-sm p-6">Unable to load deliverable content.</p>
                 )}
               </div>
             )}
@@ -454,28 +454,28 @@ export function DeliverableDetailClient({
               <div className="p-4 space-y-4">
                 {versions.length === 0 ? (
                   <div className="text-center py-12">
-                    <div className="w-12 h-12 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-3">
-                      <svg className="w-6 h-6 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
+                      <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                       </svg>
                     </div>
-                    <p className="text-sm text-zinc-400">No version history yet</p>
-                    <p className="text-xs text-zinc-600 mt-1">Versions are created when status changes to &quot;Needs Review&quot;</p>
+                    <p className="text-sm text-muted-foreground">No version history yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">Versions are created when status changes to &quot;Needs Review&quot;</p>
                   </div>
                 ) : versions.length < 2 ? (
                   <div className="text-center py-12">
-                    <p className="text-sm text-zinc-400">Only one version exists</p>
-                    <p className="text-xs text-zinc-600 mt-1">A diff will be available after the next revision</p>
+                    <p className="text-sm text-muted-foreground">Only one version exists</p>
+                    <p className="text-xs text-muted-foreground mt-1">A diff will be available after the next revision</p>
                   </div>
                 ) : diffLoading ? (
                   <div className="text-center py-12">
-                    <div className="animate-spin w-6 h-6 border-2 border-zinc-600 border-t-zinc-300 rounded-full mx-auto" />
-                    <p className="text-sm text-zinc-500 mt-3">Loading diff...</p>
+                    <div className="animate-spin w-6 h-6 border-2 border-border border-t-zinc-300 rounded-full mx-auto" />
+                    <p className="text-sm text-muted-foreground mt-3">Loading diff...</p>
                   </div>
                 ) : diffData ? (
                   <DiffViewer diff={diffData} />
                 ) : (
-                  <p className="text-sm text-zinc-500 text-center py-8">Select versions to compare</p>
+                  <p className="text-sm text-muted-foreground text-center py-8">Select versions to compare</p>
                 )}
               </div>
             )}
@@ -495,20 +495,20 @@ export function DeliverableDetailClient({
           )}
 
           <Card className="p-5">
-            <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-4">Status History</h2>
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4">Status History</h2>
             {statusLog?.logs?.length === 0 ? (
-              <p className="text-zinc-500 text-sm">No status changes yet.</p>
+              <p className="text-muted-foreground text-sm">No status changes yet.</p>
             ) : (
               <div className="space-y-3">
                 {statusLog?.logs?.map((log, index) => (
                   <div key={index} className="text-sm">
                     <div className="flex items-center gap-2">
-                      <span className="text-zinc-400">{log.by}</span>
-                      <span className="text-zinc-600">&rarr;</span>
+                      <span className="text-muted-foreground">{log.by}</span>
+                      <span className="text-muted-foreground">&rarr;</span>
                       <StatusBadge status={log.to} />
                     </div>
-                    <p className="text-zinc-500 text-xs mt-0.5">{new Date(log.timestamp).toLocaleString()}</p>
-                    {log.note && <p className="text-zinc-600 text-xs mt-1 italic">&ldquo;{log.note}&rdquo;</p>}
+                    <p className="text-muted-foreground text-xs mt-0.5">{new Date(log.timestamp).toLocaleString()}</p>
+                    {log.note && <p className="text-muted-foreground text-xs mt-1 italic">&ldquo;{log.note}&rdquo;</p>}
                   </div>
                 ))}
               </div>
@@ -516,13 +516,13 @@ export function DeliverableDetailClient({
           </Card>
 
           <Card className="p-5">
-            <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-4">Details</h2>
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4">Details</h2>
             <div className="space-y-3 text-sm">
-              <div><span className="text-zinc-500">Agent: </span><span className="text-zinc-300">{deliverable.agentName}</span></div>
-              <div><span className="text-zinc-500">Type: </span><span className="text-zinc-300 capitalize">{deliverable.type}</span></div>
-              <div><span className="text-zinc-500">Size: </span><span className="text-zinc-300">{(deliverable.size / 1024).toFixed(1)} KB</span></div>
-              <div><span className="text-zinc-500">Created: </span><span className="text-zinc-300">{new Date(deliverable.createdAt).toLocaleString()}</span></div>
-              <div><span className="text-zinc-500">Updated: </span><span className="text-zinc-300">{new Date(deliverable.updatedAt).toLocaleString()}</span></div>
+              <div><span className="text-muted-foreground">Agent: </span><span className="text-foreground">{deliverable.agentName}</span></div>
+              <div><span className="text-muted-foreground">Type: </span><span className="text-foreground capitalize">{deliverable.type}</span></div>
+              <div><span className="text-muted-foreground">Size: </span><span className="text-foreground">{(deliverable.size / 1024).toFixed(1)} KB</span></div>
+              <div><span className="text-muted-foreground">Created: </span><span className="text-foreground">{new Date(deliverable.createdAt).toLocaleString()}</span></div>
+              <div><span className="text-muted-foreground">Updated: </span><span className="text-foreground">{new Date(deliverable.updatedAt).toLocaleString()}</span></div>
             </div>
           </Card>
 
@@ -588,7 +588,7 @@ export function DeliverableDetailClient({
           <DialogHeader>
             <DialogTitle>Delete Deliverable</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete <span className="text-white font-medium">{deliverable.title}</span>?
+              Are you sure you want to delete <span className="text-foreground font-medium">{deliverable.title}</span>?
               This will permanently remove the file and all associated data.
             </DialogDescription>
           </DialogHeader>

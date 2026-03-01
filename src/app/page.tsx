@@ -62,7 +62,7 @@ export default function Dashboard() {
   if (loading || !initialData) {
     return (
       <div className="p-4 sm:p-6 lg:p-8 flex items-center justify-center min-h-[50vh]">
-        <div className="text-zinc-500">Loading dashboard...</div>
+        <div className="text-muted-foreground">Loading dashboard...</div>
       </div>
     );
   }
@@ -106,8 +106,8 @@ export default function Dashboard() {
     <div className="p-4 sm:p-6 lg:p-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white">Agent Dashboard</h1>
-        <p className="text-zinc-500 text-sm mt-1">
+        <h1 className="text-2xl font-bold text-foreground">Agent Dashboard</h1>
+        <p className="text-muted-foreground text-sm mt-1">
           Coordination hub for the agent team
         </p>
         {/* Live indicator */}
@@ -116,7 +116,7 @@ export default function Dashboard() {
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
-          <span className="text-xs text-zinc-500">Live updates</span>
+          <span className="text-xs text-muted-foreground">Live updates</span>
         </div>
       </div>
 
@@ -137,7 +137,7 @@ export default function Dashboard() {
 
       {/* Agent Grid with Real-time Updates */}
       <div className="mb-8">
-        <h2 className="text-lg font-semibold text-white mb-4">Agents</h2>
+        <h2 className="text-lg font-semibold text-foreground mb-4">Agents</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {agents.map((agent) => (
             <AgentCardClient 
@@ -163,13 +163,13 @@ export default function Dashboard() {
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
               <span className="text-xl">📡</span>
-              <h2 className="text-lg font-semibold text-white">
+              <h2 className="text-lg font-semibold text-foreground">
                 Echo&apos;s Research
               </h2>
             </div>
             <Link
               href="/research"
-              className="text-zinc-500 hover:text-white text-xs transition-colors"
+              className="text-muted-foreground hover:text-foreground text-xs transition-colors"
             >
               View all &rarr;
             </Link>
@@ -192,7 +192,7 @@ export default function Dashboard() {
       {/* Two column: Recent Deliverables + Timeline */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
         <div className="space-y-5">
-          <h2 className="text-lg font-semibold text-white mb-4">
+          <h2 className="text-lg font-semibold text-foreground mb-4">
             Recent Deliverables
           </h2>
           <div className="space-y-4">
@@ -202,12 +202,12 @@ export default function Dashboard() {
 
         <div className="space-y-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-white">
+            <h2 className="text-lg font-semibold text-foreground">
               Activity Timeline
             </h2>
             <Link
               href="/timeline"
-              className="text-zinc-500 hover:text-white text-xs transition-colors"
+              className="text-muted-foreground hover:text-foreground text-xs transition-colors"
             >
               View all &rarr;
             </Link>
@@ -230,11 +230,11 @@ function StatCard({
 }) {
   return (
     <Card className="p-4">
-      <p className="text-zinc-500 text-xs font-medium uppercase tracking-wider">
+      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">
         {label}
       </p>
       <p
-        className={`text-2xl font-bold mt-1 ${accent ? "text-emerald-400" : "text-white"}`}
+        className={`text-2xl font-bold mt-1 ${accent ? "text-emerald-400" : "text-foreground"}`}
       >
         {value}
       </p>

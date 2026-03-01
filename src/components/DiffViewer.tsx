@@ -29,21 +29,21 @@ function DiffLineComponent({ line }: { line: DiffLine }) {
       ? "text-green-200"
       : line.type === "removed"
       ? "text-red-200"
-      : "text-zinc-400";
+      : "text-muted-foreground";
 
   const prefix =
     line.type === "added" ? "+" : line.type === "removed" ? "-" : " ";
 
   return (
     <div
-      className={`flex ${bgColor} border-l-2 ${borderColor} font-mono text-sm hover:bg-zinc-800/50 transition-colors`}
+      className={`flex ${bgColor} border-l-2 ${borderColor} font-mono text-sm hover:bg-muted/50 transition-colors`}
     >
       {/* Line numbers */}
       <div className="flex select-none">
-        <div className="w-12 text-right pr-2 text-zinc-600 text-xs py-0.5">
+        <div className="w-12 text-right pr-2 text-muted-foreground text-xs py-0.5">
           {line.oldLineNumber || ""}
         </div>
-        <div className="w-12 text-right pr-2 text-zinc-600 text-xs py-0.5 border-r border-zinc-800">
+        <div className="w-12 text-right pr-2 text-muted-foreground text-xs py-0.5 border-r border-border">
           {line.newLineNumber || ""}
         </div>
       </div>
@@ -61,7 +61,7 @@ function DiffHunkComponent({ hunk }: { hunk: DiffHunk }) {
   return (
     <div className="mb-2">
       {/* Hunk header */}
-      <div className="bg-zinc-800/50 text-zinc-500 text-xs px-4 py-1 font-mono select-none">
+      <div className="bg-muted/50 text-muted-foreground text-xs px-4 py-1 font-mono select-none">
         @@ -{hunk.oldStart},{hunk.oldCount} +{hunk.newStart},{hunk.newCount} @@
       </div>
       
@@ -89,14 +89,14 @@ export function DiffViewer({ diff, showStats = true, maxHeight = "600px" }: Diff
   };
 
   return (
-    <div className="bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden">
+    <div className="bg-background border border-border rounded-lg overflow-hidden">
       {/* Header */}
-      <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-3">
+      <div className="bg-card border-b border-border px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setExpanded(!expanded)}
-              className="text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="text-muted-foreground hover:text-foreground transition-colors"
             >
               {expanded ? (
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -108,7 +108,7 @@ export function DiffViewer({ diff, showStats = true, maxHeight = "600px" }: Diff
                 </svg>
               )}
             </button>
-            <span className="text-sm font-medium text-zinc-300">
+            <span className="text-sm font-medium text-foreground">
               Changes: v{diff.fromVersion} → v{diff.toVersion}
             </span>
           </div>
@@ -117,23 +117,23 @@ export function DiffViewer({ diff, showStats = true, maxHeight = "600px" }: Diff
             <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-1.5">
                 <span className="text-green-400 font-mono">+{diff.stats.additions}</span>
-                <span className="text-zinc-500">additions</span>
+                <span className="text-muted-foreground">additions</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-red-400 font-mono">-{diff.stats.deletions}</span>
-                <span className="text-zinc-500">deletions</span>
+                <span className="text-muted-foreground">deletions</span>
               </div>
             </div>
           )}
         </div>
         
         {/* Timestamps */}
-        <div className="flex items-center gap-6 mt-2 text-xs text-zinc-500 pl-7">
+        <div className="flex items-center gap-6 mt-2 text-xs text-muted-foreground pl-7">
           <div>
-            From: <span className="text-zinc-400">{formatDate(diff.fromTimestamp)}</span>
+            From: <span className="text-muted-foreground">{formatDate(diff.fromTimestamp)}</span>
           </div>
           <div>
-            To: <span className="text-zinc-400">{formatDate(diff.toTimestamp)}</span>
+            To: <span className="text-muted-foreground">{formatDate(diff.toTimestamp)}</span>
           </div>
         </div>
       </div>
@@ -145,7 +145,7 @@ export function DiffViewer({ diff, showStats = true, maxHeight = "600px" }: Diff
           style={{ maxHeight }}
         >
           {diff.hunks.length === 0 ? (
-            <div className="p-8 text-center text-zinc-500">
+            <div className="p-8 text-center text-muted-foreground">
               <p className="text-sm">No changes detected</p>
             </div>
           ) : (
@@ -168,9 +168,9 @@ interface CompactDiffViewProps {
 
 export function CompactDiffView({ diff }: CompactDiffViewProps) {
   return (
-    <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4">
+    <div className="bg-background border border-border rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm text-zinc-400">
+        <span className="text-sm text-muted-foreground">
           v{diff.fromVersion} → v{diff.toVersion}
         </span>
         <div className="flex items-center gap-3 text-sm">
@@ -193,7 +193,7 @@ export function CompactDiffView({ diff }: CompactDiffViewProps) {
                 ? "text-green-300"
                 : line.type === "removed"
                 ? "text-red-300"
-                : "text-zinc-500";
+                : "text-muted-foreground";
             const prefix =
               line.type === "added" ? "+" : line.type === "removed" ? "-" : " ";
             
@@ -204,7 +204,7 @@ export function CompactDiffView({ diff }: CompactDiffViewProps) {
             );
           })}
           {hunk.lines.length > 10 && (
-            <div className="text-zinc-600 px-2 py-0.5">
+            <div className="text-muted-foreground px-2 py-0.5">
               ... and {hunk.lines.length - 10} more lines
             </div>
           )}
@@ -212,7 +212,7 @@ export function CompactDiffView({ diff }: CompactDiffViewProps) {
       ))}
       
       {diff.hunks.length > 3 && (
-        <div className="text-zinc-500 text-xs text-center py-2">
+        <div className="text-muted-foreground text-xs text-center py-2">
           + {diff.hunks.length - 3} more hunks
         </div>
       )}
@@ -244,8 +244,8 @@ export function VersionSelector({
   };
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-      <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider mb-3">
+    <div className="bg-card border border-border rounded-lg p-4">
+      <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
         Version History
       </h3>
       
@@ -255,10 +255,10 @@ export function VersionSelector({
             key={version.version}
             className={`p-3 rounded-lg border transition-colors ${
               currentVersion === version.version
-                ? "bg-zinc-800 border-zinc-600"
+                ? "bg-muted border-border"
                 : compareVersion === version.version
-                ? "bg-zinc-800/50 border-zinc-700"
-                : "bg-transparent border-zinc-800 hover:border-zinc-700"
+                ? "bg-muted/50 border-border"
+                : "bg-transparent border-border hover:border-border"
             }`}
           >
             <div className="flex items-center justify-between mb-1">
@@ -277,18 +277,18 @@ export function VersionSelector({
                   onChange={() => onSelectCompare(version.version)}
                   className="accent-zinc-500"
                 />
-                <span className="text-sm font-medium text-zinc-300">
+                <span className="text-sm font-medium text-foreground">
                   v{version.version}
                 </span>
               </div>
-              <span className="text-xs text-zinc-500">
+              <span className="text-xs text-muted-foreground">
                 {formatDate(version.timestamp)}
               </span>
             </div>
-            <div className="pl-10 text-xs text-zinc-500">
+            <div className="pl-10 text-xs text-muted-foreground">
               by {version.updatedBy}
               {version.comment && (
-                <span className="block mt-0.5 text-zinc-600 italic">
+                <span className="block mt-0.5 text-muted-foreground italic">
                   “{version.comment}”
                 </span>
               )}
@@ -297,14 +297,14 @@ export function VersionSelector({
         ))}
       </div>
       
-      <div className="mt-3 pt-3 border-t border-zinc-800 text-xs text-zinc-500">
+      <div className="mt-3 pt-3 border-t border-border text-xs text-muted-foreground">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded-full bg-zinc-600" />
             <span>Current</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-full bg-zinc-700 border border-zinc-600" />
+            <div className="w-3 h-3 rounded-full bg-zinc-700 border border-border" />
             <span>Compare with</span>
           </div>
         </div>

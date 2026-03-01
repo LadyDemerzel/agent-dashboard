@@ -67,7 +67,7 @@ export function AgentCardClient({
 
   return (
     <Link href={`/agents/${id}`}>
-      <Card className="p-5 hover:border-zinc-600 transition-colors cursor-pointer group">
+      <Card className="p-5 hover:border-border transition-colors cursor-pointer group">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
             <div
@@ -77,10 +77,10 @@ export function AgentCardClient({
               {icon}
             </div>
             <div>
-              <h3 className="text-white font-semibold group-hover:text-zinc-200">
+              <h3 className="text-foreground font-semibold group-hover:text-foreground">
                 {name}
               </h3>
-              <p className="text-zinc-500 text-sm">{domain}</p>
+              <p className="text-muted-foreground text-sm">{domain}</p>
             </div>
           </div>
           <Badge variant={variant}>
@@ -95,11 +95,11 @@ export function AgentCardClient({
           </Badge>
         </div>
 
-        <p className="text-zinc-400 text-sm mb-4 line-clamp-2">
+        <p className="text-muted-foreground text-sm mb-4 line-clamp-2">
           {status === "working" && currentTask ? currentTask : (initialTask || description)}
         </p>
 
-        <div className="flex items-center justify-between text-xs text-zinc-500">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>{deliverableCount} deliverables</span>
           <span>{timeAgo}</span>
         </div>

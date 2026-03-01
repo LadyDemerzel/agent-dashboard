@@ -61,7 +61,7 @@ export function FeedbackForm({ postId }: { postId: string }) {
         <p className="text-emerald-400 font-medium">
           Feedback submitted successfully!
         </p>
-        <p className="text-zinc-500 text-sm mt-1">
+        <p className="text-muted-foreground text-sm mt-1">
           TACIT.md has been updated with your learnings.
         </p>
         <Button
@@ -92,14 +92,14 @@ export function FeedbackForm({ postId }: { postId: string }) {
               className={`text-2xl transition-colors ${
                 star <= (hoverRating || rating)
                   ? "text-amber-400"
-                  : "text-zinc-700"
+                  : "text-muted-foreground"
               }`}
             >
               {"\u2605"}
             </button>
           ))}
           {rating > 0 && (
-            <span className="text-zinc-500 text-sm ml-2">{rating}/5</span>
+            <span className="text-muted-foreground text-sm ml-2">{rating}/5</span>
           )}
         </div>
       </div>

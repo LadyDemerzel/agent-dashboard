@@ -135,25 +135,25 @@ function FrontMatterCard({ frontMatter }: { frontMatter: Record<string, string |
       {entries.map(([key, value]) => (
         <div
           key={key}
-          className="flex items-baseline gap-3 border-b border-zinc-800/60 pb-2"
+          className="flex items-baseline gap-3 border-b border-border/60 pb-2"
         >
-          <span className="min-w-28 text-xs text-zinc-500 shrink-0 whitespace-nowrap">
+          <span className="min-w-28 text-xs text-muted-foreground shrink-0 whitespace-nowrap">
             {prettifyKey(key)}
           </span>
           {Array.isArray(value) ? (
             value.length === 0 ? (
-              <span className="text-sm text-zinc-400">—</span>
+              <span className="text-sm text-muted-foreground">—</span>
             ) : (
               <div className="flex flex-wrap gap-1.5">
                 {value.map((item, idx) => (
-                  <span key={`${key}-${idx}`} className="text-xs px-2 py-1 rounded-full bg-zinc-700 text-zinc-200">
+                  <span key={`${key}-${idx}`} className="text-xs px-2 py-1 rounded-full bg-zinc-700 text-foreground">
                     {item}
                   </span>
                 ))}
               </div>
             )
           ) : (
-            <span className="text-sm text-zinc-200 break-words">{value || '—'}</span>
+            <span className="text-sm text-foreground break-words">{value || '—'}</span>
           )}
         </div>
       ))}
@@ -165,7 +165,7 @@ function MarkdownPreview({ content, emptyText }: { content?: string; emptyText: 
   const parsed = useMemo(() => parseMarkdownWithFrontMatter(content), [content]);
 
   if (!content || !parsed) {
-    return <div className="text-zinc-600">{emptyText}</div>;
+    return <div className="text-muted-foreground">{emptyText}</div>;
   }
 
   const hasFrontMatter = Object.keys(parsed.frontMatter).length > 0;
@@ -174,7 +174,7 @@ function MarkdownPreview({ content, emptyText }: { content?: string; emptyText: 
     <div>
       {hasFrontMatter && <FrontMatterCard frontMatter={parsed.frontMatter} />}
       {parsed.body.trim() && (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-4 max-h-[28rem] overflow-y-auto">
+        <div className="rounded-lg border border-border bg-background/60 p-4 max-h-[28rem] overflow-y-auto">
           <article className="prose prose-sm prose-invert prose-zinc !max-w-none w-full">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{parsed.body}</ReactMarkdown>
           </article>
@@ -272,7 +272,7 @@ export default function YouTubeVideoDetailPage() {
   if (loading) {
     return (
       <div className="p-4 sm:p-6 lg:p-8">
-        <div className="max-w-6xl mx-auto text-zinc-500">Loading...</div>
+        <div className="max-w-6xl mx-auto text-muted-foreground">Loading...</div>
       </div>
     );
   }
@@ -281,8 +281,8 @@ export default function YouTubeVideoDetailPage() {
     return (
       <div className="p-4 sm:p-6 lg:p-8">
         <div className="max-w-6xl mx-auto">
-          <Link href="/youtube-videos" className="text-zinc-400 hover:text-white">← Back to Videos</Link>
-          <div className="mt-8 text-center text-zinc-500">Video not found</div>
+          <Link href="/youtube-videos" className="text-muted-foreground hover:text-foreground">← Back to Videos</Link>
+          <div className="mt-8 text-center text-muted-foreground">Video not found</div>
         </div>
       </div>
     );
@@ -300,14 +300,14 @@ export default function YouTubeVideoDetailPage() {
   return (
     <div className="p-4 sm:p-6 lg:p-8">
       <div className="max-w-6xl mx-auto">
-        <Link href="/youtube-videos" className="text-zinc-400 hover:text-white text-sm">← Back to Videos</Link>
+        <Link href="/youtube-videos" className="text-muted-foreground hover:text-foreground text-sm">← Back to Videos</Link>
 
         {/* Header */}
         <div className="mt-4 mb-8">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-white">{video.title}</h1>
-              <p className="text-zinc-400 mt-1">{video.topic}</p>
+              <h1 className="text-3xl font-bold text-foreground">{video.title}</h1>
+              <p className="text-muted-foreground mt-1">{video.topic}</p>
             </div>
             <StatusBadge status={video.status} />
           </div>
@@ -345,7 +345,7 @@ export default function YouTubeVideoDetailPage() {
           {activeTab === 'research' && (
             <Card className="p-5">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-white">🔍 Research</h2>
+                <h2 className="text-lg font-semibold text-foreground">🔍 Research</h2>
                 {video.has_research && <span className="text-emerald-400 text-sm">✓ Complete</span>}
               </div>
               <MarkdownPreview
@@ -358,7 +358,7 @@ export default function YouTubeVideoDetailPage() {
           {activeTab === 'script' && (
             <Card className="p-5">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-white">📜 Script</h2>
+                <h2 className="text-lg font-semibold text-foreground">📜 Script</h2>
                 {video.has_script && <span className="text-emerald-400 text-sm">✓ Complete</span>}
               </div>
               <MarkdownPreview
@@ -371,8 +371,8 @@ export default function YouTubeVideoDetailPage() {
           {activeTab === 'images' && (
             <Card className="p-5">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-white">🖼️ Images</h2>
-                <span className="text-zinc-500 text-sm">{video.imageCount} images</span>
+                <h2 className="text-lg font-semibold text-foreground">🖼️ Images</h2>
+                <span className="text-muted-foreground text-sm">{video.imageCount} images</span>
               </div>
 
               {video.images && video.images.length > 0 ? (
@@ -382,23 +382,23 @@ export default function YouTubeVideoDetailPage() {
                       type="button"
                       key={image.path}
                       onClick={() => setSelectedImage(image)}
-                      className="text-left bg-zinc-950/40 border border-zinc-800 rounded-lg overflow-hidden hover:border-zinc-600 transition-colors"
+                      className="text-left bg-background/60 border border-border rounded-lg overflow-hidden hover:border-border transition-colors"
                     >
                       <img
                         src={image.url}
                         alt={image.description}
                         loading="lazy"
-                        className="w-full h-36 object-cover bg-zinc-900"
+                        className="w-full h-36 object-cover bg-card"
                       />
                       <div className="p-3">
-                        <p className="text-xs text-zinc-500 mb-1">{image.category}</p>
-                        <p className="text-sm text-zinc-300 line-clamp-3">{image.description}</p>
+                        <p className="text-xs text-muted-foreground mb-1">{image.category}</p>
+                        <p className="text-sm text-foreground line-clamp-3">{image.description}</p>
                       </div>
                     </button>
                   ))}
                 </div>
               ) : (
-                <div className="text-zinc-600">Images will appear here after script is approved.</div>
+                <div className="text-muted-foreground">Images will appear here after script is approved.</div>
               )}
             </Card>
           )}
@@ -406,13 +406,13 @@ export default function YouTubeVideoDetailPage() {
           {activeTab === 'audio' && (
             <Card className="p-5">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-white">🎙️ Audio</h2>
+                <h2 className="text-lg font-semibold text-foreground">🎙️ Audio</h2>
                 {video.has_audio && <span className="text-emerald-400 text-sm">✓ Complete</span>}
               </div>
               {video.has_audio ? (
                 <div className="text-emerald-400">{video.audioCount} audio file{video.audioCount !== 1 ? 's' : ''} generated</div>
               ) : (
-                <div className="text-zinc-600">Audio will appear here after images are collected.</div>
+                <div className="text-muted-foreground">Audio will appear here after images are collected.</div>
               )}
             </Card>
           )}
@@ -426,8 +426,8 @@ export default function YouTubeVideoDetailPage() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-zinc-400">{selectedImage.category}</p>
-                  <p className="text-sm text-zinc-200">{selectedImage.description}</p>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">{selectedImage.category}</p>
+                  <p className="text-sm text-foreground">{selectedImage.description}</p>
                 </div>
                 <Button
                   variant="outline"
@@ -440,7 +440,7 @@ export default function YouTubeVideoDetailPage() {
               <img
                 src={selectedImage.url}
                 alt={selectedImage.description}
-                className="w-full max-h-[80vh] object-contain rounded-lg border border-zinc-700 bg-zinc-950"
+                className="w-full max-h-[80vh] object-contain rounded-lg border border-border bg-background"
               />
             </div>
           )}

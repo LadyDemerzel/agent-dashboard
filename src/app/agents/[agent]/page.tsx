@@ -88,7 +88,7 @@ export default function AgentDetailPage({
   if (loading) {
     return (
       <div className="p-4 sm:p-6 lg:p-8 flex items-center justify-center min-h-[50vh]">
-        <div className="text-zinc-500">Loading agent details...</div>
+        <div className="text-muted-foreground">Loading agent details...</div>
       </div>
     );
   }
@@ -106,7 +106,7 @@ export default function AgentDetailPage({
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl">
       <Link
         href="/agents"
-        className="text-zinc-500 hover:text-white text-sm mb-6 inline-flex items-center gap-1 transition-colors"
+        className="text-muted-foreground hover:text-foreground text-sm mb-6 inline-flex items-center gap-1 transition-colors"
       >
         &larr; Back to Agents
       </Link>
@@ -122,10 +122,10 @@ export default function AgentDetailPage({
               {agent.icon}
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white">
+              <h1 className="text-xl font-bold text-foreground">
                 {agent.name}
               </h1>
-              <p className="text-zinc-500 text-sm">{agent.domain}</p>
+              <p className="text-muted-foreground text-sm">{agent.domain}</p>
             </div>
           </div>
           {/* Live status badge */}
@@ -139,17 +139,17 @@ export default function AgentDetailPage({
 
         {/* Current Task Display - Updates in real-time */}
         {currentTask && (
-          <div className="mt-4 p-3 bg-zinc-800/50 rounded-lg border border-zinc-800">
+          <div className="mt-4 p-3 bg-muted/50 rounded-lg border border-border">
             <div className="flex items-center gap-2 mb-1">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              <p className="text-xs text-zinc-500 uppercase tracking-wider">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">
                 Current Task
               </p>
             </div>
-            <p className="text-zinc-300 text-sm">{currentTask}</p>
+            <p className="text-foreground text-sm">{currentTask}</p>
           </div>
         )}
 
@@ -159,7 +159,7 @@ export default function AgentDetailPage({
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
-          <span className="text-xs text-zinc-500">Live updates enabled</span>
+          <span className="text-xs text-muted-foreground">Live updates enabled</span>
         </div>
       </Card>
 

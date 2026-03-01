@@ -15,9 +15,9 @@ interface YouTubeWorkflowStageCardProps {
 
 const CARD_CLASSES: Record<PhaseStatus, string> = {
   complete: 'border-emerald-800 bg-emerald-950',
-  ready: 'border-zinc-700 bg-zinc-900',
-  working: 'border-zinc-600 bg-zinc-900',
-  locked: 'border-zinc-800 bg-zinc-950 opacity-60',
+  ready: 'border-border bg-card',
+  working: 'border-border bg-card',
+  locked: 'border-border bg-background opacity-60',
 };
 
 function getButtonVariant(status: PhaseStatus): "default" | "success" | "secondary" | "ghost" {
@@ -51,8 +51,8 @@ export function YouTubeWorkflowStageCard({
   return (
     <Card className={`p-4 text-center ${CARD_CLASSES[status]}`}>
       <div className="text-2xl mb-2">{phase.icon}</div>
-      <div className="font-medium text-sm text-white">{phase.label}</div>
-      <div className="text-xs text-zinc-500">{phase.agent}</div>
+      <div className="font-medium text-sm text-foreground">{phase.label}</div>
+      <div className="text-xs text-muted-foreground">{phase.agent}</div>
       <Button
         onClick={onTrigger}
         disabled={disabled}

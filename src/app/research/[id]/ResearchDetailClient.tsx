@@ -180,15 +180,15 @@ export function ResearchDetailClient({ file, content, statusLog }: ResearchDetai
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl">
-      <Link href="/research" className="text-zinc-500 hover:text-white text-sm mb-6 inline-flex items-center gap-1 transition-colors">&larr; Back to Research</Link>
+      <Link href="/research" className="text-muted-foreground hover:text-foreground text-sm mb-6 inline-flex items-center gap-1 transition-colors">&larr; Back to Research</Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <Card className="p-6">
             <div className="flex items-start justify-between mb-4">
               <div className="flex-1 min-w-0">
-                <h1 className="text-xl font-bold text-white">{file.title}</h1>
-                <p className="text-zinc-500 text-sm mt-1">{formatDate(file.date)} {" · "} {file.filename}</p>
+                <h1 className="text-xl font-bold text-foreground">{file.title}</h1>
+                <p className="text-muted-foreground text-sm mt-1">{formatDate(file.date)} {" · "} {file.filename}</p>
               </div>
               <StatusBadge status={selectedStatus} />
             </div>
@@ -217,14 +217,14 @@ export function ResearchDetailClient({ file, content, statusLog }: ResearchDetai
               </TabsTrigger>
               <div className="flex items-center gap-3 ml-auto">
                 {viewMode === "content" && (
-                  <div className="flex items-center bg-zinc-950 border border-zinc-700 rounded-lg p-1">
+                  <div className="flex items-center bg-background border border-border rounded-lg p-1">
                     <Button variant={contentDisplayMode === "raw" ? "default" : "ghost"} size="sm" className="h-auto px-3 py-1.5 text-xs rounded-md" onClick={() => setContentDisplayMode("raw")}>Raw</Button>
                     <Button variant={contentDisplayMode === "rendered" ? "default" : "ghost"} size="sm" className="h-auto px-3 py-1.5 text-xs rounded-md" onClick={() => setContentDisplayMode("rendered")}>Rendered</Button>
                   </div>
                 )}
                 {viewMode === "content" && selectedRange && (
                   <>
-                    <span className="text-xs text-zinc-500">Selected {selectedRange.startLine === selectedRange.endLine ? `line ${selectedRange.startLine}` : `lines ${selectedRange.startLine}-${selectedRange.endLine}`}</span>
+                    <span className="text-xs text-muted-foreground">Selected {selectedRange.startLine === selectedRange.endLine ? `line ${selectedRange.startLine}` : `lines ${selectedRange.startLine}-${selectedRange.endLine}`}</span>
                     <Button variant="default" size="sm" className="h-auto text-xs" onClick={() => setIsCreatingThread(true)}>Add Comment</Button>
                     <Button variant="ghost" size="sm" className="h-auto text-xs" onClick={() => setSelectedRange(null)}>Clear</Button>
                   </>
@@ -235,7 +235,7 @@ export function ResearchDetailClient({ file, content, statusLog }: ResearchDetai
             {viewMode === "content" && (
               <div className="p-0">
                 {content ? (
-                  <div className="bg-zinc-950">
+                  <div className="bg-background">
                     {contentDisplayMode === "raw" ? (
                       <div className="p-4">
                         <LineNumberedContent content={content} onLineRangeSelect={handleLineRangeSelect} selectedRange={selectedRange} highlightLines={highlightLines} threads={threads} onAddComment={handleAddComment} onResolveThread={handleResolveThread} onReopenThread={handleReopenThread} onCreateThread={handleCreateThread} isCreatingThread={isCreatingThread} setIsCreatingThread={setIsCreatingThread} activeThreadId={activeThreadId} setActiveThreadId={setActiveThreadId} />
@@ -247,7 +247,7 @@ export function ResearchDetailClient({ file, content, statusLog }: ResearchDetai
                     )}
                   </div>
                 ) : (
-                  <p className="text-zinc-500 text-sm p-6">Unable to load research content.</p>
+                  <p className="text-muted-foreground text-sm p-6">Unable to load research content.</p>
                 )}
               </div>
             )}
@@ -256,26 +256,26 @@ export function ResearchDetailClient({ file, content, statusLog }: ResearchDetai
               <div className="p-4 space-y-4">
                 {versions.length === 0 ? (
                   <div className="text-center py-12">
-                    <div className="w-12 h-12 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-3">
-                      <svg className="w-6 h-6 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                    <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
+                      <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
                     </div>
-                    <p className="text-sm text-zinc-400">No version history yet</p>
-                    <p className="text-xs text-zinc-600 mt-1">Versions are created when status changes to &quot;Needs Review&quot;</p>
+                    <p className="text-sm text-muted-foreground">No version history yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">Versions are created when status changes to &quot;Needs Review&quot;</p>
                   </div>
                 ) : versions.length < 2 ? (
                   <div className="text-center py-12">
-                    <p className="text-sm text-zinc-400">Only one version exists</p>
-                    <p className="text-xs text-zinc-600 mt-1">A diff will be available after the next revision</p>
+                    <p className="text-sm text-muted-foreground">Only one version exists</p>
+                    <p className="text-xs text-muted-foreground mt-1">A diff will be available after the next revision</p>
                   </div>
                 ) : diffLoading ? (
                   <div className="text-center py-12">
-                    <div className="animate-spin w-6 h-6 border-2 border-zinc-600 border-t-zinc-300 rounded-full mx-auto" />
-                    <p className="text-sm text-zinc-500 mt-3">Loading diff...</p>
+                    <div className="animate-spin w-6 h-6 border-2 border-border border-t-zinc-300 rounded-full mx-auto" />
+                    <p className="text-sm text-muted-foreground mt-3">Loading diff...</p>
                   </div>
                 ) : diffData ? (
                   <DiffViewer diff={diffData} />
                 ) : (
-                  <p className="text-sm text-zinc-500 text-center py-8">Select versions to compare</p>
+                  <p className="text-sm text-muted-foreground text-center py-8">Select versions to compare</p>
                 )}
               </div>
             )}
@@ -288,20 +288,20 @@ export function ResearchDetailClient({ file, content, statusLog }: ResearchDetai
           )}
 
           <Card className="p-5">
-            <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-4">Status History</h2>
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4">Status History</h2>
             {statusLog?.logs?.length === 0 ? (
-              <p className="text-zinc-500 text-sm">No status changes yet.</p>
+              <p className="text-muted-foreground text-sm">No status changes yet.</p>
             ) : (
               <div className="space-y-3">
                 {statusLog?.logs?.map((log, index) => (
                   <div key={index} className="text-sm">
                     <div className="flex items-center gap-2">
-                      <span className="text-zinc-400">{log.by}</span>
-                      <span className="text-zinc-600">&rarr;</span>
+                      <span className="text-muted-foreground">{log.by}</span>
+                      <span className="text-muted-foreground">&rarr;</span>
                       <StatusBadge status={log.to} />
                     </div>
-                    <p className="text-zinc-500 text-xs mt-0.5">{new Date(log.timestamp).toLocaleString()}</p>
-                    {log.note && <p className="text-zinc-600 text-xs mt-1 italic">&ldquo;{log.note}&rdquo;</p>}
+                    <p className="text-muted-foreground text-xs mt-0.5">{new Date(log.timestamp).toLocaleString()}</p>
+                    {log.note && <p className="text-muted-foreground text-xs mt-1 italic">&ldquo;{log.note}&rdquo;</p>}
                   </div>
                 ))}
               </div>
@@ -309,13 +309,13 @@ export function ResearchDetailClient({ file, content, statusLog }: ResearchDetai
           </Card>
 
           <Card className="p-5">
-            <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-4">Details</h2>
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4">Details</h2>
             <div className="space-y-3 text-sm">
-              <div><span className="text-zinc-500">Agent: </span><span className="text-zinc-300">Echo</span></div>
-              <div><span className="text-zinc-500">File: </span><span className="text-zinc-400 font-mono text-xs break-all">{file.filename}</span></div>
-              <div><span className="text-zinc-500">Size: </span><span className="text-zinc-300">{(file.size / 1024).toFixed(1)} KB</span></div>
-              <div><span className="text-zinc-500">Created: </span><span className="text-zinc-300">{new Date(file.date).toLocaleString()}</span></div>
-              <div><span className="text-zinc-500">Updated: </span><span className="text-zinc-300">{new Date(file.updatedAt).toLocaleString()}</span></div>
+              <div><span className="text-muted-foreground">Agent: </span><span className="text-foreground">Echo</span></div>
+              <div><span className="text-muted-foreground">File: </span><span className="text-muted-foreground font-mono text-xs break-all">{file.filename}</span></div>
+              <div><span className="text-muted-foreground">Size: </span><span className="text-foreground">{(file.size / 1024).toFixed(1)} KB</span></div>
+              <div><span className="text-muted-foreground">Created: </span><span className="text-foreground">{new Date(file.date).toLocaleString()}</span></div>
+              <div><span className="text-muted-foreground">Updated: </span><span className="text-foreground">{new Date(file.updatedAt).toLocaleString()}</span></div>
             </div>
           </Card>
 
@@ -349,7 +349,7 @@ export function ResearchDetailClient({ file, content, statusLog }: ResearchDetai
           <DialogHeader>
             <DialogTitle>Delete Research File</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete <span className="text-white font-medium">{file.title}</span>? This will permanently remove the file and all associated data.
+              Are you sure you want to delete <span className="text-foreground font-medium">{file.title}</span>? This will permanently remove the file and all associated data.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

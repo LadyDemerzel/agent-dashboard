@@ -25,11 +25,11 @@ export function ResearchCard({ file, href }: ResearchCardProps) {
 
   return (
     <Link href={linkHref} className="block w-full min-w-0">
-      <Card className="p-5 hover:border-zinc-700 transition-colors min-w-0">
+      <Card className="p-5 hover:border-border transition-colors min-w-0">
         <div className="flex items-start justify-between mb-3 gap-3">
           <div className="flex-1 min-w-0 overflow-hidden">
-            <h3 className="text-white font-medium truncate">{file.title}</h3>
-            <p className="text-zinc-500 text-xs mt-1 truncate">
+            <h3 className="text-foreground font-medium truncate">{file.title}</h3>
+            <p className="text-muted-foreground text-xs mt-1 truncate">
               {new Date(file.date).toLocaleDateString("en-US", {
                 year: "numeric",
                 month: "long",
@@ -46,7 +46,7 @@ export function ResearchCard({ file, href }: ResearchCardProps) {
           </div>
         </div>
 
-        <p className="text-zinc-400 text-sm line-clamp-2 break-words">{file.preview}</p>
+        <p className="text-muted-foreground text-sm line-clamp-2 break-words">{file.preview}</p>
       </Card>
     </Link>
   );
@@ -79,10 +79,10 @@ export function ResearchStats({ files }: ResearchStatsProps) {
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
     <Card className="p-4">
-      <p className="text-zinc-500 text-xs font-medium uppercase tracking-wider">
+      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">
         {label}
       </p>
-      <p className="text-2xl font-bold text-white mt-1">{value}</p>
+      <p className="text-2xl font-bold text-foreground mt-1">{value}</p>
     </Card>
   );
 }
@@ -101,8 +101,8 @@ export function ResearchList({
   if (files.length === 0) {
     return (
       <Card className="p-12 text-center">
-        <p className="text-zinc-500">{emptyMessage}</p>
-        <p className="text-zinc-600 text-sm mt-1">{emptySubMessage}</p>
+        <p className="text-muted-foreground">{emptyMessage}</p>
+        <p className="text-muted-foreground text-sm mt-1">{emptySubMessage}</p>
       </Card>
     );
   }

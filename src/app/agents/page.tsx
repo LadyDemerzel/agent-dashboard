@@ -10,9 +10,9 @@ export default function AgentsPage() {
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-1">
           <span className="text-2xl">🤖</span>
-          <h1 className="text-2xl font-bold text-white">Agents</h1>
+          <h1 className="text-2xl font-bold text-foreground">Agents</h1>
         </div>
-        <p className="text-zinc-500 text-sm mt-1">
+        <p className="text-muted-foreground text-sm mt-1">
           Manage agent configurations and view their workspace files
         </p>
       </div>
@@ -24,7 +24,7 @@ export default function AgentsPage() {
             href={`/agents/${agent.id}`}
             className="block"
           >
-            <Card className="p-5 hover:border-zinc-700 transition-colors">
+            <Card className="p-5 hover:border-border transition-colors">
               <div className="flex items-center gap-3 mb-3">
                 <div
                   className="w-10 h-10 rounded-lg flex items-center justify-center text-xl"
@@ -33,14 +33,14 @@ export default function AgentsPage() {
                   {agent.icon}
                 </div>
                 <div>
-                  <h3 className="text-white font-medium">{agent.name}</h3>
-                  <p className="text-zinc-500 text-xs">{agent.domain}</p>
+                  <h3 className="text-foreground font-medium">{agent.name}</h3>
+                  <p className="text-muted-foreground text-xs">{agent.domain}</p>
                 </div>
               </div>
-              <p className="text-zinc-400 text-sm line-clamp-2">
+              <p className="text-muted-foreground text-sm line-clamp-2">
                 {agent.description}
               </p>
-              <p className="text-zinc-600 text-xs mt-3">
+              <p className="text-muted-foreground text-xs mt-3">
                 SOUL.md · AGENTS.md · USER.md · TOOLS.md · BOOTSTRAP.md · HEARTBEAT.md · IDENTITY.md · MEMORY.md
               </p>
             </Card>

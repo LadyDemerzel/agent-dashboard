@@ -24,7 +24,7 @@ export function Sidebar() {
   return (
     <>
       {/* Mobile header bar */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-zinc-950 border-b border-zinc-800 flex items-center justify-between px-4 h-16">
+      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-background border-b border-border flex items-center justify-between px-4 h-16">
         <Button
           variant="ghost"
           size="icon"
@@ -34,7 +34,7 @@ export function Sidebar() {
         >
           <span className="text-3xl leading-none">{mobileOpen ? "\u2715" : "\u2630"}</span>
         </Button>
-        <h1 className="text-white font-bold text-xl tracking-tight">
+        <h1 className="text-foreground font-bold text-xl tracking-tight">
           Agent Dashboard
         </h1>
         <div className="w-12" />
@@ -43,7 +43,7 @@ export function Sidebar() {
       {/* Mobile overlay */}
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 z-40 bg-black/50"
+          className="md:hidden fixed inset-0 z-40 bg-background/80"
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -51,16 +51,16 @@ export function Sidebar() {
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed left-0 top-0 z-50 w-64 bg-zinc-950 border-r border-zinc-800 h-screen flex flex-col transition-transform duration-200",
+          "fixed left-0 top-0 z-50 w-64 bg-background border-r border-border h-screen flex flex-col transition-transform duration-200",
           mobileOpen ? "translate-x-0" : "-translate-x-full",
           "md:translate-x-0 md:w-56"
         )}
       >
         <div className="p-5">
-          <h1 className="text-white font-bold text-xl tracking-tight">
+          <h1 className="text-foreground font-bold text-xl tracking-tight">
             Agent Dashboard
           </h1>
-          <p className="text-zinc-500 text-sm mt-1">Agent Team Hub</p>
+          <p className="text-muted-foreground text-sm mt-1">Agent Team Hub</p>
         </div>
         <Separator />
 
@@ -77,8 +77,8 @@ export function Sidebar() {
                 className={cn(
                   "flex items-center gap-3 px-4 py-3 rounded-lg text-base transition-colors min-h-[48px]",
                   isActive
-                    ? "bg-zinc-800 text-white"
-                    : "text-zinc-400 hover:text-white hover:bg-zinc-900"
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-card"
                 )}
               >
                 <span className="text-lg">{item.icon}</span>
@@ -92,7 +92,7 @@ export function Sidebar() {
         <div className="p-4">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-zinc-500 text-sm">System Active</span>
+            <span className="text-muted-foreground text-sm">System Active</span>
           </div>
         </div>
       </aside>
