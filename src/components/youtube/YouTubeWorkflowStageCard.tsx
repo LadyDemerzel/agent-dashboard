@@ -32,7 +32,7 @@ function getButtonVariant(status: PhaseStatus): "default" | "success" | "seconda
 function getButtonLabel(status: PhaseStatus, triggering: boolean): string {
   if (triggering) return 'Starting...';
   switch (status) {
-    case 'complete': return '✓ Complete';
+    case 'complete': return 'Complete Complete';
     case 'ready': return 'Start';
     case 'locked': return 'Locked';
     case 'working': return 'In Progress';

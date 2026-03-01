@@ -15,11 +15,11 @@ interface Deliverable {
 }
 
 const TYPE_ICONS: Record<string, string> = {
-  research: "\uD83D\uDCCA",
-  code: "\uD83D\uDCBB",
-  content: "\uD83D\uDCDD",
-  strategy: "\uD83C\uDFAF",
-  operations: "\u2699\uFE0F",
+  research: "RS",
+  code: "CD",
+  content: "CT",
+  strategy: "ST",
+  operations: "OP",
 };
 
 export function DeliverableList({
@@ -30,7 +30,7 @@ export function DeliverableList({
   if (deliverables.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground">
-        <p className="text-4xl mb-3">{"\uD83D\uDCED"}</p>
+        <p className="text-2xl mb-3 font-semibold">DL</p>
         <p className="text-sm">No deliverables yet</p>
         <p className="text-xs mt-1">
           Agent deliverables will appear here as they&apos;re created
@@ -46,8 +46,8 @@ export function DeliverableList({
           <Card className="p-4 hover:border-border transition-colors cursor-pointer min-w-0">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
-                <span className="text-lg flex-shrink-0">
-                  {TYPE_ICONS[d.type] || "\uD83D\uDCC4"}
+                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-border bg-muted px-1 text-[10px] font-semibold leading-none tracking-wide flex-shrink-0">
+                  {TYPE_ICONS[d.type] || "FL"}
                 </span>
                 <div className="min-w-0 overflow-hidden">
                   <h4 className="text-foreground text-sm font-medium truncate">

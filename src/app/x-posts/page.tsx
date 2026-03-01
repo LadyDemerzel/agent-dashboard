@@ -20,8 +20,7 @@ export default function XPostsPage() {
   return (
     <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-8">
-        <div className="flex items-center gap-3 mb-1">
-          <span className="text-2xl">✍️</span>
+        <div className="mb-1">
           <h1 className="text-2xl font-bold text-foreground">X Posts</h1>
         </div>
         <p className="text-muted-foreground text-sm mt-1">
@@ -41,7 +40,6 @@ export default function XPostsPage() {
       <Card className="p-4 mb-8 bg-muted/50">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <span className="text-lg">📡</span>
             <h2 className="text-sm font-medium text-foreground">Approved Research</h2>
             <span className="text-xs text-muted-foreground">({approvedResearch.length} available for content creation)</span>
           </div>

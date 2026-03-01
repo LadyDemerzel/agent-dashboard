@@ -7,7 +7,7 @@ export function Timeline({ events }: { events: TimelineEvent[] }) {
   if (events.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground">
-        <p className="text-4xl mb-3">{"\uD83D\uDCED"}</p>
+        <p className="text-2xl mb-3 font-semibold">TL</p>
         <p className="text-sm">No activity yet</p>
         <p className="text-xs mt-1">
           Agent activity will appear here as work is completed

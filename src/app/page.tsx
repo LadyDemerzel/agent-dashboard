@@ -161,8 +161,7 @@ export default function Dashboard() {
       {researchFiles.length > 0 && (
         <div className="mb-10">
           <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2">
-              <span className="text-xl">📡</span>
+            <div>
               <h2 className="text-lg font-semibold text-foreground">
                 Echo&apos;s Research
               </h2>

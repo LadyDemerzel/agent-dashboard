@@ -291,10 +291,10 @@ export default function YouTubeVideoDetailPage() {
   const artifacts = toArtifacts(video);
 
   const TABS = [
-    { key: 'research' as const, label: '🔍 Research', complete: video.has_research },
-    { key: 'script' as const, label: '📜 Script', complete: video.has_script },
-    { key: 'images' as const, label: '🖼️ Images', complete: (video.imageCount || 0) > 0 },
-    { key: 'audio' as const, label: '🎙️ Audio', complete: video.has_audio },
+    { key: 'research' as const, label: 'Research', complete: video.has_research },
+    { key: 'script' as const, label: 'Script', complete: video.has_script },
+    { key: 'images' as const, label: 'Images', complete: (video.imageCount || 0) > 0 },
+    { key: 'audio' as const, label: 'Audio', complete: video.has_audio },
   ];
 
   return (
@@ -337,7 +337,7 @@ export default function YouTubeVideoDetailPage() {
                 onClick={() => setActiveTab(tab.key)}
               >
                 <span>{tab.label}</span>
-                {tab.complete && <span className="ml-2 text-emerald-500">✓</span>}
+                {tab.complete && <span className="ml-2 text-emerald-500">Done</span>}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -345,8 +345,8 @@ export default function YouTubeVideoDetailPage() {
           {activeTab === 'research' && (
             <Card className="p-5">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-foreground">🔍 Research</h2>
-                {video.has_research && <span className="text-emerald-400 text-sm">✓ Complete</span>}
+                <h2 className="text-lg font-semibold text-foreground">Research</h2>
+                {video.has_research && <span className="text-emerald-400 text-sm">Done</span>}
               </div>
               <MarkdownPreview
                 content={video.research_content}
@@ -358,8 +358,8 @@ export default function YouTubeVideoDetailPage() {
           {activeTab === 'script' && (
             <Card className="p-5">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-foreground">📜 Script</h2>
-                {video.has_script && <span className="text-emerald-400 text-sm">✓ Complete</span>}
+                <h2 className="text-lg font-semibold text-foreground">Script</h2>
+                {video.has_script && <span className="text-emerald-400 text-sm">Done</span>}
               </div>
               <MarkdownPreview
                 content={video.script_content}
@@ -371,7 +371,7 @@ export default function YouTubeVideoDetailPage() {
           {activeTab === 'images' && (
             <Card className="p-5">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-foreground">🖼️ Images</h2>
+                <h2 className="text-lg font-semibold text-foreground">Images</h2>
                 <span className="text-muted-foreground text-sm">{video.imageCount} images</span>
               </div>
 
@@ -406,8 +406,8 @@ export default function YouTubeVideoDetailPage() {
           {activeTab === 'audio' && (
             <Card className="p-5">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-foreground">🎙️ Audio</h2>
-                {video.has_audio && <span className="text-emerald-400 text-sm">✓ Complete</span>}
+                <h2 className="text-lg font-semibold text-foreground">Audio</h2>
+                {video.has_audio && <span className="text-emerald-400 text-sm">Done</span>}
               </div>
               {video.has_audio ? (
                 <div className="text-emerald-400">{video.audioCount} audio file{video.audioCount !== 1 ? 's' : ''} generated</div>

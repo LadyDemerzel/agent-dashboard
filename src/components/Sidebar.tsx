@@ -8,13 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", icon: "\u2B21" },
-  { href: "/deliverables", label: "Deliverables", icon: "\uD83D\uDCE6" },
-  { href: "/research", label: "Research", icon: "\uD83D\uDCE1" },
-  { href: "/x-posts", label: "X Posts", icon: "\u270D\uFE0F" },
-  { href: "/youtube-videos", label: "YouTube Videos", icon: "\uD83C\uDFAC" },
-  { href: "/timeline", label: "Timeline", icon: "\u23F1" },
-  { href: "/agents", label: "Agents", icon: "\uD83E\uDD16" },
+  { href: "/", label: "Dashboard", icon: "DB" },
+  { href: "/deliverables", label: "Deliverables", icon: "DL" },
+  { href: "/research", label: "Research", icon: "RS" },
+  { href: "/x-posts", label: "X Posts", icon: "XP" },
+  { href: "/youtube-videos", label: "YouTube Videos", icon: "YT" },
+  { href: "/timeline", label: "Timeline", icon: "TL" },
+  { href: "/agents", label: "Agents", icon: "AG" },
 ];
 
 export function Sidebar() {
@@ -81,7 +81,7 @@ export function Sidebar() {
                     : "text-muted-foreground hover:text-foreground hover:bg-card"
                 )}
               >
-                <span className="text-lg">{item.icon}</span>
+                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-border bg-muted px-1 text-[10px] font-semibold leading-none tracking-wide">{item.icon}</span>
                 {item.label}
               </Link>
             );

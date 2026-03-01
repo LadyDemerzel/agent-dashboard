@@ -8,8 +8,7 @@ export default function AgentsPage() {
   return (
     <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-8">
-        <div className="flex items-center gap-3 mb-1">
-          <span className="text-2xl">🤖</span>
+        <div className="mb-1">
           <h1 className="text-2xl font-bold text-foreground">Agents</h1>
         </div>
         <p className="text-muted-foreground text-sm mt-1">

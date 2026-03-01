@@ -11,10 +11,10 @@ export interface PhaseDefinition {
 }
 
 export const YOUTUBE_PHASES: PhaseDefinition[] = [
-  { key: 'research', label: 'Research', icon: '🔍', agent: 'Echo' },
-  { key: 'script', label: 'Script', icon: '📜', agent: 'Scribe' },
-  { key: 'images', label: 'Images', icon: '🖼️', agent: 'Echo' },
-  { key: 'audio', label: 'Audio', icon: '🎙️', agent: 'Ralph' },
+  { key: 'research', label: 'Research', icon: 'Search', agent: 'Echo' },
+  { key: 'script', label: 'Script', icon: 'Script', agent: 'Scribe' },
+  { key: 'images', label: 'Images', icon: 'Images', agent: 'Echo' },
+  { key: 'audio', label: 'Audio', icon: 'Audio', agent: 'Ralph' },
 ];
 
 /** Maps video.status values to the phase currently running */

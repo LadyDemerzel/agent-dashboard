@@ -70,7 +70,7 @@ export default function YouTubeVideosPage() {
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">🎬 YouTube Videos</h1>
+          <h1 className="text-3xl font-bold text-foreground">YouTube Videos</h1>
           <p className="text-muted-foreground mt-2">Create and manage faceless YouTube video projects</p>
         </div>
 
