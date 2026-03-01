@@ -1,20 +1,100 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
-const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", icon: "DB" },
-  { href: "/deliverables", label: "Deliverables", icon: "DL" },
-  { href: "/research", label: "Research", icon: "RS" },
-  { href: "/x-posts", label: "X Posts", icon: "XP" },
-  { href: "/youtube-videos", label: "YouTube Videos", icon: "YT" },
-  { href: "/timeline", label: "Timeline", icon: "TL" },
-  { href: "/agents", label: "Agents", icon: "AG" },
+type NavItem = {
+  href: string;
+  label: string;
+  icon: ReactNode;
+};
+
+const iconClass = "h-4 w-4";
+
+const NAV_ITEMS: NavItem[] = [
+  {
+    href: "/",
+    label: "Dashboard",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={iconClass}>
+        <rect x="3" y="3" width="7" height="7" rx="1" />
+        <rect x="14" y="3" width="7" height="7" rx="1" />
+        <rect x="3" y="14" width="7" height="7" rx="1" />
+        <rect x="14" y="14" width="7" height="7" rx="1" />
+      </svg>
+    ),
+  },
+  {
+    href: "/deliverables",
+    label: "Deliverables",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={iconClass}>
+        <path d="M21 8v13H3V8" />
+        <path d="M1 8h22" />
+        <path d="M10 12h4" />
+        <path d="M10 16h4" />
+        <path d="M8 8V4h8v4" />
+      </svg>
+    ),
+  },
+  {
+    href: "/research",
+    label: "Research",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={iconClass}>
+        <circle cx="11" cy="11" r="7" />
+        <path d="M21 21l-4.3-4.3" />
+      </svg>
+    ),
+  },
+  {
+    href: "/x-posts",
+    label: "X Posts",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={iconClass}>
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />
+      </svg>
+    ),
+  },
+  {
+    href: "/youtube-videos",
+    label: "YouTube Videos",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={iconClass}>
+        <rect x="2" y="5" width="20" height="14" rx="3" />
+        <path d="m10 9 5 3-5 3V9Z" />
+      </svg>
+    ),
+  },
+  {
+    href: "/timeline",
+    label: "Timeline",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={iconClass}>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v6l4 2" />
+      </svg>
+    ),
+  },
+  {
+    href: "/agents",
+    label: "Agents",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={iconClass}>
+        <rect x="4" y="7" width="16" height="12" rx="2" />
+        <path d="M9 3h6" />
+        <path d="M12 7V3" />
+        <circle cx="9" cy="13" r="1" />
+        <circle cx="15" cy="13" r="1" />
+        <path d="M9 16h6" />
+      </svg>
+    ),
+  },
 ];
 
 export function Sidebar() {
@@ -32,7 +112,18 @@ export function Sidebar() {
           className="-ml-1 min-w-[48px] min-h-[48px]"
           aria-label={mobileOpen ? "Close menu" : "Open menu"}
         >
-          <span className="text-3xl leading-none">{mobileOpen ? "\u2715" : "\u2630"}</span>
+          {mobileOpen ? (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
+              <path d="M3 6h18" />
+              <path d="M3 12h18" />
+              <path d="M3 18h18" />
+            </svg>
+          )}
         </Button>
         <h1 className="text-foreground font-bold text-xl tracking-tight">
           Agent Dashboard
@@ -81,7 +172,9 @@ export function Sidebar() {
                     : "text-muted-foreground hover:text-foreground hover:bg-card"
                 )}
               >
-                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-border bg-muted px-1 text-[10px] font-semibold leading-none tracking-wide">{item.icon}</span>
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-muted">
+                  {item.icon}
+                </span>
                 {item.label}
               </Link>
             );
