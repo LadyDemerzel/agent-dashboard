@@ -9,6 +9,7 @@ import { DeliverableList } from "@/components/DeliverableList";
 import { Timeline } from "@/components/Timeline";
 import { buildTimelineEvents } from "@/lib/timeline";
 import { ResearchCard, ResearchStats, ResearchFile } from "@/components/ResearchCard";
+import { Card } from "@/components/ui/card";
 
 interface AgentStatusData {
   status: "idle" | "working" | "review" | "blocked";
@@ -228,7 +229,7 @@ function StatCard({
   accent?: boolean;
 }) {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+    <Card className="p-4">
       <p className="text-zinc-500 text-xs font-medium uppercase tracking-wider">
         {label}
       </p>
@@ -237,6 +238,6 @@ function StatCard({
       >
         {value}
       </p>
-    </div>
+    </Card>
   );
 }

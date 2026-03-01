@@ -2,7 +2,8 @@ import { getDeliverables } from "@/lib/files";
 import { getResearchFiles } from "@/lib/research";
 import { AGENTS } from "@/lib/agents";
 import { DeliverableList } from "@/components/DeliverableList";
-import { ResearchList, ResearchStats } from "@/components/ResearchCard";
+import { ResearchList } from "@/components/ResearchCard";
+import { Card } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
 
@@ -27,14 +28,14 @@ export default function DeliverablesPage() {
 
       {/* Summary stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-8">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <Card className="p-4">
           <p className="text-zinc-500 text-xs font-medium uppercase tracking-wider">
             Total
           </p>
           <p className="text-2xl font-bold text-white mt-1">
             {deliverables.length + researchFiles.length}
           </p>
-        </div>
+        </Card>
         {(["draft", "review", "approved", "published"] as const).map(
           (status) => {
             const deliverableCount = deliverables.filter(
@@ -44,15 +45,12 @@ export default function DeliverablesPage() {
               (f) => f.status === status || (status === "review" && f.status === "needs review")
             ).length;
             return (
-              <div
-                key={status}
-                className="bg-zinc-900 border border-zinc-800 rounded-xl p-4"
-              >
+              <Card key={status} className="p-4">
                 <p className="text-zinc-500 text-xs font-medium uppercase tracking-wider">
                   {status}
                 </p>
                 <p className="text-2xl font-bold text-white mt-1">{deliverableCount + researchCount}</p>
-              </div>
+              </Card>
             );
           }
         )}
@@ -73,16 +71,14 @@ export default function DeliverablesPage() {
                   ({isEcho ? researchFiles.length : agentDeliverables.length})
                 </span>
               </div>
-              
+
               {isEcho ? (
-                // Echo uses ResearchCard for research deliverables
-                <ResearchList 
-                  files={researchFiles} 
+                <ResearchList
+                  files={researchFiles}
                   emptyMessage="No research files found yet."
                   emptySubMessage="Echo's research will appear here when available."
                 />
               ) : (
-                // Other agents use DeliverableList
                 <div className="space-y-4">
                   <DeliverableList deliverables={agentDeliverables} />
                 </div>

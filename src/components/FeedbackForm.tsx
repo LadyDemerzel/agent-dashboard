@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export function FeedbackForm({ postId }: { postId: string }) {
   const router = useRouter();
@@ -60,12 +64,14 @@ export function FeedbackForm({ postId }: { postId: string }) {
         <p className="text-zinc-500 text-sm mt-1">
           TACIT.md has been updated with your learnings.
         </p>
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => setSuccess(false)}
-          className="mt-3 text-sm text-zinc-400 hover:text-white transition-colors"
+          className="mt-3"
         >
           Add more feedback
-        </button>
+        </Button>
       </div>
     );
   }
@@ -74,7 +80,7 @@ export function FeedbackForm({ postId }: { postId: string }) {
     <form onSubmit={handleSubmit} className="space-y-4">
       {/* Rating */}
       <div>
-        <label className="block text-zinc-400 text-sm mb-2">Rating</label>
+        <Label className="mb-2 block">Rating</Label>
         <div className="flex items-center gap-1">
           {[1, 2, 3, 4, 5].map((star) => (
             <button
@@ -89,7 +95,7 @@ export function FeedbackForm({ postId }: { postId: string }) {
                   : "text-zinc-700"
               }`}
             >
-              ★
+              {"\u2605"}
             </button>
           ))}
           {rating > 0 && (
@@ -100,65 +106,56 @@ export function FeedbackForm({ postId }: { postId: string }) {
 
       {/* Feedback text */}
       <div>
-        <label className="block text-zinc-400 text-sm mb-2">
-          Your Feedback
-        </label>
-        <textarea
+        <Label className="mb-2 block">Your Feedback</Label>
+        <Textarea
           value={feedback}
           onChange={(e) => setFeedback(e.target.value)}
           placeholder="What do you think of this post? How could it be improved?"
           rows={4}
-          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white text-sm placeholder-zinc-600 focus:border-zinc-600 focus:outline-none resize-none"
+          className="resize-none"
         />
       </div>
 
       {/* Learning fields */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
-          <label className="block text-zinc-400 text-xs mb-1">
-            Do more of...
-          </label>
-          <input
+          <Label className="text-xs mb-1 block">Do more of...</Label>
+          <Input
             type="text"
             value={doMore}
             onChange={(e) => setDoMore(e.target.value)}
             placeholder="e.g., personal stories"
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm placeholder-zinc-600 focus:border-zinc-600 focus:outline-none"
           />
         </div>
         <div>
-          <label className="block text-zinc-400 text-xs mb-1">
-            Do less of...
-          </label>
-          <input
+          <Label className="text-xs mb-1 block">Do less of...</Label>
+          <Input
             type="text"
             value={doLess}
             onChange={(e) => setDoLess(e.target.value)}
             placeholder="e.g., generic advice"
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm placeholder-zinc-600 focus:border-zinc-600 focus:outline-none"
           />
         </div>
         <div>
-          <label className="block text-zinc-400 text-xs mb-1">Try...</label>
-          <input
+          <Label className="text-xs mb-1 block">Try...</Label>
+          <Input
             type="text"
             value={tryNew}
             onChange={(e) => setTryNew(e.target.value)}
             placeholder="e.g., ask a question"
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm placeholder-zinc-600 focus:border-zinc-600 focus:outline-none"
           />
         </div>
       </div>
 
       {error && <p className="text-red-400 text-sm">{error}</p>}
 
-      <button
+      <Button
         type="submit"
         disabled={submitting}
-        className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-medium py-2.5 px-4 rounded-lg text-sm transition-colors"
+        className="w-full"
       >
         {submitting ? "Submitting..." : "Submit Feedback"}
-      </button>
+      </Button>
     </form>
   );
 }

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { getXPosts } from "@/lib/xposts";
 import { getApprovedResearch } from "@/lib/research";
 import { StatusBadge } from "@/components/StatusBadge";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 export const dynamic = "force-dynamic";
 
@@ -30,40 +32,24 @@ export default function XPostsPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
         <StatCard label="Total Posts" value={posts.length} />
-        <StatCard
-          label="Drafts"
-          value={posts.filter((p) => p.status === "draft").length}
-        />
-        <StatCard
-          label="In Review"
-          value={posts.filter((p) => p.status === "needs review").length}
-        />
-        <StatCard
-          label="With Feedback"
-          value={posts.filter((p) => p.feedbackCount > 0).length}
-        />
+        <StatCard label="Drafts" value={posts.filter((p) => p.status === "draft").length} />
+        <StatCard label="In Review" value={posts.filter((p) => p.status === "needs review").length} />
+        <StatCard label="With Feedback" value={posts.filter((p) => p.feedbackCount > 0).length} />
       </div>
 
       {/* Approved Research Section */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 mb-8">
+      <Card className="p-4 mb-8 bg-zinc-900/50">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <span className="text-lg">📡</span>
-            <h2 className="text-sm font-medium text-zinc-300">
-              Approved Research
-            </h2>
-            <span className="text-xs text-zinc-600">
-              ({approvedResearch.length} available for content creation)
-            </span>
+            <h2 className="text-sm font-medium text-zinc-300">Approved Research</h2>
+            <span className="text-xs text-zinc-600">({approvedResearch.length} available for content creation)</span>
           </div>
-          <Link
-            href="/research"
-            className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
-          >
+          <Link href="/research" className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
             View all research →
           </Link>
         </div>
-        
+
         {approvedResearch.length === 0 ? (
           <p className="text-zinc-600 text-sm">
             No approved research yet. Echo&apos;s research needs to be approved before Scribe can reference it for content.
@@ -78,12 +64,8 @@ export default function XPostsPage() {
               >
                 <span className="text-emerald-500 text-xs">●</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-zinc-300 text-sm truncate">
-                    {research.title}
-                  </p>
-                  <p className="text-zinc-600 text-xs">
-                    {new Date(research.date).toLocaleDateString()}
-                  </p>
+                  <p className="text-zinc-300 text-sm truncate">{research.title}</p>
+                  <p className="text-zinc-600 text-xs">{new Date(research.date).toLocaleDateString()}</p>
                 </div>
               </Link>
             ))}
@@ -94,15 +76,15 @@ export default function XPostsPage() {
             )}
           </div>
         )}
-      </div>
+      </Card>
 
       {posts.length === 0 ? (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-12 text-center">
+        <Card className="p-12 text-center">
           <p className="text-zinc-500">No X post drafts found yet.</p>
           <p className="text-zinc-600 text-sm mt-1">
             Scribe&apos;s drafts will appear here when available.
           </p>
-        </div>
+        </Card>
       ) : (
         Object.entries(byDate)
           .sort(([a], [b]) => b.localeCompare(a))
@@ -131,11 +113,9 @@ export default function XPostsPage() {
 function PostCard({ post }: { post: ReturnType<typeof getXPosts>[0] }) {
   return (
     <Link href={`/x-posts/${post.id}`}>
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700 transition-colors h-full flex flex-col">
+      <Card className="p-5 hover:border-zinc-700 transition-colors h-full flex flex-col">
         <div className="flex items-start justify-between mb-3">
-          <span className="text-xs text-zinc-500 font-mono">
-            Post #{post.postNumber}
-          </span>
+          <span className="text-xs text-zinc-500 font-mono">Post #{post.postNumber}</span>
           <StatusBadge status={post.status} />
         </div>
 
@@ -149,32 +129,26 @@ function PostCard({ post }: { post: ReturnType<typeof getXPosts>[0] }) {
         <div className="mt-4 pt-3 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-500">
           <div className="flex items-center gap-3">
             {post.category && (
-              <span className="px-2 py-0.5 bg-zinc-800 rounded text-zinc-400">
-                {post.category}
-              </span>
+              <Badge variant="default">{post.category}</Badge>
             )}
           </div>
           <div className="flex items-center gap-3">
             {post.feedbackCount > 0 && (
-              <span className="text-amber-400">
-                {post.feedbackCount} feedback
-              </span>
+              <span className="text-amber-400">{post.feedbackCount} feedback</span>
             )}
             <span>{post.suggestedTime}</span>
           </div>
         </div>
-      </div>
+      </Card>
     </Link>
   );
 }
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-      <p className="text-zinc-500 text-xs font-medium uppercase tracking-wider">
-        {label}
-      </p>
+    <Card className="p-4">
+      <p className="text-zinc-500 text-xs font-medium uppercase tracking-wider">{label}</p>
       <p className="text-2xl font-bold text-white mt-1">{value}</p>
-    </div>
+    </Card>
   );
 }

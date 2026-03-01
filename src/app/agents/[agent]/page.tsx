@@ -5,6 +5,8 @@ import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import { usePolling } from "@/components/usePolling";
 import { AgentFilesEditor } from "@/components/AgentFilesEditor";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 interface Agent {
   id: string;
@@ -41,30 +43,18 @@ interface AgentDetailData {
   sessionStatus: AgentStatusData;
 }
 
-const STATUS_STYLES: Record<
-  string,
-  { bg: string; text: string; dot: string }
-> = {
-  idle: {
-    bg: "bg-zinc-800",
-    text: "text-zinc-400",
-    dot: "bg-zinc-500",
-  },
-  working: {
-    bg: "bg-emerald-950",
-    text: "text-emerald-400",
-    dot: "bg-emerald-500",
-  },
-  review: {
-    bg: "bg-amber-950",
-    text: "text-amber-400",
-    dot: "bg-amber-500",
-  },
-  blocked: {
-    bg: "bg-red-950",
-    text: "text-red-400",
-    dot: "bg-red-500",
-  },
+const STATUS_BADGE_VARIANT: Record<string, "default" | "success" | "warning" | "destructive"> = {
+  idle: "default",
+  working: "success",
+  review: "warning",
+  blocked: "destructive",
+};
+
+const STATUS_DOT_COLOR: Record<string, string> = {
+  idle: "bg-zinc-500",
+  working: "bg-emerald-500",
+  review: "bg-amber-500",
+  blocked: "bg-red-500",
 };
 
 export default function AgentDetailPage({
@@ -77,7 +67,6 @@ export default function AgentDetailPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  // Fetch initial data
   useEffect(() => {
     fetch(`/api/agents/${agentId}`, { cache: "no-store" })
       .then((res) => {
@@ -94,7 +83,6 @@ export default function AgentDetailPage({
       });
   }, [agentId]);
 
-  // Poll for real-time status updates
   const { data: liveStatus } = usePolling<AgentStatusResponse>("/api/agents/status", 3000);
 
   if (loading) {
@@ -113,8 +101,6 @@ export default function AgentDetailPage({
 
   const status = liveStatus?.[agentId]?.status ?? initialData.sessionStatus?.status ?? agent.status;
   const currentTask = liveStatus?.[agentId]?.currentTask ?? initialData.sessionStatus?.currentTask;
-  
-  const style = STATUS_STYLES[status] || STATUS_STYLES.idle;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl">
@@ -126,7 +112,7 @@ export default function AgentDetailPage({
       </Link>
 
       {/* Agent Header with Live Status */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-6">
+      <Card className="p-6 mb-6">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
             <div
@@ -143,14 +129,12 @@ export default function AgentDetailPage({
             </div>
           </div>
           {/* Live status badge */}
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full font-medium px-2.5 py-1 text-xs ${style.bg} ${style.text}`}
-          >
+          <Badge variant={STATUS_BADGE_VARIANT[status] || "default"}>
             <span
-              className={`rounded-full w-1.5 h-1.5 ${style.dot} ${status === "working" ? "animate-pulse" : ""}`}
+              className={`rounded-full w-1.5 h-1.5 ${STATUS_DOT_COLOR[status] || "bg-zinc-500"} ${status === "working" ? "animate-pulse" : ""}`}
             />
             {status.replace(/\b\w/g, (c) => c.toUpperCase())}
-          </span>
+          </Badge>
         </div>
 
         {/* Current Task Display - Updates in real-time */}
@@ -168,7 +152,7 @@ export default function AgentDetailPage({
             <p className="text-zinc-300 text-sm">{currentTask}</p>
           </div>
         )}
-        
+
         {/* Live indicator */}
         <div className="mt-4 flex items-center gap-2">
           <span className="relative flex h-2 w-2">
@@ -177,7 +161,7 @@ export default function AgentDetailPage({
           </span>
           <span className="text-xs text-zinc-500">Live updates enabled</span>
         </div>
-      </div>
+      </Card>
 
       <AgentFilesEditor
         agentId={agentId}

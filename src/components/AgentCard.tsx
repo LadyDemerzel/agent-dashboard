@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { AgentStatus } from "./AgentStatus";
+import { Card } from "@/components/ui/card";
 
 interface AgentCardProps {
   id: string;
@@ -32,7 +33,7 @@ export function AgentCard({
 
   return (
     <Link href={`/agents/${id}`}>
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 hover:border-zinc-600 transition-colors cursor-pointer group">
+      <Card className="p-5 hover:border-zinc-600 transition-colors cursor-pointer group">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
             <div
@@ -59,7 +60,7 @@ export function AgentCard({
           <span>{deliverableCount} deliverables</span>
           <span>{timeAgo}</span>
         </div>
-      </div>
+      </Card>
     </Link>
   );
 }

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { StatusBadge } from "./StatusBadge";
+import { Card } from "@/components/ui/card";
 
 export interface ResearchFile {
   id: string;
@@ -21,10 +22,10 @@ interface ResearchCardProps {
 
 export function ResearchCard({ file, href }: ResearchCardProps) {
   const linkHref = href || `/research/${file.id}`;
-  
+
   return (
     <Link href={linkHref} className="block w-full min-w-0">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700 transition-colors min-w-0">
+      <Card className="p-5 hover:border-zinc-700 transition-colors min-w-0">
         <div className="flex items-start justify-between mb-3 gap-3">
           <div className="flex-1 min-w-0 overflow-hidden">
             <h3 className="text-white font-medium truncate">{file.title}</h3>
@@ -36,7 +37,7 @@ export function ResearchCard({ file, href }: ResearchCardProps) {
                 hour: "2-digit",
                 minute: "2-digit",
               })}
-              {" · "}
+              {" \u00B7 "}
               <span className="break-all">{file.filename}</span>
             </p>
           </div>
@@ -46,7 +47,7 @@ export function ResearchCard({ file, href }: ResearchCardProps) {
         </div>
 
         <p className="text-zinc-400 text-sm line-clamp-2 break-words">{file.preview}</p>
-      </div>
+      </Card>
     </Link>
   );
 }
@@ -77,12 +78,12 @@ export function ResearchStats({ files }: ResearchStatsProps) {
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+    <Card className="p-4">
       <p className="text-zinc-500 text-xs font-medium uppercase tracking-wider">
         {label}
       </p>
       <p className="text-2xl font-bold text-white mt-1">{value}</p>
-    </div>
+    </Card>
   );
 }
 
@@ -92,17 +93,17 @@ interface ResearchListProps {
   emptySubMessage?: string;
 }
 
-export function ResearchList({ 
-  files, 
+export function ResearchList({
+  files,
   emptyMessage = "No research files found yet.",
   emptySubMessage = "Echo's research will appear here when available."
 }: ResearchListProps) {
   if (files.length === 0) {
     return (
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-12 text-center">
+      <Card className="p-12 text-center">
         <p className="text-zinc-500">{emptyMessage}</p>
         <p className="text-zinc-600 text-sm mt-1">{emptySubMessage}</p>
-      </div>
+      </Card>
     );
   }
 

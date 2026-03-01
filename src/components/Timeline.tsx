@@ -1,12 +1,13 @@
 "use client";
 
 import type { TimelineEvent } from "@/lib/timeline";
+import { Badge } from "@/components/ui/badge";
 
 export function Timeline({ events }: { events: TimelineEvent[] }) {
   if (events.length === 0) {
     return (
       <div className="text-center py-12 text-zinc-500">
-        <p className="text-4xl mb-3">📭</p>
+        <p className="text-4xl mb-3">{"\uD83D\uDCED"}</p>
         <p className="text-sm">No activity yet</p>
         <p className="text-xs mt-1">
           Agent activity will appear here as work is completed
@@ -46,9 +47,9 @@ export function Timeline({ events }: { events: TimelineEvent[] }) {
 
             {/* Latest badge */}
             {i === 0 && (
-              <span className="flex-shrink-0 px-2 py-0.5 bg-emerald-950 text-emerald-400 rounded-full text-xs">
+              <Badge variant="success" className="flex-shrink-0">
                 Latest
-              </span>
+              </Badge>
             )}
           </div>
         ))}

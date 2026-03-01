@@ -1,6 +1,8 @@
 'use client';
 
 import type { PhaseDefinition, PhaseStatus } from '@/lib/youtube-workflow';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 interface YouTubeWorkflowStageCardProps {
   phase: PhaseDefinition;
@@ -18,12 +20,14 @@ const CARD_CLASSES: Record<PhaseStatus, string> = {
   locked: 'border-zinc-800 bg-zinc-950 opacity-60',
 };
 
-const BUTTON_CLASSES: Record<PhaseStatus, string> = {
-  ready: 'bg-white text-zinc-900 hover:bg-zinc-100',
-  complete: 'bg-emerald-900 text-emerald-400 cursor-not-allowed',
-  locked: 'bg-zinc-800 text-zinc-500 cursor-not-allowed',
-  working: 'bg-zinc-700 text-zinc-300',
-};
+function getButtonVariant(status: PhaseStatus): "default" | "success" | "secondary" | "ghost" {
+  switch (status) {
+    case 'ready': return 'default';
+    case 'complete': return 'success';
+    case 'locked': return 'ghost';
+    case 'working': return 'secondary';
+  }
+}
 
 function getButtonLabel(status: PhaseStatus, triggering: boolean): string {
   if (triggering) return 'Starting...';
@@ -45,17 +49,19 @@ export function YouTubeWorkflowStageCard({
   const disabled = anyTriggering || status === 'locked' || status === 'complete';
 
   return (
-    <div className={`p-4 rounded-xl text-center border ${CARD_CLASSES[status]}`}>
+    <Card className={`p-4 text-center ${CARD_CLASSES[status]}`}>
       <div className="text-2xl mb-2">{phase.icon}</div>
       <div className="font-medium text-sm text-white">{phase.label}</div>
       <div className="text-xs text-zinc-500">{phase.agent}</div>
-      <button
+      <Button
         onClick={onTrigger}
         disabled={disabled}
-        className={`mt-3 px-3 py-1.5 text-xs rounded font-medium w-full ${BUTTON_CLASSES[status]}`}
+        variant={getButtonVariant(status)}
+        size="sm"
+        className="mt-3 w-full"
       >
         {getButtonLabel(status, triggering)}
-      </button>
-    </div>
+      </Button>
+    </Card>
   );
 }

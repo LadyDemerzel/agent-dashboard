@@ -6,6 +6,10 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { StatusBadge } from '@/components/StatusBadge';
 import { YouTubeWorkflowStageCard } from '@/components/youtube/YouTubeWorkflowStageCard';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DialogOverlay, DialogContent } from '@/components/ui/dialog';
 import {
   YOUTUBE_PHASES,
   getYoutubePhaseStatus,
@@ -286,6 +290,13 @@ export default function YouTubeVideoDetailPage() {
 
   const artifacts = toArtifacts(video);
 
+  const TABS = [
+    { key: 'research' as const, label: '🔍 Research', complete: video.has_research },
+    { key: 'script' as const, label: '📜 Script', complete: video.has_script },
+    { key: 'images' as const, label: '🖼️ Images', complete: (video.imageCount || 0) > 0 },
+    { key: 'audio' as const, label: '🎙️ Audio', complete: video.has_audio },
+  ];
+
   return (
     <div className="p-4 sm:p-6 lg:p-8">
       <div className="max-w-6xl mx-auto">
@@ -318,34 +329,21 @@ export default function YouTubeVideoDetailPage() {
 
         {/* Research / Script / Images / Audio Tabs */}
         <div className="mb-6">
-          <div className="inline-flex flex-wrap gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2 mb-4">
-            {[
-              { key: 'research' as const, label: '🔍 Research', complete: video.has_research },
-              { key: 'script' as const, label: '📜 Script', complete: video.has_script },
-              { key: 'images' as const, label: '🖼️ Images', complete: (video.imageCount || 0) > 0 },
-              { key: 'audio' as const, label: '🎙️ Audio', complete: video.has_audio },
-            ].map((tab) => {
-              const isActive = activeTab === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setActiveTab(tab.key)}
-                  className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
-                    isActive
-                      ? 'bg-zinc-100 text-zinc-900 border-zinc-100'
-                      : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-zinc-500 hover:text-white'
-                  }`}
-                >
-                  <span>{tab.label}</span>
-                  {tab.complete && <span className="ml-2 text-emerald-500">✓</span>}
-                </button>
-              );
-            })}
-          </div>
+          <TabsList className="mb-4">
+            {TABS.map((tab) => (
+              <TabsTrigger
+                key={tab.key}
+                active={activeTab === tab.key}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                <span>{tab.label}</span>
+                {tab.complete && <span className="ml-2 text-emerald-500">✓</span>}
+              </TabsTrigger>
+            ))}
+          </TabsList>
 
           {activeTab === 'research' && (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+            <Card className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-white">🔍 Research</h2>
                 {video.has_research && <span className="text-emerald-400 text-sm">✓ Complete</span>}
@@ -354,11 +352,11 @@ export default function YouTubeVideoDetailPage() {
                 content={video.research_content}
                 emptyText="No research yet. Click Start above to begin."
               />
-            </div>
+            </Card>
           )}
 
           {activeTab === 'script' && (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+            <Card className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-white">📜 Script</h2>
                 {video.has_script && <span className="text-emerald-400 text-sm">✓ Complete</span>}
@@ -367,11 +365,11 @@ export default function YouTubeVideoDetailPage() {
                 content={video.script_content}
                 emptyText="Script will appear here after research is approved."
               />
-            </div>
+            </Card>
           )}
 
           {activeTab === 'images' && (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+            <Card className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-white">🖼️ Images</h2>
                 <span className="text-zinc-500 text-sm">{video.imageCount} images</span>
@@ -402,11 +400,11 @@ export default function YouTubeVideoDetailPage() {
               ) : (
                 <div className="text-zinc-600">Images will appear here after script is approved.</div>
               )}
-            </div>
+            </Card>
           )}
 
           {activeTab === 'audio' && (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+            <Card className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-white">🎙️ Audio</h2>
                 {video.has_audio && <span className="text-emerald-400 text-sm">✓ Complete</span>}
@@ -416,42 +414,38 @@ export default function YouTubeVideoDetailPage() {
               ) : (
                 <div className="text-zinc-600">Audio will appear here after images are collected.</div>
               )}
-            </div>
+            </Card>
           )}
         </div>
       </div>
 
-      {/* Lightbox */}
-      {selectedImage && (
-        <div
-          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4"
-          onClick={() => setSelectedImage(null)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Image preview"
-        >
-          <div className="max-w-6xl max-h-[90vh] w-full" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-zinc-400">{selectedImage.category}</p>
-                <p className="text-sm text-zinc-200">{selectedImage.description}</p>
+      {/* Image Lightbox */}
+      <DialogOverlay open={!!selectedImage}>
+        <DialogContent size="lg" className="max-w-6xl bg-transparent border-none shadow-none">
+          {selectedImage && (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-zinc-400">{selectedImage.category}</p>
+                  <p className="text-sm text-zinc-200">{selectedImage.description}</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedImage(null)}
+                >
+                  Close
+                </Button>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedImage(null)}
-                className="text-zinc-300 hover:text-white text-sm border border-zinc-700 rounded px-3 py-1"
-              >
-                Close
-              </button>
+              <img
+                src={selectedImage.url}
+                alt={selectedImage.description}
+                className="w-full max-h-[80vh] object-contain rounded-lg border border-zinc-700 bg-zinc-950"
+              />
             </div>
-            <img
-              src={selectedImage.url}
-              alt={selectedImage.description}
-              className="w-full max-h-[80vh] object-contain rounded-lg border border-zinc-700 bg-zinc-950"
-            />
-          </div>
-        </div>
-      )}
+          )}
+        </DialogContent>
+      </DialogOverlay>
     </div>
   );
 }

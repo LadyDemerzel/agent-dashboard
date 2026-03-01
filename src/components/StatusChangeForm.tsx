@@ -2,6 +2,18 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  DialogOverlay,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 interface StatusChangeFormProps {
   currentStatus: string;
@@ -97,19 +109,18 @@ export function StatusChangeForm({
     <div>
       {/* Status Dropdown */}
       <div className="flex items-center gap-3">
-        <label className="text-zinc-500 text-sm">Status:</label>
-        <select
+        <Label>Status:</Label>
+        <Select
           value={selectedStatus}
           onChange={(e) => handleStatusChange(e.target.value)}
           disabled={submitting}
-          className="bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-white focus:border-zinc-500 focus:outline-none cursor-pointer"
         >
           {STATUS_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* Success/Error Messages */}
@@ -121,58 +132,54 @@ export function StatusChangeForm({
       )}
 
       {/* Feedback Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 w-full max-w-lg mx-4">
-            <h3 className="text-white font-semibold text-lg mb-1">
-              Request Changes
-            </h3>
-            <p className="text-zinc-500 text-sm mb-4">
+      <DialogOverlay open={showModal}>
+        <DialogContent size="lg">
+          <DialogHeader>
+            <DialogTitle>Request Changes</DialogTitle>
+            <DialogDescription>
               Describe what should be improved. The agent will receive this
               feedback and revise automatically.
-            </p>
+            </DialogDescription>
+          </DialogHeader>
 
-            <form onSubmit={handleModalSubmit} className="space-y-4">
-              <div>
-                <label className="block text-zinc-400 text-sm mb-2">
-                  Feedback
-                </label>
-                <textarea
-                  value={feedbackText}
-                  onChange={(e) => setFeedbackText(e.target.value)}
-                  placeholder="What needs to change? Be specific..."
-                  rows={5}
-                  autoFocus
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white text-sm placeholder-zinc-600 focus:border-zinc-600 focus:outline-none resize-none"
-                />
-              </div>
+          <form onSubmit={handleModalSubmit} className="space-y-4">
+            <div>
+              <Label className="block mb-2">Feedback</Label>
+              <Textarea
+                value={feedbackText}
+                onChange={(e) => setFeedbackText(e.target.value)}
+                placeholder="What needs to change? Be specific..."
+                rows={5}
+                autoFocus
+                className="resize-none"
+              />
+            </div>
 
-              {error && <p className="text-red-400 text-sm">{error}</p>}
+            {error && <p className="text-red-400 text-sm">{error}</p>}
 
-              <div className="flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowModal(false);
-                    setSelectedStatus(currentStatus);
-                    setError("");
-                  }}
-                  className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-medium rounded-lg text-sm transition-colors"
-                >
-                  {submitting ? "Sending..." : "Send Feedback"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setShowModal(false);
+                  setSelectedStatus(currentStatus);
+                  setError("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="warning"
+                disabled={submitting}
+              >
+                {submitting ? "Sending..." : "Send Feedback"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </DialogOverlay>
     </div>
   );
 }

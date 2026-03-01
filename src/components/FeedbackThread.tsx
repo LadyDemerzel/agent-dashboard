@@ -2,6 +2,12 @@
 
 import React, { useState } from "react";
 import { FeedbackThread as FeedbackThreadType } from "@/lib/feedback";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Card } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 
 interface FeedbackThreadProps {
   thread: FeedbackThreadType;
@@ -25,7 +31,7 @@ export function FeedbackThread({
 
   const handleSubmitReply = async () => {
     if (!replyContent.trim()) return;
-    
+
     setIsSubmitting(true);
     try {
       await onAddComment(thread.id, replyContent);
@@ -62,30 +68,24 @@ export function FeedbackThread({
       : `Lines ${thread.startLine}-${thread.endLine}`;
 
   return (
-    <div
-      className={`
-        border rounded-lg overflow-hidden
-        ${isResolved ? "border-zinc-700 bg-zinc-900/50" : "border-zinc-700 bg-zinc-900"}
-      `}
+    <Card
+      className={cn(
+        "overflow-hidden",
+        isResolved && "opacity-75"
+      )}
     >
       {/* Thread Header */}
       <div
-        className={`
-          flex items-center justify-between px-4 py-3 cursor-pointer
-          hover:bg-zinc-800/50 transition-colors
-          ${isResolved ? "bg-zinc-800/30" : "bg-zinc-800/50"}
-        `}
+        className={cn(
+          "flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-zinc-800/50 transition-colors",
+          isResolved ? "bg-zinc-800/30" : "bg-zinc-800/50"
+        )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center gap-3">
-          <span
-            className={`
-              text-xs font-medium px-2 py-0.5 rounded-full
-              ${isResolved ? "bg-green-500/20 text-green-400" : "bg-blue-500/20 text-blue-400"}
-            `}
-          >
+          <Badge variant={isResolved ? "success" : "info"}>
             {isResolved ? "Resolved" : "Open"}
-          </span>
+          </Badge>
           <span className="text-xs text-zinc-500 font-mono">
             {lineRangeText}
           </span>
@@ -98,7 +98,7 @@ export function FeedbackThread({
             {formatDate(thread.createdAt)}
           </span>
           <svg
-            className={`w-4 h-4 text-zinc-500 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+            className={cn("w-4 h-4 text-zinc-500 transition-transform", isExpanded && "rotate-180")}
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -117,10 +117,10 @@ export function FeedbackThread({
               <div key={comment.id} className="flex gap-3">
                 {/* Avatar */}
                 <div
-                  className={`
-                    w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0
-                    ${comment.author === "user" ? "bg-blue-500/20" : "bg-purple-500/20"}
-                  `}
+                  className={cn(
+                    "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0",
+                    comment.author === "user" ? "bg-blue-500/20" : "bg-purple-500/20"
+                  )}
                 >
                   <span className="text-xs font-medium">
                     {comment.author === "user" ? "I" : "A"}
@@ -137,9 +137,9 @@ export function FeedbackThread({
                       {formatDate(comment.createdAt)}
                     </span>
                     {index === 0 && (
-                      <span className="text-xs text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded">
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                         Original
-                      </span>
+                      </Badge>
                     )}
                   </div>
                   <div className="text-sm text-zinc-300 whitespace-pre-wrap">
@@ -155,60 +155,72 @@ export function FeedbackThread({
             <>
               {showReplyForm ? (
                 <div className="mt-4 space-y-3">
-                  <textarea
+                  <Textarea
                     value={replyContent}
                     onChange={(e) => setReplyContent(e.target.value)}
                     placeholder="Add a reply..."
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 resize-y min-h-[80px]"
+                    className="min-h-[80px] resize-y"
                   />
                   <div className="flex items-center justify-end gap-2">
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setShowReplyForm(false)}
-                      className="px-3 py-1.5 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
                     >
                       Cancel
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      size="sm"
                       onClick={handleSubmitReply}
                       disabled={!replyContent.trim() || isSubmitting}
-                      className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-lg transition-colors"
                     >
                       {isSubmitting ? "Posting..." : "Reply"}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 pt-2 border-t border-zinc-800">
-                  <button
-                    onClick={() => setShowReplyForm(true)}
-                    className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
-                  >
-                    Reply
-                  </button>
-                  <span className="text-zinc-600">·</span>
-                  <button
-                    onClick={handleResolve}
-                    className="text-sm text-green-400 hover:text-green-300 transition-colors"
-                  >
-                    Resolve
-                  </button>
-                </div>
+                <>
+                  <Separator />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="link"
+                      size="sm"
+                      onClick={() => setShowReplyForm(true)}
+                      className="text-blue-400 hover:text-blue-300 p-0 h-auto"
+                    >
+                      Reply
+                    </Button>
+                    <span className="text-zinc-600">{"\u00B7"}</span>
+                    <Button
+                      variant="link"
+                      size="sm"
+                      onClick={handleResolve}
+                      className="text-green-400 hover:text-green-300 p-0 h-auto"
+                    >
+                      Resolve
+                    </Button>
+                  </div>
+                </>
               )}
             </>
           ) : (
             onReopenThread && (
-              <div className="flex items-center gap-2 pt-2 border-t border-zinc-800">
-                <button
-                  onClick={handleReopen}
-                  className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
-                >
-                  Reopen thread
-                </button>
-              </div>
+              <>
+                <Separator />
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleReopen}
+                  >
+                    Reopen thread
+                  </Button>
+                </div>
+              </>
             )
           )}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
