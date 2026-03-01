@@ -43,7 +43,6 @@ export function parseFrontMatter(content: string): { frontMatter: FrontMatter; b
   const lines = yamlText.split('\n');
   let currentKey: string | null = null;
   let currentArray: string[] = [];
-  let indentLevel = 0;
   
   for (const line of lines) {
     const trimmed = line.trim();

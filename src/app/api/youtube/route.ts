@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { spawn } from 'child_process';
 
 const VIDEOS_DIR = path.join(process.env.HOME || '/Users/ittaisvidler', 'tenxsolo/business/content/deliverables/youtube-videos');
 
@@ -14,12 +13,12 @@ function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
-function getVideoData(videoDir: string): Record<string, any> | null {
+function getVideoData(videoDir: string): Record<string, string> | null {
   const yamlPath = path.join(videoDir, 'video.yaml');
   if (!fs.existsSync(yamlPath)) return null;
   
   const content = fs.readFileSync(yamlPath, 'utf-8');
-  const data: Record<string, any> = {};
+  const data: Record<string, string> = {};
   
   content.split('\n').forEach(line => {
     const match = line.match(/^(\w+):\s*(.*)$/);
@@ -31,7 +30,7 @@ function getVideoData(videoDir: string): Record<string, any> | null {
   return data;
 }
 
-function saveVideoData(videoDir: string, data: Record<string, any>) {
+function saveVideoData(videoDir: string, data: Record<string, unknown>) {
   const yamlPath = path.join(videoDir, 'video.yaml');
   let content = '';
   
@@ -49,7 +48,7 @@ function saveVideoData(videoDir: string, data: Record<string, any>) {
 // GET /api/youtube - List all videos
 export async function GET() {
   try {
-    const videos: Array<{ id: string; created_at?: string; [key: string]: any }> = [];
+    const videos: Array<{ id: string; created_at?: string; [key: string]: unknown }> = [];
     
     if (fs.existsSync(VIDEOS_DIR)) {
       const dirs = fs.readdirSync(VIDEOS_DIR).filter(f => {
@@ -84,8 +83,9 @@ export async function GET() {
     videos.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
     
     return NextResponse.json({ success: true, data: videos });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
 
@@ -125,7 +125,8 @@ export async function POST(request: Request) {
     saveVideoData(videoDir, videoData);
     
     return NextResponse.json({ success: true, data: { id: slug, ...videoData } });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

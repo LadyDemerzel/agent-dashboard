@@ -13,12 +13,12 @@ interface ImageArtifact {
   description: string;
 }
 
-function getVideoData(videoDir: string): Record<string, any> | null {
+function getVideoData(videoDir: string): Record<string, string> | null {
   const yamlPath = path.join(videoDir, 'video.yaml');
   if (!fs.existsSync(yamlPath)) return null;
 
   const content = fs.readFileSync(yamlPath, 'utf-8');
-  const data: Record<string, any> = {};
+  const data: Record<string, string> = {};
 
   content.split('\n').forEach(line => {
     const match = line.match(/^(\w+):\s*(.*)$/);
@@ -118,7 +118,7 @@ export async function GET(
 
     const images = collectImages(id, videoDir);
 
-    const video: Record<string, any> = {
+    const video: Record<string, unknown> = {
       id,
       title: id,
       topic: '',
@@ -153,7 +153,8 @@ export async function GET(
     }
 
     return NextResponse.json({ success: true, data: video });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
