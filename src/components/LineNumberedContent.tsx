@@ -15,6 +15,10 @@ interface LineNumberedContentProps {
   onAddComment?: (threadId: string, content: string) => void;
   onResolveThread?: (threadId: string) => void;
   onReopenThread?: (threadId: string) => void;
+  onHideThread?: (threadId: string) => void;
+  onShowThread?: (threadId: string) => void;
+  hiddenThreadIds?: Set<string>;
+  showHiddenThreads?: boolean;
   onCreateThread?: (startLine: number, endLine: number, content: string) => void;
   isCreatingThread?: boolean;
   setIsCreatingThread?: (value: boolean) => void;
@@ -32,6 +36,10 @@ export function LineNumberedContent({
   onAddComment,
   onResolveThread,
   onReopenThread,
+  onHideThread,
+  onShowThread,
+  hiddenThreadIds = new Set(),
+  showHiddenThreads = false,
   onCreateThread,
   isCreatingThread = false,
   setIsCreatingThread,
@@ -56,13 +64,13 @@ export function LineNumberedContent({
     return Math.max(2.5, 1.5 + digits * 0.6);
   }, [lines.length]);
 
-  // Filter inline threads (threads with line numbers)
+  // Filter inline threads (threads with line numbers) - excluding hidden ones
   const inlineThreads = useMemo(() => {
     return threads.filter(
       (t): t is FeedbackThreadType & { startLine: number; endLine: number } =>
-        t.startLine !== null && t.endLine !== null
+        t.startLine !== null && t.endLine !== null && !hiddenThreadIds.has(t.id)
     );
-  }, [threads]);
+  }, [threads, hiddenThreadIds]);
 
   // Group threads by the line they should appear after (endLine)
   const threadsByEndLine = useMemo(() => {
@@ -76,6 +84,21 @@ export function LineNumberedContent({
     });
     return map;
   }, [inlineThreads]);
+
+  // Group hidden threads by line range
+  const hiddenThreadsByEndLine = useMemo(() => {
+    const map = new Map<number, FeedbackThreadType[]>();
+    threads
+      .filter((t) => t.startLine !== null && t.endLine !== null && hiddenThreadIds.has(t.id))
+      .forEach((thread) => {
+        const key = thread.endLine!;
+        if (!map.has(key)) {
+          map.set(key, []);
+        }
+        map.get(key)!.push(thread);
+      });
+    return map;
+  }, [threads, hiddenThreadIds]);
 
   // Check if there's a new thread form to show after a line
   const isNewThreadAfterLine = (lineNumber: number): boolean => {
@@ -440,9 +463,46 @@ export function LineNumberedContent({
                         onAddComment={onAddComment}
                         onResolveThread={onResolveThread}
                         onReopenThread={onReopenThread}
+                        onHideThread={onHideThread}
                         isActive={activeThreadId === thread.id}
                         onActivate={() => setActiveThreadId?.(thread.id)}
                       />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Hidden inline threads - shown below their line range when toggle is on */}
+            {showHiddenThreads && hiddenThreadsByEndLine.has(lineNumber) && (
+              <div className="flex">
+                <div
+                  className="border-r border-zinc-800 flex-shrink-0 bg-zinc-950"
+                  style={{ width: `${gutterWidth}rem`, minWidth: `${gutterWidth}rem` }}
+                />
+                <div className="flex-1 pl-4 py-2">
+                  <div className="space-y-2">
+                    {hiddenThreadsByEndLine.get(lineNumber)?.map((thread) => (
+                      <div
+                        key={thread.id}
+                        className="flex items-center justify-between px-3 py-2 bg-zinc-800/30 border border-zinc-700/50 rounded-lg"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono text-zinc-500">
+                            Lines {thread.startLine}-{thread.endLine}
+                          </span>
+                          <span className="text-xs text-zinc-600">
+                            {thread.comments[0]?.content.substring(0, 30)}
+                            {thread.comments[0]?.content.length > 30 ? "..." : ""}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => onShowThread?.(thread.id)}
+                          className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                        >
+                          Show
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </div>

@@ -48,16 +48,17 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> =
   };
 
 export function StatusBadge({ status }: { status: string }) {
-  const style = STATUS_STYLES[status] || STATUS_STYLES.idle;
+  const safeStatus = status || 'draft';
+  const style = STATUS_STYLES[safeStatus] || STATUS_STYLES.idle;
 
   return (
     <span
       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${style.bg} ${style.text}`}
     >
       <span
-        className={`w-1.5 h-1.5 rounded-full ${style.dot} ${status === "working" ? "animate-pulse" : ""}`}
+        className={`w-1.5 h-1.5 rounded-full ${style.dot} ${safeStatus === "working" ? "animate-pulse" : ""}`}
       />
-      {status.replace(/\b\w/g, (c) => c.toUpperCase())}
+      {safeStatus.replace(/\b\w/g, (c) => c.toUpperCase())}
     </span>
   );
 }

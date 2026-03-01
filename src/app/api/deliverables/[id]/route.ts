@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getXPost, getFeedbackForPost } from "@/lib/xposts";
+import { getDeliverables } from "@/lib/files";
 import fs from "fs";
 import path from "path";
 
@@ -11,31 +11,19 @@ const BUSINESS_ROOT = path.join(
 
 export const dynamic = "force-dynamic";
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
-  const post = getXPost(id);
-
-  if (!post) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
-  const feedback = getFeedbackForPost(post.postNumber);
-
-  return NextResponse.json({ ...post, feedback });
-}
-
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const post = getXPost(id);
+  const deliverables = getDeliverables();
+  const deliverable = deliverables.find((d) => d.id === id);
 
-  if (!post) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!deliverable) {
+    return NextResponse.json(
+      { error: "Deliverable not found" },
+      { status: 404 }
+    );
   }
 
   const body = await request.json();
@@ -48,7 +36,7 @@ export async function PATCH(
     );
   }
 
-  const filePath = path.join(BUSINESS_ROOT, post.filePath);
+  const filePath = path.join(BUSINESS_ROOT, deliverable.relativePath);
 
   if (!fs.existsSync(filePath)) {
     return NextResponse.json(
@@ -64,9 +52,9 @@ export async function PATCH(
       updatedAt: new Date().toISOString(),
     });
   } catch (error) {
-    console.error("Failed to update X-Post:", error);
+    console.error("Failed to update deliverable:", error);
     return NextResponse.json(
-      { error: "Failed to update X-Post" },
+      { error: "Failed to update deliverable" },
       { status: 500 }
     );
   }

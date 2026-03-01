@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { FeedbackThread as FeedbackThreadType } from "@/lib/feedback";
 
 interface TopLevelCommentsProps {
@@ -10,6 +10,10 @@ interface TopLevelCommentsProps {
   onResolveThread: (threadId: string) => void;
   onReopenThread: (threadId: string) => void;
   onCreateThread: (content: string) => void;
+  onHideThread?: (threadId: string) => void;
+  hiddenThreadIds?: Set<string>;
+  showHiddenThreads?: boolean;
+  setShowHiddenThreads?: (show: boolean) => void;
 }
 
 export function TopLevelComments({
@@ -19,18 +23,30 @@ export function TopLevelComments({
   onResolveThread,
   onReopenThread,
   onCreateThread,
+  onHideThread,
+  hiddenThreadIds = new Set(),
+  showHiddenThreads = false,
+  setShowHiddenThreads,
 }: TopLevelCommentsProps) {
   const [showNewThreadForm, setShowNewThreadForm] = useState(false);
   const [newThreadContent, setNewThreadContent] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleHideThread = (threadId: string) => {
+    onHideThread?.(threadId);
+  };
 
   // Filter only top-level threads (no line numbers)
   const topLevelThreads = threads.filter(
     (t) => t.startLine === null || t.endLine === null
   );
 
-  const openThreads = topLevelThreads.filter((t) => t.status === "open");
-  const resolvedThreads = topLevelThreads.filter((t) => t.status === "resolved");
+  // Filter hidden threads based on toggle state
+  const visibleThreads = topLevelThreads.filter((t) => !hiddenThreadIds.has(t.id));
+  const hiddenCount = topLevelThreads.filter((t) => hiddenThreadIds.has(t.id)).length;
+
+  const openThreads = visibleThreads.filter((t) => t.status === "open");
+  const resolvedThreads = visibleThreads.filter((t) => t.status === "resolved");
 
   const handleCreateThread = async () => {
     if (!newThreadContent.trim()) return;
@@ -54,6 +70,18 @@ export function TopLevelComments({
             Discussion
           </h2>
           <div className="flex items-center gap-2">
+            {hiddenCount > 0 && (
+              <button
+                onClick={() => setShowHiddenThreads?.(!showHiddenThreads)}
+                className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                {showHiddenThreads ? "Hide" : "Show"} hidden ({hiddenCount})
+              </button>
+            )}
             {openThreads.length > 0 && (
               <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">
                 {openThreads.length} open
@@ -143,6 +171,7 @@ export function TopLevelComments({
                     onAddComment={onAddComment}
                     onResolveThread={onResolveThread}
                     onReopenThread={onReopenThread}
+                    onHideThread={handleHideThread}
                   />
                 ))}
               </div>
@@ -163,9 +192,43 @@ export function TopLevelComments({
                     onAddComment={onAddComment}
                     onResolveThread={onResolveThread}
                     onReopenThread={onReopenThread}
+                    onHideThread={handleHideThread}
                     isResolved
                   />
                 ))}
+              </div>
+            )}
+
+            {/* Hidden Threads Section */}
+            {showHiddenThreads && hiddenCount > 0 && (
+              <div className="space-y-3 pt-4">
+                <div className="flex items-center gap-2 pt-2 border-t border-zinc-800">
+                  <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                    Hidden
+                  </h3>
+                  <span className="text-xs text-zinc-500">({hiddenCount})</span>
+                </div>
+                {topLevelThreads
+                  .filter((t) => hiddenThreadIds.has(t.id))
+                  .map((thread) => (
+                    <div
+                      key={thread.id}
+                      className="flex items-center justify-between px-3 py-2 bg-zinc-800/30 border border-zinc-700/50 rounded-lg"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-zinc-500">
+                          {thread.comments[0]?.content.substring(0, 50)}
+                          {thread.comments[0]?.content.length > 50 ? "..." : ""}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleHideThread(thread.id)}
+                        className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                      >
+                        Show
+                      </button>
+                    </div>
+                  ))}
               </div>
             )}
           </div>
@@ -180,6 +243,7 @@ interface TopLevelThreadCardProps {
   onAddComment: (threadId: string, content: string) => void;
   onResolveThread: (threadId: string) => void;
   onReopenThread: (threadId: string) => void;
+  onHideThread: (threadId: string) => void;
   isResolved?: boolean;
 }
 
@@ -188,6 +252,7 @@ function TopLevelThreadCard({
   onAddComment,
   onResolveThread,
   onReopenThread,
+  onHideThread,
   isResolved = false,
 }: TopLevelThreadCardProps) {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -368,6 +433,14 @@ function TopLevelThreadCard({
                   >
                     Resolve
                   </button>
+                  <span className="text-zinc-600">·</span>
+                  <button
+                    onClick={() => onHideThread(thread.id)}
+                    className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                    title="Hide this thread"
+                  >
+                    Hide
+                  </button>
                 </div>
               )}
             </>
@@ -378,6 +451,14 @@ function TopLevelThreadCard({
                 className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
               >
                 Reopen thread
+              </button>
+              <span className="text-zinc-600">·</span>
+              <button
+                onClick={() => onHideThread(thread.id)}
+                className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                title="Hide this thread"
+              >
+                Hide
               </button>
             </div>
           )}

@@ -78,6 +78,19 @@ function extractSection(content: string, heading: string): string {
   return match ? match[1].trim() : "";
 }
 
+// Extract content - if no ## Content section exists, use the entire body
+// (minus the title heading if present) as the content
+function extractContent(body: string): string {
+  // First try to find ## Content section
+  const contentSection = extractSection(body, "Content");
+  if (contentSection) return contentSection;
+  
+  // If no ## Content section, use the whole body minus the title heading
+  // Remove the # Title line if it exists at the start
+  const withoutTitle = body.replace(/^#\s+.+$/m, "").trim();
+  return withoutTitle || body;
+}
+
 function extractTitle(content: string, frontMatter?: FrontMatter): string {
   if (frontMatter?.title) return frontMatter.title;
   
@@ -118,7 +131,7 @@ export function getXPosts(): XPost[] {
         date: dateDir.name,
         postNumber,
         status: normalizeStatus(frontMatter?.status),
-        content: extractSection(body, "Content"),
+        content: extractContent(body),
         suggestedTime: frontMatter?.suggestedTime || extractField(body, "Suggested Time"),
         category: frontMatter?.category || extractField(body, "Category"),
         engagementStrategy: frontMatter?.engagementStrategy || extractSection(body, "Engagement Strategy"),

@@ -8,6 +8,7 @@ interface InlineFeedbackThreadProps {
   onAddComment?: (threadId: string, content: string) => void;
   onResolveThread?: (threadId: string) => void;
   onReopenThread?: (threadId: string) => void;
+  onHideThread?: (threadId: string) => void;
   isActive?: boolean;
   onActivate?: () => void;
 }
@@ -17,6 +18,7 @@ export function InlineFeedbackThread({
   onAddComment,
   onResolveThread,
   onReopenThread,
+  onHideThread,
   isActive = false,
   onActivate,
 }: InlineFeedbackThreadProps) {
@@ -219,6 +221,14 @@ export function InlineFeedbackThread({
                   >
                     Resolve
                   </button>
+                  <span className="text-zinc-600">·</span>
+                  <button
+                    onClick={() => onHideThread?.(thread.id)}
+                    className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                    title="Hide this thread"
+                  >
+                    Hide
+                  </button>
                 </div>
               )}
             </>
@@ -230,6 +240,14 @@ export function InlineFeedbackThread({
                   className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
                 >
                   Reopen thread
+                </button>
+                <span className="text-zinc-600">·</span>
+                <button
+                  onClick={() => onHideThread?.(thread.id)}
+                  className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                  title="Hide this thread"
+                >
+                  Hide
                 </button>
               </div>
             )

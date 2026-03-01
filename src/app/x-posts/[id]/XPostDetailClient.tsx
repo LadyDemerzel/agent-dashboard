@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { StatusBadge } from "@/components/StatusBadge";
 import { LineNumberedContent } from "@/components/LineNumberedContent";
 import { TopLevelComments } from "@/components/TopLevelComments";
@@ -55,9 +57,62 @@ export function XPostDetailClient({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Edit mode state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(post.content);
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Hidden threads state (unified for top-level and inline)
+  const [hiddenThreads, setHiddenThreads] = useState<Set<string>>(new Set());
+  const [showHiddenThreads, setShowHiddenThreads] = useState(false);
+
+  // Load hidden threads from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`hidden-threads-xposts-${post.id}`);
+      if (stored) {
+        setHiddenThreads(new Set(JSON.parse(stored)));
+      }
+    } catch { /* ignore */ }
+  }, [post.id]);
+
+  // Save hidden threads to localStorage
+  const saveHiddenThreads = (newHidden: Set<string>) => {
+    setHiddenThreads(newHidden);
+    try {
+      localStorage.setItem(
+        `hidden-threads-xposts-${post.id}`,
+        JSON.stringify([...newHidden])
+      );
+    } catch { /* ignore */ }
+  };
+
+  const handleHideThread = (threadId: string) => {
+    const newHidden = new Set(hiddenThreads);
+    if (newHidden.has(threadId)) {
+      newHidden.delete(threadId);
+    } else {
+      newHidden.add(threadId);
+    }
+    saveHiddenThreads(newHidden);
+  };
+
+  // Filter out hidden threads
+  const visibleThreads = threads.filter((t) => !hiddenThreads.has(t.id));
+  const visibleHighlightLines = visibleThreads
+    .filter((t) => t.status === "open" && t.startLine !== null && t.endLine !== null)
+    .map((t) => ({
+      startLine: t.startLine!,
+      endLine: t.endLine!,
+      color: "bg-amber-500/15",
+    }));
+
+  const hiddenCount = threads.filter((t) => hiddenThreads.has(t.id)).length;
+
   // Version/Diff state
   type ViewMode = "content" | "changes";
   const [viewMode, setViewMode] = useState<ViewMode>("content");
+  const [contentDisplayMode, setContentDisplayMode] = useState<"raw" | "rendered">("raw");
   const [versions, setVersions] = useState<Array<{ version: number; timestamp: string; updatedBy: string; comment?: string }>>([]);
   const [currentVersion, setCurrentVersion] = useState(0);
   const [compareVersion, setCompareVersion] = useState<number | undefined>(undefined);
@@ -258,15 +313,6 @@ ${post.hashtags || "None"}`;
 
   const openThreadsCount = threads.filter((t) => t.status === "open").length;
 
-  // Prepare highlight lines from inline threads only
-  const highlightLines = threads
-    .filter((t) => t.status === "open" && t.startLine !== null && t.endLine !== null)
-    .map((t) => ({
-      startLine: t.startLine!,
-      endLine: t.endLine!,
-      color: "bg-amber-500/15",
-    }));
-
   const handleDelete = async () => {
     setDeleting(true);
     try {
@@ -276,6 +322,32 @@ ${post.hashtags || "None"}`;
       }
     } catch { /* ignore */ }
     setDeleting(false);
+  };
+
+  // Handle edit save
+  const handleSaveEdit = async () => {
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`/api/x-posts/${post.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editContent }),
+      });
+
+      if (res.ok) {
+        setIsEditing(false);
+        router.refresh();
+      }
+    } catch (error) {
+      console.error("Failed to save edit:", error);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditContent(post.content);
   };
 
   const formatDate = (dateString: string) => {
@@ -338,13 +410,42 @@ ${post.hashtags || "None"}`;
                 <option value="published">Published</option>
                 <option value="archived">Archived</option>
               </select>
-              <div className="ml-auto">
-                <button
-                  onClick={() => setShowDeleteConfirm(true)}
-                  className="text-zinc-500 hover:text-red-400 text-sm transition-colors"
-                >
-                  Delete
-                </button>
+              <div className="ml-auto flex items-center gap-3">
+                {isEditing ? (
+                  <>
+                    <button
+                      onClick={handleCancelEdit}
+                      className="text-zinc-500 hover:text-white text-sm transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveEdit}
+                      disabled={savingEdit}
+                      className="text-emerald-400 hover:text-emerald-300 text-sm transition-colors disabled:opacity-50"
+                    >
+                      {savingEdit ? "Saving..." : "Save"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => {
+                        setEditContent(post.content);
+                        setIsEditing(true);
+                      }}
+                      className="text-zinc-500 hover:text-white text-sm transition-colors"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="text-zinc-500 hover:text-red-400 text-sm transition-colors"
+                    >
+                      Delete
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -373,28 +474,68 @@ ${post.hashtags || "None"}`;
               >
                 Changes {versions.length >= 2 && `(${versions.length})`}
               </button>
-              {viewMode === "content" && selectedRange && (
-                <div className="flex items-center gap-3 ml-auto">
-                  <span className="text-xs text-zinc-500">
-                    Selected{" "}
-                    {selectedRange.startLine === selectedRange.endLine
-                      ? `line ${selectedRange.startLine}`
-                      : `lines ${selectedRange.startLine}-${selectedRange.endLine}`}
-                  </span>
+
+              {/* Raw/Rendered Toggle and Selection Info */}
+              <div className="flex items-center gap-3 ml-auto">
+                {hiddenCount > 0 && (
                   <button
-                    onClick={() => setIsCreatingThread(true)}
-                    className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg transition-colors"
+                    onClick={() => setShowHiddenThreads(!showHiddenThreads)}
+                    className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1"
                   >
-                    Add Comment
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    {showHiddenThreads ? "Hide" : "Show"} hidden ({hiddenCount})
                   </button>
-                  <button
-                    onClick={() => setSelectedRange(null)}
-                    className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-                  >
-                    Clear
-                  </button>
-                </div>
-              )}
+                )}
+                {viewMode === "content" && (
+                  <div className="flex items-center bg-zinc-950 border border-zinc-700 rounded-lg p-1">
+                    <button
+                      onClick={() => setContentDisplayMode("raw")}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                        contentDisplayMode === "raw"
+                          ? "bg-indigo-600 text-white shadow-sm"
+                          : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                      }`}
+                    >
+                      Raw
+                    </button>
+                    <button
+                      onClick={() => setContentDisplayMode("rendered")}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                        contentDisplayMode === "rendered"
+                          ? "bg-indigo-600 text-white shadow-sm"
+                          : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                      }`}
+                    >
+                      Rendered
+                    </button>
+                  </div>
+                )}
+                {viewMode === "content" && selectedRange && (
+                  <>
+                    <span className="text-xs text-zinc-500">
+                      Selected{" "}
+                      {selectedRange.startLine === selectedRange.endLine
+                        ? `line ${selectedRange.startLine}`
+                        : `lines ${selectedRange.startLine}-${selectedRange.endLine}`}
+                    </span>
+                    <button
+                      onClick={() => setIsCreatingThread(true)}
+                      className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      Add Comment
+                    </button>
+                    <button
+                      onClick={() => setSelectedRange(null)}
+                      className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                    >
+                      Clear
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Content View */}
@@ -403,22 +544,66 @@ ${post.hashtags || "None"}`;
                 {loading ? (
                   <p className="text-zinc-500 text-sm p-6">Loading...</p>
                 ) : (
-                  <div className="bg-zinc-950 p-4">
-                    <LineNumberedContent
-                      content={fullContent}
-                      onLineRangeSelect={handleLineRangeSelect}
-                      selectedRange={selectedRange}
-                      highlightLines={highlightLines}
-                      threads={threads}
-                      onAddComment={handleAddComment}
-                      onResolveThread={handleResolveThread}
-                      onReopenThread={handleReopenThread}
-                      onCreateThread={handleCreateThread}
-                      isCreatingThread={isCreatingThread}
-                      setIsCreatingThread={setIsCreatingThread}
-                      activeThreadId={activeThreadId}
-                      setActiveThreadId={setActiveThreadId}
-                    />
+                  <div className="bg-zinc-950">
+                    {/* Edit Mode */}
+                    {isEditing ? (
+                      <div className="p-4">
+                        <textarea
+                          value={editContent}
+                          onChange={(e) => setEditContent(e.target.value)}
+                          className="w-full h-[500px] bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-3 text-sm text-zinc-200 font-mono focus:outline-none focus:border-zinc-500 resize-y"
+                          spellCheck={false}
+                        />
+                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-zinc-800">
+                          <span className="text-xs text-zinc-500">
+                            Editing directly - click Save to persist changes
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={handleCancelEdit}
+                              className="px-3 py-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={handleSaveEdit}
+                              disabled={savingEdit}
+                              className="px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-lg transition-colors"
+                            >
+                              {savingEdit ? "Saving..." : "Save Changes"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : contentDisplayMode === "raw" ? (
+                      <div className="p-4">
+                        <LineNumberedContent
+                          content={fullContent}
+                          onLineRangeSelect={handleLineRangeSelect}
+                          selectedRange={selectedRange}
+                          highlightLines={visibleHighlightLines}
+                          threads={threads}
+                          onAddComment={handleAddComment}
+                          onResolveThread={handleResolveThread}
+                          onReopenThread={handleReopenThread}
+                          onHideThread={handleHideThread}
+                          onShowThread={handleHideThread}
+                          hiddenThreadIds={hiddenThreads}
+                          showHiddenThreads={showHiddenThreads}
+                          onCreateThread={handleCreateThread}
+                          isCreatingThread={isCreatingThread}
+                          setIsCreatingThread={setIsCreatingThread}
+                          activeThreadId={activeThreadId}
+                          setActiveThreadId={setActiveThreadId}
+                        />
+                      </div>
+                    ) : (
+                      <div className="p-8 prose prose-invert prose-zinc max-w-none">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {fullContent}
+                        </ReactMarkdown>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -545,6 +730,10 @@ ${post.hashtags || "None"}`;
             onResolveThread={handleResolveThread}
             onReopenThread={handleReopenThread}
             onCreateThread={handleCreateTopLevelThread}
+            onHideThread={handleHideThread}
+            hiddenThreadIds={hiddenThreads}
+            showHiddenThreads={showHiddenThreads}
+            setShowHiddenThreads={setShowHiddenThreads}
           />
         </div>
       </div>

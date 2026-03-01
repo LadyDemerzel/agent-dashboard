@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { StatusBadge } from "@/components/StatusBadge";
 import { LineNumberedContent } from "@/components/LineNumberedContent";
 import { TopLevelComments } from "@/components/TopLevelComments";
@@ -55,6 +57,7 @@ export function ResearchDetailClient({
   // Version/Diff state
   type ViewMode = "content" | "changes";
   const [viewMode, setViewMode] = useState<ViewMode>("content");
+  const [contentDisplayMode, setContentDisplayMode] = useState<"raw" | "rendered">("raw");
   const [versions, setVersions] = useState<Array<{ version: number; timestamp: string; updatedBy: string; comment?: string }>>([]);
   const [currentVersion, setCurrentVersion] = useState(0);
   const [compareVersion, setCompareVersion] = useState<number | undefined>(undefined);
@@ -337,50 +340,88 @@ export function ResearchDetailClient({
               >
                 Changes {versions.length >= 2 && `(${versions.length})`}
               </button>
-              {viewMode === "content" && selectedRange && (
-                <div className="flex items-center gap-3 ml-auto">
-                  <span className="text-xs text-zinc-500">
-                    Selected{" "}
-                    {selectedRange.startLine === selectedRange.endLine
-                      ? `line ${selectedRange.startLine}`
-                      : `lines ${selectedRange.startLine}-${selectedRange.endLine}`}
-                  </span>
-                  <button
-                    onClick={() => setIsCreatingThread(true)}
-                    className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg transition-colors"
-                  >
-                    Add Comment
-                  </button>
-                  <button
-                    onClick={() => setSelectedRange(null)}
-                    className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-                  >
-                    Clear
-                  </button>
-                </div>
-              )}
+              
+              {/* Raw/Rendered Toggle */}
+              <div className="flex items-center gap-3 ml-auto">
+                {viewMode === "content" && (
+                  <div className="flex items-center bg-zinc-950 border border-zinc-700 rounded-lg p-1">
+                    <button
+                      onClick={() => setContentDisplayMode("raw")}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                        contentDisplayMode === "raw"
+                          ? "bg-indigo-600 text-white shadow-sm"
+                          : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                      }`}
+                    >
+                      Raw
+                    </button>
+                    <button
+                      onClick={() => setContentDisplayMode("rendered")}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                        contentDisplayMode === "rendered"
+                          ? "bg-indigo-600 text-white shadow-sm"
+                          : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                      }`}
+                    >
+                      Rendered
+                    </button>
+                  </div>
+                )}
+                {viewMode === "content" && selectedRange && (
+                  <>
+                    <span className="text-xs text-zinc-500">
+                      Selected{" "}
+                      {selectedRange.startLine === selectedRange.endLine
+                        ? `line ${selectedRange.startLine}`
+                        : `lines ${selectedRange.startLine}-${selectedRange.endLine}`}
+                    </span>
+                    <button
+                      onClick={() => setIsCreatingThread(true)}
+                      className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      Add Comment
+                    </button>
+                    <button
+                      onClick={() => setSelectedRange(null)}
+                      className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                    >
+                      Clear
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Content View */}
             {viewMode === "content" && (
               <div className="p-0">
                 {content ? (
-                  <div className="bg-zinc-950 p-4">
-                    <LineNumberedContent
-                      content={content}
-                      onLineRangeSelect={handleLineRangeSelect}
-                      selectedRange={selectedRange}
-                      highlightLines={highlightLines}
-                      threads={threads}
-                      onAddComment={handleAddComment}
-                      onResolveThread={handleResolveThread}
-                      onReopenThread={handleReopenThread}
-                      onCreateThread={handleCreateThread}
-                      isCreatingThread={isCreatingThread}
-                      setIsCreatingThread={setIsCreatingThread}
-                      activeThreadId={activeThreadId}
-                      setActiveThreadId={setActiveThreadId}
-                    />
+                  <div className="bg-zinc-950">
+                    {contentDisplayMode === "raw" ? (
+                      <div className="p-4">
+                        <LineNumberedContent
+                          content={content}
+                          onLineRangeSelect={handleLineRangeSelect}
+                          selectedRange={selectedRange}
+                          highlightLines={highlightLines}
+                          threads={threads}
+                          onAddComment={handleAddComment}
+                          onResolveThread={handleResolveThread}
+                          onReopenThread={handleReopenThread}
+                          onCreateThread={handleCreateThread}
+                          isCreatingThread={isCreatingThread}
+                          setIsCreatingThread={setIsCreatingThread}
+                          activeThreadId={activeThreadId}
+                          setActiveThreadId={setActiveThreadId}
+                        />
+                      </div>
+                    ) : (
+                      <div className="p-8 prose prose-invert prose-zinc max-w-none">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {content}
+                        </ReactMarkdown>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <p className="text-zinc-500 text-sm p-6">
