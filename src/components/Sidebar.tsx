@@ -172,7 +172,7 @@ export function Sidebar() {
                     : "text-muted-foreground hover:text-foreground hover:bg-card"
                 )}
               >
-                <span className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-muted">
+                <span className="inline-flex h-6 w-6 items-center justify-center">
                   {item.icon}
                 </span>
                 {item.label}
