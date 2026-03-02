@@ -23,7 +23,7 @@ export function buildTimelineEvents(
     id: d.id,
     agentId: d.agentId,
     agentName: d.agentName,
-    agentIcon: agentIcons[d.agentId] || "📄",
+    agentIcon: agentIcons[d.agentId] || "Doc",
     action: statusToAction(d.status),
     detail: d.title,
     timestamp: d.updatedAt,

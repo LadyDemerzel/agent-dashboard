@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { AgentStatus } from "./AgentStatus";
+import { Card } from "@/components/ui/card";
 
 interface AgentCardProps {
   id: string;
@@ -32,7 +33,7 @@ export function AgentCard({
 
   return (
     <Link href={`/agents/${id}`}>
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 hover:border-zinc-600 transition-colors cursor-pointer group">
+      <Card className="p-5 group cursor-pointer transition-all duration-200 hover:border-ring/70 hover:bg-muted/80">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
             <div
@@ -42,24 +43,24 @@ export function AgentCard({
               {icon}
             </div>
             <div>
-              <h3 className="text-white font-semibold group-hover:text-zinc-200">
+              <h3 className="text-foreground font-semibold group-hover:text-foreground">
                 {name}
               </h3>
-              <p className="text-zinc-500 text-sm">{domain}</p>
+              <p className="text-muted-foreground text-sm">{domain}</p>
             </div>
           </div>
           <AgentStatus agentId={id} size="sm" />
         </div>
 
-        <p className="text-zinc-400 text-sm mb-4 line-clamp-2">
+        <p className="text-muted-foreground text-sm mb-4 line-clamp-2">
           {currentTask || description}
         </p>
 
-        <div className="flex items-center justify-between text-xs text-zinc-500">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>{deliverableCount} deliverables</span>
           <span>{timeAgo}</span>
         </div>
-      </div>
+      </Card>
     </Link>
   );
 }

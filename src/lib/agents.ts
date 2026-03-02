@@ -26,7 +26,7 @@ export const AGENTS: Agent[] = [
     description:
       "Monitor X for AI agent/solopreneur trends, viral posts, pain points, and opportunities.",
     color: "#6366f1",
-    icon: "📡",
+    icon: "EC",
     sendsTo: ["oracle", "scribe"],
     receivesFrom: ["oracle"],
   },
@@ -41,7 +41,7 @@ export const AGENTS: Agent[] = [
     description:
       "Build paywalled skills, tools, MCP servers, and the agent platform.",
     color: "#10b981",
-    icon: "🔧",
+    icon: "RA",
     sendsTo: ["clerk", "oracle"],
     receivesFrom: ["oracle", "clerk"],
   },
@@ -56,7 +56,7 @@ export const AGENTS: Agent[] = [
     description:
       "Create newsletter, X posts, and articles that attract and retain subscribers.",
     color: "#f59e0b",
-    icon: "✍️",
+    icon: "SC",
     sendsTo: ["demerzel", "clerk"],
     receivesFrom: ["echo", "oracle"],
   },
@@ -71,7 +71,7 @@ export const AGENTS: Agent[] = [
     description:
       "Decide what to build based on research and market opportunities.",
     color: "#8b5cf6",
-    icon: "🔮",
+    icon: "OR",
     sendsTo: ["ralph", "scribe", "echo"],
     receivesFrom: ["echo", "ralph", "demerzel"],
   },
@@ -86,7 +86,7 @@ export const AGENTS: Agent[] = [
     description:
       "Manage payments, authentication, deployment, analytics, and business operations.",
     color: "#ef4444",
-    icon: "📋",
+    icon: "CL",
     sendsTo: ["demerzel", "oracle"],
     receivesFrom: ["ralph", "scribe", "demerzel"],
   },
@@ -101,7 +101,7 @@ export const AGENTS: Agent[] = [
     description:
       "Coordinate the agent team and manage cross-agent workflows.",
     color: "#ec4899",
-    icon: "🎯",
+    icon: "DM",
     sendsTo: ["oracle", "ralph", "scribe", "clerk", "echo"],
     receivesFrom: ["oracle", "ralph", "scribe", "clerk", "echo"],
   },

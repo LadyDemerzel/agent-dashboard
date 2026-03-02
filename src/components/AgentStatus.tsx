@@ -22,8 +22,8 @@ const STATUS_STYLES: Record<
   { bg: string; text: string; dot: string }
 > = {
   idle: {
-    bg: "bg-zinc-800",
-    text: "text-zinc-400",
+    bg: "bg-muted",
+    text: "text-muted-foreground",
     dot: "bg-zinc-500",
   },
   working: {
@@ -80,7 +80,7 @@ export function AgentStatus({
         {statusData.status.replace(/\b\w/g, (c) => c.toUpperCase())}
       </span>
       {showTask && statusData.currentTask && (
-        <p className="text-xs text-zinc-400 truncate max-w-[200px]">
+        <p className="text-xs text-muted-foreground truncate max-w-[200px]">
           {statusData.currentTask}
         </p>
       )}
@@ -114,7 +114,7 @@ export function AgentStatusStatic({
         {status.replace(/\b\w/g, (c) => c.toUpperCase())}
       </span>
       {showTask && currentTask && (
-        <p className="text-xs text-zinc-400 truncate max-w-[200px]">
+        <p className="text-xs text-muted-foreground truncate max-w-[200px]">
           {currentTask}
         </p>
       )}

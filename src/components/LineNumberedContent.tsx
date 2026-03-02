@@ -378,17 +378,17 @@ export function LineNumberedContent({
                 data-line-number={lineNumber}
                 className={`
                   select-none text-right pr-4 pl-2 py-0.5
-                  text-zinc-600 text-xs cursor-pointer
-                  hover:text-zinc-400 hover:bg-zinc-800/50
-                  border-r border-zinc-800
+                  text-muted-foreground text-xs cursor-pointer
+                  hover:text-muted-foreground hover:bg-muted/50
+                  border-r border-border
                   flex-shrink-0
                   sticky left-0
-                  bg-zinc-950
+                  bg-background
                   transition-colors
                   touch-action-none
-                  ${inDragSelection ? "bg-zinc-800" : ""}
+                  ${inDragSelection ? "bg-muted" : ""}
                   ${inConfirmedSelection ? "bg-zinc-700" : ""}
-                  ${highlightColor ? "bg-zinc-900/50" : ""}
+                  ${highlightColor ? "bg-muted/50" : ""}
                 `}
                 style={{ width: `${gutterWidth}rem`, minWidth: `${gutterWidth}rem` }}
                 onMouseDown={(e) => handleLineNumberMouseDown(lineNumber, e)}
@@ -400,7 +400,7 @@ export function LineNumberedContent({
               </div>
               
               {/* Line content - with wrapping */}
-              <div className="pl-4 py-0.5 text-zinc-300 whitespace-pre-wrap break-all flex-1 min-w-0">
+              <div className="pl-4 py-0.5 text-foreground whitespace-pre-wrap break-all flex-1 min-w-0">
                 {line || "\u00A0"}
               </div>
             </div>
@@ -409,12 +409,12 @@ export function LineNumberedContent({
             {showNewThreadForm && (
               <div className="flex">
                 <div
-                  className="border-r border-zinc-800 flex-shrink-0 bg-zinc-950"
+                  className="border-r border-border flex-shrink-0 bg-background"
                   style={{ width: `${gutterWidth}rem`, minWidth: `${gutterWidth}rem` }}
                 />
-                <div className="flex-1 pl-4 py-3 border-l-2 border-l-blue-500 bg-zinc-900/50">
+                <div className="flex-1 pl-4 py-3 border-l-2 border-l-blue-500 bg-muted/50">
                   <div className="mb-2">
-                    <span className="text-xs text-zinc-500">
+                    <span className="text-xs text-muted-foreground">
                       Commenting on{" "}
                       {selectedRange!.startLine === selectedRange!.endLine
                         ? `line ${selectedRange!.startLine}`
@@ -426,19 +426,19 @@ export function LineNumberedContent({
                     onChange={(e) => setNewThreadContent(e.target.value)}
                     placeholder="Add your comment..."
                     autoFocus
-                    className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 resize-y min-h-[80px] mb-3"
+                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y min-h-[80px] mb-3"
                   />
                   <div className="flex items-center justify-end gap-2">
                     <button
                       onClick={handleCancelThread}
-                      className="px-3 py-1.5 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+                      className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={handleCreateThread}
                       disabled={!newThreadContent.trim() || isSubmitting}
-                      className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-lg transition-colors"
+                      className="px-3 py-1.5 text-sm bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground rounded-md transition-colors"
                     >
                       {isSubmitting ? "Posting..." : "Start Review"}
                     </button>
@@ -451,7 +451,7 @@ export function LineNumberedContent({
             {hasThreads && (
               <div className="flex">
                 <div
-                  className="border-r border-zinc-800 flex-shrink-0 bg-zinc-950"
+                  className="border-r border-border flex-shrink-0 bg-background"
                   style={{ width: `${gutterWidth}rem`, minWidth: `${gutterWidth}rem` }}
                 />
                 <div className="flex-1 pl-4 py-2">
@@ -477,7 +477,7 @@ export function LineNumberedContent({
             {showHiddenThreads && hiddenThreadsByEndLine.has(lineNumber) && (
               <div className="flex">
                 <div
-                  className="border-r border-zinc-800 flex-shrink-0 bg-zinc-950"
+                  className="border-r border-border flex-shrink-0 bg-background"
                   style={{ width: `${gutterWidth}rem`, minWidth: `${gutterWidth}rem` }}
                 />
                 <div className="flex-1 pl-4 py-2">
@@ -485,20 +485,20 @@ export function LineNumberedContent({
                     {hiddenThreadsByEndLine.get(lineNumber)?.map((thread) => (
                       <div
                         key={thread.id}
-                        className="flex items-center justify-between px-3 py-2 bg-zinc-800/30 border border-zinc-700/50 rounded-lg"
+                        className="flex items-center justify-between px-3 py-2 bg-muted/30 border border-border/50 rounded-lg"
                       >
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-mono text-zinc-500">
+                          <span className="text-xs font-mono text-muted-foreground">
                             Lines {thread.startLine}-{thread.endLine}
                           </span>
-                          <span className="text-xs text-zinc-600">
+                          <span className="text-xs text-muted-foreground">
                             {thread.comments[0]?.content.substring(0, 30)}
                             {thread.comments[0]?.content.length > 30 ? "..." : ""}
                           </span>
                         </div>
                         <button
                           onClick={() => onShowThread?.(thread.id)}
-                          className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                         >
                           Show
                         </button>

@@ -11,6 +11,8 @@
   "dependencies": {
     "@types/diff": "^7.0.2",
     "@types/ws": "^8.18.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "diff": "^8.0.3",
     "next": "16.1.6",
     "openclaw": "^2026.2.19-2",
@@ -18,6 +20,7 @@
     "react-dom": "19.2.3",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "tailwind-merge": "^3.5.0",
     "ws": "^8.19.0"
   },
   "devDependencies": {

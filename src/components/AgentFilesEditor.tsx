@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 interface AgentFilesEditorProps {
   agentId: string;
@@ -94,18 +96,15 @@ export function AgentFilesEditor({
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 mb-4">
         {TABS.map((tab) => (
-          <button
+          <Button
             key={tab.id}
+            variant={activeTab === tab.id ? "secondary" : "ghost"}
+            size="sm"
             onClick={() => setActiveTab(tab.id)}
-            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              activeTab === tab.id
-                ? "bg-zinc-800 text-white"
-                : "text-zinc-500 hover:text-white hover:bg-zinc-900"
-            }`}
             title={tab.description}
           >
             {tab.label}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -120,24 +119,23 @@ export function AgentFilesEditor({
 
       {/* Editor */}
       <div className="space-y-3">
-        <textarea
+        <Textarea
           value={getCurrentContent()}
           onChange={(e) => updateContent(activeTab, e.target.value)}
-          className="w-full h-[500px] bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-zinc-300 text-sm font-mono leading-relaxed focus:border-zinc-600 focus:outline-none resize-none"
+          className="h-[500px] rounded-lg p-4 text-foreground font-mono leading-relaxed resize-none"
           spellCheck={false}
           placeholder={`Enter content for ${getFileName()}...`}
         />
         <div className="flex justify-between items-center">
-          <p className="text-zinc-600 text-xs">
+          <p className="text-muted-foreground text-xs">
             {TABS.find((t) => t.id === activeTab)?.description}
           </p>
-          <button
+          <Button
             onClick={() => handleSave(getFileName(), getCurrentContent())}
             disabled={saving}
-            className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-medium rounded-lg text-sm transition-colors"
           >
             {saving ? "Saving..." : `Save ${getFileName()}`}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

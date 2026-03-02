@@ -5,6 +5,9 @@ import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import { usePolling } from "@/components/usePolling";
 import { AgentFilesEditor } from "@/components/AgentFilesEditor";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { OrbitLoader, Skeleton } from "@/components/ui/loading";
 
 interface Agent {
   id: string;
@@ -41,30 +44,18 @@ interface AgentDetailData {
   sessionStatus: AgentStatusData;
 }
 
-const STATUS_STYLES: Record<
-  string,
-  { bg: string; text: string; dot: string }
-> = {
-  idle: {
-    bg: "bg-zinc-800",
-    text: "text-zinc-400",
-    dot: "bg-zinc-500",
-  },
-  working: {
-    bg: "bg-emerald-950",
-    text: "text-emerald-400",
-    dot: "bg-emerald-500",
-  },
-  review: {
-    bg: "bg-amber-950",
-    text: "text-amber-400",
-    dot: "bg-amber-500",
-  },
-  blocked: {
-    bg: "bg-red-950",
-    text: "text-red-400",
-    dot: "bg-red-500",
-  },
+const STATUS_BADGE_VARIANT: Record<string, "default" | "success" | "warning" | "destructive"> = {
+  idle: "default",
+  working: "success",
+  review: "warning",
+  blocked: "destructive",
+};
+
+const STATUS_DOT_COLOR: Record<string, string> = {
+  idle: "bg-zinc-500",
+  working: "bg-emerald-500",
+  review: "bg-amber-500",
+  blocked: "bg-red-500",
 };
 
 export default function AgentDetailPage({
@@ -77,7 +68,6 @@ export default function AgentDetailPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  // Fetch initial data
   useEffect(() => {
     fetch(`/api/agents/${agentId}`, { cache: "no-store" })
       .then((res) => {
@@ -94,13 +84,16 @@ export default function AgentDetailPage({
       });
   }, [agentId]);
 
-  // Poll for real-time status updates
   const { data: liveStatus } = usePolling<AgentStatusResponse>("/api/agents/status", 3000);
 
   if (loading) {
     return (
-      <div className="p-4 sm:p-6 lg:p-8 flex items-center justify-center min-h-[50vh]">
-        <div className="text-zinc-500">Loading agent details...</div>
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+        <Skeleton className="h-4 w-28" />
+        <Skeleton className="h-48" />
+        <Skeleton className="h-12 w-80 max-w-full" />
+        <Skeleton className="h-[32rem]" />
+        <OrbitLoader label="Loading agent workspace" />
       </div>
     );
   }
@@ -113,71 +106,67 @@ export default function AgentDetailPage({
 
   const status = liveStatus?.[agentId]?.status ?? initialData.sessionStatus?.status ?? agent.status;
   const currentTask = liveStatus?.[agentId]?.currentTask ?? initialData.sessionStatus?.currentTask;
-  
-  const style = STATUS_STYLES[status] || STATUS_STYLES.idle;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl">
+    <div className="p-4 sm:p-6 lg:p-8">
       <Link
         href="/agents"
-        className="text-zinc-500 hover:text-white text-sm mb-6 inline-flex items-center gap-1 transition-colors"
+        className="text-muted-foreground hover:text-foreground text-sm mb-6 inline-flex items-center gap-1 transition-colors"
       >
         &larr; Back to Agents
       </Link>
 
       {/* Agent Header with Live Status */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-6">
+      <Card className="p-6 mb-6">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
             <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
+              className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl"
               style={{ backgroundColor: agent.color + "20" }}
             >
               {agent.icon}
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white">
+              <h1 className="text-xl font-bold text-foreground">
                 {agent.name}
               </h1>
-              <p className="text-zinc-500 text-sm">{agent.domain}</p>
+              <p className="text-muted-foreground text-sm">{agent.domain}</p>
             </div>
           </div>
           {/* Live status badge */}
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full font-medium px-2.5 py-1 text-xs ${style.bg} ${style.text}`}
-          >
+          <Badge variant={STATUS_BADGE_VARIANT[status] || "default"}>
             <span
-              className={`rounded-full w-1.5 h-1.5 ${style.dot} ${status === "working" ? "animate-pulse" : ""}`}
+              className={`rounded-full w-1.5 h-1.5 ${STATUS_DOT_COLOR[status] || "bg-zinc-500"} ${status === "working" ? "animate-pulse" : ""}`}
             />
             {status.replace(/\b\w/g, (c) => c.toUpperCase())}
-          </span>
+          </Badge>
         </div>
 
         {/* Current Task Display - Updates in real-time */}
         {currentTask && (
-          <div className="mt-4 p-3 bg-zinc-800/50 rounded-lg border border-zinc-800">
+          <div className="mt-4 p-3 bg-muted rounded-md border border-border">
             <div className="flex items-center gap-2 mb-1">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              <p className="text-xs text-zinc-500 uppercase tracking-wider">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">
                 Current Task
               </p>
             </div>
-            <p className="text-zinc-300 text-sm">{currentTask}</p>
+            <p className="text-foreground text-sm">{currentTask}</p>
           </div>
         )}
-        
+
         {/* Live indicator */}
         <div className="mt-4 flex items-center gap-2">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
-          <span className="text-xs text-zinc-500">Live updates enabled</span>
+          <span className="text-xs text-muted-foreground">Live updates enabled</span>
         </div>
-      </div>
+      </Card>
 
       <AgentFilesEditor
         agentId={agentId}

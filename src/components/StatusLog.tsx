@@ -30,7 +30,7 @@ const STATUS_COLORS: Record<string, string> = {
 export function StatusLog({ logs }: { logs: StatusLogEntry[] }) {
   if (!logs || logs.length === 0) {
     return (
-      <div className="text-zinc-600 text-sm py-4">
+      <div className="text-muted-foreground text-sm py-4">
         No status changes recorded yet.
       </div>
     );
@@ -46,26 +46,26 @@ export function StatusLog({ logs }: { logs: StatusLogEntry[] }) {
               className={`w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0 ${STATUS_COLORS[entry.to] || "bg-zinc-500"}`}
             />
             {i < logs.length - 1 && (
-              <div className="w-px flex-1 bg-zinc-800 mt-1" />
+              <div className="w-px flex-1 bg-muted mt-1" />
             )}
           </div>
 
           {/* Content */}
           <div className="flex-1 min-w-0 pb-2">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-zinc-300 text-sm font-medium capitalize">
+              <span className="text-foreground text-sm font-medium capitalize">
                 {entry.to}
               </span>
-              <span className="text-zinc-600 text-xs">
+              <span className="text-muted-foreground text-xs">
                 by {entry.by}
               </span>
             </div>
             {entry.note && (
-              <p className="text-zinc-500 text-xs mt-0.5 line-clamp-2">
+              <p className="text-muted-foreground text-xs mt-0.5 line-clamp-2">
                 {entry.note}
               </p>
             )}
-            <p className="text-zinc-700 text-xs mt-0.5">
+            <p className="text-muted-foreground text-xs mt-0.5">
               {formatTime(entry.timestamp)}
             </p>
           </div>

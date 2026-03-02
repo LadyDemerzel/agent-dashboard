@@ -66,12 +66,12 @@ async function spawnAgentViaWebhook(
   console.log("Webhook spawn response:", result);
 }
 
-function getVideoData(videoDir: string): Record<string, any> | null {
+function getVideoData(videoDir: string): Record<string, string> | null {
   const yamlPath = path.join(videoDir, 'video.yaml');
   if (!fs.existsSync(yamlPath)) return null;
   
   const content = fs.readFileSync(yamlPath, 'utf-8');
-  const data: Record<string, any> = {};
+  const data: Record<string, string> = {};
   
   content.split('\n').forEach(line => {
     const match = line.match(/^(\w+):\s*(.*)$/);
@@ -81,7 +81,7 @@ function getVideoData(videoDir: string): Record<string, any> | null {
   return data;
 }
 
-function saveVideoData(videoDir: string, data: Record<string, any>) {
+function saveVideoData(videoDir: string, data: Record<string, unknown>) {
   const yamlPath = path.join(videoDir, 'video.yaml');
   let content = '';
   for (const [key, value] of Object.entries(data)) {
@@ -125,7 +125,7 @@ export async function GET(
     // Build task prompts
     let task = '';
     let agent = 'echo';
-    let label = `youtube-${phase}-${id}`;
+    const label = `youtube-${phase}-${id}`;
     
     switch (phase) {
       case 'research':
@@ -214,8 +214,9 @@ ${scriptContent}`;
       success: true, 
       message: `${phase} task spawned to ${agent}` 
     });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
 

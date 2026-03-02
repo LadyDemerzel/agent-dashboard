@@ -3,6 +3,10 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { StatusBadge } from '@/components/StatusBadge';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { OrbitLoader, Skeleton } from '@/components/ui/loading';
 
 interface Video {
   id: string;
@@ -40,7 +44,7 @@ export default function YouTubeVideosPage() {
   async function createVideo(e: React.FormEvent) {
     e.preventDefault();
     if (!newTopic.trim()) return;
-    
+
     setCreating(true);
     try {
       const res = await fetch('/api/youtube', {
@@ -64,59 +68,79 @@ export default function YouTubeVideosPage() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
-      <div className="max-w-4xl mx-auto">
+      <div>
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white">🎬 YouTube Videos</h1>
-          <p className="text-zinc-400 mt-2">Create and manage faceless YouTube video projects</p>
+          <h1 className="text-2xl font-bold text-foreground">YouTube Videos</h1>
+          <p className="text-muted-foreground text-sm mt-1">Create and manage faceless YouTube video projects</p>
         </div>
 
         {/* Create Form */}
         <form onSubmit={createVideo} className="mb-8">
           <div className="flex gap-3">
-            <input
+            <Input
               type="text"
               value={newTopic}
               onChange={(e) => setNewTopic(e.target.value)}
               placeholder="Enter video topic (e.g., 'The History of Rome')"
-              className="flex-1 px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+              className="flex-1 px-4 py-3"
             />
-            <button
+            <Button
               type="submit"
               disabled={creating || !newTopic.trim()}
-              className="px-6 py-3 bg-white text-zinc-900 font-medium rounded-lg hover:bg-zinc-100 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              className="whitespace-nowrap"
             >
               {creating ? 'Creating...' : '+ New Video'}
-            </button>
+            </Button>
           </div>
         </form>
 
-        {/* Video Grid - using existing card style */}
+        {/* Video Grid */}
         {loading ? (
-          <div className="text-center py-12 text-zinc-500">Loading...</div>
-        ) : videos.length === 0 ? (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-12 text-center">
-            <p className="text-zinc-500">No YouTube videos yet</p>
-            <p className="text-zinc-600 text-sm mt-1">Create your first video to get started</p>
+          <div className="space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <Card key={idx} className="p-5 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <Skeleton className="h-4 w-3/5" />
+                    <Skeleton className="h-5 w-16 rounded-full" />
+                  </div>
+                  <Skeleton className="h-3 w-4/5" />
+                  <div className="flex items-center gap-2 pt-1">
+                    <Skeleton className="h-3 w-16" />
+                    <Skeleton className="h-3 w-3" />
+                    <Skeleton className="h-3 w-20" />
+                  </div>
+                </Card>
+              ))}
+            </div>
+            <OrbitLoader label="Syncing video projects" />
           </div>
+        ) : videos.length === 0 ? (
+          <Card className="p-12 text-center">
+            <p className="text-muted-foreground">No YouTube videos yet</p>
+            <p className="text-muted-foreground text-sm mt-1">Create your first video to get started</p>
+          </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {videos.map((video) => (
               <Link
                 key={video.id}
                 href={`/youtube-videos/${video.id}`}
-                className="block bg-zinc-900 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700 transition-colors"
+                className="block"
               >
-                <div className="flex items-start justify-between mb-3 gap-3">
-                  <h3 className="text-white font-medium truncate">{video.title}</h3>
-                  <StatusBadge status={video.status} />
-                </div>
-                <p className="text-zinc-500 text-xs truncate">{video.topic}</p>
-                <div className="flex items-center gap-3 mt-3 text-xs text-zinc-600">
-                  <span>{video.imageCount} images</span>
-                  <span>•</span>
-                  <span>{new Date(video.created_at).toLocaleDateString()}</span>
-                </div>
+                <Card className="p-5 cursor-pointer transition-all duration-200 hover:border-ring/70 hover:bg-muted/80">
+                  <div className="flex items-start justify-between mb-3 gap-3">
+                    <h3 className="text-foreground font-medium truncate">{video.title}</h3>
+                    <StatusBadge status={video.status} />
+                  </div>
+                  <p className="text-muted-foreground text-xs truncate">{video.topic}</p>
+                  <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground">
+                    <span>{video.imageCount} images</span>
+                    <span>•</span>
+                    <span>{new Date(video.created_at).toLocaleDateString()}</span>
+                  </div>
+                </Card>
               </Link>
             ))}
           </div>

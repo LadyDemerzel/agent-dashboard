@@ -16,10 +16,10 @@ export default function TimelinePage() {
   const events = buildTimelineEvents(deliverables, agentIcons);
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-3xl">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white">Activity Timeline</h1>
-        <p className="text-zinc-500 text-sm mt-1">
+        <h1 className="text-2xl font-bold text-foreground">Activity Timeline</h1>
+        <p className="text-muted-foreground text-sm mt-1">
           Chronological log of agent activity and deliverables
         </p>
       </div>
