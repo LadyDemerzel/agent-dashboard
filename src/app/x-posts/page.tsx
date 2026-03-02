@@ -37,13 +37,13 @@ export default function XPostsPage() {
       </div>
 
       {/* Approved Research Section */}
-      <Card className="p-4 mb-8 bg-muted/50">
+      <Card className="p-4 mb-8">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-medium text-foreground">Approved Research</h2>
             <span className="text-xs text-muted-foreground">({approvedResearch.length} available for content creation)</span>
           </div>
-          <Link href="/research" className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
+          <Link href="/research" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
             View all research →
           </Link>
         </div>
@@ -111,7 +111,7 @@ export default function XPostsPage() {
 function PostCard({ post }: { post: ReturnType<typeof getXPosts>[0] }) {
   return (
     <Link href={`/x-posts/${post.id}`}>
-      <Card className="p-5 hover:border-border transition-colors h-full flex flex-col">
+      <Card className="p-5 hover:border-ring/50 transition-colors h-full flex flex-col">
         <div className="flex items-start justify-between mb-3">
           <span className="text-xs text-muted-foreground font-mono">Post #{post.postNumber}</span>
           <StatusBadge status={post.status} />

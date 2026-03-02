@@ -426,7 +426,7 @@ export function LineNumberedContent({
                     onChange={(e) => setNewThreadContent(e.target.value)}
                     placeholder="Add your comment..."
                     autoFocus
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 resize-y min-h-[80px] mb-3"
+                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y min-h-[80px] mb-3"
                   />
                   <div className="flex items-center justify-end gap-2">
                     <button
@@ -438,7 +438,7 @@ export function LineNumberedContent({
                     <button
                       onClick={handleCreateThread}
                       disabled={!newThreadContent.trim() || isSubmitting}
-                      className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-muted-foreground text-foreground rounded-lg transition-colors"
+                      className="px-3 py-1.5 text-sm bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground rounded-md transition-colors"
                     >
                       {isSubmitting ? "Posting..." : "Start Review"}
                     </button>

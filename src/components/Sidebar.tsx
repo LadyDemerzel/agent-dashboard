@@ -104,12 +104,12 @@ export function Sidebar() {
   return (
     <>
       {/* Mobile header bar */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-background border-b border-border flex items-center justify-between px-4 h-16">
+      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-sidebar border-b border-sidebar-border flex items-center justify-between px-4 h-14">
         <Button
           variant="ghost"
           size="icon"
           onClick={() => setMobileOpen(!mobileOpen)}
-          className="-ml-1 min-w-[48px] min-h-[48px]"
+          className="-ml-1 min-w-[44px] min-h-[44px]"
           aria-label={mobileOpen ? "Close menu" : "Open menu"}
         >
           {mobileOpen ? (
@@ -125,16 +125,16 @@ export function Sidebar() {
             </svg>
           )}
         </Button>
-        <h1 className="text-foreground font-bold text-xl tracking-tight">
+        <h1 className="text-sidebar-foreground font-semibold text-sm tracking-tight">
           Agent Dashboard
         </h1>
-        <div className="w-12" />
+        <div className="w-11" />
       </div>
 
       {/* Mobile overlay */}
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 z-40 bg-background/80"
+          className="md:hidden fixed inset-0 z-40 bg-black/60"
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -142,20 +142,20 @@ export function Sidebar() {
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed left-0 top-0 z-50 w-64 bg-background border-r border-border h-screen flex flex-col transition-transform duration-200",
+          "fixed left-0 top-0 z-50 w-64 bg-sidebar border-r border-sidebar-border h-screen flex flex-col transition-transform duration-200",
           mobileOpen ? "translate-x-0" : "-translate-x-full",
           "md:translate-x-0 md:w-56"
         )}
       >
-        <div className="p-5">
-          <h1 className="text-foreground font-bold text-xl tracking-tight">
+        <div className="px-5 py-4">
+          <h1 className="text-sidebar-foreground font-semibold text-sm tracking-tight">
             Agent Dashboard
           </h1>
-          <p className="text-muted-foreground text-sm mt-1">Agent Team Hub</p>
+          <p className="text-muted-foreground text-xs mt-0.5">Agent Team Hub</p>
         </div>
-        <Separator />
+        <Separator className="opacity-50" />
 
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 px-3 py-3 space-y-0.5">
           {NAV_ITEMS.map((item) => {
             const isActive =
               pathname === item.href ||
@@ -166,13 +166,13 @@ export function Sidebar() {
                 href={item.href}
                 onClick={() => setMobileOpen(false)}
                 className={cn(
-                  "flex items-center gap-3 px-4 py-3 rounded-lg text-base transition-colors min-h-[48px]",
+                  "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors min-h-[36px]",
                   isActive
-                    ? "bg-muted text-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-card"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent"
                 )}
               >
-                <span className="inline-flex h-6 w-6 items-center justify-center">
+                <span className="inline-flex h-4 w-4 items-center justify-center shrink-0">
                   {item.icon}
                 </span>
                 {item.label}
@@ -181,11 +181,11 @@ export function Sidebar() {
           })}
         </nav>
 
-        <Separator />
-        <div className="p-4">
+        <Separator className="opacity-50" />
+        <div className="px-5 py-3">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-muted-foreground text-sm">System Active</span>
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-muted-foreground text-xs">System Active</span>
           </div>
         </div>
       </aside>

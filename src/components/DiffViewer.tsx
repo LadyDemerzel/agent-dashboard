@@ -258,7 +258,7 @@ export function VersionSelector({
                 ? "bg-muted border-border"
                 : compareVersion === version.version
                 ? "bg-muted/50 border-border"
-                : "bg-transparent border-border hover:border-border"
+                : "bg-transparent border-border hover:border-ring/50"
             }`}
           >
             <div className="flex items-center justify-between mb-1">

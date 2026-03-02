@@ -70,8 +70,8 @@ export default function YouTubeVideosPage() {
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">YouTube Videos</h1>
-          <p className="text-muted-foreground mt-2">Create and manage faceless YouTube video projects</p>
+          <h1 className="text-2xl font-bold text-foreground">YouTube Videos</h1>
+          <p className="text-muted-foreground text-sm mt-1">Create and manage faceless YouTube video projects</p>
         </div>
 
         {/* Create Form */}
@@ -110,7 +110,7 @@ export default function YouTubeVideosPage() {
                 href={`/youtube-videos/${video.id}`}
                 className="block"
               >
-                <Card className="p-5 hover:border-border transition-colors">
+                <Card className="p-5 hover:border-ring/50 transition-colors">
                   <div className="flex items-start justify-between mb-3 gap-3">
                     <h3 className="text-foreground font-medium truncate">{video.title}</h3>
                     <StatusBadge status={video.status} />

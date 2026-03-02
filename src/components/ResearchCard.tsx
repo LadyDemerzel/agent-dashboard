@@ -25,7 +25,7 @@ export function ResearchCard({ file, href }: ResearchCardProps) {
 
   return (
     <Link href={linkHref} className="block w-full min-w-0">
-      <Card className="p-5 hover:border-border transition-colors min-w-0">
+      <Card className="p-5 hover:border-ring/50 transition-colors min-w-0">
         <div className="flex items-start justify-between mb-3 gap-3">
           <div className="flex-1 min-w-0 overflow-hidden">
             <h3 className="text-foreground font-medium truncate">{file.title}</h3>

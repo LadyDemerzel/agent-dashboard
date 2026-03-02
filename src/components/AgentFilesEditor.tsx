@@ -122,7 +122,7 @@ export function AgentFilesEditor({
         <Textarea
           value={getCurrentContent()}
           onChange={(e) => updateContent(activeTab, e.target.value)}
-          className="h-[500px] rounded-xl p-4 text-foreground font-mono leading-relaxed resize-none"
+          className="h-[500px] rounded-lg p-4 text-foreground font-mono leading-relaxed resize-none"
           spellCheck={false}
           placeholder={`Enter content for ${getFileName()}...`}
         />

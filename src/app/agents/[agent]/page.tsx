@@ -116,7 +116,7 @@ export default function AgentDetailPage({
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
             <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
+              className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl"
               style={{ backgroundColor: agent.color + "20" }}
             >
               {agent.icon}
@@ -139,7 +139,7 @@ export default function AgentDetailPage({
 
         {/* Current Task Display - Updates in real-time */}
         {currentTask && (
-          <div className="mt-4 p-3 bg-muted/50 rounded-lg border border-border">
+          <div className="mt-4 p-3 bg-muted rounded-md border border-border">
             <div className="flex items-center gap-2 mb-1">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>

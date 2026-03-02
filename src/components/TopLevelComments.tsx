@@ -131,7 +131,7 @@ export function TopLevelComments({
         ) : (
           <button
             onClick={() => setShowNewThreadForm(true)}
-            className="w-full py-3 border-2 border-dashed border-border rounded-lg text-muted-foreground hover:text-foreground hover:border-border transition-colors text-sm"
+            className="w-full py-3 border-2 border-dashed border-border rounded-lg text-muted-foreground hover:text-foreground hover:border-ring/50 transition-colors text-sm"
           >
             + Add a general comment
           </button>

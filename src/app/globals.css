@@ -1,25 +1,31 @@
 @import "tailwindcss";
 
 :root {
+  --radius: 0.625rem;
   --background: #09090b;
   --foreground: #fafafa;
-  --card: #09090b;
+  --card: #111113;
   --card-foreground: #fafafa;
-  --popover: #09090b;
+  --popover: #111113;
   --popover-foreground: #fafafa;
   --primary: #fafafa;
   --primary-foreground: #18181b;
-  --secondary: #27272a;
+  --secondary: #1c1c1f;
   --secondary-foreground: #fafafa;
-  --muted: #27272a;
+  --muted: #1c1c1f;
   --muted-foreground: #a1a1aa;
-  --accent: #27272a;
+  --accent: #1c1c1f;
   --accent-foreground: #fafafa;
   --destructive: #dc2626;
   --destructive-foreground: #fafafa;
-  --border: #27272a;
-  --input: #27272a;
-  --ring: #d4d4d8;
+  --border: #232326;
+  --input: #232326;
+  --ring: #52525b;
+  --sidebar: #0c0c0e;
+  --sidebar-foreground: #fafafa;
+  --sidebar-border: #1c1c1f;
+  --sidebar-accent: #1c1c1f;
+  --sidebar-accent-foreground: #fafafa;
 }
 
 @theme inline {
@@ -42,9 +48,17 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
 }
 
 * {
@@ -82,7 +96,7 @@ body {
 
 .prose code {
   color: var(--foreground);
-  background-color: #27272a;
+  background-color: var(--muted);
   padding: 0.25em 0.375em;
   border-radius: 0.25em;
   font-size: 0.875em;
@@ -90,13 +104,14 @@ body {
 }
 
 .prose pre {
-  color: #fafafa;
-  background-color: #18181b;
+  color: var(--foreground);
+  background-color: var(--background);
   padding: 1em;
   border-radius: 0.5em;
   overflow-x: auto;
   margin-top: 1.25em;
   margin-bottom: 1.25em;
+  border: 1px solid var(--border);
 }
 
 .prose pre code {
@@ -145,14 +160,14 @@ body {
   width: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #18181b;
+  background: var(--background);
 }
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: var(--border);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: #3f3f46;
 }
 
 /* Mobile-friendly touch targets */

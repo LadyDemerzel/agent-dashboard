@@ -9,7 +9,7 @@ function DialogOverlay({ open, className, children, ...props }: DialogOverlayPro
   if (!open) return null;
   return (
     <div
-      className={cn("fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm", className)}
+      className={cn("fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm", className)}
       {...props}
     >
       {children}
@@ -26,7 +26,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
     <div
       ref={ref}
       className={cn(
-        "w-full rounded-lg border bg-background p-6 shadow-lg",
+        "w-full rounded-lg border bg-card p-6 shadow-lg",
         size === "sm" && "max-w-sm",
         size === "md" && "max-w-md",
         size === "lg" && "max-w-lg",

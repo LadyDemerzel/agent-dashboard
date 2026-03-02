@@ -146,7 +146,7 @@ function FrontMatterCard({ frontMatter }: { frontMatter: Record<string, string |
             ) : (
               <div className="flex flex-wrap gap-1.5">
                 {value.map((item, idx) => (
-                  <span key={`${key}-${idx}`} className="text-xs px-2 py-1 rounded-full bg-zinc-700 text-foreground">
+                  <span key={`${key}-${idx}`} className="text-xs px-2 py-1 rounded-md bg-secondary text-foreground">
                     {item}
                   </span>
                 ))}
@@ -306,7 +306,7 @@ export default function YouTubeVideoDetailPage() {
         <div className="mt-4 mb-8">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-foreground">{video.title}</h1>
+              <h1 className="text-2xl font-bold text-foreground">{video.title}</h1>
               <p className="text-muted-foreground mt-1">{video.topic}</p>
             </div>
             <StatusBadge status={video.status} />
@@ -382,7 +382,7 @@ export default function YouTubeVideoDetailPage() {
                       type="button"
                       key={image.path}
                       onClick={() => setSelectedImage(image)}
-                      className="text-left bg-background/60 border border-border rounded-lg overflow-hidden hover:border-border transition-colors"
+                      className="text-left bg-background/60 border border-border rounded-lg overflow-hidden hover:border-ring/50 transition-colors"
                     >
                       <img
                         src={image.url}
