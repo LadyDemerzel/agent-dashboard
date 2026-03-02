@@ -33,7 +33,7 @@ export function AgentCard({
 
   return (
     <Link href={`/agents/${id}`}>
-      <Card className="p-5 hover:border-ring/50 transition-colors cursor-pointer group">
+      <Card className="p-5 group cursor-pointer transition-all duration-200 hover:border-ring/70 hover:bg-muted/80">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
             <div

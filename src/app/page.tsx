@@ -10,6 +10,7 @@ import { Timeline } from "@/components/Timeline";
 import { buildTimelineEvents } from "@/lib/timeline";
 import { ResearchCard, ResearchStats, ResearchFile } from "@/components/ResearchCard";
 import { Card } from "@/components/ui/card";
+import { PageLoadingShell } from "@/components/ui/loading";
 
 interface AgentStatusData {
   status: "idle" | "working" | "review" | "blocked";
@@ -60,11 +61,7 @@ export default function Dashboard() {
   const { data: liveStatus } = usePolling<AgentStatusResponse>("/api/agents/status", 3000);
 
   if (loading || !initialData) {
-    return (
-      <div className="p-4 sm:p-6 lg:p-8 flex items-center justify-center min-h-[50vh]">
-        <div className="text-muted-foreground">Loading dashboard...</div>
-      </div>
-    );
+    return <PageLoadingShell />;
   }
 
   const { stats, deliverables, researchFiles, sessionStatus } = initialData;

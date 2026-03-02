@@ -17,6 +17,8 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { OrbitLoader, Skeleton } from "@/components/ui/loading";
+import { TabTransition } from "@/components/ui/tab-transition";
 import {
   DialogOverlay,
   DialogContent,
@@ -179,7 +181,7 @@ export function ResearchDetailClient({ file, content, statusLog }: ResearchDetai
   const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl">
+    <div className="p-4 sm:p-6 lg:p-8">
       <Link href="/research" className="text-muted-foreground hover:text-foreground text-sm mb-6 inline-flex items-center gap-1 transition-colors">&larr; Back to Research</Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -233,8 +235,16 @@ export function ResearchDetailClient({ file, content, statusLog }: ResearchDetai
             </TabsList>
 
             {viewMode === "content" && (
-              <div className="p-0">
-                {content ? (
+              <TabTransition transitionKey="research-content" className="p-0">
+                {loading ? (
+                  <div className="p-6 space-y-4 bg-background">
+                    <Skeleton className="h-5 w-36" />
+                    {Array.from({ length: 9 }).map((_, idx) => (
+                      <Skeleton key={idx} className="h-4 w-full" />
+                    ))}
+                    <OrbitLoader label="Loading feedback threads" />
+                  </div>
+                ) : content ? (
                   <div className="bg-background">
                     {contentDisplayMode === "raw" ? (
                       <div className="p-4">
@@ -249,11 +259,11 @@ export function ResearchDetailClient({ file, content, statusLog }: ResearchDetai
                 ) : (
                   <p className="text-muted-foreground text-sm p-6">Unable to load research content.</p>
                 )}
-              </div>
+              </TabTransition>
             )}
 
             {viewMode === "changes" && (
-              <div className="p-4 space-y-4">
+              <TabTransition transitionKey="research-changes" className="p-4 space-y-4">
                 {versions.length === 0 ? (
                   <div className="text-center py-12">
                     <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
@@ -268,16 +278,15 @@ export function ResearchDetailClient({ file, content, statusLog }: ResearchDetai
                     <p className="text-xs text-muted-foreground mt-1">A diff will be available after the next revision</p>
                   </div>
                 ) : diffLoading ? (
-                  <div className="text-center py-12">
-                    <div className="animate-spin w-6 h-6 border-2 border-border border-t-zinc-300 rounded-full mx-auto" />
-                    <p className="text-sm text-muted-foreground mt-3">Loading diff...</p>
+                  <div className="py-8">
+                    <OrbitLoader label="Computing revision diff" />
                   </div>
                 ) : diffData ? (
                   <DiffViewer diff={diffData} />
                 ) : (
                   <p className="text-sm text-muted-foreground text-center py-8">Select versions to compare</p>
                 )}
-              </div>
+              </TabTransition>
             )}
           </Card>
         </div>

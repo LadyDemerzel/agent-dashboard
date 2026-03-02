@@ -43,7 +43,7 @@ export function DeliverableList({
     <div className="space-y-3">
       {deliverables.map((d) => (
         <Link key={d.id} href={`/deliverables/${d.id}`} className="block w-full min-w-0">
-          <Card className="p-4 hover:border-ring/50 transition-colors cursor-pointer min-w-0">
+          <Card className="p-4 min-w-0 cursor-pointer transition-all duration-200 hover:border-ring/70 hover:bg-muted/80">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
                 <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-border bg-muted px-1 text-[10px] font-semibold leading-none tracking-wide flex-shrink-0">

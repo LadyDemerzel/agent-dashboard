@@ -187,6 +187,63 @@ body {
   }
 }
 
+@keyframes skeleton-shift {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes tab-switch-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.996);
+    filter: blur(1.8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    110deg,
+    rgba(19, 19, 22, 0.86) 8%,
+    rgba(31, 31, 36, 0.92) 18%,
+    rgba(63, 63, 70, 0.7) 34%,
+    rgba(31, 31, 36, 0.92) 50%,
+    rgba(53, 53, 61, 0.85) 64%,
+    rgba(19, 19, 22, 0.86) 74%
+  );
+  background-size: 220% 100%;
+  animation: skeleton-shift 4.2s ease-in-out infinite;
+}
+
+.aesthetic-grid-bg {
+  background:
+    radial-gradient(circle at 10% -10%, rgba(255, 255, 255, 0.06), transparent 40%),
+    radial-gradient(circle at 92% 8%, rgba(255, 255, 255, 0.04), transparent 34%),
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    var(--background);
+  background-size: auto, auto, 28px 28px, 28px 28px, auto;
+}
+
+.tab-switch-motion {
+  animation: tab-switch-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-switch-motion,
+  .skeleton-shimmer {
+    animation: none;
+  }
+}
+
 html,
 body {
   overflow-x: hidden;

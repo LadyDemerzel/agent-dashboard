@@ -7,6 +7,7 @@ import { usePolling } from "@/components/usePolling";
 import { AgentFilesEditor } from "@/components/AgentFilesEditor";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { OrbitLoader, Skeleton } from "@/components/ui/loading";
 
 interface Agent {
   id: string;
@@ -87,8 +88,12 @@ export default function AgentDetailPage({
 
   if (loading) {
     return (
-      <div className="p-4 sm:p-6 lg:p-8 flex items-center justify-center min-h-[50vh]">
-        <div className="text-muted-foreground">Loading agent details...</div>
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6 aesthetic-grid-bg">
+        <Skeleton className="h-4 w-28" />
+        <Skeleton className="h-48" />
+        <Skeleton className="h-12 w-80 max-w-full" />
+        <Skeleton className="h-[32rem]" />
+        <OrbitLoader label="Loading agent workspace" />
       </div>
     );
   }
@@ -103,7 +108,7 @@ export default function AgentDetailPage({
   const currentTask = liveStatus?.[agentId]?.currentTask ?? initialData.sessionStatus?.currentTask;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl">
+    <div className="p-4 sm:p-6 lg:p-8">
       <Link
         href="/agents"
         className="text-muted-foreground hover:text-foreground text-sm mb-6 inline-flex items-center gap-1 transition-colors"

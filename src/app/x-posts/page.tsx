@@ -111,7 +111,7 @@ export default function XPostsPage() {
 function PostCard({ post }: { post: ReturnType<typeof getXPosts>[0] }) {
   return (
     <Link href={`/x-posts/${post.id}`}>
-      <Card className="p-5 hover:border-ring/50 transition-colors h-full flex flex-col">
+      <Card className="p-5 h-full flex flex-col cursor-pointer transition-all duration-200 hover:border-ring/70 hover:bg-muted/80">
         <div className="flex items-start justify-between mb-3">
           <span className="text-xs text-muted-foreground font-mono">Post #{post.postNumber}</span>
           <StatusBadge status={post.status} />

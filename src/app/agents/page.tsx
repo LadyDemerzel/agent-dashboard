@@ -23,7 +23,7 @@ export default function AgentsPage() {
             href={`/agents/${agent.id}`}
             className="block"
           >
-            <Card className="p-5 hover:border-ring/50 transition-colors">
+            <Card className="p-5 cursor-pointer transition-all duration-200 hover:border-ring/70 hover:bg-muted/80">
               <div className="flex items-center gap-3 mb-3">
                 <div
                   className="w-10 h-10 rounded-lg flex items-center justify-center text-xl"

@@ -9,6 +9,8 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { YouTubeWorkflowStageCard } from '@/components/youtube/YouTubeWorkflowStageCard';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { OrbitLoader, Skeleton } from '@/components/ui/loading';
+import { TabTransition } from '@/components/ui/tab-transition';
 import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DialogOverlay, DialogContent } from '@/components/ui/dialog';
 import {
@@ -278,8 +280,22 @@ export default function YouTubeVideoDetailPage() {
 
   if (loading) {
     return (
-      <div className="p-4 sm:p-6 lg:p-8">
-        <div className="max-w-6xl mx-auto text-muted-foreground">Loading...</div>
+      <div className="p-4 sm:p-6 lg:p-8 aesthetic-grid-bg">
+        <div className="space-y-6">
+          <Skeleton className="h-4 w-28" />
+          <div className="space-y-2">
+            <Skeleton className="h-9 w-2/3" />
+            <Skeleton className="h-4 w-1/2" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {Array.from({ length: 4 }).map((_, idx) => (
+              <Skeleton key={idx} className="h-28" />
+            ))}
+          </div>
+          <Skeleton className="h-10 w-[26rem] max-w-full" />
+          <Skeleton className="h-[24rem]" />
+          <OrbitLoader label="Loading workflow artifacts" />
+        </div>
       </div>
     );
   }
@@ -287,7 +303,7 @@ export default function YouTubeVideoDetailPage() {
   if (!video) {
     return (
       <div className="p-4 sm:p-6 lg:p-8">
-        <div className="max-w-6xl mx-auto">
+        <div>
           <Link href="/youtube-videos" className="text-muted-foreground hover:text-foreground">← Back to Videos</Link>
           <div className="mt-8 text-center text-muted-foreground">Video not found</div>
         </div>
@@ -306,7 +322,7 @@ export default function YouTubeVideoDetailPage() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
-      <div className="max-w-6xl mx-auto">
+      <div>
         <Link href="/youtube-videos" className="text-muted-foreground hover:text-foreground text-sm">← Back to Videos</Link>
 
         {/* Header */}
@@ -351,78 +367,86 @@ export default function YouTubeVideoDetailPage() {
           </TabsList>
 
           {activeTab === 'research' && (
-            <Card className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-foreground">Research</h2>
-                {video.has_research && <span className="text-emerald-400 text-sm">Done</span>}
-              </div>
-              <MarkdownPreview
-                content={video.research_content}
-                emptyText="No research yet. Click Start above to begin."
-              />
-            </Card>
+            <TabTransition transitionKey="research">
+              <Card className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-foreground">Research</h2>
+                  {video.has_research && <span className="text-emerald-400 text-sm">Done</span>}
+                </div>
+                <MarkdownPreview
+                  content={video.research_content}
+                  emptyText="No research yet. Click Start above to begin."
+                />
+              </Card>
+            </TabTransition>
           )}
 
           {activeTab === 'script' && (
-            <Card className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-foreground">Script</h2>
-                {video.has_script && <span className="text-emerald-400 text-sm">Done</span>}
-              </div>
-              <MarkdownPreview
-                content={video.script_content}
-                emptyText="Script will appear here after research is approved."
-              />
-            </Card>
+            <TabTransition transitionKey="script">
+              <Card className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-foreground">Script</h2>
+                  {video.has_script && <span className="text-emerald-400 text-sm">Done</span>}
+                </div>
+                <MarkdownPreview
+                  content={video.script_content}
+                  emptyText="Script will appear here after research is approved."
+                />
+              </Card>
+            </TabTransition>
           )}
 
           {activeTab === 'images' && (
-            <Card className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-foreground">Images</h2>
-                <span className="text-muted-foreground text-sm">{video.imageCount} images</span>
-              </div>
-
-              {video.images && video.images.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {video.images.map((image) => (
-                    <button
-                      type="button"
-                      key={image.path}
-                      onClick={() => setSelectedImage(image)}
-                      className="text-left bg-background/60 border border-border rounded-lg overflow-hidden hover:border-ring/50 transition-colors"
-                    >
-                      <img
-                        src={image.url}
-                        alt={image.description}
-                        loading="lazy"
-                        className="w-full h-36 object-cover bg-card"
-                      />
-                      <div className="p-3">
-                        <p className="text-xs text-muted-foreground mb-1">{image.category}</p>
-                        <p className="text-sm text-foreground line-clamp-3">{image.description}</p>
-                      </div>
-                    </button>
-                  ))}
+            <TabTransition transitionKey="images">
+              <Card className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-foreground">Images</h2>
+                  <span className="text-muted-foreground text-sm">{video.imageCount} images</span>
                 </div>
-              ) : (
-                <div className="text-muted-foreground">Images will appear here after script is approved.</div>
-              )}
-            </Card>
+
+                {video.images && video.images.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {video.images.map((image) => (
+                      <button
+                        type="button"
+                        key={image.path}
+                        onClick={() => setSelectedImage(image)}
+                        className="text-left bg-background/60 border border-border rounded-lg overflow-hidden hover:border-ring/50 transition-colors"
+                      >
+                        <img
+                          src={image.url}
+                          alt={image.description}
+                          loading="lazy"
+                          className="w-full h-36 object-cover bg-card"
+                        />
+                        <div className="p-3">
+                          <p className="text-xs text-muted-foreground mb-1">{image.category}</p>
+                          <p className="text-sm text-foreground line-clamp-3">{image.description}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-muted-foreground">Images will appear here after script is approved.</div>
+                )}
+              </Card>
+            </TabTransition>
           )}
 
           {activeTab === 'audio' && (
-            <Card className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-foreground">Audio</h2>
-                {video.has_audio && <span className="text-emerald-400 text-sm">Done</span>}
-              </div>
-              {video.has_audio ? (
-                <div className="text-emerald-400">{video.audioCount} audio file{video.audioCount !== 1 ? 's' : ''} generated</div>
-              ) : (
-                <div className="text-muted-foreground">Audio will appear here after images are collected.</div>
-              )}
-            </Card>
+            <TabTransition transitionKey="audio">
+              <Card className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-foreground">Audio</h2>
+                  {video.has_audio && <span className="text-emerald-400 text-sm">Done</span>}
+                </div>
+                {video.has_audio ? (
+                  <div className="text-emerald-400">{video.audioCount} audio file{video.audioCount !== 1 ? 's' : ''} generated</div>
+                ) : (
+                  <div className="text-muted-foreground">Audio will appear here after images are collected.</div>
+                )}
+              </Card>
+            </TabTransition>
           )}
         </div>
       </div>
