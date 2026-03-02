@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/Sidebar";
+import { InstantNavigationLoader } from "@/components/InstantNavigationLoader";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,7 +31,10 @@ export default function RootLayout({
       >
         <div className="flex min-w-0">
           <Sidebar />
-          <main className="flex-1 mt-14 md:mt-0 md:ml-56 min-h-screen min-w-0 overflow-x-hidden">{children}</main>
+          <main className="relative flex-1 mt-14 md:mt-0 md:ml-56 min-h-screen min-w-0 overflow-x-hidden">
+            <InstantNavigationLoader />
+            {children}
+          </main>
         </div>
       </body>
     </html>
