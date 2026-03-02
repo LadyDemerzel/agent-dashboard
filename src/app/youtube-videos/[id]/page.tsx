@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -45,6 +46,12 @@ interface ParsedMarkdown {
 }
 
 type WorkflowContentTab = 'research' | 'script' | 'images' | 'audio';
+
+const WORKFLOW_CONTENT_TABS: WorkflowContentTab[] = ['research', 'script', 'images', 'audio'];
+
+function isWorkflowContentTab(value: string | null): value is WorkflowContentTab {
+  return value !== null && WORKFLOW_CONTENT_TABS.includes(value as WorkflowContentTab);
+}
 
 function toArtifacts(video: Video): VideoArtifacts {
   return {
@@ -185,6 +192,9 @@ function MarkdownPreview({ content, emptyText }: { content?: string; emptyText: 
 }
 
 export default function YouTubeVideoDetailPage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [id, setId] = useState('');
   const [video, setVideo] = useState<Video | null>(null);
   const [loading, setLoading] = useState(true);
@@ -215,27 +225,24 @@ export default function YouTubeVideoDetailPage() {
   }, []);
 
   useEffect(() => {
-    if (!video) return;
-
-    if (!video.has_research) {
-      setActiveTab('research');
+    const tabParam = searchParams.get('tab');
+    if (isWorkflowContentTab(tabParam)) {
+      setActiveTab(tabParam);
       return;
     }
 
-    if (!video.has_script) {
-      setActiveTab('script');
-      return;
-    }
+    setActiveTab('research');
+  }, [searchParams]);
 
-    if ((video.imageCount || 0) === 0) {
-      setActiveTab('images');
-      return;
-    }
+  function handleTabChange(tab: WorkflowContentTab) {
+    setActiveTab(tab);
 
-    if (!video.has_audio) {
-      setActiveTab('audio');
-    }
-  }, [video]);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', tab);
+    const query = params.toString();
+
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }
 
   async function fetchVideo(videoId: string = id) {
     try {
@@ -334,7 +341,8 @@ export default function YouTubeVideoDetailPage() {
               <TabsTrigger
                 key={tab.key}
                 active={activeTab === tab.key}
-                onClick={() => setActiveTab(tab.key)}
+                className="cursor-pointer hover:bg-background/60"
+                onClick={() => handleTabChange(tab.key)}
               >
                 <span>{tab.label}</span>
                 {tab.complete && <span className="ml-2 text-emerald-500">Done</span>}
