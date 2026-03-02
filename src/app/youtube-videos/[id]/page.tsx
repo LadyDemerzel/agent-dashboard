@@ -191,6 +191,23 @@ function MarkdownPreview({ content, emptyText }: { content?: string; emptyText: 
   );
 }
 
+function TabContentSkeleton({ label }: { label: string }) {
+  return (
+    <Card className="p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-foreground">{label}</h2>
+        <span className="text-muted-foreground text-sm">Loading…</span>
+      </div>
+      <div className="space-y-3">
+        <Skeleton className="h-4 w-2/3" />
+        <Skeleton className="h-4 w-11/12" />
+        <Skeleton className="h-4 w-5/6" />
+        <Skeleton className="h-52 w-full" />
+      </div>
+    </Card>
+  );
+}
+
 export default function YouTubeVideoDetailPage() {
   const [id, setId] = useState('');
   const [video, setVideo] = useState<Video | null>(null);
@@ -198,14 +215,20 @@ export default function YouTubeVideoDetailPage() {
   const [triggering, setTriggering] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<ImageItem | null>(null);
   const [activeTab, setActiveTab] = useState<WorkflowContentTab>('research');
+  const [mountedTabs, setMountedTabs] = useState<Set<WorkflowContentTab>>(() => new Set(['research']));
+  const [isTabSwitching, setIsTabSwitching] = useState(false);
+  const [pendingTab, setPendingTab] = useState<WorkflowContentTab | null>(null);
 
   useEffect(() => {
     const pathId = window.location.pathname.split('/').filter(Boolean).pop() || '';
     const url = new URL(window.location.href);
     const tabParam = url.searchParams.get('tab');
 
+    const initialTab = isWorkflowContentTab(tabParam) ? tabParam : 'research';
+
     setId(pathId);
-    setActiveTab(isWorkflowContentTab(tabParam) ? tabParam : 'research');
+    setActiveTab(initialTab);
+    setMountedTabs(new Set([initialTab]));
 
     if (pathId) {
       fetchVideo(pathId);
@@ -229,18 +252,72 @@ export default function YouTubeVideoDetailPage() {
     const onPopState = () => {
       const tabParam = new URL(window.location.href).searchParams.get('tab');
       setActiveTab(isWorkflowContentTab(tabParam) ? tabParam : 'research');
+      setPendingTab(null);
+      setIsTabSwitching(false);
     };
 
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
+  useEffect(() => {
+    setMountedTabs((prev) => {
+      if (prev.has(activeTab)) return prev;
+      const next = new Set(prev);
+      next.add(activeTab);
+      return next;
+    });
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (!video) return;
+
+    const mountRemainingTabs = () => {
+      setMountedTabs((prev) => {
+        if (prev.size === WORKFLOW_CONTENT_TABS.length) return prev;
+        return new Set(WORKFLOW_CONTENT_TABS);
+      });
+    };
+
+    if ('requestIdleCallback' in window) {
+      const idleId = window.requestIdleCallback(mountRemainingTabs, { timeout: 700 });
+      return () => window.cancelIdleCallback(idleId);
+    }
+
+    const timeoutId = setTimeout(mountRemainingTabs, 200);
+    return () => clearTimeout(timeoutId);
+  }, [video]);
+
   function handleTabChange(tab: WorkflowContentTab) {
-    setActiveTab(tab);
+    if (tab === activeTab) return;
+
+    setPendingTab(tab);
+    setIsTabSwitching(true);
 
     const url = new URL(window.location.href);
     url.searchParams.set('tab', tab);
     window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`);
+
+    const switchStartedAt = performance.now();
+
+    window.setTimeout(() => {
+      setActiveTab(tab);
+      setMountedTabs((prev) => {
+        if (prev.has(tab)) return prev;
+        const next = new Set(prev);
+        next.add(tab);
+        return next;
+      });
+
+      const elapsed = performance.now() - switchStartedAt;
+      const minSkeletonMs = 120;
+      const remaining = Math.max(0, minSkeletonMs - elapsed);
+
+      window.setTimeout(() => {
+        setIsTabSwitching(false);
+        setPendingTab(null);
+      }, remaining);
+    }, 0);
   }
 
   async function fetchVideo(videoId: string = id) {
@@ -363,8 +440,13 @@ export default function YouTubeVideoDetailPage() {
             ))}
           </TabsList>
 
-          {activeTab === 'research' && (
-            <Card className="p-5">
+          {isTabSwitching && pendingTab && (
+            <TabContentSkeleton label={TABS.find((tab) => tab.key === pendingTab)?.label || 'Content'} />
+          )}
+
+          {!isTabSwitching && mountedTabs.has('research') && (
+            <div className={activeTab === 'research' ? 'block' : 'hidden'} aria-hidden={activeTab !== 'research'}>
+              <Card className="p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-foreground">Research</h2>
                   {video.has_research && <span className="text-emerald-400 text-sm">Done</span>}
@@ -373,11 +455,13 @@ export default function YouTubeVideoDetailPage() {
                   content={video.research_content}
                   emptyText="No research yet. Click Start above to begin."
                 />
-            </Card>
+              </Card>
+            </div>
           )}
 
-          {activeTab === 'script' && (
-            <Card className="p-5">
+          {!isTabSwitching && mountedTabs.has('script') && (
+            <div className={activeTab === 'script' ? 'block' : 'hidden'} aria-hidden={activeTab !== 'script'}>
+              <Card className="p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-foreground">Script</h2>
                   {video.has_script && <span className="text-emerald-400 text-sm">Done</span>}
@@ -386,11 +470,13 @@ export default function YouTubeVideoDetailPage() {
                   content={video.script_content}
                   emptyText="Script will appear here after research is approved."
                 />
-            </Card>
+              </Card>
+            </div>
           )}
 
-          {activeTab === 'images' && (
-            <Card className="p-5">
+          {!isTabSwitching && mountedTabs.has('images') && (
+            <div className={activeTab === 'images' ? 'block' : 'hidden'} aria-hidden={activeTab !== 'images'}>
+              <Card className="p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-foreground">Images</h2>
                   <span className="text-muted-foreground text-sm">{video.imageCount} images</span>
@@ -421,11 +507,13 @@ export default function YouTubeVideoDetailPage() {
                 ) : (
                   <div className="text-muted-foreground">Images will appear here after script is approved.</div>
                 )}
-            </Card>
+              </Card>
+            </div>
           )}
 
-          {activeTab === 'audio' && (
-            <Card className="p-5">
+          {!isTabSwitching && mountedTabs.has('audio') && (
+            <div className={activeTab === 'audio' ? 'block' : 'hidden'} aria-hidden={activeTab !== 'audio'}>
+              <Card className="p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-foreground">Audio</h2>
                   {video.has_audio && <span className="text-emerald-400 text-sm">Done</span>}
@@ -435,7 +523,8 @@ export default function YouTubeVideoDetailPage() {
                 ) : (
                   <div className="text-muted-foreground">Audio will appear here after images are collected.</div>
                 )}
-            </Card>
+              </Card>
+            </div>
           )}
         </div>
       </div>
