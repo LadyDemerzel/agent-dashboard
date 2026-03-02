@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn("skeleton-shimmer rounded-md", className)} aria-hidden="true" />;
+  return <div className={cn("skeleton-shimmer rounded-md border border-border", className)} aria-hidden="true" />;
 }
 
 export function OrbitLoader({ label = "Loading" }: { label?: string }) {
@@ -22,8 +22,8 @@ export function OrbitLoader({ label = "Loading" }: { label?: string }) {
 
 export function PageLoadingShell() {
   return (
-    <div className="p-4 sm:p-6 lg:p-8 min-h-[calc(100vh-4rem)] aesthetic-grid-bg">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 min-h-[calc(100vh-4rem)]">
+      <div className="w-full space-y-6">
         <div className="space-y-3">
           <Skeleton className="h-3 w-28" />
           <Skeleton className="h-9 w-72 max-w-full" />

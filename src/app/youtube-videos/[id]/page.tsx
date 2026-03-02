@@ -280,7 +280,7 @@ export default function YouTubeVideoDetailPage() {
 
   if (loading) {
     return (
-      <div className="p-4 sm:p-6 lg:p-8 aesthetic-grid-bg">
+      <div className="p-4 sm:p-6 lg:p-8">
         <div className="space-y-6">
           <Skeleton className="h-4 w-28" />
           <div className="space-y-2">

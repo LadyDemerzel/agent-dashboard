@@ -88,7 +88,7 @@ export default function AgentDetailPage({
 
   if (loading) {
     return (
-      <div className="p-4 sm:p-6 lg:p-8 space-y-6 aesthetic-grid-bg">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6">
         <Skeleton className="h-4 w-28" />
         <Skeleton className="h-48" />
         <Skeleton className="h-12 w-80 max-w-full" />
