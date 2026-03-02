@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -10,7 +9,6 @@ import { YouTubeWorkflowStageCard } from '@/components/youtube/YouTubeWorkflowSt
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { OrbitLoader, Skeleton } from '@/components/ui/loading';
-import { TabTransition } from '@/components/ui/tab-transition';
 import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DialogOverlay, DialogContent } from '@/components/ui/dialog';
 import {
@@ -194,9 +192,6 @@ function MarkdownPreview({ content, emptyText }: { content?: string; emptyText: 
 }
 
 export default function YouTubeVideoDetailPage() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const [id, setId] = useState('');
   const [video, setVideo] = useState<Video | null>(null);
   const [loading, setLoading] = useState(true);
@@ -206,7 +201,11 @@ export default function YouTubeVideoDetailPage() {
 
   useEffect(() => {
     const pathId = window.location.pathname.split('/').filter(Boolean).pop() || '';
+    const url = new URL(window.location.href);
+    const tabParam = url.searchParams.get('tab');
+
     setId(pathId);
+    setActiveTab(isWorkflowContentTab(tabParam) ? tabParam : 'research');
 
     if (pathId) {
       fetchVideo(pathId);
@@ -227,23 +226,21 @@ export default function YouTubeVideoDetailPage() {
   }, []);
 
   useEffect(() => {
-    const tabParam = searchParams.get('tab');
-    if (isWorkflowContentTab(tabParam)) {
-      setActiveTab(tabParam);
-      return;
-    }
+    const onPopState = () => {
+      const tabParam = new URL(window.location.href).searchParams.get('tab');
+      setActiveTab(isWorkflowContentTab(tabParam) ? tabParam : 'research');
+    };
 
-    setActiveTab('research');
-  }, [searchParams]);
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   function handleTabChange(tab: WorkflowContentTab) {
     setActiveTab(tab);
 
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('tab', tab);
-    const query = params.toString();
-
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', tab);
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`);
   }
 
   async function fetchVideo(videoId: string = id) {
@@ -367,8 +364,7 @@ export default function YouTubeVideoDetailPage() {
           </TabsList>
 
           {activeTab === 'research' && (
-            <TabTransition transitionKey="research">
-              <Card className="p-5">
+            <Card className="p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-foreground">Research</h2>
                   {video.has_research && <span className="text-emerald-400 text-sm">Done</span>}
@@ -377,13 +373,11 @@ export default function YouTubeVideoDetailPage() {
                   content={video.research_content}
                   emptyText="No research yet. Click Start above to begin."
                 />
-              </Card>
-            </TabTransition>
+            </Card>
           )}
 
           {activeTab === 'script' && (
-            <TabTransition transitionKey="script">
-              <Card className="p-5">
+            <Card className="p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-foreground">Script</h2>
                   {video.has_script && <span className="text-emerald-400 text-sm">Done</span>}
@@ -392,13 +386,11 @@ export default function YouTubeVideoDetailPage() {
                   content={video.script_content}
                   emptyText="Script will appear here after research is approved."
                 />
-              </Card>
-            </TabTransition>
+            </Card>
           )}
 
           {activeTab === 'images' && (
-            <TabTransition transitionKey="images">
-              <Card className="p-5">
+            <Card className="p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-foreground">Images</h2>
                   <span className="text-muted-foreground text-sm">{video.imageCount} images</span>
@@ -429,13 +421,11 @@ export default function YouTubeVideoDetailPage() {
                 ) : (
                   <div className="text-muted-foreground">Images will appear here after script is approved.</div>
                 )}
-              </Card>
-            </TabTransition>
+            </Card>
           )}
 
           {activeTab === 'audio' && (
-            <TabTransition transitionKey="audio">
-              <Card className="p-5">
+            <Card className="p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-foreground">Audio</h2>
                   {video.has_audio && <span className="text-emerald-400 text-sm">Done</span>}
@@ -445,8 +435,7 @@ export default function YouTubeVideoDetailPage() {
                 ) : (
                   <div className="text-muted-foreground">Audio will appear here after images are collected.</div>
                 )}
-              </Card>
-            </TabTransition>
+            </Card>
           )}
         </div>
       </div>
