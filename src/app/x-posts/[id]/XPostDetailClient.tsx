@@ -11,6 +11,7 @@ import { TopLevelComments } from "@/components/TopLevelComments";
 import { DiffViewer, VersionSelector } from "@/components/DiffViewer";
 import { FeedbackThread as FeedbackThreadType } from "@/lib/feedback";
 import { DiffResult } from "@/lib/versions";
+import { parseFrontMatter } from "@/lib/frontmatter";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -35,6 +36,7 @@ interface XPost {
   postNumber: number;
   status: "draft" | "needs review" | "requested changes" | "approved" | "published" | "archived";
   content: string;
+  rawContent: string;
   suggestedTime: string;
   category: string;
   engagementStrategy: string;
@@ -56,6 +58,46 @@ interface XPostDetailClientProps {
   statusLog: { logs: StatusLogEntry[] };
 }
 
+function prettifyFrontMatterKey(key: string): string {
+  return key
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^./, (c) => c.toUpperCase());
+}
+
+function FrontMatterSummary({ data }: { data: Record<string, unknown> }) {
+  const entries = Object.entries(data);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="mb-3 space-y-1.5">
+      {entries.map(([key, value]) => (
+        <div key={key} className="flex items-start gap-3 border-b border-border/60 pb-2">
+          <span className="min-w-28 text-xs text-muted-foreground shrink-0 whitespace-nowrap">
+            {prettifyFrontMatterKey(key)}
+          </span>
+          {Array.isArray(value) ? (
+            value.length === 0 ? (
+              <span className="text-sm text-muted-foreground">—</span>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {value.map((item, idx) => (
+                  <span key={`${key}-${idx}`} className="text-xs px-2 py-1 rounded-md bg-secondary text-foreground">
+                    {String(item)}
+                  </span>
+                ))}
+              </div>
+            )
+          ) : (
+            <span className="text-sm text-foreground break-words">{value == null || value === "" ? "—" : String(value)}</span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function XPostDetailClient({ post, statusLog }: XPostDetailClientProps) {
   const router = useRouter();
   const [threads, setThreads] = useState<FeedbackThreadType[]>([]);
@@ -71,7 +113,7 @@ export function XPostDetailClient({ post, statusLog }: XPostDetailClientProps) {
   const [deleting, setDeleting] = useState(false);
 
   const [isEditing, setIsEditing] = useState(false);
-  const [editContent, setEditContent] = useState(post.content);
+  const [editContent, setEditContent] = useState(post.rawContent);
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [hiddenThreads, setHiddenThreads] = useState<Set<string>>(new Set());
@@ -144,26 +186,9 @@ export function XPostDetailClient({ post, statusLog }: XPostDetailClientProps) {
     if (viewMode === "changes" && currentVersion && compareVersion) loadDiff(compareVersion, currentVersion);
   }, [viewMode, currentVersion, compareVersion, loadDiff]);
 
-  const fullContent = `---
-title: ${post.title}
-date: ${post.date}
-status: ${post.status}
-category: ${post.category || "—"}
-suggestedTime: ${post.suggestedTime || "—"}
----
-
-# ${post.title}
-
-**Post #${post.postNumber}** · ${post.date}
-
-## Content
-${post.content}
-
-## Engagement Strategy
-${post.engagementStrategy || "No engagement strategy provided."}
-
-## Hashtags
-${post.hashtags || "None"}`;
+  const parsedRawContent = parseFrontMatter(post.rawContent);
+  const renderedBody = parsedRawContent?.body ?? post.rawContent;
+  const renderedFrontMatter = parsedRawContent?.frontMatter ?? null;
 
   const fetchThreads = useCallback(async () => {
     try {
@@ -235,7 +260,7 @@ ${post.hashtags || "None"}`;
     finally { setSavingEdit(false); }
   };
 
-  const handleCancelEdit = () => { setIsEditing(false); setEditContent(post.content); };
+  const handleCancelEdit = () => { setIsEditing(false); setEditContent(post.rawContent); };
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
@@ -275,7 +300,7 @@ ${post.hashtags || "None"}`;
                   </>
                 ) : (
                   <>
-                    <Button variant="ghost" size="sm" onClick={() => { setEditContent(post.content); setIsEditing(true); }}>Edit</Button>
+                    <Button variant="ghost" size="sm" onClick={() => { setEditContent(post.rawContent); setIsEditing(true); }}>Edit</Button>
                     <Button variant="ghost" size="sm" className="hover:text-red-400" onClick={() => setShowDeleteConfirm(true)}>Delete</Button>
                   </>
                 )}
@@ -340,11 +365,16 @@ ${post.hashtags || "None"}`;
                       </div>
                     ) : contentDisplayMode === "raw" ? (
                       <div className="p-4">
-                        <LineNumberedContent content={fullContent} onLineRangeSelect={handleLineRangeSelect} selectedRange={selectedRange} highlightLines={visibleHighlightLines} threads={threads} onAddComment={handleAddComment} onResolveThread={handleResolveThread} onReopenThread={handleReopenThread} onHideThread={handleHideThread} onShowThread={handleHideThread} hiddenThreadIds={hiddenThreads} showHiddenThreads={showHiddenThreads} onCreateThread={handleCreateThread} isCreatingThread={isCreatingThread} setIsCreatingThread={setIsCreatingThread} activeThreadId={activeThreadId} setActiveThreadId={setActiveThreadId} />
+                        <LineNumberedContent content={post.rawContent} onLineRangeSelect={handleLineRangeSelect} selectedRange={selectedRange} highlightLines={visibleHighlightLines} threads={threads} onAddComment={handleAddComment} onResolveThread={handleResolveThread} onReopenThread={handleReopenThread} onHideThread={handleHideThread} onShowThread={handleHideThread} hiddenThreadIds={hiddenThreads} showHiddenThreads={showHiddenThreads} onCreateThread={handleCreateThread} isCreatingThread={isCreatingThread} setIsCreatingThread={setIsCreatingThread} activeThreadId={activeThreadId} setActiveThreadId={setActiveThreadId} />
                       </div>
                     ) : (
-                      <div className="p-8 prose prose-invert prose-zinc max-w-none">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{fullContent}</ReactMarkdown>
+                      <div className="p-8">
+                        {renderedFrontMatter && (
+                          <FrontMatterSummary data={renderedFrontMatter as Record<string, unknown>} />
+                        )}
+                        <article className="prose prose-invert prose-zinc max-w-none">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{renderedBody}</ReactMarkdown>
+                        </article>
                       </div>
                     )}
                   </div>

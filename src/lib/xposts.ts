@@ -34,6 +34,7 @@ export interface XPost {
   postNumber: number;
   status: "draft" | "needs review" | "requested changes" | "approved" | "published" | "archived";
   content: string;
+  rawContent: string;
   suggestedTime: string;
   category: string;
   engagementStrategy: string;
@@ -132,6 +133,7 @@ export function getXPosts(): XPost[] {
         postNumber,
         status: normalizeStatus(frontMatter?.status),
         content: extractContent(body),
+        rawContent: raw,
         suggestedTime: frontMatter?.suggestedTime || extractField(body, "Suggested Time"),
         category: frontMatter?.category || extractField(body, "Category"),
         engagementStrategy: frontMatter?.engagementStrategy || extractSection(body, "Engagement Strategy"),
