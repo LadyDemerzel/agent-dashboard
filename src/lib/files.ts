@@ -48,6 +48,19 @@ const AGENT_ID_MAP: Record<string, string> = {
   coordination: "demerzel",
 };
 
+const IGNORED_DELIVERABLE_DIRS = new Set([
+  "node_modules",
+  ".git",
+  ".next",
+  ".turbo",
+  "dist",
+  "build",
+  "coverage",
+  ".venv",
+  "venv",
+  "__pycache__",
+]);
+
 function walkDir(dir: string): string[] {
   const results: string[] = [];
   if (!fs.existsSync(dir)) return results;
@@ -56,6 +69,7 @@ function walkDir(dir: string): string[] {
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
+      if (IGNORED_DELIVERABLE_DIRS.has(entry.name)) continue;
       results.push(...walkDir(fullPath));
     } else if (
       entry.name.endsWith(".md") &&

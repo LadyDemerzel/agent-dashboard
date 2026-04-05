@@ -72,6 +72,17 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    href: "/short-form-video",
+    label: "Short-Form Video",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={iconClass}>
+        <rect x="3" y="4" width="18" height="16" rx="3" />
+        <path d="m10 9 5 3-5 3V9Z" />
+        <path d="M7 4v16" />
+      </svg>
+    ),
+  },
+  {
     href: "/timeline",
     label: "Timeline",
     icon: (

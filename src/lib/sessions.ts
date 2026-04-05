@@ -35,6 +35,8 @@ interface SessionInfo {
   taskDescription?: string;
 }
 
+const SESSION_TAIL_BYTES = 64 * 1024;
+
 /**
  * Check if a session is active based on last activity time
  */
@@ -158,11 +160,50 @@ function extractTaskDescription(content: string): string | undefined {
 }
 
 /**
+ * Read only the tail of a JSONL session file so status polling does not re-read
+ * multi-megabyte logs on every request.
+ */
+function readSessionTail(filePath: string, maxBytes = SESSION_TAIL_BYTES): string {
+  const stats = fs.statSync(filePath);
+  if (stats.size <= 0) return "";
+
+  const start = Math.max(0, stats.size - maxBytes);
+  const buffer = Buffer.alloc(stats.size - start);
+  const fd = fs.openSync(filePath, "r");
+
+  try {
+    fs.readSync(fd, buffer, 0, buffer.length, start);
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  const text = buffer.toString("utf-8");
+  return start > 0 ? text.replace(/^[^\n]*\n/, "") : text;
+}
+
+function extractLastActivityFromTail(content: string, fallbackTimeMs: number): string {
+  const lines = content.trim().split("\n").filter((line) => line.trim());
+
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    try {
+      const entry: SessionEntry = JSON.parse(lines[i]);
+      if (typeof entry.timestamp === "number" && Number.isFinite(entry.timestamp)) {
+        return new Date(entry.timestamp).toISOString();
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return new Date(fallbackTimeMs).toISOString();
+}
+
+/**
  * Get session info for a specific agent
  */
 function getAgentSessions(agentId: string): SessionInfo | null {
   const sessionsDir = path.join(AGENTS_DIR, agentId, "sessions");
-  
+
   if (!fs.existsSync(sessionsDir)) {
     return null;
   }
@@ -171,47 +212,17 @@ function getAgentSessions(agentId: string): SessionInfo | null {
     .readdirSync(sessionsDir)
     .filter((f) => f.endsWith(".jsonl") && !f.includes(".deleted."));
 
-  let mostRecentSession: SessionInfo | null = null;
-  let mostRecentTime = 0;
+  let latestFile: { name: string; path: string; mtimeMs: number } | null = null;
 
   for (const file of sessionFiles) {
     const sessionPath = path.join(sessionsDir, file);
     try {
       const stats = fs.statSync(sessionPath);
-      const content = fs.readFileSync(sessionPath, "utf-8");
-      const lines = content.trim().split("\n").filter(line => line.trim());
-
-      if (lines.length === 0) continue;
-
-      const sessionKey = file.replace(".jsonl", "");
-      let maxTimestamp = stats.mtime.getTime(); // Fallback to file mtime
-      let lastActivity = new Date(maxTimestamp).toISOString();
-
-      // Try to find the most recent timestamp in the session
-      for (let i = lines.length - 1; i >= 0; i--) {
-        try {
-          const entry: SessionEntry = JSON.parse(lines[i]);
-          if (entry.timestamp && entry.timestamp > maxTimestamp) {
-            maxTimestamp = entry.timestamp;
-            lastActivity = new Date(entry.timestamp).toISOString();
-          }
-        } catch {
-          continue;
-        }
-      }
-
-      // Track the most recent session for this agent
-      if (maxTimestamp > mostRecentTime) {
-        mostRecentTime = maxTimestamp;
-        const isActive = isSessionActive(lastActivity);
-        const taskDescription = isActive ? extractTaskDescription(content) : undefined;
-        
-        mostRecentSession = {
-          sessionKey,
-          agentId,
-          lastActivity,
-          isActive,
-          taskDescription,
+      if (!latestFile || stats.mtimeMs > latestFile.mtimeMs) {
+        latestFile = {
+          name: file,
+          path: sessionPath,
+          mtimeMs: stats.mtimeMs,
         };
       }
     } catch {
@@ -219,7 +230,30 @@ function getAgentSessions(agentId: string): SessionInfo | null {
     }
   }
 
-  return mostRecentSession;
+  if (!latestFile) {
+    return null;
+  }
+
+  try {
+    const content = readSessionTail(latestFile.path);
+    const lastActivity = extractLastActivityFromTail(content, latestFile.mtimeMs);
+    const isActive = isSessionActive(lastActivity);
+
+    return {
+      sessionKey: latestFile.name.replace(".jsonl", ""),
+      agentId,
+      lastActivity,
+      isActive,
+      taskDescription: isActive ? extractTaskDescription(content) : undefined,
+    };
+  } catch {
+    return {
+      sessionKey: latestFile.name.replace(".jsonl", ""),
+      agentId,
+      lastActivity: new Date(latestFile.mtimeMs).toISOString(),
+      isActive: isSessionActive(new Date(latestFile.mtimeMs).toISOString()),
+    };
+  }
 }
 
 /**

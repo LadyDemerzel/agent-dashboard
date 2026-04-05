@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePolling } from "@/components/usePolling";
 import { AGENTS } from "@/lib/agents";
 import { AgentCardClient } from "@/components/AgentCardClient";
@@ -9,7 +9,8 @@ import { DeliverableList } from "@/components/DeliverableList";
 import { Timeline } from "@/components/Timeline";
 import { buildTimelineEvents } from "@/lib/timeline";
 import { ResearchCard, ResearchStats, ResearchFile } from "@/components/ResearchCard";
-import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageLoadingShell } from "@/components/ui/loading";
 
 interface AgentStatusData {
@@ -42,26 +43,79 @@ interface DashboardData {
   sessionStatus: AgentStatusResponse;
 }
 
+type InitialLoadState = "loading" | "error" | "ready";
+
+const DASHBOARD_FETCH_TIMEOUT_MS = 10000;
+
 export default function Dashboard() {
   const [initialData, setInitialData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [initialLoadState, setInitialLoadState] = useState<InitialLoadState>("loading");
+  const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
+
+  const loadDashboard = useCallback(async () => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), DASHBOARD_FETCH_TIMEOUT_MS);
+
+    setInitialLoadState("loading");
+    setLoadErrorMessage(null);
+
+    try {
+      const res = await fetch("/api/dashboard", {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        throw new Error(`Dashboard request failed (${res.status})`);
+      }
+
+      const data: DashboardData = await res.json();
+      setInitialData(data);
+      setInitialLoadState("ready");
+    } catch (error) {
+      setInitialData(null);
+      setInitialLoadState("error");
+      setLoadErrorMessage(
+        error instanceof DOMException && error.name === "AbortError"
+          ? "The dashboard took too long to load."
+          : "We couldn’t load dashboard data right now."
+      );
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }, []);
 
   // Fetch initial data on mount
   useEffect(() => {
-    fetch("/api/dashboard", { cache: "no-store" })
-      .then((res) => res.json())
-      .then((data) => {
-        setInitialData(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
+    void loadDashboard();
+  }, [loadDashboard]);
 
   // Poll for real-time status updates every 3 seconds
   const { data: liveStatus } = usePolling<AgentStatusResponse>("/api/agents/status", 3000);
 
-  if (loading || !initialData) {
+  if (initialLoadState === "loading") {
     return <PageLoadingShell />;
+  }
+
+  if (initialLoadState === "error" || !initialData) {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8">
+        <Card className="max-w-2xl">
+          <CardHeader>
+            <CardTitle>Dashboard unavailable</CardTitle>
+            <CardDescription>
+              {loadErrorMessage ?? "We couldn’t load dashboard data right now."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              Check your local API/server status, then try loading the dashboard again.
+            </p>
+            <Button onClick={() => void loadDashboard()}>Retry</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   const { stats, deliverables, researchFiles, sessionStatus } = initialData;
