@@ -1,0 +1,42 @@
+
+> agent-dashboard@0.1.0 start:host
+> next start --hostname 0.0.0.0 --port 3000
+
+▲ Next.js 16.1.6
+- Local:         http://localhost:3000
+- Network:       http://0.0.0.0:3000
+
+✓ Starting...
+✓ Ready in 197ms
+TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+⨯ uncaughtException:  TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+⨯ uncaughtException:  TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+⨯ uncaughtException:  TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+⨯ uncaughtException:  TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}

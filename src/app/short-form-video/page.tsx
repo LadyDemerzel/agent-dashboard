@@ -15,12 +15,35 @@ import {
 } from '@/lib/short-form-video-client';
 
 function stageLabel(project: ProjectRow) {
-  if (project.video.videoUrl) return 'Video';
-  if (project.sceneImages.sceneCount > 0) return 'Scene Images';
-  if (project.script.status !== 'draft') return 'Script';
-  if (project.research.status !== 'draft') return 'Research';
-  if (project.hooks.selectedHookText) return 'Hook selected';
+  if (project.video.pending || project.video.videoUrl) return 'Video';
+  if (project.sceneImages.pending || project.sceneImages.sceneCount > 0) return 'Scene Images';
+  if (project.script.pending || project.script.status !== 'draft') return 'Script';
+  if (project.research.pending || project.research.status !== 'draft') return 'Research';
+  if (project.hooks.pending || project.hooks.selectedHookText) return 'Hook selected';
   return 'Topic';
+}
+
+function primaryProjectText(project: ProjectRow) {
+  return project.hooks.selectedHookText || project.topic || project.title || 'Untitled short-form video';
+}
+
+function secondaryProjectText(project: ProjectRow) {
+  return project.hooks.selectedHookText ? project.topic || undefined : undefined;
+}
+
+function tableStatus(project: ProjectRow) {
+  if (project.video.pending) return 'working';
+  if (project.sceneImages.pending) return 'working';
+  if (project.script.pending) return 'working';
+  if (project.research.pending) return 'working';
+  if (project.hooks.pending) return 'working';
+
+  if (project.video.videoUrl) return project.video.status;
+  if (project.sceneImages.sceneCount > 0) return project.sceneImages.status;
+  if (project.script.status !== 'draft') return project.script.status;
+  if (project.research.status !== 'draft') return project.research.status;
+  if (project.hooks.selectedHookText) return 'approved';
+  return 'draft';
 }
 
 export default function ShortFormVideoPage() {
@@ -120,13 +143,15 @@ export default function ShortFormVideoPage() {
                 <TableRow key={project.id}>
                   <TableCell>
                     <Link href={`/short-form-video/${project.id}`} className="block hover:underline">
-                      <div className="font-medium text-foreground">{project.title || 'Untitled short-form video'}</div>
-                      <div className="text-xs text-muted-foreground mt-1">{project.topic || project.id}</div>
+                      <div className="font-medium text-foreground">{primaryProjectText(project)}</div>
+                      {secondaryProjectText(project) ? (
+                        <div className="mt-1 text-xs text-muted-foreground">{secondaryProjectText(project)}</div>
+                      ) : null}
                     </Link>
                   </TableCell>
                   <TableCell>{stageLabel(project)}</TableCell>
                   <TableCell>
-                    <StatusBadge status={project.video.videoUrl ? project.video.status : project.sceneImages.sceneCount > 0 ? project.sceneImages.status : project.script.status !== 'draft' ? project.script.status : project.research.status} />
+                    <StatusBadge status={tableStatus(project)} />
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{new Date(project.updatedAt).toLocaleString()}</TableCell>
                 </TableRow>

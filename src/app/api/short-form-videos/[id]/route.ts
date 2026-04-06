@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getShortFormProject, updateProjectMeta } from "@/lib/short-form-videos";
 import { resolveShortFormImageStyle } from "@/lib/short-form-image-styles";
 import { getShortFormVideoRenderSettings } from "@/lib/short-form-video-render-settings";
+import { getShortFormBackgroundVideoSettings } from "@/lib/short-form-background-videos";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,8 @@ export async function PATCH(
   const title = typeof body.title === "string" ? body.title.trim() : undefined;
   const selectedImageStyleId = typeof body.selectedImageStyleId === "string" ? body.selectedImageStyleId.trim() : undefined;
   const selectedVoiceId = typeof body.selectedVoiceId === "string" ? body.selectedVoiceId.trim() : undefined;
+  const selectedMusicId = typeof body.selectedMusicId === "string" ? body.selectedMusicId.trim() : undefined;
+  const selectedBackgroundVideoId = typeof body.selectedBackgroundVideoId === "string" ? body.selectedBackgroundVideoId.trim() : undefined;
 
   if (selectedImageStyleId !== undefined) {
     const resolved = resolveShortFormImageStyle(selectedImageStyleId);
@@ -41,10 +44,20 @@ export async function PATCH(
     }
   }
 
-  if (selectedVoiceId !== undefined) {
+  if (selectedVoiceId !== undefined || selectedMusicId !== undefined) {
     const settings = getShortFormVideoRenderSettings();
-    if (!settings.voices.some((voice) => voice.id === selectedVoiceId)) {
+    if (selectedVoiceId !== undefined && !settings.voices.some((voice) => voice.id === selectedVoiceId)) {
       return NextResponse.json({ success: false, error: "Selected voice no longer exists" }, { status: 400 });
+    }
+    if (selectedMusicId !== undefined && !settings.musicTracks.some((track) => track.id === selectedMusicId)) {
+      return NextResponse.json({ success: false, error: "Selected music preset no longer exists" }, { status: 400 });
+    }
+  }
+
+  if (selectedBackgroundVideoId !== undefined) {
+    const settings = getShortFormBackgroundVideoSettings();
+    if (!settings.backgrounds.some((background) => background.id === selectedBackgroundVideoId)) {
+      return NextResponse.json({ success: false, error: "Selected background video no longer exists" }, { status: 400 });
     }
   }
 
@@ -53,6 +66,8 @@ export async function PATCH(
     ...(title !== undefined ? { title } : topic ? { title: topic } : {}),
     ...(selectedImageStyleId !== undefined ? { selectedImageStyleId } : {}),
     ...(selectedVoiceId !== undefined ? { selectedVoiceId } : {}),
+    ...(selectedMusicId !== undefined ? { selectedMusicId } : {}),
+    ...(selectedBackgroundVideoId !== undefined ? { selectedBackgroundVideoId } : {}),
   });
 
   return NextResponse.json({ success: true, data: updated });

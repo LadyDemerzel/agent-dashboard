@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
+import { StatusBadge } from '@/components/StatusBadge';
 import { cn } from '@/lib/utils';
 
 export interface SectionNavigatorItem<T extends string = string> {
@@ -10,6 +11,7 @@ export interface SectionNavigatorItem<T extends string = string> {
   available?: boolean;
   unavailableLabel?: string;
   dirty?: boolean;
+  status?: string;
 }
 
 function getAvailableSections<T extends string>(sections: SectionNavigatorItem<T>[]) {
@@ -126,15 +128,18 @@ export function SectionNavigator<T extends string>({
                 )}
                 aria-current={isActive ? 'location' : undefined}
               >
-                <span className="flex items-center gap-2">
-                  <span>{section.label}</span>
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="truncate">{section.label}</span>
                   {section.dirty ? <span className="h-2 w-2 rounded-full bg-amber-400" aria-label="Unsaved changes" /> : null}
                 </span>
-                {!isAvailable && section.unavailableLabel ? (
-                  <span className="text-[11px] uppercase tracking-wide">{section.unavailableLabel}</span>
-                ) : section.dirty ? (
-                  <span className="text-[11px] uppercase tracking-wide text-amber-200">Unsaved</span>
-                ) : null}
+                <span className="ml-2 flex shrink-0 items-center gap-1.5">
+                  {section.status ? <StatusBadge status={section.status} compact /> : null}
+                  {!isAvailable && section.unavailableLabel ? (
+                    <span className="text-[11px] uppercase tracking-wide">{section.unavailableLabel}</span>
+                  ) : section.dirty ? (
+                    <span className="text-[11px] uppercase tracking-wide text-amber-200">Unsaved</span>
+                  ) : null}
+                </span>
               </button>
             );
           })}
@@ -164,6 +169,7 @@ export function SectionNavigator<T extends string>({
                 >
                   <span className="inline-flex items-center gap-1.5">
                     <span>{section.label}</span>
+                    {section.status ? <StatusBadge status={section.status} compact className="hidden sm:inline-flex" /> : null}
                     {section.dirty ? <span className="h-2 w-2 rounded-full bg-amber-400" aria-label="Unsaved changes" /> : null}
                   </span>
                 </button>

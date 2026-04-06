@@ -20,6 +20,14 @@ const DEFAULT_IMAGE_HEADER_PERCENT = "28";
 const DEFAULT_IMAGE_STYLE_PRESET = "dark-charcoal-natural-header";
 const DEFAULT_IMAGE_SUBJECT = "same androgynous high-fashion model across all scenes, sharp eye area, defined cheekbones, elegant neutral styling";
 const DEFAULT_IMAGE_STYLE_PROMPT = "Preserve a natural top caption-safe background area as a real continuation of the same scene, not a boxed header or hard divider. No tiling, split panels, framed prints, inset cards, mockups, collage layouts, or floating rectangles unless explicitly requested. No readable text, labels, subtitles, UI chrome, or watermarks inside the generated artwork. Keep every image as one cohesive full-frame composition with the subject naturally embedded into the environment. Clean dramatic high-contrast pencil-and-charcoal illustration, premium modern TikTok aesthetic, dark smoky atmospheric background, restrained vivid red accents only on the key focal area, minimal clutter.";
+const GREEN_SCREEN_SCENE_CONSTRAINTS = [
+  "CRITICAL BACKGROUND RULE: render the character and all foreground props against a uniform pure chroma-key green background (#00FF00 or equivalent vivid studio greenscreen) that fills the entire frame edge to edge.",
+  "The greenscreen should stay distinctly green, not cyan/teal/blue-green: keep blue in the backdrop as close to zero as possible so the background does not drift toward aqua.",
+  "The greenscreen should read like a single flat digital/studio fill: no realistic environment, scenic background, textured backdrop, painted strokes, gradient background, corner darkening, mottled noise, shadows cast onto a wall, floor reflections, haze, smoke, or colored light spill in the green area.",
+  "Keep the subject fully in front of the greenscreen with clean silhouette separation, crisp but natural edges, minimal semi-transparent wisps, and no motion blur or smeared edges that would make chroma keying difficult.",
+  "Avoid green clothing, green accessories, green makeup, green props, or green translucent objects on the subject. Prefer wardrobe and props that contrast strongly against green.",
+  "Lighting should be even and flattering on the subject while keeping the greenscreen flat, vivid, uniform, and easy to key across the whole frame."
+].join(" ");
 const DEFAULT_VOICE_SPEAKER = "Aiden";
 const DEFAULT_VOICE_INSTRUCT = "Educated American male narrator, slightly deeper and lower-pitched, polished and confident, calm authority, crisp social-video pacing, speak only English, no other languages or non-speech sounds.";
 const DEFAULT_VOICE_PREVIEW_TEXT = "Your jawline doesn't start at your jaw. It starts with how your whole neck and face are stacking.";
@@ -27,6 +35,8 @@ const DEFAULT_VOICE_MODE = "voice-design";
 const DEFAULT_VOICE_ID = "voice-calm-authority";
 const DEFAULT_MUSIC_PROMPT = "instrumental cinematic curiosity underscore, mysterious but pleasant, warm synth pulse, light percussion, airy textures, subtle piano and marimba accents, sense of discovery, modern and polished, no horror, no dread, no dark drones, no jump scares, no vocals, no singing, no choir, no spoken voice";
 const DEFAULT_MUSIC_VOLUME = "0.38";
+const DEFAULT_MUSIC_ID = "music-curiosity-underscore";
+const DEFAULT_MUSIC_PREVIEW_DURATION_SECONDS = 12;
 const DEFAULT_ACE_STEP_URL = "http://127.0.0.1:8011";
 const STYLE_REFERENCE_IMAGES_DIR = path.join(
   HOME_DIR,
@@ -122,6 +132,48 @@ function ensureUniqueVoiceIds(voices) {
   });
 }
 
+function createDefaultMusic() {
+  return {
+    id: DEFAULT_MUSIC_ID,
+    name: "Curiosity underscore",
+    prompt: DEFAULT_MUSIC_PROMPT,
+    notes: "Starter instrumental ACE-Step preset for short-form videos.",
+    previewDurationSeconds: DEFAULT_MUSIC_PREVIEW_DURATION_SECONDS,
+  };
+}
+
+function normalizeMusicEntry(value, fallback, index) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const prompt = normalizeString(value.prompt, fallback.prompt);
+  const parsedDuration = Number(value.previewDurationSeconds);
+  return {
+    id: normalizeString(value.id, fallback.id || `music-${index + 1}`),
+    name: normalizeString(value.name, fallback.name || `Music ${index + 1}`),
+    prompt,
+    notes: normalizeString(value.notes, fallback.notes || ""),
+    previewDurationSeconds: Number.isFinite(parsedDuration)
+      ? Math.min(30, Math.max(6, Math.round(parsedDuration)))
+      : fallback.previewDurationSeconds,
+  };
+}
+
+function ensureUniqueMusicIds(tracks) {
+  const used = new Set();
+  return tracks.map((track, index) => {
+    let candidate = normalizeString(track.id, `music-${index + 1}`);
+    if (!candidate) candidate = `music-${index + 1}`;
+    if (!used.has(candidate)) {
+      used.add(candidate);
+      return track;
+    }
+    let suffix = 2;
+    while (used.has(`${candidate}-${suffix}`)) suffix += 1;
+    const nextId = `${candidate}-${suffix}`;
+    used.add(nextId);
+    return { ...track, id: nextId };
+  });
+}
+
 function migrateLegacyQwenVoice(parsed) {
   const speaker = normalizeString(parsed?.qwenVoice?.speaker, DEFAULT_VOICE_SPEAKER);
   const instruct = normalizeString(parsed?.qwenVoice?.instruct, DEFAULT_VOICE_INSTRUCT);
@@ -136,17 +188,25 @@ function migrateLegacyQwenVoice(parsed) {
     notes: "Migrated automatically from the previous speaker + instruction settings.",
     previewText,
   };
+  const music = createDefaultMusic();
   return {
     defaultVoiceId: voice.id,
     voices: [voice],
+    defaultMusicTrackId: music.id,
+    musicVolume: Number(DEFAULT_MUSIC_VOLUME),
+    musicTracks: [music],
   };
 }
 
 function readVideoRenderSettings() {
   const defaultVoice = createDefaultVoice();
+  const defaultMusic = createDefaultMusic();
   const defaultSettings = {
     defaultVoiceId: defaultVoice.id,
     voices: [defaultVoice],
+    defaultMusicTrackId: defaultMusic.id,
+    musicVolume: Number(DEFAULT_MUSIC_VOLUME),
+    musicTracks: [defaultMusic],
   };
 
   if (!fs.existsSync(VIDEO_RENDER_SETTINGS_PATH)) {
@@ -167,9 +227,27 @@ function readVideoRenderSettings() {
     );
     const normalizedVoices = voices.length > 0 ? voices : [defaultVoice];
     const defaultVoiceId = normalizeString(parsed?.defaultVoiceId, normalizedVoices[0].id);
+
+    const rawMusicTracks = Array.isArray(parsed?.musicTracks) ? parsed.musicTracks : [];
+    const musicTracks = ensureUniqueMusicIds(
+      rawMusicTracks
+        .map((track, index) => normalizeMusicEntry(track, defaultMusic, index))
+        .filter(Boolean)
+    );
+    const normalizedMusicTracks = musicTracks.length > 0 ? musicTracks : [defaultMusic];
+    const defaultMusicTrackId = normalizeString(parsed?.defaultMusicTrackId, normalizedMusicTracks[0].id);
+    const musicVolume = Number.isFinite(Number(parsed?.musicVolume))
+      ? Math.min(1, Math.max(0, Number(parsed.musicVolume)))
+      : Number(DEFAULT_MUSIC_VOLUME);
+
     return {
       defaultVoiceId: normalizedVoices.some((voice) => voice.id === defaultVoiceId) ? defaultVoiceId : normalizedVoices[0].id,
       voices: normalizedVoices,
+      defaultMusicTrackId: normalizedMusicTracks.some((track) => track.id === defaultMusicTrackId)
+        ? defaultMusicTrackId
+        : normalizedMusicTracks[0].id,
+      musicVolume,
+      musicTracks: normalizedMusicTracks,
     };
   } catch {
     return defaultSettings;
@@ -188,6 +266,23 @@ function resolveVoiceSelection(preferredVoiceId) {
   }
   const fallbackVoice = settings.voices[0] || createDefaultVoice();
   return { voice: fallbackVoice, resolvedVoiceId: fallbackVoice.id, source: "fallback" };
+}
+
+function resolveMusicSelection(preferredMusicId) {
+  const settings = readVideoRenderSettings();
+  const projectMusic = preferredMusicId ? settings.musicTracks.find((track) => track.id === preferredMusicId) : undefined;
+  if (projectMusic) {
+    return { music: projectMusic, resolvedMusicId: projectMusic.id, source: "project", musicVolume: settings.musicVolume };
+  }
+  const defaultMusic = settings.defaultMusicTrackId ? settings.musicTracks.find((track) => track.id === settings.defaultMusicTrackId) : undefined;
+  if (defaultMusic) {
+    return { music: defaultMusic, resolvedMusicId: defaultMusic.id, source: "default", musicVolume: settings.musicVolume };
+  }
+  const fallbackMusic = settings.musicTracks[0];
+  if (fallbackMusic) {
+    return { music: fallbackMusic, resolvedMusicId: fallbackMusic.id, source: "fallback", musicVolume: settings.musicVolume };
+  }
+  return { source: "none", musicVolume: settings.musicVolume };
 }
 
 function writeJson(filePath, value) {
@@ -239,15 +334,19 @@ function formatSceneImagesDuration(scenes) {
   return total > 0 ? `${total}s` : undefined;
 }
 
-function readProjectTopic(projectId) {
+function readProjectMeta(projectId) {
   const projectJsonPath = path.join(getProjectDir(projectId), "project.json");
-  if (!fs.existsSync(projectJsonPath)) return "";
+  if (!fs.existsSync(projectJsonPath)) return undefined;
   try {
-    const project = JSON.parse(fs.readFileSync(projectJsonPath, "utf-8"));
-    return typeof project.topic === "string" ? project.topic.trim() : "";
+    return JSON.parse(fs.readFileSync(projectJsonPath, "utf-8"));
   } catch {
-    return "";
+    return undefined;
   }
+}
+
+function readProjectTopic(projectId) {
+  const project = readProjectMeta(projectId);
+  return typeof project?.topic === "string" ? project.topic.trim() : "";
 }
 
 function readExistingDocMetadata(docPath) {
@@ -355,6 +454,65 @@ function resolveStyleReferenceAbsolutePath(relativePath) {
   return absolutePath;
 }
 
+function withGreenScreenPromptTemplates(promptTemplates = {}) {
+  const next = { ...promptTemplates };
+  const sceneTemplate = normalizeString(next.sceneTemplate, "");
+  const styleInstructionsTemplate = normalizeString(next.styleInstructionsTemplate, "");
+
+  next.sceneTemplate = [
+    sceneTemplate,
+    "",
+    "Greenscreen render requirement: output the subject as a clean foreground plate over a uniform chroma-key green background, with no scenic/environment background baked into the image.",
+    "Do not reuse, repaint, approximate, or preserve any background/environment from style references, character references, prior scenes, or implied scene descriptions. Carry over only the subject identity, outfit continuity, medium, palette, and lighting treatment on the subject itself.",
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  next.styleInstructionsTemplate = [
+    styleInstructionsTemplate,
+    "",
+    "Greenscreen compositing requirement: {{greenScreenConstraintBlock}}",
+    "When greenscreen output is requested, any instruction about background continuation, scenic atmosphere, or matching the reference background is overridden. Match only the artistic treatment on the foreground subject/props; never inherit the reference background itself.",
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  return next;
+}
+
+function sanitizeGreenScreenConstraints(value) {
+  const text = normalizeString(value, "");
+  if (!text) return "";
+
+  return text
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/(caption-safe background area|real continuation of the same scene|background continuing upward|subject naturally embedded into the environment|same environment)/i.test(line))
+    .join("\n");
+}
+
+function sanitizeGreenScreenStylePrompt(value) {
+  const text = normalizeString(value, "");
+  const override = "For greenscreen output, preserve only the artistic medium, palette, rendering approach, and lighting treatment on the foreground subject. Do not recreate or preserve any environment/background from references or prior scenes.";
+  return [text, override].filter(Boolean).join(" ").trim();
+}
+
+function sanitizeGreenScreenReferenceInstructions(value, usageType) {
+  const text = normalizeString(value, "");
+  if (usageType === "character") {
+    return [
+      text,
+      "Use this reference only for recurring character identity, face, hair, body proportions, and outfit continuity. Ignore its original background/environment completely.",
+    ].filter(Boolean).join(" ").trim();
+  }
+
+  return [
+    text.replace(/\bbackgrounds?\b/gi, "visual treatment"),
+    "Use this reference for medium, palette, brushwork, and lighting style only. Do not copy, preserve, or reinterpret its background/environment when generating greenscreen output.",
+  ].filter(Boolean).join(" ").trim();
+}
+
 function runCommand(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
@@ -420,9 +578,9 @@ function buildSceneImagesReviewDoc(projectId, scenes, options = {}) {
     "",
     "## Summary",
     "",
-    `${scopeLabel} The direct dashboard workflow now calls the xml-scene-images generator deterministically instead of routing this execution step through Scribe. Each scene should have an uncaptioned export for assembly and a captioned preview for review.`,
+    `${scopeLabel} The direct dashboard workflow now calls the xml-scene-images generator deterministically instead of routing this execution step through Scribe. Each scene should now output a raw green-screen foreground plate for assembly, while dashboard preview videos composite that plate over the project's selected looping background video.`,
     "",
-    `This run ${modeLabel} **${scenes.length} scene images** using the structured Nano Banana path with the selected style **${options.imageStyleName || "Default charcoal"}**: one consistent character reference, the selected shared/per-style art direction, natural top caption-safe headroom, unified full-frame composition, and no baked-in text inside the artwork. When the XML marks a scene with referencePreviousSceneImage=\"true\", the generator also feeds in the previous actual generated scene image as an extra continuity reference.${styleReferenceLine}`,
+    `This run ${modeLabel} **${scenes.length} scene images** using the structured Nano Banana path with the selected style **${options.imageStyleName || "Default charcoal"}**: one consistent character reference, the selected shared/per-style art direction, natural top caption-safe headroom, and a hard greenscreen requirement so the final video can chroma-key the subject over a persistent looping background video. The generated artwork still contains no baked-in text. When the XML marks a scene with referencePreviousSceneImage=\"true\", the generator also feeds in the previous actual generated scene image as an extra continuity reference.${styleReferenceLine}`,
     ...(options.notes ? ["", "## Request notes", "", options.notes] : []),
     "",
     "## Scene Breakdown",
@@ -433,9 +591,10 @@ function buildSceneImagesReviewDoc(projectId, scenes, options = {}) {
     "",
     "## Files Generated",
     "",
-    "- `scenes/scene-XX-uncaptioned-1080x1920.png` — clean scene image for video assembly",
-    "- `scenes/scene-XX-captioned-1080x1920.png` — preview image with caption overlay",
-    "- `scenes/scene-XX.png` — legacy copy of the clean scene image",
+    "- `scenes/scene-XX-uncaptioned-1080x1920.png` — raw green-screen scene image for chroma-key assembly",
+    "- `scenes/scene-XX-captioned-1080x1920.png` — legacy captioned image preview (kept for compatibility)",
+    "- `scenes/scene-XX.png` — legacy copy of the raw green-screen scene image",
+    "- dashboard scene preview videos — generated on demand by compositing the raw scene plate over the selected background video",
     "- `scenes/manifest.json` — generator manifest with image prompts and absolute output paths",
     "- `scene-images.json` — dashboard manifest with relative project paths for review UI",
     "",
@@ -530,7 +689,7 @@ function buildVideoReviewDoc(projectId, config, selectedVoice = createDefaultVoi
     "",
     `${config.mode === "revise" ? "Regenerated" : "Generated"} the final vertical short-form video through the direct dashboard workflow. This execution path now calls the xml-scene-video renderer deterministically instead of routing the render through Scribe.`,
     "",
-    "This run stayed on the default deterministic pipeline: full-video Qwen narration from the XML `<script>`, transcript-driven Qwen forced alignment for scene timing, uncaptioned scene images for motion, separate caption overlays, ACE-Step instrumental background music, and any scene-level XML camera motion applied only to the image layer when explicitly present in the XML (otherwise the scene stays static).",
+    "This run stayed on the default deterministic pipeline: full-video Qwen narration from the XML `<script>`, transcript-driven Qwen forced alignment for scene timing, a full-duration looping background video track, green-screen scene images chroma-keyed as foreground plates, separate caption overlays, ACE-Step instrumental background music, and any scene-level XML camera motion applied only to the image layer when explicitly present in the XML (otherwise the scene stays static).",
     ...(config.notes ? ["", "## Request notes", "", config.notes] : []),
     ...(alignmentWarning ? ["", "## Alignment warning", "", alignmentWarning] : []),
     "",
@@ -540,6 +699,7 @@ function buildVideoReviewDoc(projectId, config, selectedVoice = createDefaultVoi
     `- Work directory: \`${relativeWorkDir}\``,
     `- Narration voice: Qwen / ${selectedVoice.mode === "voice-design" ? `VoiceDesign \`${selectedVoice.name}\`` : `legacy custom voice \`${selectedVoice.name}\` / speaker \`${selectedVoice.speaker || DEFAULT_VOICE_SPEAKER}\``}`,
     `- Voice prompt: ${selectedVoice.voiceDesignPrompt}`,
+    `- Looping background video: ${config.backgroundVideoName ? `\`${config.backgroundVideoName}\`` : "Not configured"}`,
     "- Music path: ACE-Step instrumental default",
   ].join("\n");
 }
@@ -649,13 +809,20 @@ function runDirectSceneImages(job) {
       path: resolveStyleReferenceAbsolutePath(reference.imageRelativePath),
       label: reference.label,
       usageType: reference.usageType || "general",
-      usageInstructions: reference.usageInstructions || "Use this reference as supporting visual context when helpful.",
+      usageInstructions: sanitizeGreenScreenReferenceInstructions(
+        reference.usageInstructions || "Use this reference as supporting visual context when helpful.",
+        reference.usageType || "general",
+      ),
     }));
   const extraReferencesJsonPath = path.join(runDir, "style-references.json");
   fs.writeFileSync(extraReferencesJsonPath, JSON.stringify(extraReferencesPayload, null, 2), "utf-8");
   const promptTemplatesJsonPath = path.join(runDir, "nano-banana-prompt-templates.json");
   if (config.imagePromptTemplates && typeof config.imagePromptTemplates === "object") {
-    fs.writeFileSync(promptTemplatesJsonPath, JSON.stringify(config.imagePromptTemplates, null, 2), "utf-8");
+    const promptTemplates = withGreenScreenPromptTemplates({
+      ...config.imagePromptTemplates,
+      greenScreenConstraintBlock: GREEN_SCREEN_SCENE_CONSTRAINTS,
+    });
+    fs.writeFileSync(promptTemplatesJsonPath, JSON.stringify(promptTemplates, null, 2), "utf-8");
   }
 
   const args = [
@@ -680,9 +847,9 @@ function runDirectSceneImages(job) {
     "--subject",
     config.imageStyleSubject || DEFAULT_IMAGE_SUBJECT,
     "--common-constraints",
-    config.imageCommonConstraints || "",
+    [sanitizeGreenScreenConstraints(config.imageCommonConstraints || ""), GREEN_SCREEN_SCENE_CONSTRAINTS].filter(Boolean).join("\n\n"),
     "--style-extra",
-    config.imageStylePrompt || DEFAULT_IMAGE_STYLE_PROMPT,
+    sanitizeGreenScreenStylePrompt(config.imageStylePrompt || DEFAULT_IMAGE_STYLE_PROMPT),
     "--extra-references-json",
     extraReferencesJsonPath,
     "--force",
@@ -731,8 +898,12 @@ function runDirectVideo(job) {
     throw new Error("Missing direct video config");
   }
 
-  const preferredVoiceId = readProjectMeta(job.projectId)?.selectedVoiceId;
-  const selectedVoice = resolveVoiceSelection(preferredVoiceId).voice;
+  const projectMeta = readProjectMeta(job.projectId) || {};
+  const selectedVoice = resolveVoiceSelection(projectMeta.selectedVoiceId).voice;
+  const selectedMusic = resolveMusicSelection(projectMeta.selectedMusicId);
+  if (!config.backgroundVideoPath) {
+    throw new Error("Missing background video selection for final-video generation. Configure a background video in short-form settings and select one on the project before rendering.");
+  }
 
   const runDir = path.join(getProjectDir(job.projectId), ".workflow-runs", job.runId);
   ensureDir(runDir);
@@ -754,6 +925,8 @@ function runDirectVideo(job) {
     config.finalVideoPath,
     "--work-dir",
     config.videoWorkDir,
+    "--background-video",
+    config.backgroundVideoPath,
     "--tts-engine",
     "qwen",
     "--qwen-mode",
@@ -768,9 +941,9 @@ function runDirectVideo(job) {
     "--ace-step-url",
     DEFAULT_ACE_STEP_URL,
     "--music-prompt",
-    DEFAULT_MUSIC_PROMPT,
+    selectedMusic.music?.prompt || DEFAULT_MUSIC_PROMPT,
     "--music-volume",
-    DEFAULT_MUSIC_VOLUME,
+    String(selectedMusic.musicVolume ?? Number(DEFAULT_MUSIC_VOLUME)),
     "--force",
   ];
 
@@ -814,6 +987,7 @@ async function main() {
       attempt.command = directResult.command;
       attempt.stdout = directResult.stdout;
       attempt.stderr = directResult.stderr;
+      attempt.directResult = directResult;
       const verified = await waitForArtifacts(
         job,
         job.requiredArtifacts,
@@ -848,6 +1022,7 @@ async function main() {
         projectId: job.projectId,
         startedAt,
         failedAt: new Date().toISOString(),
+        errorMessage: attempt.error,
         attempts,
       });
       return;

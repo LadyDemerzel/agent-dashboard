@@ -39,8 +39,9 @@ export interface SceneImageProgressSummaryClient {
   total: number;
   completed: number;
   pending: number;
-  scope: 'all' | 'single';
+  scope: 'all' | 'single' | 'chain';
   targetSceneId?: string;
+  targetSceneIds?: string[];
 }
 
 export interface StageDoc {
@@ -87,6 +88,8 @@ export interface Scene {
   caption: string;
   image?: string;
   previewImage?: string;
+  previewVideo?: string;
+  previewVideoBackgroundId?: string;
   notes?: string;
   status?: 'completed' | 'in-progress';
 }
@@ -104,6 +107,10 @@ export interface ShortFormProjectClient {
   selectedImageStyleName?: string;
   selectedVoiceId?: string;
   selectedVoiceName?: string;
+  selectedMusicId?: string;
+  selectedMusicName?: string;
+  selectedBackgroundVideoId?: string;
+  selectedBackgroundVideoName?: string;
   hooks: {
     pending: boolean;
     generations: HookGeneration[];
@@ -124,11 +131,11 @@ export interface ShortFormProjectRowClient {
   updatedAt: string;
   createdAt: string;
   currentStage: string;
-  hooks: { selectedHookText?: string };
-  research: { status: string };
-  script: { status: string };
-  sceneImages: { status: string; sceneCount: number };
-  video: { status: string; videoUrl?: string };
+  hooks: { selectedHookText?: string; pending?: boolean };
+  research: { status: string; pending?: boolean };
+  script: { status: string; pending?: boolean };
+  sceneImages: { status: string; sceneCount: number; pending?: boolean };
+  video: { status: string; videoUrl?: string; pending?: boolean };
 }
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -306,6 +313,8 @@ function normalizeScene(value: unknown): Scene | null {
     caption,
     image: asOptionalString(obj.image),
     previewImage: asOptionalString(obj.previewImage),
+    previewVideo: asOptionalString(obj.previewVideo),
+    previewVideoBackgroundId: asOptionalString(obj.previewVideoBackgroundId),
     notes: asOptionalString(obj.notes),
     status: obj.status === 'in-progress' ? 'in-progress' : obj.status === 'completed' ? 'completed' : undefined,
   };
@@ -325,8 +334,11 @@ function normalizeSceneImageProgressSummary(value: unknown): SceneImageProgressS
     total,
     completed,
     pending,
-    scope: obj.scope === 'single' ? 'single' : 'all',
+    scope: obj.scope === 'single' ? 'single' : obj.scope === 'chain' ? 'chain' : 'all',
     targetSceneId: asOptionalString(obj.targetSceneId),
+    targetSceneIds: Array.isArray(obj.targetSceneIds)
+      ? obj.targetSceneIds.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      : undefined,
   };
 }
 
@@ -370,6 +382,10 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
     selectedImageStyleName: asOptionalString(obj.selectedImageStyleName),
     selectedVoiceId: asOptionalString(obj.selectedVoiceId),
     selectedVoiceName: asOptionalString(obj.selectedVoiceName),
+    selectedMusicId: asOptionalString(obj.selectedMusicId),
+    selectedMusicName: asOptionalString(obj.selectedMusicName),
+    selectedBackgroundVideoId: asOptionalString(obj.selectedBackgroundVideoId),
+    selectedBackgroundVideoName: asOptionalString(obj.selectedBackgroundVideoName),
     hooks: {
       pending: asBoolean(hooks.pending),
       generations,
@@ -396,6 +412,11 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
 export function normalizeShortFormProjectRow(value: unknown): ShortFormProjectRowClient {
   const obj = asObject(value);
   const project = normalizeShortFormProject(value);
+  const hooks = asObject(obj.hooks);
+  const research = asObject(obj.research);
+  const script = asObject(obj.script);
+  const sceneImagesBase = asObject(obj.sceneImages);
+  const videoBase = asObject(obj.video);
   const rawSceneImages = asObject(obj.sceneImages);
   const rawSceneCount = rawSceneImages.sceneCount;
   const sceneCount = typeof rawSceneCount === 'number' && Number.isFinite(rawSceneCount)
@@ -409,10 +430,13 @@ export function normalizeShortFormProjectRow(value: unknown): ShortFormProjectRo
     updatedAt: project.updatedAt,
     createdAt: project.createdAt,
     currentStage: asString(obj.currentStage),
-    hooks: { selectedHookText: project.hooks.selectedHookText ?? project.selectedHookText },
-    research: { status: project.research.status },
-    script: { status: project.script.status },
-    sceneImages: { status: project.sceneImages.status, sceneCount },
-    video: { status: project.video.status, videoUrl: project.video.videoUrl },
+    hooks: {
+      selectedHookText: project.hooks.selectedHookText ?? project.selectedHookText,
+      pending: asBoolean(hooks.pending),
+    },
+    research: { status: project.research.status, pending: asBoolean(research.pending) },
+    script: { status: project.script.status, pending: asBoolean(script.pending) },
+    sceneImages: { status: project.sceneImages.status, sceneCount, pending: asBoolean(sceneImagesBase.pending) },
+    video: { status: project.video.status, videoUrl: project.video.videoUrl, pending: asBoolean(videoBase.pending) },
   };
 }

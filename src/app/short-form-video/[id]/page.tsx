@@ -51,6 +51,18 @@ interface VoiceOption {
   mode?: 'voice-design' | 'custom-voice';
 }
 
+interface MusicOption {
+  id: string;
+  name: string;
+}
+
+interface BackgroundVideoOption {
+  id: string;
+  name: string;
+  notes?: string;
+  videoUrl?: string;
+}
+
 interface WorkflowSettingsResponse {
   prompts?: Record<string, string>;
   definitions?: Array<{ key: string; title: string; description: string; stage: string }>;
@@ -62,6 +74,13 @@ interface WorkflowSettingsResponse {
   videoRender?: {
     defaultVoiceId?: string;
     voices?: VoiceOption[];
+    defaultMusicTrackId?: string;
+    musicVolume?: number;
+    musicTracks?: MusicOption[];
+  };
+  backgroundVideos?: {
+    defaultBackgroundVideoId?: string;
+    backgrounds?: BackgroundVideoOption[];
   };
 }
 
@@ -1037,7 +1056,11 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
   const [submittingScene, setSubmittingScene] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [styleOptions, setStyleOptions] = useState<ImageStyleOption[]>([]);
+  const [backgroundOptions, setBackgroundOptions] = useState<BackgroundVideoOption[]>([]);
+  const [defaultBackgroundVideoId, setDefaultBackgroundVideoId] = useState<string>('');
   const [savingStyle, setSavingStyle] = useState(false);
+  const [savingBackground, setSavingBackground] = useState(false);
+  const [sceneTabById, setSceneTabById] = useState<Record<string, 'preview' | 'raw'>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -1053,12 +1076,21 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
               (style): style is ImageStyleOption => Boolean(style && typeof style.id === 'string' && typeof style.name === 'string')
             )
           : [];
+        const nextBackgrounds = Array.isArray(payload.data?.backgroundVideos?.backgrounds)
+          ? payload.data.backgroundVideos.backgrounds.filter(
+              (background): background is BackgroundVideoOption => Boolean(background && typeof background.id === 'string' && typeof background.name === 'string')
+            )
+          : [];
         if (!cancelled) {
           setStyleOptions(nextStyles);
+          setBackgroundOptions(nextBackgrounds);
+          setDefaultBackgroundVideoId(payload.data?.backgroundVideos?.defaultBackgroundVideoId || '');
         }
       } catch {
         if (!cancelled) {
           setStyleOptions([]);
+          setBackgroundOptions([]);
+          setDefaultBackgroundVideoId('');
         }
       }
     }
@@ -1068,6 +1100,18 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    setSceneTabById((current) => {
+      const next = { ...current };
+      for (const scene of project.sceneImages.scenes) {
+        if (!next[scene.id]) {
+          next[scene.id] = scene.previewVideo ? 'preview' : 'raw';
+        }
+      }
+      return next;
+    });
+  }, [project.sceneImages.scenes]);
 
   async function saveProjectStyle(styleId: string) {
     setSavingStyle(true);
@@ -1086,6 +1130,26 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
       setError(err instanceof Error ? err.message : 'Failed to update image style');
     } finally {
       setSavingStyle(false);
+    }
+  }
+
+  async function saveProjectBackground(backgroundVideoId: string) {
+    setSavingBackground(true);
+    setError(null);
+    try {
+      await parseJsonResponse(
+        await fetch(`/api/short-form-videos/${project.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ selectedBackgroundVideoId: backgroundVideoId }),
+        }),
+        'Failed to update background video'
+      );
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update background video');
+    } finally {
+      setSavingBackground(false);
     }
   }
 
@@ -1122,12 +1186,12 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
       projectId={project.id}
       title="Scene Images"
       stage="scene-images"
-      description="Once the XML script is approved, the dashboard runs the xml-scene-images workflow directly to generate storyboard scene images and captioned previews. The generated artwork itself should contain no baked-in text; captions are overlaid separately. If a scene sets referencePreviousSceneImage='true', the generator also chains in the previous actual generated scene image for continuity. The currently selected reusable image style is applied on top of the shared/common constraints for this project’s scene generation run."
+      description="Once the XML script is approved, the dashboard runs the xml-scene-images workflow directly to generate green-screen storyboard scene plates. The generated artwork itself should contain no baked-in text or final baked-in background; captions are overlaid separately and the selected project background video is composited behind each scene in preview/final render. If a scene sets referencePreviousSceneImage='true', the generator also chains in the previous actual generated scene image for continuity. The currently selected reusable image style is applied on top of the shared/common constraints for this project’s scene generation run."
       doc={project.sceneImages}
       mode="markdown"
       emptyText="No scene images yet. Generate the storyboard after approving the XML script."
       triggerLabel="Generate scene images"
-      triggerDescription={`This should create a scene manifest plus clean and captioned preview images using the selected image style${project.selectedImageStyleName ? ` (${project.selectedImageStyleName})` : ''}.`}
+      triggerDescription={`This should create green-screen scene plates using the selected image style${project.selectedImageStyleName ? ` (${project.selectedImageStyleName})` : ''}${project.selectedBackgroundVideoName ? ` and prepare preview compositing against ${project.selectedBackgroundVideoName}` : ''}.`}
       onRefresh={refresh}
       collapseDocumentByDefault
       extra={
@@ -1172,6 +1236,48 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
               </div>
             </div>
           </div>
+
+          <div className="rounded-lg border border-border bg-background/60 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-medium text-foreground">Looping background video for this project</h3>
+                <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
+                  Pick which saved background video should sit behind the green-screen characters for scene previews and final render. New projects default to the library default automatically.
+                </p>
+              </div>
+              <Link
+                href="/short-form-video/settings#background-videos"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Manage backgrounds ↗
+              </Link>
+            </div>
+            <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
+              <Select
+                value={project.selectedBackgroundVideoId || defaultBackgroundVideoId || ''}
+                onChange={(event) => void saveProjectBackground(event.target.value)}
+                disabled={savingBackground || backgroundOptions.length === 0}
+                className="max-w-sm"
+              >
+                {backgroundOptions.map((background) => (
+                  <option key={background.id} value={background.id}>
+                    {background.name}{background.id === defaultBackgroundVideoId ? ' (default)' : ''}
+                  </option>
+                ))}
+              </Select>
+              <div className="text-xs text-muted-foreground">
+                {savingBackground
+                  ? 'Saving background selection…'
+                  : project.selectedBackgroundVideoName
+                    ? `Current background: ${project.selectedBackgroundVideoName}`
+                    : defaultBackgroundVideoId
+                      ? 'Using the current default background video.'
+                      : 'No background video configured yet.'}
+              </div>
+            </div>
+          </div>
           {sceneProgress ? (
             <div className="rounded-lg border border-border bg-background/60 p-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -1180,12 +1286,17 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
                 {sceneProgress.scope === 'single' && sceneProgress.targetSceneId ? (
                   <Badge variant="outline">Revising {sceneProgress.targetSceneId}</Badge>
                 ) : null}
+                {sceneProgress.scope === 'chain' && (sceneProgress.targetSceneIds?.length || 0) > 0 ? (
+                  <Badge variant="outline">Revising continuity chain: {sceneProgress.targetSceneIds?.join(', ')}</Badge>
+                ) : null}
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
                 {sceneProgress.pending > 0
                   ? sceneProgress.scope === 'single'
                     ? 'The targeted scene is shown as a loading placeholder until the revised image lands on disk. Other scenes remain visible.'
-                    : 'Completed scenes stay visible while the remaining scene slots render as loading placeholders.'
+                    : sceneProgress.scope === 'chain'
+                      ? 'The targeted scene and any downstream continuity-linked scenes are tracked as part of this rerun. Scenes outside that chain remain visible.'
+                      : 'Completed scenes stay visible while the remaining scene slots render as loading placeholders.'
                   : 'All expected scene images for the latest run are available.'}
               </p>
             </div>
@@ -1195,7 +1306,10 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
               <div className="flex min-w-max gap-4">
                 {project.sceneImages.scenes.map((scene) => {
                   const sceneBusy = scene.status === 'in-progress';
-                  const hasImage = Boolean(scene.previewImage || scene.image);
+                  const activeTab = sceneTabById[scene.id] || (scene.previewVideo ? 'preview' : 'raw');
+                  const hasPreviewVideo = Boolean(scene.previewVideo && project.selectedBackgroundVideoId);
+                  const hasRawImage = Boolean(scene.image);
+                  const hasRenderableMedia = hasPreviewVideo || hasRawImage || Boolean(scene.previewImage);
 
                   return (
                     <div key={scene.id} className="w-[260px] shrink-0 space-y-3 rounded-lg border border-border bg-background/60 p-3">
@@ -1208,6 +1322,26 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
                           {sceneBusy ? 'In progress' : 'Done'}
                         </Badge>
                       </div>
+                      {!sceneBusy ? (
+                        <div className="flex rounded-md border border-border bg-background/70 p-1 text-[11px]">
+                          <button
+                            type="button"
+                            className={`flex-1 rounded px-2 py-1 ${activeTab === 'preview' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}
+                            onClick={() => setSceneTabById((prev) => ({ ...prev, [scene.id]: 'preview' }))}
+                            disabled={!hasPreviewVideo}
+                          >
+                            Preview
+                          </button>
+                          <button
+                            type="button"
+                            className={`flex-1 rounded px-2 py-1 ${activeTab === 'raw' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}
+                            onClick={() => setSceneTabById((prev) => ({ ...prev, [scene.id]: 'raw' }))}
+                            disabled={!hasRawImage}
+                          >
+                            Green screen
+                          </button>
+                        </div>
+                      ) : null}
                       {sceneBusy ? (
                         <div className="relative aspect-[9/16] w-full overflow-hidden rounded-md border border-dashed border-border bg-muted/40">
                           <Skeleton className="h-full w-full rounded-none" />
@@ -1216,8 +1350,27 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
                             <p className="text-xs text-muted-foreground">This slot updates automatically when the new image lands.</p>
                           </div>
                         </div>
-                      ) : hasImage ? (
-                        <img src={scene.previewImage || scene.image} alt={scene.caption} className="aspect-[9/16] w-full rounded-md border border-border bg-muted object-cover" />
+                      ) : hasRenderableMedia ? (
+                        activeTab === 'preview' && hasPreviewVideo ? (
+                          <video
+                            src={scene.previewVideo}
+                            autoPlay
+                            muted
+                            loop
+                            playsInline
+                            controls
+                            preload="metadata"
+                            className="aspect-[9/16] w-full rounded-md border border-border bg-black object-cover"
+                          />
+                        ) : hasRawImage ? (
+                          <img src={scene.image} alt={`${scene.caption} raw green screen`} className="aspect-[9/16] w-full rounded-md border border-border bg-muted object-cover" />
+                        ) : scene.previewImage ? (
+                          <img src={scene.previewImage} alt={scene.caption} className="aspect-[9/16] w-full rounded-md border border-border bg-muted object-cover" />
+                        ) : (
+                          <div className="flex aspect-[9/16] w-full items-center justify-center rounded-md border border-dashed border-border text-xs text-muted-foreground">
+                            No preview available
+                          </div>
+                        )
                       ) : (
                         <div className="flex aspect-[9/16] w-full items-center justify-center rounded-md border border-dashed border-border text-xs text-muted-foreground">
                           No image yet
@@ -1265,9 +1418,14 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
 
 function VideoSection({ project, refresh }: { project: Project; refresh: () => Promise<unknown> }) {
   const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([]);
+  const [musicOptions, setMusicOptions] = useState<MusicOption[]>([]);
   const [defaultVoiceId, setDefaultVoiceId] = useState<string>('');
+  const [defaultMusicId, setDefaultMusicId] = useState<string>('');
+  const [musicVolume, setMusicVolume] = useState<number>(0.38);
   const [savingVoice, setSavingVoice] = useState(false);
+  const [savingMusic, setSavingMusic] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [musicError, setMusicError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -1283,14 +1441,25 @@ function VideoSection({ project, refresh }: { project: Project; refresh: () => P
               (voice): voice is VoiceOption => Boolean(voice && typeof voice.id === 'string' && typeof voice.name === 'string')
             )
           : [];
+        const nextMusic = Array.isArray(payload.data?.videoRender?.musicTracks)
+          ? payload.data.videoRender.musicTracks.filter(
+              (track): track is MusicOption => Boolean(track && typeof track.id === 'string' && typeof track.name === 'string')
+            )
+          : [];
         if (!cancelled) {
           setVoiceOptions(nextVoices);
+          setMusicOptions(nextMusic);
           setDefaultVoiceId(payload.data?.videoRender?.defaultVoiceId || '');
+          setDefaultMusicId(payload.data?.videoRender?.defaultMusicTrackId || '');
+          setMusicVolume(typeof payload.data?.videoRender?.musicVolume === 'number' ? payload.data.videoRender.musicVolume : 0.38);
         }
       } catch {
         if (!cancelled) {
           setVoiceOptions([]);
+          setMusicOptions([]);
           setDefaultVoiceId('');
+          setDefaultMusicId('');
+          setMusicVolume(0.38);
         }
       }
     }
@@ -1321,24 +1490,46 @@ function VideoSection({ project, refresh }: { project: Project; refresh: () => P
     }
   }
 
+  async function saveProjectMusic(musicId: string) {
+    setSavingMusic(true);
+    setMusicError(null);
+    try {
+      await parseJsonResponse(
+        await fetch(`/api/short-form-videos/${project.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ selectedMusicId: musicId }),
+        }),
+        'Failed to update project soundtrack'
+      );
+      await refresh();
+    } catch (err) {
+      setMusicError(err instanceof Error ? err.message : 'Failed to update project soundtrack');
+    } finally {
+      setSavingMusic(false);
+    }
+  }
+
   const activeVoiceLabel = project.selectedVoiceName || voiceOptions.find((voice) => voice.id === defaultVoiceId)?.name || 'default voice';
+  const activeMusicLabel = project.selectedMusicName || musicOptions.find((track) => track.id === defaultMusicId)?.name || 'default soundtrack';
 
   return (
     <StageReviewSection
       projectId={project.id}
       title="Video"
       stage="video"
-      description="After scene images are approved, the dashboard renders the final short-form video directly through the xml-scene-video workflow using the selected reusable Qwen voice, transcript-driven forced alignment, ACE-Step instrumental background music, and per-scene XML camera motion that applies only to the image layer when explicitly set in the XML."
+      description="After scene images are approved, the dashboard renders the final short-form video directly through the xml-scene-video workflow using the selected reusable Qwen voice, transcript-driven forced alignment, a full-duration looping background video track, green-screen chroma key compositing, ACE-Step instrumental background music, and per-scene XML camera motion that applies only to the image layer when explicitly set in the XML."
       doc={project.video}
       mode="markdown"
       emptyText="No video yet. Generate the final video after approving the scene images."
       triggerLabel="Generate final video"
-      triggerDescription={`The video should be rendered from the XML <script> and approved scene assets using the selected voice${activeVoiceLabel ? ` (${activeVoiceLabel})` : ''} plus the default forced-alignment + ACE-Step final-video path unless explicitly overridden. Any scene-level cameraPanX/cameraPanY/cameraZoom/cameraShake values should affect image motion only, not the caption overlay, and omitted camera attributes should apply no motion for that effect.`}
+      triggerDescription={`The video should be rendered from the XML <script> and approved scene assets using the selected voice${activeVoiceLabel ? ` (${activeVoiceLabel})` : ''}${activeMusicLabel ? `, soundtrack preset ${activeMusicLabel}` : ''}${project.selectedBackgroundVideoName ? `, the looping background video ${project.selectedBackgroundVideoName}` : ''}, plus the saved music mix volume (${Math.round(musicVolume * 100)}%) and the default forced-alignment + ACE-Step final-video path unless explicitly overridden. Any scene-level cameraPanX/cameraPanY/cameraZoom/cameraShake values should affect image motion only, not the caption overlay, and omitted camera attributes should apply no motion for that effect.`}
       onRefresh={refresh}
       collapseDocumentByDefault
       extra={
         <div className="space-y-4">
           {voiceError ? <ValidationNotice title="Voice selection failed" message={voiceError} /> : null}
+          {musicError ? <ValidationNotice title="Soundtrack selection failed" message={musicError} /> : null}
           <div className="rounded-lg border border-border bg-background/60 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -1380,6 +1571,54 @@ function VideoSection({ project, refresh }: { project: Project; refresh: () => P
               </div>
             </div>
           </div>
+          <div className="rounded-lg border border-border bg-background/60 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-medium text-foreground">Soundtrack for this project</h3>
+                <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
+                  Pick which saved soundtrack prompt preset should drive real final-video music generation for this project. If you do not override it, the current global default soundtrack preset is used.
+                </p>
+              </div>
+              <Link
+                href="/short-form-video/settings#music-library"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Open music library ↗
+              </Link>
+            </div>
+            <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
+              <Select
+                value={project.selectedMusicId || defaultMusicId || ''}
+                onChange={(event) => void saveProjectMusic(event.target.value)}
+                disabled={savingMusic || musicOptions.length === 0}
+                className="max-w-sm"
+              >
+                {musicOptions.map((track) => (
+                  <option key={track.id} value={track.id}>
+                    {track.name}{track.id === defaultMusicId ? ' (default)' : ''}
+                  </option>
+                ))}
+              </Select>
+              <div className="text-xs text-muted-foreground">
+                {savingMusic
+                  ? 'Saving soundtrack selection…'
+                  : project.selectedMusicName
+                    ? `Current project soundtrack: ${project.selectedMusicName}`
+                    : defaultMusicId
+                      ? `Using the current default soundtrack: ${activeMusicLabel}`
+                      : 'Using the fallback soundtrack preset.'}
+              </div>
+            </div>
+            <div className="mt-3 text-xs text-muted-foreground">
+              Saved music mix volume for new renders: <span className="font-medium text-foreground">{Math.round(musicVolume * 100)}%</span>
+            </div>
+          </div>
+          <div className="rounded-lg border border-border bg-background/60 p-4 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Looping background video:</span>{' '}
+            {project.selectedBackgroundVideoName || 'Not selected yet. Choose one in the Scene Images section before rendering the final video.'}
+          </div>
           <VideoPipelinePanel project={project} />
           {project.video.videoUrl ? (
             <div className="space-y-3">
@@ -1400,6 +1639,28 @@ interface DetailSectionNavItem {
   label: string;
   available: boolean;
   unavailableLabel?: string;
+  status: string;
+}
+
+function getSectionStatus(project: Project | null, sectionId: DetailSectionId) {
+  if (!project) return 'draft';
+
+  switch (sectionId) {
+    case 'topic':
+      return project.topic ? 'approved' : 'draft';
+    case 'hook':
+      return project.hooks.pending ? 'working' : project.selectedHookText ? 'approved' : 'draft';
+    case 'research':
+      return project.research.pending ? 'working' : project.research.status || 'draft';
+    case 'script':
+      return project.script.pending ? 'working' : project.script.status || 'draft';
+    case 'scene-images':
+      return project.sceneImages.pending ? 'working' : project.sceneImages.status || 'draft';
+    case 'video':
+      return project.video.pending ? 'working' : project.video.status || 'draft';
+    default:
+      return 'draft';
+  }
 }
 
 export default function ShortFormVideoDetailPage() {
@@ -1494,14 +1755,14 @@ export default function ShortFormVideoDetailPage() {
   const activeStages = project ? project.pendingStages.map(stageLabel) : [];
   const sections = useMemo<DetailSectionNavItem[]>(
     () => [
-      { id: 'topic', label: 'Topic', available: true },
-      { id: 'hook', label: 'Hook', available: showHook, unavailableLabel: 'Locked' },
-      { id: 'research', label: 'Research', available: showResearch, unavailableLabel: 'Locked' },
-      { id: 'script', label: 'Script', available: showScript, unavailableLabel: 'Locked' },
-      { id: 'scene-images', label: 'Scene Images', available: showSceneImages, unavailableLabel: 'Locked' },
-      { id: 'video', label: 'Video', available: showVideo, unavailableLabel: 'Locked' },
+      { id: 'topic', label: 'Topic', available: true, status: getSectionStatus(project, 'topic') },
+      { id: 'hook', label: 'Hook', available: showHook, unavailableLabel: 'Locked', status: getSectionStatus(project, 'hook') },
+      { id: 'research', label: 'Research', available: showResearch, unavailableLabel: 'Locked', status: getSectionStatus(project, 'research') },
+      { id: 'script', label: 'Script', available: showScript, unavailableLabel: 'Locked', status: getSectionStatus(project, 'script') },
+      { id: 'scene-images', label: 'Scene Images', available: showSceneImages, unavailableLabel: 'Locked', status: getSectionStatus(project, 'scene-images') },
+      { id: 'video', label: 'Video', available: showVideo, unavailableLabel: 'Locked', status: getSectionStatus(project, 'video') },
     ],
-    [showHook, showResearch, showScript, showSceneImages, showVideo]
+    [project, showHook, showResearch, showScript, showSceneImages, showVideo]
   );
   const activeSection = useSectionScrollSpy(sections);
 

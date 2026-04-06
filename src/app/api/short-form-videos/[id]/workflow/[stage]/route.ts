@@ -24,6 +24,10 @@ import {
 import { hasVersions, initializeVersionHistory, addVersion } from "@/lib/versions";
 import { getShortFormWorkflowPrompts, renderShortFormPrompt, type ShortFormPromptKey } from "@/lib/short-form-workflow-prompts";
 import { resolveShortFormImageStyle } from "@/lib/short-form-image-styles";
+import {
+  resolveShortFormBackgroundVideoAbsolutePath,
+  resolveShortFormBackgroundVideoSelection,
+} from "@/lib/short-form-background-videos";
 
 export const dynamic = "force-dynamic";
 
@@ -273,6 +277,7 @@ export async function POST(
       ? "Requested changes: none. Treat this as a clean rerun/regeneration for the current scope rather than a targeted textual revision."
       : "Run direction: none";
   const resolvedImageStyle = resolveShortFormImageStyle(project.selectedImageStyleId);
+  const resolvedBackgroundVideo = resolveShortFormBackgroundVideoSelection(project.selectedBackgroundVideoId);
 
   const task = stage === "scene-images" || stage === "video"
     ? [
@@ -284,6 +289,11 @@ export async function POST(
               `Shared/common style constraints plus per-style instructions are already resolved and must stay applied for this run.`,
             ]
           : []),
+        ...(stage === "video" && resolvedBackgroundVideo.background
+          ? [`Selected looping background video: ${resolvedBackgroundVideo.background.name}`]
+          : stage === "video"
+            ? ["No looping background video is configured. The direct video render should fail clearly until one is chosen in settings/project selection."]
+            : []),
         directWorkflowRequestLine,
       ].join("\n")
     : buildStageTask(project, stage, { mode, notes: requestNotes });
@@ -366,6 +376,15 @@ export async function POST(
                   videoDocPath,
                   videoWorkDir,
                   mode,
+                  ...(resolvedBackgroundVideo.background
+                    ? {
+                        backgroundVideoId: resolvedBackgroundVideo.resolvedBackgroundVideoId,
+                        backgroundVideoName: resolvedBackgroundVideo.background.name,
+                        backgroundVideoPath: resolveShortFormBackgroundVideoAbsolutePath(
+                          resolvedBackgroundVideo.background.videoRelativePath
+                        ),
+                      }
+                    : {}),
                   ...(requestNotes ? { notes: requestNotes } : {}),
                 },
               }

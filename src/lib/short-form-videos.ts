@@ -4,7 +4,8 @@ import { parseFrontMatter, generateFrontMatter, extractBody } from "@/lib/frontm
 import { readStatusLog } from "@/lib/status";
 import { readFeedback, type FeedbackThread } from "@/lib/feedback";
 import { resolveShortFormImageStyle } from "@/lib/short-form-image-styles";
-import { resolveShortFormVoiceSelection } from "@/lib/short-form-video-render-settings";
+import { resolveShortFormMusicSelection, resolveShortFormVoiceSelection } from "@/lib/short-form-video-render-settings";
+import { resolveShortFormBackgroundVideoSelection } from "@/lib/short-form-background-videos";
 
 export type ShortFormStageKey = "research" | "script" | "scene-images" | "video";
 export type PendingStageKey = "hooks" | ShortFormStageKey;
@@ -105,6 +106,8 @@ export interface SceneImageArtifact {
   caption: string;
   image?: string;
   previewImage?: string;
+  previewVideo?: string;
+  previewVideoBackgroundId?: string;
   notes?: string;
   status?: "completed" | "in-progress";
 }
@@ -113,8 +116,9 @@ export interface SceneImageProgressSummary {
   total: number;
   completed: number;
   pending: number;
-  scope: "all" | "single";
+  scope: "all" | "single" | "chain";
   targetSceneId?: string;
+  targetSceneIds?: string[];
 }
 
 interface GeneratedSceneImageArtifact extends SceneImageArtifact {
@@ -152,6 +156,8 @@ export interface ShortFormProjectMeta {
   pendingVideo?: boolean;
   selectedImageStyleId?: string;
   selectedVoiceId?: string;
+  selectedMusicId?: string;
+  selectedBackgroundVideoId?: string;
   latestHookRequest?: HookRequestContext;
   latestStageRequests?: Partial<Record<ShortFormStageKey, StageRequestContext>>;
 }
@@ -233,6 +239,10 @@ export interface ShortFormProject {
   selectedImageStyleName?: string;
   selectedVoiceId?: string;
   selectedVoiceName?: string;
+  selectedMusicId?: string;
+  selectedMusicName?: string;
+  selectedBackgroundVideoId?: string;
+  selectedBackgroundVideoName?: string;
   currentStage: string;
   pendingStages: PendingStageKey[];
   hooks: {
@@ -264,20 +274,25 @@ export interface ShortFormProjectRow {
   currentStage: string;
   hooks: {
     selectedHookText?: string;
+    pending?: boolean;
   };
   research: {
     status: string;
+    pending?: boolean;
   };
   script: {
     status: string;
+    pending?: boolean;
   };
   sceneImages: {
     status: string;
     sceneCount: number;
+    pending?: boolean;
   };
   video: {
     status: string;
     videoUrl?: string;
+    pending?: boolean;
   };
 }
 
@@ -650,6 +665,8 @@ export function createShortFormProject(topic = "") {
 
   const now = new Date().toISOString();
   const { resolvedStyleId } = resolveShortFormImageStyle();
+  const { resolvedMusicId } = resolveShortFormMusicSelection();
+  const { resolvedBackgroundVideoId } = resolveShortFormBackgroundVideoSelection();
   const meta: ShortFormProjectMeta = {
     id,
     topic,
@@ -657,6 +674,8 @@ export function createShortFormProject(topic = "") {
     createdAt: now,
     updatedAt: now,
     selectedImageStyleId: resolvedStyleId,
+    ...(resolvedMusicId ? { selectedMusicId: resolvedMusicId } : {}),
+    ...(resolvedBackgroundVideoId ? { selectedBackgroundVideoId: resolvedBackgroundVideoId } : {}),
   };
 
   saveProjectMeta(id, meta);
@@ -803,6 +822,8 @@ function readGeneratedSceneManifestResult(projectId: string): JsonReadResult<Gen
     const image = toRelativeProjectMediaPath(projectId, (scene as { uncaptioned?: unknown }).uncaptioned)
       ?? toRelativeProjectMediaPath(projectId, (scene as { raw_legacy?: unknown }).raw_legacy);
     const previewImage = toRelativeProjectMediaPath(projectId, (scene as { captioned?: unknown }).captioned);
+    const previewVideo = toRelativeProjectMediaPath(projectId, (scene as { preview_video?: unknown }).preview_video);
+    const previewVideoBackgroundId = (scene as { preview_video_background_id?: unknown }).preview_video_background_id;
     const imagePrompt = (scene as { image_prompt?: unknown }).image_prompt;
     const duration = (scene as { duration?: unknown }).duration;
 
@@ -837,6 +858,10 @@ function readGeneratedSceneManifestResult(projectId: string): JsonReadResult<Gen
       caption: caption.trim(),
       ...(image ? { image } : {}),
       ...(previewImage ? { previewImage } : {}),
+      ...(previewVideo ? { previewVideo } : {}),
+      ...(typeof previewVideoBackgroundId === "string" && previewVideoBackgroundId.trim()
+        ? { previewVideoBackgroundId: previewVideoBackgroundId.trim() }
+        : {}),
       ...(typeof imagePrompt === "string" && imagePrompt.trim() ? { notes: imagePrompt.trim() } : {}),
       ...(typeof duration === "string" && duration.trim() ? { duration: duration.trim() } : {}),
     });
@@ -879,6 +904,8 @@ function sceneManifestNeedsSync(projectId: string, primary: JsonReadResult<Scene
       current.caption !== next.caption ||
       current.image !== next.image ||
       current.previewImage !== next.previewImage ||
+      current.previewVideo !== next.previewVideo ||
+      current.previewVideoBackgroundId !== next.previewVideoBackgroundId ||
       current.notes !== next.notes
     ) {
       return true;
@@ -1141,23 +1168,50 @@ function normalizeXmlText(value: string) {
     .trim();
 }
 
-function readExpectedScriptScenes(projectId: string): Array<{ id: string; number: number; caption: string }> {
+function readExpectedScriptScenes(projectId: string): Array<{ id: string; number: number; caption: string; referencePreviousSceneImage?: boolean }> {
   const scriptPath = getStageFilePath(projectId, "script");
   if (!fs.existsSync(scriptPath)) return [];
 
   try {
     const xml = extractBody(fs.readFileSync(scriptPath, "utf-8"));
-    const matches = Array.from(xml.matchAll(/<scene\b[^>]*>([\s\S]*?)<\/scene>/gi));
+    const matches = Array.from(xml.matchAll(/<scene\b([^>]*)>([\s\S]*?)<\/scene>/gi));
     return matches.map((match, index) => {
       const number = index + 1;
-      const sceneBlock = match[0] || "";
-      const captionMatch = sceneBlock.match(/<text>([\s\S]*?)<\/text>/i);
+      const attributes = match[1] || "";
+      const sceneBody = match[2] || "";
+      const captionMatch = sceneBody.match(/<text>([\s\S]*?)<\/text>/i);
       const caption = normalizeXmlText(captionMatch?.[1] || "") || `Scene ${number}`;
-      return { id: `scene-${number}`, number, caption };
+      const refMatch = attributes.match(/referencePreviousSceneImage\s*=\s*"([^"]+)"/i);
+      return {
+        id: `scene-${number}`,
+        number,
+        caption,
+        referencePreviousSceneImage: typeof refMatch?.[1] === "string" && refMatch[1].trim().toLowerCase() === "true",
+      };
     });
   } catch {
     return [];
   }
+}
+
+function expandRequestedSceneIndexesForContinuity(
+  expectedScenes: Array<{ number: number; referencePreviousSceneImage?: boolean }>,
+  targetSceneIndex?: number,
+) {
+  if (!targetSceneIndex) return [];
+
+  const expanded = new Set<number>([targetSceneIndex]);
+  const sceneNumbers = expectedScenes.map((scene) => scene.number);
+  let cursor = targetSceneIndex + 1;
+
+  while (sceneNumbers.includes(cursor)) {
+    const scene = expectedScenes.find((entry) => entry.number === cursor);
+    if (!scene?.referencePreviousSceneImage) break;
+    expanded.add(cursor);
+    cursor += 1;
+  }
+
+  return Array.from(expanded).sort((a, b) => a - b);
 }
 
 function getDerivedSceneRelativePaths(number: number) {
@@ -1209,17 +1263,21 @@ function buildSceneImagesProgressState(projectId: string, scenes: SceneImageArti
   const requestedAtMs = revision?.requestedAt ? Date.parse(revision.requestedAt) : Number.NaN;
   const targetSceneIndex = parseSceneIdToIndex(revision?.action === "request-scene-change" ? revision.sceneId ?? undefined : undefined);
   const expectedScenes = readExpectedScriptScenes(projectId);
+  const expandedTargetSceneIndexes = expandRequestedSceneIndexesForContinuity(expectedScenes, targetSceneIndex);
+  const trackedSceneIndexes = new Set(expandedTargetSceneIndexes);
   const manifestByNumber = new Map(scenes.map((scene) => [scene.number, scene]));
   const orderedNumbers = expectedScenes.length > 0
     ? expectedScenes.map((scene) => scene.number)
     : Array.from(manifestByNumber.keys()).sort((a, b) => a - b);
 
-  if (targetSceneIndex && !orderedNumbers.includes(targetSceneIndex)) {
-    orderedNumbers.push(targetSceneIndex);
-    orderedNumbers.sort((a, b) => a - b);
+  for (const number of expandedTargetSceneIndexes) {
+    if (!orderedNumbers.includes(number)) {
+      orderedNumbers.push(number);
+    }
   }
+  orderedNumbers.sort((a, b) => a - b);
 
-  const scoped = Boolean(targetSceneIndex);
+  const scoped = trackedSceneIndexes.size > 0;
   const mergedScenes = orderedNumbers.map((number) => {
     const expected = expectedScenes.find((scene) => scene.number === number);
     const current = manifestByNumber.get(number);
@@ -1230,7 +1288,7 @@ function buildSceneImagesProgressState(projectId: string, scenes: SceneImageArti
       notes: current?.notes,
     };
 
-    const shouldTrackFreshness = Number.isFinite(requestedAtMs) && (!scoped || number === targetSceneIndex);
+    const shouldTrackFreshness = Number.isFinite(requestedAtMs) && (!scoped || trackedSceneIndexes.has(number));
 
     if (shouldTrackFreshness) {
       const freshScene = buildSceneArtifactFromDerivedPaths(projectId, base, { requireFreshSinceMs: requestedAtMs });
@@ -1252,9 +1310,13 @@ function buildSceneImagesProgressState(projectId: string, scenes: SceneImageArti
     return { ...base, status: "in-progress" as const };
   });
 
-  const completed = mergedScenes.filter((scene) => scene.status === "completed").length;
-  const total = mergedScenes.length;
+  const progressScenes = scoped
+    ? mergedScenes.filter((scene) => trackedSceneIndexes.has(scene.number))
+    : mergedScenes;
+  const completed = progressScenes.filter((scene) => scene.status === "completed").length;
+  const total = progressScenes.length;
   const pending = Math.max(total - completed, 0);
+  const targetSceneIds = expandedTargetSceneIndexes.map((index) => `scene-${index}`);
 
   return {
     scenes: mergedScenes,
@@ -1263,8 +1325,9 @@ function buildSceneImagesProgressState(projectId: string, scenes: SceneImageArti
           total,
           completed,
           pending,
-          scope: scoped ? "single" as const : "all" as const,
+          scope: trackedSceneIndexes.size > 1 ? "chain" as const : scoped ? "single" as const : "all" as const,
           ...(revision?.action === "request-scene-change" && revision.sceneId ? { targetSceneId: revision.sceneId } : {}),
+          ...(targetSceneIds.length > 0 ? { targetSceneIds } : {}),
         }
       : undefined,
   };
@@ -1678,6 +1741,19 @@ function readStageDocument(projectId: string, stage: ShortFormStageKey, options?
 function toMediaUrl(projectId: string, relativePath: string, version?: string) {
   const basePath = `/api/short-form-videos/${projectId}/media/${relativePath.split(path.sep).join("/")}`;
   return version ? `${basePath}?v=${encodeURIComponent(version)}` : basePath;
+}
+
+function buildScenePreviewVideoUrl(projectId: string, sceneId: string, backgroundVideoId?: string) {
+  if (!backgroundVideoId) return undefined;
+  return `/api/short-form-videos/${projectId}/scene-preview/${encodeURIComponent(sceneId)}?backgroundId=${encodeURIComponent(backgroundVideoId)}`;
+}
+
+function attachScenePreviewVideoUrls(projectId: string, scenes: SceneImageArtifact[], backgroundVideoId?: string) {
+  return scenes.map((scene) => ({
+    ...scene,
+    previewVideo: buildScenePreviewVideoUrl(projectId, scene.id, backgroundVideoId),
+    ...(backgroundVideoId ? { previewVideoBackgroundId: backgroundVideoId } : {}),
+  }));
 }
 
 function getSceneImagesStage(projectId: string, options?: { pending?: boolean }) {
@@ -2144,10 +2220,16 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
   const selectedHookText = resolvedSelectedHook?.text ?? nextMeta.selectedHookText;
   const resolvedImageStyle = resolveShortFormImageStyle(nextMeta.selectedImageStyleId);
   const resolvedVoice = resolveShortFormVoiceSelection(nextMeta.selectedVoiceId);
+  const resolvedMusic = resolveShortFormMusicSelection(nextMeta.selectedMusicId);
+  const resolvedBackground = resolveShortFormBackgroundVideoSelection(nextMeta.selectedBackgroundVideoId);
 
   const resolvedResearch = { ...research, pending: Boolean(nextMeta.pendingResearch || research.revision?.isPending) };
   const resolvedScript = { ...script, pending: Boolean(nextMeta.pendingScript || script.revision?.isPending) };
-  const resolvedSceneImages = { ...sceneImages, pending: Boolean(nextMeta.pendingSceneImages || sceneImages.revision?.isPending) };
+  const resolvedSceneImages = {
+    ...sceneImages,
+    scenes: attachScenePreviewVideoUrls(projectId, sceneImages.scenes, resolvedBackground.resolvedBackgroundVideoId),
+    pending: Boolean(nextMeta.pendingSceneImages || sceneImages.revision?.isPending),
+  };
   const resolvedVideo = { ...video, pending: Boolean(nextMeta.pendingVideo || video.revision?.isPending) };
 
   const project: ShortFormProject = {
@@ -2162,6 +2244,10 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
     selectedImageStyleName: resolvedImageStyle.style.name,
     selectedVoiceId: resolvedVoice.resolvedVoiceId,
     selectedVoiceName: resolvedVoice.voice.name,
+    selectedMusicId: resolvedMusic.resolvedMusicId,
+    selectedMusicName: resolvedMusic.music?.name,
+    selectedBackgroundVideoId: resolvedBackground.resolvedBackgroundVideoId,
+    selectedBackgroundVideoName: resolvedBackground.background?.name,
     currentStage: "topic",
     pendingStages: getPendingStages(nextMeta, {
       research: resolvedResearch,
@@ -2186,21 +2272,6 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
   return project;
 }
 
-function readStageStatusSummary(projectId: string, stage: ShortFormStageKey) {
-  const filePath = getStageFilePath(projectId, stage);
-  if (!fs.existsSync(filePath)) {
-    return { status: "draft" };
-  }
-
-  try {
-    return {
-      status: normalizeStatus(fs.readFileSync(filePath, "utf-8")),
-    };
-  } catch {
-    return { status: "draft" };
-  }
-}
-
 export function listShortFormProjectRows(): ShortFormProjectRow[] {
   ensureShortFormRoot();
   const dirs = fs
@@ -2209,49 +2280,37 @@ export function listShortFormProjectRows(): ShortFormProjectRow[] {
 
   const projects = dirs
     .map((dir): ShortFormProjectRow | null => {
-      const meta = readProjectMeta(dir);
-      if (!meta) return null;
-
-      const research = readStageStatusSummary(dir, "research");
-      const script = readStageStatusSummary(dir, "script");
-      const sceneImages = readStageStatusSummary(dir, "scene-images");
-      const sceneCount = readSceneManifestResult(dir).data.length;
-      const video = readStageStatusSummary(dir, "video");
-      const videoArtifactPath = getVideoArtifactPath(dir);
-      const videoPath = videoArtifactPath
-        ? path.relative(getProjectDir(dir), videoArtifactPath).split(path.sep).join("/")
-        : undefined;
-      const currentStage = videoPath
-        ? "video"
-        : sceneCount > 0
-          ? "scene-images"
-          : script.status !== "draft"
-            ? "script"
-            : research.status !== "draft"
-              ? "research"
-              : meta.selectedHookText
-                ? "hook"
-                : "topic";
+      const project = getShortFormProject(dir);
+      if (!project) return null;
 
       return {
-        id: meta.id,
-        topic: meta.topic,
-        title: meta.title,
-        createdAt: meta.createdAt,
-        updatedAt: meta.updatedAt,
-        currentStage,
+        id: project.id,
+        topic: project.topic,
+        title: project.title,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt,
+        currentStage: project.currentStage,
         hooks: {
-          selectedHookText: meta.selectedHookText,
+          selectedHookText: project.hooks.selectedHookText,
+          pending: project.hooks.pending,
         },
-        research,
-        script,
+        research: {
+          status: project.research.status,
+          pending: project.research.pending,
+        },
+        script: {
+          status: project.script.status,
+          pending: project.script.pending,
+        },
         sceneImages: {
-          status: sceneImages.status,
-          sceneCount,
+          status: project.sceneImages.status,
+          sceneCount: project.sceneImages.scenes.length,
+          pending: project.sceneImages.pending,
         },
         video: {
-          status: video.status,
-          videoUrl: videoPath ? toMediaUrl(dir, videoPath) : undefined,
+          status: project.video.status,
+          videoUrl: project.video.videoUrl,
+          pending: project.video.pending,
         },
       };
     })

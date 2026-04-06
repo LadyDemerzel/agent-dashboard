@@ -26,6 +26,8 @@ type PromptKey =
 
 type SettingsSectionId =
   | 'tts-voice'
+  | 'music-library'
+  | 'background-videos'
   | 'image-templates'
   | 'image-shared-constraints'
   | 'image-styles'
@@ -101,9 +103,35 @@ interface VoiceLibraryEntry {
   legacyInstruct?: string;
 }
 
+interface MusicLibraryEntry {
+  id: string;
+  name: string;
+  prompt: string;
+  notes: string;
+  previewDurationSeconds?: number;
+}
+
 interface VideoRenderSettings {
   defaultVoiceId: string;
   voices: VoiceLibraryEntry[];
+  defaultMusicTrackId?: string;
+  musicVolume: number;
+  musicTracks: MusicLibraryEntry[];
+}
+
+interface BackgroundVideoEntry {
+  id: string;
+  name: string;
+  notes?: string;
+  videoRelativePath: string;
+  videoUrl?: string;
+  uploadedAt?: string;
+  updatedAt?: string;
+}
+
+interface BackgroundVideoSettings {
+  defaultBackgroundVideoId?: string;
+  backgrounds: BackgroundVideoEntry[];
 }
 
 interface SettingsResponse {
@@ -113,6 +141,7 @@ interface SettingsResponse {
     definitions: PromptDefinition[];
     imageStyles: ImageStyleSettings;
     videoRender: VideoRenderSettings;
+    backgroundVideos: BackgroundVideoSettings;
   };
   error?: string;
 }
@@ -147,6 +176,22 @@ interface TtsPreviewResponse {
   error?: string;
 }
 
+interface MusicPreviewResponse {
+  success: boolean;
+  data?: {
+    runId: string;
+    audioRelativePath: string;
+    audioUrl: string;
+    durationSeconds: number;
+    musicVolume: number;
+    track: {
+      name: string;
+      prompt: string;
+    };
+  };
+  error?: string;
+}
+
 interface StyleTestState {
   isLoading: boolean;
   error: string | null;
@@ -155,6 +200,11 @@ interface StyleTestState {
 }
 
 interface StyleReferenceUploadState {
+  isUploading: boolean;
+  error: string | null;
+}
+
+interface BackgroundVideoUploadState {
   isUploading: boolean;
   error: string | null;
 }
@@ -168,6 +218,16 @@ interface TtsPreviewState {
   mode: VoiceMode | null;
   speaker: string | null;
   voiceDesignPrompt: string | null;
+}
+
+interface MusicPreviewState {
+  isLoading: boolean;
+  error: string | null;
+  audioUrl: string | null;
+  trackName: string | null;
+  prompt: string | null;
+  durationSeconds: number | null;
+  musicVolume: number | null;
 }
 
 interface SectionFeedback {
@@ -228,6 +288,8 @@ function buildStyleTestsById(styles: ImageStyle[]): Record<string, StyleTestStat
 function createEmptySectionFeedback(): Record<SettingsSectionId, SectionFeedback> {
   return {
     'tts-voice': { saving: false, error: null, message: null },
+    'music-library': { saving: false, error: null, message: null },
+    'background-videos': { saving: false, error: null, message: null },
     'image-templates': { saving: false, error: null, message: null },
     'image-shared-constraints': { saving: false, error: null, message: null },
     'image-styles': { saving: false, error: null, message: null },
@@ -277,6 +339,17 @@ function createVoiceDraft(index: number): VoiceLibraryEntry {
   };
 }
 
+function createMusicDraft(index: number): MusicLibraryEntry {
+  return {
+    id: `music-${Date.now()}-${index}`,
+    name: `New soundtrack ${index}`,
+    prompt:
+      'instrumental modern short-form social-video underscore, polished and cinematic, no vocals, no spoken voice, no choir',
+    notes: '',
+    previewDurationSeconds: 12,
+  };
+}
+
 function slugify(text: string) {
   return text
     .toLowerCase()
@@ -305,6 +378,14 @@ async function parseTtsPreviewResponse(response: Response) {
   const payload = (await response.json().catch(() => ({}))) as TtsPreviewResponse;
   if (!response.ok || payload.success === false || !payload.data) {
     throw new Error(payload.error || 'Failed to generate TTS preview');
+  }
+  return payload.data;
+}
+
+async function parseMusicPreviewResponse(response: Response) {
+  const payload = (await response.json().catch(() => ({}))) as MusicPreviewResponse;
+  if (!response.ok || payload.success === false || !payload.data) {
+    throw new Error(payload.error || 'Failed to generate music preview');
   }
   return payload.data;
 }
@@ -368,12 +449,16 @@ export default function ShortFormVideoSettingsPage() {
   const [initialImageStyles, setInitialImageStyles] = useState<ImageStyleSettings | null>(null);
   const [videoRender, setVideoRender] = useState<VideoRenderSettings | null>(null);
   const [initialVideoRender, setInitialVideoRender] = useState<VideoRenderSettings | null>(null);
+  const [backgroundVideos, setBackgroundVideos] = useState<BackgroundVideoSettings | null>(null);
+  const [initialBackgroundVideos, setInitialBackgroundVideos] = useState<BackgroundVideoSettings | null>(null);
   const [selectedStyleId, setSelectedStyleId] = useState<string | null>(null);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | null>(null);
+  const [selectedMusicId, setSelectedMusicId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [styleTestsById, setStyleTestsById] = useState<Record<string, StyleTestState>>({});
   const [styleReferenceUploadsById, setStyleReferenceUploadsById] = useState<Record<string, StyleReferenceUploadState>>({});
+  const [backgroundVideoUpload, setBackgroundVideoUpload] = useState<BackgroundVideoUploadState>({ isUploading: false, error: null });
   const [sectionFeedback, setSectionFeedback] = useState<Record<SettingsSectionId, SectionFeedback>>(createEmptySectionFeedback());
   const [ttsPreview, setTtsPreview] = useState<TtsPreviewState>({
     isLoading: false,
@@ -384,6 +469,15 @@ export default function ShortFormVideoSettingsPage() {
     mode: null,
     speaker: null,
     voiceDesignPrompt: null,
+  });
+  const [musicPreview, setMusicPreview] = useState<MusicPreviewState>({
+    isLoading: false,
+    error: null,
+    audioUrl: null,
+    trackName: null,
+    prompt: null,
+    durationSeconds: null,
+    musicVolume: null,
   });
 
   useEffect(() => {
@@ -408,6 +502,13 @@ export default function ShortFormVideoSettingsPage() {
     }
   }, [selectedVoiceId, videoRender]);
 
+  useEffect(() => {
+    if (!videoRender || videoRender.musicTracks.length === 0) return;
+    if (!selectedMusicId || !videoRender.musicTracks.some((track) => track.id === selectedMusicId)) {
+      setSelectedMusicId(videoRender.defaultMusicTrackId || videoRender.musicTracks[0]?.id || null);
+    }
+  }, [selectedMusicId, videoRender]);
+
   async function loadSettings() {
     setLoading(true);
     setError(null);
@@ -421,7 +522,11 @@ export default function ShortFormVideoSettingsPage() {
       setInitialImageStyles(data.imageStyles);
       setVideoRender(data.videoRender);
       setInitialVideoRender(data.videoRender);
+      setBackgroundVideos(data.backgroundVideos);
+      setInitialBackgroundVideos(data.backgroundVideos);
       setSelectedStyleId((current) => current || data.imageStyles.defaultStyleId || data.imageStyles.styles[0]?.id || null);
+      setSelectedVoiceId((current) => current || data.videoRender.defaultVoiceId || data.videoRender.voices[0]?.id || null);
+      setSelectedMusicId((current) => current || data.videoRender.defaultMusicTrackId || data.videoRender.musicTracks[0]?.id || null);
       setStyleTestsById(buildStyleTestsById(data.imageStyles.styles));
       setSectionFeedback(createEmptySectionFeedback());
     } catch (err) {
@@ -443,6 +548,10 @@ export default function ShortFormVideoSettingsPage() {
   const selectedVoice = useMemo(
     () => videoRender?.voices.find((voice) => voice.id === selectedVoiceId) || null,
     [selectedVoiceId, videoRender]
+  );
+  const selectedMusic = useMemo(
+    () => videoRender?.musicTracks.find((track) => track.id === selectedMusicId) || null,
+    [selectedMusicId, videoRender]
   );
   const selectedStyleTest = selectedStyle ? styleTestsById[selectedStyle.id] : undefined;
   const selectedStyleUpload = selectedStyle ? styleReferenceUploadsById[selectedStyle.id] : undefined;
@@ -467,7 +576,22 @@ export default function ShortFormVideoSettingsPage() {
         serializeForCompare({ styles: initialImageStyles.styles, defaultStyleId: initialImageStyles.defaultStyleId })
       : false;
     const ttsDirty = videoRender && initialVideoRender
-      ? serializeForCompare(videoRender) !== serializeForCompare(initialVideoRender)
+      ? serializeForCompare({ voices: videoRender.voices, defaultVoiceId: videoRender.defaultVoiceId }) !==
+        serializeForCompare({ voices: initialVideoRender.voices, defaultVoiceId: initialVideoRender.defaultVoiceId })
+      : false;
+    const musicDirty = videoRender && initialVideoRender
+      ? serializeForCompare({
+          musicTracks: videoRender.musicTracks,
+          defaultMusicTrackId: videoRender.defaultMusicTrackId,
+          musicVolume: videoRender.musicVolume,
+        }) !== serializeForCompare({
+          musicTracks: initialVideoRender.musicTracks,
+          defaultMusicTrackId: initialVideoRender.defaultMusicTrackId,
+          musicVolume: initialVideoRender.musicVolume,
+        })
+      : false;
+    const backgroundVideosDirty = backgroundVideos && initialBackgroundVideos
+      ? serializeForCompare(backgroundVideos) !== serializeForCompare(initialBackgroundVideos)
       : false;
 
     const promptGroupDirty = Object.fromEntries(
@@ -479,6 +603,8 @@ export default function ShortFormVideoSettingsPage() {
 
     return {
       'tts-voice': ttsDirty,
+      'music-library': musicDirty,
+      'background-videos': backgroundVideosDirty,
       'image-templates': imageTemplateDirty,
       'image-shared-constraints': imageSharedDirty,
       'image-styles': imageStyleLibraryDirty,
@@ -486,11 +612,13 @@ export default function ShortFormVideoSettingsPage() {
       'prompt-research': promptGroupDirty['prompt-research'],
       'prompt-script': promptGroupDirty['prompt-script'],
     };
-  }, [imageStyles, initialImageStyles, initialPrompts, initialVideoRender, prompts, videoRender]);
+  }, [backgroundVideos, imageStyles, initialBackgroundVideos, initialImageStyles, initialPrompts, initialVideoRender, prompts, videoRender]);
 
   const sections = useMemo(
     () => [
       { id: 'tts-voice' as const, label: 'Voice library', dirty: dirtyBySection['tts-voice'] },
+      { id: 'music-library' as const, label: 'Music library', dirty: dirtyBySection['music-library'] },
+      { id: 'background-videos' as const, label: 'Background videos', dirty: dirtyBySection['background-videos'] },
       { id: 'image-templates' as const, label: 'Nano Banana templates', dirty: dirtyBySection['image-templates'] },
       { id: 'image-shared-constraints' as const, label: 'Shared image constraints', dirty: dirtyBySection['image-shared-constraints'] },
       { id: 'image-styles' as const, label: 'Image style library', dirty: dirtyBySection['image-styles'] },
@@ -549,13 +677,23 @@ export default function ShortFormVideoSettingsPage() {
   function mergeSavedSection(sectionId: SettingsSectionId, data: NonNullable<SettingsResponse['data']>) {
     setDefinitions(data.definitions);
 
-    if (sectionId === 'tts-voice') {
+    if (sectionId === 'tts-voice' || sectionId === 'music-library') {
       setVideoRender(data.videoRender);
       setInitialVideoRender(data.videoRender);
       setSelectedVoiceId((current) => {
         if (current && data.videoRender.voices.some((voice) => voice.id === current)) return current;
         return data.videoRender.defaultVoiceId || data.videoRender.voices[0]?.id || null;
       });
+      setSelectedMusicId((current) => {
+        if (current && data.videoRender.musicTracks.some((track) => track.id === current)) return current;
+        return data.videoRender.defaultMusicTrackId || data.videoRender.musicTracks[0]?.id || null;
+      });
+      return;
+    }
+
+    if (sectionId === 'background-videos') {
+      setBackgroundVideos(data.backgroundVideos);
+      setInitialBackgroundVideos(data.backgroundVideos);
       return;
     }
 
@@ -610,7 +748,10 @@ export default function ShortFormVideoSettingsPage() {
   function buildSectionSavePayload(sectionId: SettingsSectionId) {
     switch (sectionId) {
       case 'tts-voice':
+      case 'music-library':
         return videoRender ? { videoRender } : null;
+      case 'background-videos':
+        return backgroundVideos ? { backgroundVideos } : null;
       case 'image-templates':
         return imageStyles ? { imageStyles: { promptTemplates: imageStyles.promptTemplates } } : null;
       case 'image-shared-constraints':
@@ -645,9 +786,13 @@ export default function ShortFormVideoSettingsPage() {
         message:
           sectionId === 'tts-voice'
             ? 'Saved. New final-video runs will use this voice library and default voice immediately.'
-            : sectionId === 'image-templates' || sectionId === 'image-shared-constraints' || sectionId === 'image-styles'
-              ? 'Saved. New scene-image runs and tests will use this section immediately.'
-              : 'Saved. New workflow runs will use this prompt section immediately.',
+            : sectionId === 'music-library'
+              ? 'Saved. New final-video runs will use this music library/default and saved mix volume immediately.'
+              : sectionId === 'background-videos'
+                ? 'Saved. Projects now use this background-video library/default immediately.'
+                : sectionId === 'image-templates' || sectionId === 'image-shared-constraints' || sectionId === 'image-styles'
+                  ? 'Saved. New scene-image runs and tests will use this section immediately.'
+                  : 'Saved. New workflow runs will use this prompt section immediately.',
       });
     } catch (err) {
       updateSectionFeedbackState(sectionId, {
@@ -665,9 +810,15 @@ export default function ShortFormVideoSettingsPage() {
 
     updateSectionFeedbackState(sectionId, { error: null, message: null });
 
-    if (sectionId === 'tts-voice' && initialVideoRender) {
+    if ((sectionId === 'tts-voice' || sectionId === 'music-library') && initialVideoRender) {
       setVideoRender(initialVideoRender);
       setSelectedVoiceId(initialVideoRender.defaultVoiceId || initialVideoRender.voices[0]?.id || null);
+      setSelectedMusicId(initialVideoRender.defaultMusicTrackId || initialVideoRender.musicTracks[0]?.id || null);
+      return;
+    }
+
+    if (sectionId === 'background-videos' && initialBackgroundVideos) {
+      setBackgroundVideos(initialBackgroundVideos);
       return;
     }
 
@@ -828,6 +979,94 @@ export default function ShortFormVideoSettingsPage() {
     setSelectedVoiceId(remaining[0]?.id || null);
   }
 
+  function updateSelectedMusic(updater: (track: MusicLibraryEntry) => MusicLibraryEntry) {
+    if (!videoRender || !selectedMusic) return;
+    updateSectionFeedbackState('music-library', { error: null, message: null });
+    setVideoRender({
+      ...videoRender,
+      musicTracks: videoRender.musicTracks.map((track) => (track.id === selectedMusic.id ? updater(track) : track)),
+    });
+  }
+
+  function addMusic() {
+    if (!videoRender) return;
+    updateSectionFeedbackState('music-library', { error: null, message: null });
+    const nextTrack = createMusicDraft(videoRender.musicTracks.length + 1);
+    const dedupedId = `${slugify(nextTrack.name) || 'music'}-${Date.now()}`;
+    nextTrack.id = dedupedId;
+    setVideoRender({
+      ...videoRender,
+      defaultMusicTrackId: videoRender.defaultMusicTrackId || dedupedId,
+      musicTracks: [...videoRender.musicTracks, nextTrack],
+    });
+    setSelectedMusicId(dedupedId);
+  }
+
+  function deleteMusic(trackId: string) {
+    if (!videoRender || videoRender.musicTracks.length <= 1) return;
+    updateSectionFeedbackState('music-library', { error: null, message: null });
+    const remaining = videoRender.musicTracks.filter((track) => track.id !== trackId);
+    const nextDefault = videoRender.defaultMusicTrackId === trackId ? remaining[0].id : videoRender.defaultMusicTrackId;
+    setVideoRender({
+      ...videoRender,
+      defaultMusicTrackId: nextDefault,
+      musicTracks: remaining,
+    });
+    setSelectedMusicId(remaining[0]?.id || null);
+  }
+
+  async function uploadBackgroundVideo(file: File) {
+    setBackgroundVideoUpload({ isUploading: true, error: null });
+    updateSectionFeedbackState('background-videos', { error: null, message: null });
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('label', file.name);
+
+      const response = await fetch('/api/short-form-videos/settings/background-videos/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        success?: boolean;
+        data?: { videoRelativePath: string; videoUrl?: string; uploadedAt?: string };
+        error?: string;
+      };
+
+      if (!response.ok || payload.success === false || !payload.data) {
+        throw new Error(payload.error || 'Failed to upload background video');
+      }
+
+      setBackgroundVideos((current) => {
+        const entryId = `${slugify(file.name.replace(/\.[^.]+$/, '')) || 'background'}-${Date.now()}`;
+        const nextEntry: BackgroundVideoEntry = {
+          id: entryId,
+          name: file.name.replace(/\.[^.]+$/, '') || 'Background video',
+          videoRelativePath: payload.data!.videoRelativePath,
+          videoUrl: payload.data!.videoUrl,
+          uploadedAt: payload.data!.uploadedAt,
+          updatedAt: payload.data!.uploadedAt,
+        };
+        if (!current) {
+          return { defaultBackgroundVideoId: entryId, backgrounds: [nextEntry] };
+        }
+        return {
+          ...current,
+          defaultBackgroundVideoId: current.defaultBackgroundVideoId || entryId,
+          backgrounds: [...current.backgrounds, nextEntry],
+        };
+      });
+
+      setBackgroundVideoUpload({ isUploading: false, error: null });
+    } catch (err) {
+      setBackgroundVideoUpload({
+        isUploading: false,
+        error: err instanceof Error ? err.message : 'Failed to upload background video',
+      });
+    }
+  }
+
   async function generateStyleTest() {
     if (!imageStyles || !selectedStyle) return;
 
@@ -961,6 +1200,50 @@ export default function ShortFormVideoSettingsPage() {
     }
   }
 
+  async function generateMusicPreview() {
+    if (!selectedMusic || !videoRender) return;
+
+    setMusicPreview((current) => ({
+      ...current,
+      isLoading: true,
+      error: null,
+    }));
+
+    try {
+      const data = await parseMusicPreviewResponse(
+        await fetch('/api/short-form-videos/settings/music-preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            track: {
+              id: selectedMusic.id,
+              name: selectedMusic.name,
+              prompt: selectedMusic.prompt,
+            },
+            durationSeconds: selectedMusic.previewDurationSeconds,
+            musicVolume: videoRender.musicVolume,
+          }),
+        })
+      );
+
+      setMusicPreview({
+        isLoading: false,
+        error: null,
+        audioUrl: data.audioUrl,
+        trackName: data.track.name,
+        prompt: data.track.prompt,
+        durationSeconds: data.durationSeconds,
+        musicVolume: data.musicVolume,
+      });
+    } catch (err) {
+      setMusicPreview((current) => ({
+        ...current,
+        isLoading: false,
+        error: err instanceof Error ? err.message : 'Failed to generate music preview',
+      }));
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-6 p-4 sm:p-6 lg:p-8">
@@ -982,12 +1265,12 @@ export default function ShortFormVideoSettingsPage() {
           <h1 className="mt-3 text-2xl font-bold text-foreground">Short-form workflow settings</h1>
           <p className="mt-1 max-w-4xl text-sm text-muted-foreground">
             Edit the real settings the dashboard actually uses: Qwen narration voice controls for final-video generation,
-            Nano Banana scene-image templates and style rules, and the remaining hooks / research / script prompt templates.
+            reusable looping background videos, Nano Banana scene-image templates and style rules, and the remaining hooks / research / script prompt templates.
             Each section now saves independently so you can iterate without committing unrelated draft changes.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => void loadSettings()} disabled={loading || anySectionSaving || anyStyleTesting || ttsPreview.isLoading || selectedStyleUpload?.isUploading}>
+          <Button variant="outline" onClick={() => void loadSettings()} disabled={loading || anySectionSaving || anyStyleTesting || ttsPreview.isLoading || selectedStyleUpload?.isUploading || backgroundVideoUpload.isUploading}>
             Reload page state
           </Button>
         </div>
@@ -1238,12 +1521,372 @@ export default function ShortFormVideoSettingsPage() {
         </Card>
       </section>
 
+      <section id="music-library" className="scroll-mt-24">
+        <Card className="space-y-5 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <WorkflowSectionHeader
+              title="Music soundtrack library"
+              description="Manage reusable ACE-Step soundtrack presets that the dashboard really uses for final-video generation. Each preset stores the music prompt design; ACE-Step still generates a fresh instrumental render each time, so this is a reusable prompt library rather than a locked deterministic song library."
+              status={dirtyBySection['music-library'] ? 'needs review' : 'approved'}
+            />
+            <SectionActions
+              dirty={dirtyBySection['music-library']}
+              saving={sectionFeedback['music-library'].saving}
+              saveLabel="Save music library"
+              onSave={() => void saveSection('music-library')}
+              onReset={() => resetSection('music-library')}
+            />
+          </div>
+
+          {videoRender ? (
+            <div className="space-y-5">
+              <div className="rounded-lg border border-border bg-background/60 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground">Saved soundtrack presets</h3>
+                    <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
+                      Each preset stores the ACE-Step prompt that describes the instrumental vibe. Because ACE-Step is prompt-driven, previews and final renders are new generations guided by that prompt — not the exact same waveform every time.
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={addMusic} disabled={sectionFeedback['music-library'].saving}>
+                    Add soundtrack
+                  </Button>
+                </div>
+
+                <div className="mt-4 grid gap-4 lg:grid-cols-[280px,1fr]">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Music library</label>
+                    <Select
+                      value={selectedMusicId || ''}
+                      onChange={(event) => setSelectedMusicId(event.target.value)}
+                      disabled={videoRender.musicTracks.length === 0}
+                    >
+                      {videoRender.musicTracks.map((track) => (
+                        <option key={track.id} value={track.id}>
+                          {track.name}{track.id === videoRender.defaultMusicTrackId ? ' (default)' : ''}
+                        </option>
+                      ))}
+                    </Select>
+                    <div className="rounded-lg border border-border bg-background/50 p-3 text-xs text-muted-foreground">
+                      <p>
+                        <span className="font-medium text-foreground">Default soundtrack:</span>{' '}
+                        {videoRender.musicTracks.find((track) => track.id === videoRender.defaultMusicTrackId)?.name || 'Not set'}
+                      </p>
+                      <p className="mt-2">
+                        <span className="font-medium text-foreground">Saved music mix volume:</span> {Math.round((videoRender.musicVolume || 0) * 100)}%
+                      </p>
+                      <p className="mt-2">Projects can override the soundtrack preset individually. The saved volume is global and is passed into the real final-video music mix.</p>
+                    </div>
+                  </div>
+
+                  {selectedMusic ? (
+                    <div className="space-y-4 rounded-lg border border-border bg-background/50 p-4">
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Soundtrack name</label>
+                          <Input
+                            value={selectedMusic.name}
+                            onChange={(event) => {
+                              updateSelectedMusic((track) => ({ ...track, name: event.target.value }));
+                            }}
+                            placeholder="Curiosity underscore"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Preview duration (seconds)</label>
+                          <Input
+                            type="number"
+                            min={6}
+                            max={30}
+                            value={selectedMusic.previewDurationSeconds || 12}
+                            onChange={(event) => {
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                previewDurationSeconds: Math.min(30, Math.max(6, Number(event.target.value) || 12)),
+                              }));
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <Button
+                          type="button"
+                          variant={selectedMusic.id === videoRender.defaultMusicTrackId ? 'default' : 'outline'}
+                          onClick={() => {
+                            updateSectionFeedbackState('music-library', { error: null, message: null });
+                            setVideoRender({ ...videoRender, defaultMusicTrackId: selectedMusic.id });
+                          }}
+                        >
+                          {selectedMusic.id === videoRender.defaultMusicTrackId ? 'Default soundtrack' : 'Set as default'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => deleteMusic(selectedMusic.id)}
+                          disabled={videoRender.musicTracks.length <= 1}
+                        >
+                          Delete soundtrack
+                        </Button>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Music prompt</label>
+                        <Textarea
+                          value={selectedMusic.prompt}
+                          onChange={(event) => {
+                            updateSelectedMusic((track) => ({ ...track, prompt: event.target.value }));
+                          }}
+                          className="min-h-[150px] font-mono text-xs"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          This prompt is passed to ACE-Step for preview generation and real final-video renders. Keep it honest about what the generator supports: it can shape the instrumental vibe, but it does not give you a deterministic reusable song ID here.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Notes</label>
+                        <Textarea
+                          value={selectedMusic.notes}
+                          onChange={(event) => {
+                            updateSelectedMusic((track) => ({ ...track, notes: event.target.value }));
+                          }}
+                          className="min-h-[90px] text-xs"
+                          placeholder="Optional notes about when to use this soundtrack"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Default music volume</label>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            value={videoRender.musicVolume}
+                            onChange={(event) => {
+                              updateSectionFeedbackState('music-library', { error: null, message: null });
+                              setVideoRender({ ...videoRender, musicVolume: Number(event.target.value) });
+                            }}
+                            className="w-full"
+                          />
+                          <div className="w-16 text-right text-sm text-foreground">{Math.round(videoRender.musicVolume * 100)}%</div>
+                        </div>
+                        <p className="text-xs text-muted-foreground">This exact saved volume is passed into the final ffmpeg music mix for every new final-video run.</p>
+                      </div>
+
+                      <div className="space-y-4 rounded-lg border border-border bg-background/60 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <h3 className="text-sm font-medium text-foreground">Music preview loop</h3>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Generates a short ACE-Step instrumental preview for the currently selected soundtrack prompt using the saved preview duration and current saved mix volume.
+                            </p>
+                          </div>
+                          <Button onClick={() => void generateMusicPreview()} disabled={musicPreview.isLoading || sectionFeedback['music-library'].saving}>
+                            {musicPreview.isLoading ? 'Generating…' : 'Preview soundtrack'}
+                          </Button>
+                        </div>
+
+                        {musicPreview.error ? <ValidationNotice title="Music preview failed" message={musicPreview.error} /> : null}
+
+                        {musicPreview.isLoading ? (
+                          <div className="rounded-lg border border-border p-4">
+                            <OrbitLoader label="Generating ACE-Step music preview" />
+                          </div>
+                        ) : null}
+
+                        {musicPreview.audioUrl ? (
+                          <div className="space-y-3 rounded-lg border border-border bg-background/70 p-4">
+                            <div className="grid gap-3 md:grid-cols-3">
+                              <div>
+                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Previewing soundtrack</p>
+                                <p className="mt-1 text-sm text-foreground">{musicPreview.trackName}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Duration</p>
+                                <p className="mt-1 text-sm text-foreground">{musicPreview.durationSeconds}s</p>
+                              </div>
+                              <div>
+                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Applied volume</p>
+                                <p className="mt-1 text-sm text-foreground">{Math.round((musicPreview.musicVolume || 0) * 100)}%</p>
+                              </div>
+                            </div>
+                            <audio controls className="w-full" src={musicPreview.audioUrl} />
+                            <div>
+                              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Prompt snapshot used</p>
+                              <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{musicPreview.prompt}</p>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <SectionFeedbackNotice feedback={sectionFeedback['music-library']} />
+        </Card>
+      </section>
+
+      <section id="background-videos" className="scroll-mt-24">
+        <Card className="space-y-5 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <WorkflowSectionHeader
+              title="Looping background video library"
+              description="Upload and manage the reusable background videos used behind green-screen scene plates. Each project can override the default selection, and dashboard scene previews / final renders use the selected background."
+              status={dirtyBySection['background-videos'] ? 'needs review' : 'approved'}
+            />
+            <SectionActions
+              dirty={dirtyBySection['background-videos']}
+              saving={sectionFeedback['background-videos'].saving}
+              saveLabel="Save background library"
+              onSave={() => void saveSection('background-videos')}
+              onReset={() => resetSection('background-videos')}
+            />
+          </div>
+
+          {backgroundVideos ? (
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-background/60 p-4">
+                <div>
+                  <h3 className="text-sm font-medium text-foreground">Background library</h3>
+                  <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
+                    These videos are looped to the full narration duration during final render, then the green-screen character plates are chroma-keyed over them. Scene preview tabs also composite against the selected project background.
+                  </p>
+                </div>
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-accent">
+                  <span>{backgroundVideoUpload.isUploading ? 'Uploading…' : 'Upload background video'}</span>
+                  <input
+                    type="file"
+                    accept="video/mp4,video/quicktime,video/webm,video/x-m4v,.mp4,.mov,.webm,.m4v"
+                    className="hidden"
+                    disabled={backgroundVideoUpload.isUploading}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) {
+                        void uploadBackgroundVideo(file);
+                      }
+                      event.currentTarget.value = '';
+                    }}
+                  />
+                </label>
+              </div>
+
+              {backgroundVideoUpload.error ? <ValidationNotice title="Background upload failed" message={backgroundVideoUpload.error} /> : null}
+
+              {backgroundVideos.backgrounds.length > 0 ? (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {backgroundVideos.backgrounds.map((background) => {
+                    const isDefault = backgroundVideos.defaultBackgroundVideoId === background.id;
+                    return (
+                      <div key={background.id} className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{background.name}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">{background.notes || 'No notes yet.'}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={isDefault ? 'secondary' : 'outline'}
+                              onClick={() => {
+                                updateSectionFeedbackState('background-videos', { error: null, message: null });
+                                setBackgroundVideos({ ...backgroundVideos, defaultBackgroundVideoId: background.id });
+                              }}
+                            >
+                              {isDefault ? 'Default background' : 'Set as default'}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                updateSectionFeedbackState('background-videos', { error: null, message: null });
+                                const remaining = backgroundVideos.backgrounds.filter((entry) => entry.id !== background.id);
+                                setBackgroundVideos({
+                                  defaultBackgroundVideoId: backgroundVideos.defaultBackgroundVideoId === background.id ? remaining[0]?.id : backgroundVideos.defaultBackgroundVideoId,
+                                  backgrounds: remaining,
+                                });
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+                          <div className="space-y-3">
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Background name</label>
+                              <Input
+                                value={background.name}
+                                onChange={(event) => {
+                                  updateSectionFeedbackState('background-videos', { error: null, message: null });
+                                  setBackgroundVideos({
+                                    ...backgroundVideos,
+                                    backgrounds: backgroundVideos.backgrounds.map((entry) =>
+                                      entry.id === background.id ? { ...entry, name: event.target.value } : entry
+                                    ),
+                                  });
+                                }}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Notes</label>
+                              <Textarea
+                                value={background.notes || ''}
+                                onChange={(event) => {
+                                  updateSectionFeedbackState('background-videos', { error: null, message: null });
+                                  setBackgroundVideos({
+                                    ...backgroundVideos,
+                                    backgrounds: backgroundVideos.backgrounds.map((entry) =>
+                                      entry.id === background.id ? { ...entry, notes: event.target.value } : entry
+                                    ),
+                                  });
+                                }}
+                                className="min-h-[100px] text-xs"
+                                placeholder="Optional notes about where this background works best"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Preview</p>
+                            {background.videoUrl ? (
+                              <video src={background.videoUrl} controls muted loop playsInline preload="metadata" className="aspect-[9/16] w-full rounded-lg border border-border bg-black object-cover" />
+                            ) : (
+                              <div className="flex aspect-[9/16] items-center justify-center rounded-lg border border-dashed border-border text-xs text-muted-foreground">
+                                Preview unavailable
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+                  No background videos yet. Upload one or more vertical (or croppable) loops here, then set a default so new projects inherit it automatically.
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          <SectionFeedbackNotice feedback={sectionFeedback['background-videos']} />
+        </Card>
+      </section>
+
       <section id="image-templates" className="scroll-mt-24">
         <Card className="space-y-5 p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <WorkflowSectionHeader
               title="Nano Banana prompt templates"
-              description="These are the real editable templates used by the direct dashboard scene-image path. The old generic scene-image prompt editors were removed because they were no longer consumed."
+              description="These are the real editable templates used by the direct dashboard scene-image path. The runtime now hard-enforces a green-screen foreground-plate workflow so final backgrounds come from the selected looping background video rather than the generated scene art."
               status={dirtyBySection['image-templates'] ? 'needs review' : 'approved'}
             />
             <SectionActions

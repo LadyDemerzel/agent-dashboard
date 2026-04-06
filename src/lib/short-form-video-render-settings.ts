@@ -26,19 +26,39 @@ export interface ShortFormVoiceLibraryEntry {
   updatedAt?: string;
 }
 
+export interface ShortFormMusicLibraryEntry {
+  id: string;
+  name: string;
+  prompt: string;
+  notes: string;
+  previewDurationSeconds?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface ShortFormResolvedVoiceSelection {
   voice: ShortFormVoiceLibraryEntry;
   resolvedVoiceId: string;
   source: "project" | "default" | "fallback";
 }
 
+export interface ShortFormResolvedMusicSelection {
+  music?: ShortFormMusicLibraryEntry;
+  resolvedMusicId?: string;
+  source: "project" | "default" | "fallback" | "none";
+}
+
 export interface ShortFormVideoRenderSettings {
   defaultVoiceId: string;
   voices: ShortFormVoiceLibraryEntry[];
+  defaultMusicTrackId?: string;
+  musicVolume: number;
+  musicTracks: ShortFormMusicLibraryEntry[];
 }
 
 const SETTINGS_PATH = path.join(SHORT_FORM_VIDEOS_DIR, "_video-render-settings.json");
 const VOICE_TESTS_DIR = path.join(SHORT_FORM_VIDEOS_DIR, "_voice-tests");
+const MUSIC_TESTS_DIR = path.join(SHORT_FORM_VIDEOS_DIR, "_music-tests");
 
 const DEFAULT_VOICE_DESIGN_PROMPT =
   "Educated American male narrator, slightly deeper and lower-pitched, polished and confident, calm authority, crisp social-video pacing, speak only English, no other languages or non-speech sounds.";
@@ -47,6 +67,11 @@ const DEFAULT_PREVIEW_TEXT =
 const DEFAULT_LEGACY_SPEAKER = "Aiden";
 const DEFAULT_LEGACY_INSTRUCT = DEFAULT_VOICE_DESIGN_PROMPT;
 const DEFAULT_VOICE_ID = "voice-calm-authority";
+const DEFAULT_MUSIC_ID = "music-curiosity-underscore";
+const DEFAULT_MUSIC_PROMPT =
+  "instrumental cinematic curiosity underscore, mysterious but pleasant, warm synth pulse, light percussion, airy textures, subtle piano and marimba accents, sense of discovery, modern and polished, no horror, no dread, no dark drones, no jump scares, no vocals, no singing, no choir, no spoken voice";
+const DEFAULT_MUSIC_VOLUME = 0.38;
+const DEFAULT_MUSIC_PREVIEW_DURATION_SECONDS = 12;
 
 export const DEFAULT_SHORT_FORM_VOICE: ShortFormVoiceLibraryEntry = {
   id: DEFAULT_VOICE_ID,
@@ -59,9 +84,22 @@ export const DEFAULT_SHORT_FORM_VOICE: ShortFormVoiceLibraryEntry = {
   updatedAt: "2026-04-05T00:00:00.000Z",
 };
 
+export const DEFAULT_SHORT_FORM_MUSIC: ShortFormMusicLibraryEntry = {
+  id: DEFAULT_MUSIC_ID,
+  name: "Curiosity underscore",
+  prompt: DEFAULT_MUSIC_PROMPT,
+  notes: "Starter instrumental ACE-Step preset for short-form videos.",
+  previewDurationSeconds: DEFAULT_MUSIC_PREVIEW_DURATION_SECONDS,
+  createdAt: "2026-04-06T00:00:00.000Z",
+  updatedAt: "2026-04-06T00:00:00.000Z",
+};
+
 const DEFAULT_SETTINGS: ShortFormVideoRenderSettings = {
   defaultVoiceId: DEFAULT_SHORT_FORM_VOICE.id,
   voices: [DEFAULT_SHORT_FORM_VOICE],
+  defaultMusicTrackId: DEFAULT_SHORT_FORM_MUSIC.id,
+  musicVolume: DEFAULT_MUSIC_VOLUME,
+  musicTracks: [DEFAULT_SHORT_FORM_MUSIC],
 };
 
 function ensureSettingsDir() {
@@ -74,6 +112,18 @@ function normalizeString(value: unknown, fallback = "") {
 
 function normalizeMode(value: unknown): ShortFormQwenVoiceMode {
   return value === "custom-voice" ? "custom-voice" : "voice-design";
+}
+
+function clampMusicVolume(value: unknown, fallback = DEFAULT_MUSIC_VOLUME) {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(1, Math.max(0, parsed));
+}
+
+function normalizePreviewDurationSeconds(value: unknown, fallback = DEFAULT_MUSIC_PREVIEW_DURATION_SECONDS) {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(30, Math.max(6, Math.round(parsed)));
 }
 
 function ensureUniqueVoiceIds(voices: ShortFormVoiceLibraryEntry[]) {
@@ -91,6 +141,24 @@ function ensureUniqueVoiceIds(voices: ShortFormVoiceLibraryEntry[]) {
     const nextId = `${candidate}-${suffix}`;
     used.add(nextId);
     return { ...voice, id: nextId };
+  });
+}
+
+function ensureUniqueMusicIds(tracks: ShortFormMusicLibraryEntry[]) {
+  const used = new Set<string>();
+  return tracks.map((track, index) => {
+    let candidate = normalizeString(track.id, `music-${index + 1}`);
+    if (!candidate) candidate = `music-${index + 1}`;
+    if (!used.has(candidate)) {
+      used.add(candidate);
+      return track;
+    }
+
+    let suffix = 2;
+    while (used.has(`${candidate}-${suffix}`)) suffix += 1;
+    const nextId = `${candidate}-${suffix}`;
+    used.add(nextId);
+    return { ...track, id: nextId };
   });
 }
 
@@ -135,6 +203,29 @@ function normalizeVoiceEntry(value: unknown, fallback: ShortFormVoiceLibraryEntr
   return normalized;
 }
 
+function normalizeMusicEntry(value: unknown, fallback: ShortFormMusicLibraryEntry, index: number): ShortFormMusicLibraryEntry | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const obj = value as Record<string, unknown>;
+  const normalized: ShortFormMusicLibraryEntry = {
+    id: normalizeString(obj.id, fallback.id || `music-${index + 1}`),
+    name: normalizeString(obj.name, fallback.name || `Music ${index + 1}`),
+    prompt: normalizeString(obj.prompt, fallback.prompt),
+    notes: normalizeString(obj.notes, fallback.notes),
+    previewDurationSeconds: normalizePreviewDurationSeconds(obj.previewDurationSeconds, fallback.previewDurationSeconds),
+    ...(normalizeString(obj.createdAt) ? { createdAt: normalizeString(obj.createdAt) } : {}),
+    ...(normalizeString(obj.updatedAt) ? { updatedAt: normalizeString(obj.updatedAt) } : {}),
+  };
+
+  if (!normalized.id || !normalized.name || !normalized.prompt) {
+    return null;
+  }
+
+  return normalized;
+}
+
 function migrateLegacyQwenVoice(value: unknown): ShortFormVideoRenderSettings | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -163,6 +254,9 @@ function migrateLegacyQwenVoice(value: unknown): ShortFormVideoRenderSettings | 
   return {
     defaultVoiceId: voice.id,
     voices: [voice],
+    defaultMusicTrackId: DEFAULT_SHORT_FORM_MUSIC.id,
+    musicVolume: DEFAULT_MUSIC_VOLUME,
+    musicTracks: [DEFAULT_SHORT_FORM_MUSIC],
   };
 }
 
@@ -183,9 +277,22 @@ function normalizeSettings(value: unknown): ShortFormVideoRenderSettings {
   const defaultVoiceId = normalizeString(obj.defaultVoiceId, voices[0]?.id || DEFAULT_SHORT_FORM_VOICE.id);
   const resolvedDefaultVoiceId = voices.some((voice) => voice.id === defaultVoiceId) ? defaultVoiceId : voices[0].id;
 
+  const rawMusicTracks = Array.isArray(obj.musicTracks) ? obj.musicTracks : [];
+  const normalizedMusicTracks = rawMusicTracks
+    .map((track, index) => normalizeMusicEntry(track, DEFAULT_SHORT_FORM_MUSIC, index))
+    .filter((track): track is ShortFormMusicLibraryEntry => Boolean(track));
+  const musicTracks = ensureUniqueMusicIds(normalizedMusicTracks.length > 0 ? normalizedMusicTracks : [DEFAULT_SHORT_FORM_MUSIC]);
+  const defaultMusicTrackId = normalizeString(obj.defaultMusicTrackId, musicTracks[0]?.id || DEFAULT_SHORT_FORM_MUSIC.id);
+  const resolvedDefaultMusicTrackId = musicTracks.some((track) => track.id === defaultMusicTrackId)
+    ? defaultMusicTrackId
+    : musicTracks[0]?.id;
+
   return {
     defaultVoiceId: resolvedDefaultVoiceId,
     voices,
+    ...(resolvedDefaultMusicTrackId ? { defaultMusicTrackId: resolvedDefaultMusicTrackId } : {}),
+    musicVolume: clampMusicVolume(obj.musicVolume, DEFAULT_MUSIC_VOLUME),
+    musicTracks,
   };
 }
 
@@ -215,6 +322,28 @@ export function resolveShortFormVoiceSelection(preferredVoiceId?: string): Short
   return { voice: fallbackVoice, resolvedVoiceId: fallbackVoice.id, source: "fallback" };
 }
 
+export function resolveShortFormMusicSelection(preferredMusicId?: string): ShortFormResolvedMusicSelection {
+  const settings = getShortFormVideoRenderSettings();
+  const projectMusic = preferredMusicId ? settings.musicTracks.find((track) => track.id === preferredMusicId) : undefined;
+  if (projectMusic) {
+    return { music: projectMusic, resolvedMusicId: projectMusic.id, source: "project" };
+  }
+
+  const defaultMusic = settings.defaultMusicTrackId
+    ? settings.musicTracks.find((track) => track.id === settings.defaultMusicTrackId)
+    : undefined;
+  if (defaultMusic) {
+    return { music: defaultMusic, resolvedMusicId: defaultMusic.id, source: "default" };
+  }
+
+  const fallbackMusic = settings.musicTracks[0];
+  if (fallbackMusic) {
+    return { music: fallbackMusic, resolvedMusicId: fallbackMusic.id, source: "fallback" };
+  }
+
+  return { source: "none" };
+}
+
 export function saveShortFormVideoRenderSettings(nextSettings: Partial<ShortFormVideoRenderSettings>) {
   ensureSettingsDir();
   const current = getShortFormVideoRenderSettings();
@@ -222,6 +351,7 @@ export function saveShortFormVideoRenderSettings(nextSettings: Partial<ShortForm
     ...current,
     ...nextSettings,
     voices: nextSettings.voices || current.voices,
+    musicTracks: nextSettings.musicTracks || current.musicTracks,
   });
 
   fs.writeFileSync(SETTINGS_PATH, JSON.stringify(merged, null, 2), "utf-8");
@@ -231,4 +361,9 @@ export function saveShortFormVideoRenderSettings(nextSettings: Partial<ShortForm
 export function getShortFormVoiceTestsDir() {
   fs.mkdirSync(VOICE_TESTS_DIR, { recursive: true });
   return VOICE_TESTS_DIR;
+}
+
+export function getShortFormMusicTestsDir() {
+  fs.mkdirSync(MUSIC_TESTS_DIR, { recursive: true });
+  return MUSIC_TESTS_DIR;
 }

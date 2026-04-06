@@ -22,6 +22,7 @@ const QWEN_RUNNER = path.join(
   "scripts",
   "run.sh"
 );
+const QWEN_VOICE_DESIGN_WARMUP_TEXT = "Hi there. Ready when you are.";
 
 function normalizeString(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
@@ -109,6 +110,8 @@ export async function POST(request: NextRequest) {
 
     if (mode === "custom-voice") {
       args.splice(4, 0, "--speaker", speaker);
+    } else {
+      args.push("--warmup-text", QWEN_VOICE_DESIGN_WARMUP_TEXT);
     }
 
     const result = await runCommand("bash", args);

@@ -1,0 +1,62 @@
+▲ Next.js 16.1.6
+- Local:         http://localhost:3000
+- Network:       http://0.0.0.0:3000
+
+✓ Starting...
+✓ Ready in 241ms
+TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+⨯ uncaughtException:  TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+⨯ uncaughtException:  TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+⨯ uncaughtException:  TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+⨯ uncaughtException:  TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+⨯ uncaughtException:  TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+⨯ uncaughtException:  TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}
+⨯ uncaughtException:  TypeError: Invalid state: Controller is already closed
+    at ignore-listed frames {
+  code: 'ERR_INVALID_STATE'
+}

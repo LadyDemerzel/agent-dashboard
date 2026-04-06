@@ -11,6 +11,8 @@ type NavItem = {
   href: string;
   label: string;
   icon: ReactNode;
+  settingsHref?: string;
+  settingsLabel?: string;
 };
 
 const iconClass = "h-4 w-4";
@@ -74,6 +76,8 @@ const NAV_ITEMS: NavItem[] = [
   {
     href: "/short-form-video",
     label: "Short-Form Video",
+    settingsHref: "/short-form-video/settings",
+    settingsLabel: "Open short-form video settings in a new tab",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={iconClass}>
         <rect x="3" y="4" width="18" height="16" rx="3" />
@@ -171,23 +175,47 @@ export function Sidebar() {
             const isActive =
               pathname === item.href ||
               (item.href !== "/" && pathname.startsWith(item.href));
+            const rowClassName = cn(
+              "flex items-center gap-1 rounded-md text-sm font-medium transition-colors min-h-[36px]",
+              isActive
+                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent"
+            );
+
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileOpen(false)}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors min-h-[36px]",
-                  isActive
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent"
-                )}
-              >
-                <span className="inline-flex h-4 w-4 items-center justify-center shrink-0">
-                  {item.icon}
-                </span>
-                {item.label}
-              </Link>
+              <div key={item.href} className={rowClassName}>
+                <Link
+                  href={item.href}
+                  onClick={() => setMobileOpen(false)}
+                  className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2"
+                >
+                  <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
+                    {item.icon}
+                  </span>
+                  <span className="truncate">{item.label}</span>
+                </Link>
+                {item.settingsHref ? (
+                  <Link
+                    href={item.settingsHref}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => setMobileOpen(false)}
+                    aria-label={item.settingsLabel || `Open ${item.label} settings in a new tab`}
+                    title={item.settingsLabel || `Open ${item.label} settings in a new tab`}
+                    className={cn(
+                      "mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-transparent transition-colors",
+                      isActive
+                        ? "hover:bg-sidebar-accent/70"
+                        : "hover:bg-sidebar-accent/70 hover:text-sidebar-foreground"
+                    )}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+                      <circle cx="12" cy="12" r="3" />
+                      <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.96 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1.04H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.96a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 8.96 4.6a1.7 1.7 0 0 0 1.04-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.04 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 8.96c.34.14.7.21 1.07.21H21a2 2 0 1 1 0 4h-.09c-.37 0-.73.07-1.07.21Z" />
+                    </svg>
+                  </Link>
+                ) : null}
+              </div>
             );
           })}
         </nav>

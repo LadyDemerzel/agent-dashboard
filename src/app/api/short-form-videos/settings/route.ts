@@ -15,6 +15,11 @@ import {
   saveShortFormVideoRenderSettings,
   type ShortFormVideoRenderSettings,
 } from "@/lib/short-form-video-render-settings";
+import {
+  getShortFormBackgroundVideoSettings,
+  saveShortFormBackgroundVideoSettings,
+  type ShortFormBackgroundVideoSettings,
+} from "@/lib/short-form-background-videos";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +29,7 @@ function buildPayload() {
     definitions: getShortFormPromptDefinitions(),
     imageStyles: getShortFormImageStyleSettings(),
     videoRender: getShortFormVideoRenderSettings(),
+    backgroundVideos: getShortFormBackgroundVideoSettings(),
   };
 }
 
@@ -47,7 +53,17 @@ function mergeVideoRenderPatch(patch: Partial<ShortFormVideoRenderSettings>) {
     ...current,
     ...patch,
     voices: patch.voices || current.voices,
+    musicTracks: patch.musicTracks || current.musicTracks,
   } satisfies ShortFormVideoRenderSettings;
+}
+
+function mergeBackgroundVideosPatch(patch: Partial<ShortFormBackgroundVideoSettings>) {
+  const current = getShortFormBackgroundVideoSettings();
+  return {
+    ...current,
+    ...patch,
+    backgrounds: patch.backgrounds || current.backgrounds,
+  } satisfies ShortFormBackgroundVideoSettings;
 }
 
 export async function GET() {
@@ -62,9 +78,10 @@ export async function PATCH(request: NextRequest) {
   const prompts = body && typeof body === "object" && !Array.isArray(body) ? body.prompts : undefined;
   const imageStyles = body && typeof body === "object" && !Array.isArray(body) ? body.imageStyles : undefined;
   const videoRender = body && typeof body === "object" && !Array.isArray(body) ? body.videoRender : undefined;
+  const backgroundVideos = body && typeof body === "object" && !Array.isArray(body) ? body.backgroundVideos : undefined;
 
-  if (prompts === undefined && imageStyles === undefined && videoRender === undefined) {
-    return NextResponse.json({ success: false, error: "prompts, imageStyles, or videoRender is required" }, { status: 400 });
+  if (prompts === undefined && imageStyles === undefined && videoRender === undefined && backgroundVideos === undefined) {
+    return NextResponse.json({ success: false, error: "prompts, imageStyles, videoRender, or backgroundVideos is required" }, { status: 400 });
   }
 
   if (prompts !== undefined) {
@@ -120,6 +137,18 @@ export async function PATCH(request: NextRequest) {
     if (!candidate.voices.some((voice) => voice.id === candidate.defaultVoiceId)) {
       return NextResponse.json({ success: false, error: "Default voice must reference an existing saved voice" }, { status: 400 });
     }
+    if (!Array.isArray(candidate.musicTracks) || candidate.musicTracks.length === 0) {
+      return NextResponse.json({ success: false, error: "At least one saved music preset is required" }, { status: 400 });
+    }
+    if (typeof candidate.defaultMusicTrackId !== "string" || !candidate.defaultMusicTrackId.trim()) {
+      return NextResponse.json({ success: false, error: "Default music preset must be selected" }, { status: 400 });
+    }
+    if (!candidate.musicTracks.some((track) => track.id === candidate.defaultMusicTrackId)) {
+      return NextResponse.json({ success: false, error: "Default music preset must reference an existing saved preset" }, { status: 400 });
+    }
+    if (typeof candidate.musicVolume !== "number" || Number.isNaN(candidate.musicVolume) || candidate.musicVolume < 0 || candidate.musicVolume > 1) {
+      return NextResponse.json({ success: false, error: "Music volume must be a number between 0 and 1" }, { status: 400 });
+    }
 
     for (const voice of candidate.voices) {
       if (typeof voice.id !== "string" || !voice.id.trim()) {
@@ -142,7 +171,58 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    for (const track of candidate.musicTracks) {
+      if (typeof track.id !== "string" || !track.id.trim()) {
+        return NextResponse.json({ success: false, error: "Each music preset must have an id" }, { status: 400 });
+      }
+      if (typeof track.name !== "string" || !track.name.trim()) {
+        return NextResponse.json({ success: false, error: "Each music preset must have a name" }, { status: 400 });
+      }
+      if (typeof track.prompt !== "string" || !track.prompt.trim()) {
+        return NextResponse.json({ success: false, error: `Music preset ${track.name} needs a prompt` }, { status: 400 });
+      }
+      if (
+        track.previewDurationSeconds !== undefined
+        && (typeof track.previewDurationSeconds !== "number" || Number.isNaN(track.previewDurationSeconds) || track.previewDurationSeconds < 6 || track.previewDurationSeconds > 30)
+      ) {
+        return NextResponse.json({ success: false, error: `Music preset ${track.name} must use a preview duration between 6 and 30 seconds` }, { status: 400 });
+      }
+    }
+
     saveShortFormVideoRenderSettings(candidate);
+  }
+
+  if (backgroundVideos !== undefined) {
+    if (!backgroundVideos || typeof backgroundVideos !== "object" || Array.isArray(backgroundVideos)) {
+      return NextResponse.json({ success: false, error: "backgroundVideos must be an object" }, { status: 400 });
+    }
+
+    const candidate = mergeBackgroundVideosPatch(backgroundVideos as Partial<ShortFormBackgroundVideoSettings>);
+    if (!Array.isArray(candidate.backgrounds)) {
+      return NextResponse.json({ success: false, error: "Background library must be an array" }, { status: 400 });
+    }
+    if (candidate.backgrounds.length > 0) {
+      if (typeof candidate.defaultBackgroundVideoId !== "string" || !candidate.defaultBackgroundVideoId.trim()) {
+        return NextResponse.json({ success: false, error: "Default background video must be selected when the library is not empty" }, { status: 400 });
+      }
+      if (!candidate.backgrounds.some((background) => background.id === candidate.defaultBackgroundVideoId)) {
+        return NextResponse.json({ success: false, error: "Default background video must reference an existing library item" }, { status: 400 });
+      }
+    }
+
+    for (const background of candidate.backgrounds) {
+      if (typeof background.id !== "string" || !background.id.trim()) {
+        return NextResponse.json({ success: false, error: "Each background video must have an id" }, { status: 400 });
+      }
+      if (typeof background.name !== "string" || !background.name.trim()) {
+        return NextResponse.json({ success: false, error: "Each background video must have a name" }, { status: 400 });
+      }
+      if (typeof background.videoRelativePath !== "string" || !background.videoRelativePath.trim()) {
+        return NextResponse.json({ success: false, error: `Background video ${background.name} is missing its media path` }, { status: 400 });
+      }
+    }
+
+    saveShortFormBackgroundVideoSettings(candidate);
   }
 
   return NextResponse.json({
