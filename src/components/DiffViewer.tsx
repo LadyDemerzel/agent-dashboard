@@ -49,7 +49,7 @@ function DiffLineComponent({ line }: { line: DiffLine }) {
       </div>
       
       {/* Content */}
-      <div className={`flex-1 pl-3 py-0.5 whitespace-pre ${textColor}`}>
+      <div className={`min-w-0 flex-1 pl-3 py-0.5 whitespace-pre-wrap break-words ${textColor}`}>
         <span className="select-none opacity-50 mr-1">{prefix}</span>
         {line.content || " "}
       </div>
@@ -141,7 +141,7 @@ export function DiffViewer({ diff, showStats = true, maxHeight = "600px" }: Diff
       {/* Diff content */}
       {expanded && (
         <div 
-          className="overflow-auto"
+          className="overflow-y-auto overflow-x-hidden"
           style={{ maxHeight }}
         >
           {diff.hunks.length === 0 ? (
@@ -198,7 +198,7 @@ export function CompactDiffView({ diff }: CompactDiffViewProps) {
               line.type === "added" ? "+" : line.type === "removed" ? "-" : " ";
             
             return (
-              <div key={lineIdx} className={`${bgColor} ${textColor} px-2 py-0.5 truncate`}>
+              <div key={lineIdx} className={`${bgColor} ${textColor} px-2 py-0.5 whitespace-pre-wrap break-words`}>
                 {prefix} {line.content}
               </div>
             );

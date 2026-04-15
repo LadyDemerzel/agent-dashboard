@@ -20,6 +20,11 @@ import {
   saveShortFormBackgroundVideoSettings,
   type ShortFormBackgroundVideoSettings,
 } from "@/lib/short-form-background-videos";
+import {
+  getShortFormTextScriptSettings,
+  saveShortFormTextScriptSettings,
+  type ShortFormTextScriptSettings,
+} from "@/lib/short-form-text-script-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +35,7 @@ function buildPayload() {
     imageStyles: getShortFormImageStyleSettings(),
     videoRender: getShortFormVideoRenderSettings(),
     backgroundVideos: getShortFormBackgroundVideoSettings(),
+    textScript: getShortFormTextScriptSettings(),
   };
 }
 
@@ -79,9 +85,10 @@ export async function PATCH(request: NextRequest) {
   const imageStyles = body && typeof body === "object" && !Array.isArray(body) ? body.imageStyles : undefined;
   const videoRender = body && typeof body === "object" && !Array.isArray(body) ? body.videoRender : undefined;
   const backgroundVideos = body && typeof body === "object" && !Array.isArray(body) ? body.backgroundVideos : undefined;
+  const textScript = body && typeof body === "object" && !Array.isArray(body) ? body.textScript : undefined;
 
-  if (prompts === undefined && imageStyles === undefined && videoRender === undefined && backgroundVideos === undefined) {
-    return NextResponse.json({ success: false, error: "prompts, imageStyles, videoRender, or backgroundVideos is required" }, { status: 400 });
+  if (prompts === undefined && imageStyles === undefined && videoRender === undefined && backgroundVideos === undefined && textScript === undefined) {
+    return NextResponse.json({ success: false, error: "prompts, imageStyles, videoRender, backgroundVideos, or textScript is required" }, { status: 400 });
   }
 
   if (prompts !== undefined) {
@@ -150,6 +157,10 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Music volume must be a number between 0 and 1" }, { status: 400 });
     }
 
+    if (typeof candidate.captionMaxWords !== "number" || Number.isNaN(candidate.captionMaxWords) || candidate.captionMaxWords < 2 || candidate.captionMaxWords > 12) {
+      return NextResponse.json({ success: false, error: "Caption max words must be a number between 2 and 12" }, { status: 400 });
+    }
+
     for (const voice of candidate.voices) {
       if (typeof voice.id !== "string" || !voice.id.trim()) {
         return NextResponse.json({ success: false, error: "Each voice must have an id" }, { status: 400 });
@@ -190,6 +201,32 @@ export async function PATCH(request: NextRequest) {
     }
 
     saveShortFormVideoRenderSettings(candidate);
+  }
+
+  if (textScript !== undefined) {
+    if (!textScript || typeof textScript !== "object" || Array.isArray(textScript)) {
+      return NextResponse.json({ success: false, error: "textScript must be an object" }, { status: 400 });
+    }
+
+    const candidate = {
+      ...getShortFormTextScriptSettings(),
+      ...(textScript as Partial<ShortFormTextScriptSettings>),
+    } satisfies ShortFormTextScriptSettings;
+
+    if (typeof candidate.generatePrompt !== "string" || !candidate.generatePrompt.trim()) {
+      return NextResponse.json({ success: false, error: "Text-script full generate prompt template must be a non-empty string" }, { status: 400 });
+    }
+    if (typeof candidate.revisePrompt !== "string" || !candidate.revisePrompt.trim()) {
+      return NextResponse.json({ success: false, error: "Text-script full revise prompt template must be a non-empty string" }, { status: 400 });
+    }
+    if (typeof candidate.reviewPrompt !== "string" || !candidate.reviewPrompt.trim()) {
+      return NextResponse.json({ success: false, error: "Text-script full review prompt template must be a non-empty string" }, { status: 400 });
+    }
+    if (typeof candidate.defaultMaxIterations !== "number" || Number.isNaN(candidate.defaultMaxIterations) || candidate.defaultMaxIterations < 1 || candidate.defaultMaxIterations > 8) {
+      return NextResponse.json({ success: false, error: "Default text-script max iterations must be a number between 1 and 8" }, { status: 400 });
+    }
+
+    saveShortFormTextScriptSettings(candidate);
   }
 
   if (backgroundVideos !== undefined) {

@@ -36,6 +36,16 @@ export async function PATCH(
   const selectedVoiceId = typeof body.selectedVoiceId === "string" ? body.selectedVoiceId.trim() : undefined;
   const selectedMusicId = typeof body.selectedMusicId === "string" ? body.selectedMusicId.trim() : undefined;
   const selectedBackgroundVideoId = typeof body.selectedBackgroundVideoId === "string" ? body.selectedBackgroundVideoId.trim() : undefined;
+  const textScriptMaxIterationsOverride = body.textScriptMaxIterationsOverride === null
+    ? null
+    : typeof body.textScriptMaxIterationsOverride === "number" && Number.isFinite(body.textScriptMaxIterationsOverride)
+      ? Math.max(1, Math.min(8, Math.round(body.textScriptMaxIterationsOverride)))
+      : undefined;
+  const captionMaxWordsOverride = body.captionMaxWordsOverride === null
+    ? null
+    : typeof body.captionMaxWordsOverride === "number" && Number.isFinite(body.captionMaxWordsOverride)
+      ? Math.max(2, Math.min(12, Math.round(body.captionMaxWordsOverride)))
+      : undefined;
 
   if (selectedImageStyleId !== undefined) {
     const resolved = resolveShortFormImageStyle(selectedImageStyleId);
@@ -68,6 +78,12 @@ export async function PATCH(
     ...(selectedVoiceId !== undefined ? { selectedVoiceId } : {}),
     ...(selectedMusicId !== undefined ? { selectedMusicId } : {}),
     ...(selectedBackgroundVideoId !== undefined ? { selectedBackgroundVideoId } : {}),
+    ...(textScriptMaxIterationsOverride !== undefined
+      ? { textScriptMaxIterationsOverride: textScriptMaxIterationsOverride === null ? undefined : textScriptMaxIterationsOverride }
+      : {}),
+    ...(captionMaxWordsOverride !== undefined
+      ? { captionMaxWordsOverride: captionMaxWordsOverride === null ? undefined : captionMaxWordsOverride }
+      : {}),
   });
 
   return NextResponse.json({ success: true, data: updated });

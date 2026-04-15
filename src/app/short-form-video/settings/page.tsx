@@ -17,8 +17,6 @@ type PromptKey =
   | 'hooksMore'
   | 'researchGenerate'
   | 'researchRevise'
-  | 'scriptGenerate'
-  | 'scriptRevise'
   | 'sceneImagesGenerate'
   | 'sceneImagesRevise'
   | 'videoGenerate'
@@ -33,7 +31,7 @@ type SettingsSectionId =
   | 'image-styles'
   | 'prompt-hooks'
   | 'prompt-research'
-  | 'prompt-script';
+  | 'text-script-prompts';
 
 interface PromptDefinition {
   key: PromptKey;
@@ -117,6 +115,7 @@ interface VideoRenderSettings {
   defaultMusicTrackId?: string;
   musicVolume: number;
   musicTracks: MusicLibraryEntry[];
+  captionMaxWords: number;
 }
 
 interface BackgroundVideoEntry {
@@ -134,6 +133,13 @@ interface BackgroundVideoSettings {
   backgrounds: BackgroundVideoEntry[];
 }
 
+interface TextScriptSettings {
+  defaultMaxIterations: number;
+  generatePrompt: string;
+  revisePrompt: string;
+  reviewPrompt: string;
+}
+
 interface SettingsResponse {
   success: boolean;
   data?: {
@@ -142,6 +148,7 @@ interface SettingsResponse {
     imageStyles: ImageStyleSettings;
     videoRender: VideoRenderSettings;
     backgroundVideos: BackgroundVideoSettings;
+    textScript: TextScriptSettings;
   };
   error?: string;
 }
@@ -263,12 +270,6 @@ const PROMPT_GROUPS: Array<{
     description: 'Templates still used when Oracle writes or revises research.',
     keys: ['researchGenerate', 'researchRevise'],
   },
-  {
-    id: 'prompt-script',
-    title: 'Script prompts',
-    description: 'Templates still used when Scribe writes or revises the XML script.',
-    keys: ['scriptGenerate', 'scriptRevise'],
-  },
 ];
 
 function buildStyleTestsById(styles: ImageStyle[]): Record<string, StyleTestState> {
@@ -295,7 +296,7 @@ function createEmptySectionFeedback(): Record<SettingsSectionId, SectionFeedback
     'image-styles': { saving: false, error: null, message: null },
     'prompt-hooks': { saving: false, error: null, message: null },
     'prompt-research': { saving: false, error: null, message: null },
-    'prompt-script': { saving: false, error: null, message: null },
+    'text-script-prompts': { saving: false, error: null, message: null },
   };
 }
 
@@ -451,6 +452,8 @@ export default function ShortFormVideoSettingsPage() {
   const [initialVideoRender, setInitialVideoRender] = useState<VideoRenderSettings | null>(null);
   const [backgroundVideos, setBackgroundVideos] = useState<BackgroundVideoSettings | null>(null);
   const [initialBackgroundVideos, setInitialBackgroundVideos] = useState<BackgroundVideoSettings | null>(null);
+  const [textScriptSettings, setTextScriptSettings] = useState<TextScriptSettings | null>(null);
+  const [initialTextScriptSettings, setInitialTextScriptSettings] = useState<TextScriptSettings | null>(null);
   const [selectedStyleId, setSelectedStyleId] = useState<string | null>(null);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | null>(null);
   const [selectedMusicId, setSelectedMusicId] = useState<string | null>(null);
@@ -524,6 +527,8 @@ export default function ShortFormVideoSettingsPage() {
       setInitialVideoRender(data.videoRender);
       setBackgroundVideos(data.backgroundVideos);
       setInitialBackgroundVideos(data.backgroundVideos);
+      setTextScriptSettings(data.textScript);
+      setInitialTextScriptSettings(data.textScript);
       setSelectedStyleId((current) => current || data.imageStyles.defaultStyleId || data.imageStyles.styles[0]?.id || null);
       setSelectedVoiceId((current) => current || data.videoRender.defaultVoiceId || data.videoRender.voices[0]?.id || null);
       setSelectedMusicId((current) => current || data.videoRender.defaultMusicTrackId || data.videoRender.musicTracks[0]?.id || null);
@@ -593,13 +598,16 @@ export default function ShortFormVideoSettingsPage() {
     const backgroundVideosDirty = backgroundVideos && initialBackgroundVideos
       ? serializeForCompare(backgroundVideos) !== serializeForCompare(initialBackgroundVideos)
       : false;
+    const textScriptPromptsDirty = textScriptSettings && initialTextScriptSettings
+      ? serializeForCompare(textScriptSettings) !== serializeForCompare(initialTextScriptSettings)
+      : false;
 
     const promptGroupDirty = Object.fromEntries(
       PROMPT_GROUPS.map((group) => [
         group.id,
         serializeForCompare(pickPromptValues(prompts, group.keys)) !== serializeForCompare(pickPromptValues(initialPrompts, group.keys)),
       ])
-    ) as Record<'prompt-hooks' | 'prompt-research' | 'prompt-script', boolean>;
+    ) as Record<'prompt-hooks' | 'prompt-research', boolean>;
 
     return {
       'tts-voice': ttsDirty,
@@ -610,25 +618,177 @@ export default function ShortFormVideoSettingsPage() {
       'image-styles': imageStyleLibraryDirty,
       'prompt-hooks': promptGroupDirty['prompt-hooks'],
       'prompt-research': promptGroupDirty['prompt-research'],
-      'prompt-script': promptGroupDirty['prompt-script'],
+      'text-script-prompts': textScriptPromptsDirty,
     };
-  }, [backgroundVideos, imageStyles, initialBackgroundVideos, initialImageStyles, initialPrompts, initialVideoRender, prompts, videoRender]);
+  }, [backgroundVideos, imageStyles, initialBackgroundVideos, initialImageStyles, initialPrompts, initialTextScriptSettings, initialVideoRender, prompts, textScriptSettings, videoRender]);
 
   const sections = useMemo(
     () => [
+      { id: 'prompt-hooks' as const, label: 'Hook prompts', dirty: dirtyBySection['prompt-hooks'] },
+      { id: 'prompt-research' as const, label: 'Research prompts', dirty: dirtyBySection['prompt-research'] },
+      { id: 'text-script-prompts' as const, label: 'Text-script prompts', dirty: dirtyBySection['text-script-prompts'] },
       { id: 'tts-voice' as const, label: 'Voice library', dirty: dirtyBySection['tts-voice'] },
-      { id: 'music-library' as const, label: 'Music library', dirty: dirtyBySection['music-library'] },
-      { id: 'background-videos' as const, label: 'Background videos', dirty: dirtyBySection['background-videos'] },
       { id: 'image-templates' as const, label: 'Nano Banana templates', dirty: dirtyBySection['image-templates'] },
       { id: 'image-shared-constraints' as const, label: 'Shared image constraints', dirty: dirtyBySection['image-shared-constraints'] },
       { id: 'image-styles' as const, label: 'Image style library', dirty: dirtyBySection['image-styles'] },
-      { id: 'prompt-hooks' as const, label: 'Hook prompts', dirty: dirtyBySection['prompt-hooks'] },
-      { id: 'prompt-research' as const, label: 'Research prompts', dirty: dirtyBySection['prompt-research'] },
-      { id: 'prompt-script' as const, label: 'Script prompts', dirty: dirtyBySection['prompt-script'] },
+      { id: 'background-videos' as const, label: 'Background videos', dirty: dirtyBySection['background-videos'] },
+      { id: 'music-library' as const, label: 'Music library', dirty: dirtyBySection['music-library'] },
     ],
     [dirtyBySection]
   );
   const activeSection = useSectionScrollSpy(sections);
+
+  const promptSections = PROMPT_GROUPS.map((group) => {
+    const feedback = sectionFeedback[group.id];
+    const dirty = dirtyBySection[group.id];
+    return (
+      <section key={group.id} id={group.id} className="scroll-mt-24">
+        <Card className="space-y-5 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <WorkflowSectionHeader
+              title={group.title}
+              description={group.description}
+              status={dirty ? 'needs review' : 'approved'}
+            />
+            <SectionActions
+              dirty={dirty}
+              saving={feedback.saving}
+              saveLabel={`Save ${group.title.toLowerCase()}`}
+              onSave={() => void saveSection(group.id)}
+              onReset={() => resetSection(group.id)}
+            />
+          </div>
+
+          <div className="space-y-6">
+            {group.keys.map((key) => {
+              const definition = promptDefinitionsByKey[key];
+              return (
+                <div key={key} className="space-y-2 border-t border-border pt-4 first:border-t-0 first:pt-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-medium text-foreground">{definition?.title || key}</h3>
+                    {definition?.stage ? (
+                      <span className="rounded-full border border-border px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+                        {definition.stage}
+                      </span>
+                    ) : null}
+                  </div>
+                  {definition?.description ? <p className="text-sm text-muted-foreground">{definition.description}</p> : null}
+                  <Textarea
+                    value={prompts[key] || ''}
+                    onChange={(event) => {
+                      updateSectionFeedbackState(group.id, { error: null, message: null });
+                      setPrompts((current) => ({ ...current, [key]: event.target.value }));
+                    }}
+                    className="min-h-[220px] font-mono text-xs"
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          <SectionFeedbackNotice feedback={feedback} />
+        </Card>
+      </section>
+    );
+  });
+
+  const textScriptPromptSection = (
+    <section id="text-script-prompts" className="scroll-mt-24">
+      <Card className="space-y-5 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <WorkflowSectionHeader
+            title="Text-script Scribe prompts"
+            description="These are the actual full top-level prompt templates the dashboard sends to Scribe during the Text Script loop: generate, revise, and review. Runtime placeholders stay in the template because the settings are global, but there is no second hidden wrapper prompt anymore."
+            status={dirtyBySection['text-script-prompts'] ? 'needs review' : 'approved'}
+          />
+          <SectionActions
+            dirty={dirtyBySection['text-script-prompts']}
+            saving={sectionFeedback['text-script-prompts'].saving}
+            saveLabel="Save text-script prompts"
+            onSave={() => void saveSection('text-script-prompts')}
+            onReset={() => resetSection('text-script-prompts')}
+          />
+        </div>
+
+        {textScriptSettings ? (
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Default max draft iterations</label>
+              <Input
+                type="number"
+                min={1}
+                max={8}
+                value={textScriptSettings.defaultMaxIterations}
+                onChange={(event) => {
+                  updateSectionFeedbackState('text-script-prompts', { error: null, message: null });
+                  setTextScriptSettings({
+                    ...textScriptSettings,
+                    defaultMaxIterations: Math.max(1, Math.min(8, Number(event.target.value) || 1)),
+                  });
+                }}
+                className="max-w-xs"
+              />
+              <p className="text-xs text-muted-foreground">
+                New short-form projects can optionally override this per project from the Text Script section, but this is the dashboard-wide default.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Full generate prompt template</label>
+              <Textarea
+                value={textScriptSettings.generatePrompt}
+                onChange={(event) => {
+                  updateSectionFeedbackState('text-script-prompts', { error: null, message: null });
+                  setTextScriptSettings({ ...textScriptSettings, generatePrompt: event.target.value });
+                }}
+                className="min-h-[280px] font-mono text-xs"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Full revise prompt template</label>
+              <Textarea
+                value={textScriptSettings.revisePrompt}
+                onChange={(event) => {
+                  updateSectionFeedbackState('text-script-prompts', { error: null, message: null });
+                  setTextScriptSettings({ ...textScriptSettings, revisePrompt: event.target.value });
+                }}
+                className="min-h-[320px] font-mono text-xs"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Full review prompt template</label>
+              <Textarea
+                value={textScriptSettings.reviewPrompt}
+                onChange={(event) => {
+                  updateSectionFeedbackState('text-script-prompts', { error: null, message: null });
+                  setTextScriptSettings({ ...textScriptSettings, reviewPrompt: event.target.value });
+                }}
+                className="min-h-[300px] font-mono text-xs"
+              />
+              <div className="space-y-1 text-xs text-muted-foreground">
+                <p>
+                  These templates support runtime placeholders such as{' '}
+                  <code>{'{{topic}}'}</code>, <code>{'{{selectedHookTextOrFallback}}'}</code>, <code>{'{{approvedResearch}}'}</code>,{' '}
+                  <code>{'{{draftPath}}'}</code>, <code>{'{{reviewPath}}'}</code>, <code>{'{{runManifestPath}}'}</code>,{' '}
+                  <code>{'{{iterationNumber}}'}</code>, <code>{'{{maxIterations}}'}</code>,{' '}
+                  <code>{'{{revisionInstructionLine}}'}</code>, <code>{'{{priorDraftBlock}}'}</code>,{' '}
+                  <code>{'{{priorReviewBlock}}'}</code>, <code>{'{{retentionSkillPath}}'}</code>,{' '}
+                  <code>{'{{retentionPlaybookPath}}'}</code>, <code>{'{{graderSkillPath}}'}</code>,{' '}
+                  <code>{'{{graderRubricPath}}'}</code>, <code>{'{{passingScore}}'}</code>, and{' '}
+                  <code>{'{{draftBody}}'}</code>.
+                </p>
+                <p>Keep each field as the complete top-level Scribe prompt for that loop step. If you change artifact instructions or placeholder names here, the runtime behavior will change accordingly.</p>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <SectionFeedbackNotice feedback={sectionFeedback['text-script-prompts']} />
+      </Card>
+    </section>
+  );
 
   function updateSectionFeedbackState(sectionId: SettingsSectionId, patch: Partial<SectionFeedback>) {
     setSectionFeedback((current) => ({
@@ -697,6 +857,12 @@ export default function ShortFormVideoSettingsPage() {
       return;
     }
 
+    if (sectionId === 'text-script-prompts') {
+      setTextScriptSettings(data.textScript);
+      setInitialTextScriptSettings(data.textScript);
+      return;
+    }
+
     if (sectionId === 'image-templates') {
       setImageStyles((current) =>
         current ? { ...current, promptTemplates: data.imageStyles.promptTemplates } : data.imageStyles
@@ -752,6 +918,8 @@ export default function ShortFormVideoSettingsPage() {
         return videoRender ? { videoRender } : null;
       case 'background-videos':
         return backgroundVideos ? { backgroundVideos } : null;
+      case 'text-script-prompts':
+        return textScriptSettings ? { textScript: textScriptSettings } : null;
       case 'image-templates':
         return imageStyles ? { imageStyles: { promptTemplates: imageStyles.promptTemplates } } : null;
       case 'image-shared-constraints':
@@ -792,7 +960,9 @@ export default function ShortFormVideoSettingsPage() {
                 ? 'Saved. Projects now use this background-video library/default immediately.'
                 : sectionId === 'image-templates' || sectionId === 'image-shared-constraints' || sectionId === 'image-styles'
                   ? 'Saved. New scene-image runs and tests will use this section immediately.'
-                  : 'Saved. New workflow runs will use this prompt section immediately.',
+                  : sectionId === 'text-script-prompts'
+                    ? 'Saved. New text-script runs will use these full Scribe prompt templates and the default max-iteration limit immediately.'
+                    : 'Saved. New workflow runs will use this prompt section immediately.',
       });
     } catch (err) {
       updateSectionFeedbackState(sectionId, {
@@ -819,6 +989,11 @@ export default function ShortFormVideoSettingsPage() {
 
     if (sectionId === 'background-videos' && initialBackgroundVideos) {
       setBackgroundVideos(initialBackgroundVideos);
+      return;
+    }
+
+    if (sectionId === 'text-script-prompts' && initialTextScriptSettings) {
+      setTextScriptSettings(initialTextScriptSettings);
       return;
     }
 
@@ -1266,7 +1441,7 @@ export default function ShortFormVideoSettingsPage() {
           <p className="mt-1 max-w-4xl text-sm text-muted-foreground">
             Edit the real settings the dashboard actually uses: Qwen narration voice controls for final-video generation,
             reusable looping background videos, Nano Banana scene-image templates and style rules, and the remaining hooks / research / script prompt templates.
-            Each section now saves independently so you can iterate without committing unrelated draft changes.
+            For text scripts, these settings feed the dashboard-owned workflow wrappers that then call Scribe. Each section now saves independently so you can iterate without committing unrelated draft changes.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1279,6 +1454,10 @@ export default function ShortFormVideoSettingsPage() {
       {error ? <ValidationNotice title="Settings error" message={error} /> : null}
 
       <SectionNavigator sections={sections} activeSection={activeSection} />
+
+      {promptSections}
+
+      {textScriptPromptSection}
 
       <section id="tts-voice" className="scroll-mt-24">
         <Card className="space-y-5 p-5">
@@ -1518,366 +1697,6 @@ export default function ShortFormVideoSettingsPage() {
           ) : null}
 
           <SectionFeedbackNotice feedback={sectionFeedback['tts-voice']} />
-        </Card>
-      </section>
-
-      <section id="music-library" className="scroll-mt-24">
-        <Card className="space-y-5 p-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <WorkflowSectionHeader
-              title="Music soundtrack library"
-              description="Manage reusable ACE-Step soundtrack presets that the dashboard really uses for final-video generation. Each preset stores the music prompt design; ACE-Step still generates a fresh instrumental render each time, so this is a reusable prompt library rather than a locked deterministic song library."
-              status={dirtyBySection['music-library'] ? 'needs review' : 'approved'}
-            />
-            <SectionActions
-              dirty={dirtyBySection['music-library']}
-              saving={sectionFeedback['music-library'].saving}
-              saveLabel="Save music library"
-              onSave={() => void saveSection('music-library')}
-              onReset={() => resetSection('music-library')}
-            />
-          </div>
-
-          {videoRender ? (
-            <div className="space-y-5">
-              <div className="rounded-lg border border-border bg-background/60 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-medium text-foreground">Saved soundtrack presets</h3>
-                    <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
-                      Each preset stores the ACE-Step prompt that describes the instrumental vibe. Because ACE-Step is prompt-driven, previews and final renders are new generations guided by that prompt — not the exact same waveform every time.
-                    </p>
-                  </div>
-                  <Button variant="outline" onClick={addMusic} disabled={sectionFeedback['music-library'].saving}>
-                    Add soundtrack
-                  </Button>
-                </div>
-
-                <div className="mt-4 grid gap-4 lg:grid-cols-[280px,1fr]">
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Music library</label>
-                    <Select
-                      value={selectedMusicId || ''}
-                      onChange={(event) => setSelectedMusicId(event.target.value)}
-                      disabled={videoRender.musicTracks.length === 0}
-                    >
-                      {videoRender.musicTracks.map((track) => (
-                        <option key={track.id} value={track.id}>
-                          {track.name}{track.id === videoRender.defaultMusicTrackId ? ' (default)' : ''}
-                        </option>
-                      ))}
-                    </Select>
-                    <div className="rounded-lg border border-border bg-background/50 p-3 text-xs text-muted-foreground">
-                      <p>
-                        <span className="font-medium text-foreground">Default soundtrack:</span>{' '}
-                        {videoRender.musicTracks.find((track) => track.id === videoRender.defaultMusicTrackId)?.name || 'Not set'}
-                      </p>
-                      <p className="mt-2">
-                        <span className="font-medium text-foreground">Saved music mix volume:</span> {Math.round((videoRender.musicVolume || 0) * 100)}%
-                      </p>
-                      <p className="mt-2">Projects can override the soundtrack preset individually. The saved volume is global and is passed into the real final-video music mix.</p>
-                    </div>
-                  </div>
-
-                  {selectedMusic ? (
-                    <div className="space-y-4 rounded-lg border border-border bg-background/50 p-4">
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Soundtrack name</label>
-                          <Input
-                            value={selectedMusic.name}
-                            onChange={(event) => {
-                              updateSelectedMusic((track) => ({ ...track, name: event.target.value }));
-                            }}
-                            placeholder="Curiosity underscore"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Preview duration (seconds)</label>
-                          <Input
-                            type="number"
-                            min={6}
-                            max={30}
-                            value={selectedMusic.previewDurationSeconds || 12}
-                            onChange={(event) => {
-                              updateSelectedMusic((track) => ({
-                                ...track,
-                                previewDurationSeconds: Math.min(30, Math.max(6, Number(event.target.value) || 12)),
-                              }));
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <Button
-                          type="button"
-                          variant={selectedMusic.id === videoRender.defaultMusicTrackId ? 'default' : 'outline'}
-                          onClick={() => {
-                            updateSectionFeedbackState('music-library', { error: null, message: null });
-                            setVideoRender({ ...videoRender, defaultMusicTrackId: selectedMusic.id });
-                          }}
-                        >
-                          {selectedMusic.id === videoRender.defaultMusicTrackId ? 'Default soundtrack' : 'Set as default'}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => deleteMusic(selectedMusic.id)}
-                          disabled={videoRender.musicTracks.length <= 1}
-                        >
-                          Delete soundtrack
-                        </Button>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Music prompt</label>
-                        <Textarea
-                          value={selectedMusic.prompt}
-                          onChange={(event) => {
-                            updateSelectedMusic((track) => ({ ...track, prompt: event.target.value }));
-                          }}
-                          className="min-h-[150px] font-mono text-xs"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          This prompt is passed to ACE-Step for preview generation and real final-video renders. Keep it honest about what the generator supports: it can shape the instrumental vibe, but it does not give you a deterministic reusable song ID here.
-                        </p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Notes</label>
-                        <Textarea
-                          value={selectedMusic.notes}
-                          onChange={(event) => {
-                            updateSelectedMusic((track) => ({ ...track, notes: event.target.value }));
-                          }}
-                          className="min-h-[90px] text-xs"
-                          placeholder="Optional notes about when to use this soundtrack"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Default music volume</label>
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="range"
-                            min={0}
-                            max={1}
-                            step={0.01}
-                            value={videoRender.musicVolume}
-                            onChange={(event) => {
-                              updateSectionFeedbackState('music-library', { error: null, message: null });
-                              setVideoRender({ ...videoRender, musicVolume: Number(event.target.value) });
-                            }}
-                            className="w-full"
-                          />
-                          <div className="w-16 text-right text-sm text-foreground">{Math.round(videoRender.musicVolume * 100)}%</div>
-                        </div>
-                        <p className="text-xs text-muted-foreground">This exact saved volume is passed into the final ffmpeg music mix for every new final-video run.</p>
-                      </div>
-
-                      <div className="space-y-4 rounded-lg border border-border bg-background/60 p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <h3 className="text-sm font-medium text-foreground">Music preview loop</h3>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              Generates a short ACE-Step instrumental preview for the currently selected soundtrack prompt using the saved preview duration and current saved mix volume.
-                            </p>
-                          </div>
-                          <Button onClick={() => void generateMusicPreview()} disabled={musicPreview.isLoading || sectionFeedback['music-library'].saving}>
-                            {musicPreview.isLoading ? 'Generating…' : 'Preview soundtrack'}
-                          </Button>
-                        </div>
-
-                        {musicPreview.error ? <ValidationNotice title="Music preview failed" message={musicPreview.error} /> : null}
-
-                        {musicPreview.isLoading ? (
-                          <div className="rounded-lg border border-border p-4">
-                            <OrbitLoader label="Generating ACE-Step music preview" />
-                          </div>
-                        ) : null}
-
-                        {musicPreview.audioUrl ? (
-                          <div className="space-y-3 rounded-lg border border-border bg-background/70 p-4">
-                            <div className="grid gap-3 md:grid-cols-3">
-                              <div>
-                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Previewing soundtrack</p>
-                                <p className="mt-1 text-sm text-foreground">{musicPreview.trackName}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Duration</p>
-                                <p className="mt-1 text-sm text-foreground">{musicPreview.durationSeconds}s</p>
-                              </div>
-                              <div>
-                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Applied volume</p>
-                                <p className="mt-1 text-sm text-foreground">{Math.round((musicPreview.musicVolume || 0) * 100)}%</p>
-                              </div>
-                            </div>
-                            <audio controls className="w-full" src={musicPreview.audioUrl} />
-                            <div>
-                              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Prompt snapshot used</p>
-                              <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{musicPreview.prompt}</p>
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          <SectionFeedbackNotice feedback={sectionFeedback['music-library']} />
-        </Card>
-      </section>
-
-      <section id="background-videos" className="scroll-mt-24">
-        <Card className="space-y-5 p-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <WorkflowSectionHeader
-              title="Looping background video library"
-              description="Upload and manage the reusable background videos used behind green-screen scene plates. Each project can override the default selection, and dashboard scene previews / final renders use the selected background."
-              status={dirtyBySection['background-videos'] ? 'needs review' : 'approved'}
-            />
-            <SectionActions
-              dirty={dirtyBySection['background-videos']}
-              saving={sectionFeedback['background-videos'].saving}
-              saveLabel="Save background library"
-              onSave={() => void saveSection('background-videos')}
-              onReset={() => resetSection('background-videos')}
-            />
-          </div>
-
-          {backgroundVideos ? (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-background/60 p-4">
-                <div>
-                  <h3 className="text-sm font-medium text-foreground">Background library</h3>
-                  <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
-                    These videos are looped to the full narration duration during final render, then the green-screen character plates are chroma-keyed over them. Scene preview tabs also composite against the selected project background.
-                  </p>
-                </div>
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-accent">
-                  <span>{backgroundVideoUpload.isUploading ? 'Uploading…' : 'Upload background video'}</span>
-                  <input
-                    type="file"
-                    accept="video/mp4,video/quicktime,video/webm,video/x-m4v,.mp4,.mov,.webm,.m4v"
-                    className="hidden"
-                    disabled={backgroundVideoUpload.isUploading}
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (file) {
-                        void uploadBackgroundVideo(file);
-                      }
-                      event.currentTarget.value = '';
-                    }}
-                  />
-                </label>
-              </div>
-
-              {backgroundVideoUpload.error ? <ValidationNotice title="Background upload failed" message={backgroundVideoUpload.error} /> : null}
-
-              {backgroundVideos.backgrounds.length > 0 ? (
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {backgroundVideos.backgrounds.map((background) => {
-                    const isDefault = backgroundVideos.defaultBackgroundVideoId === background.id;
-                    return (
-                      <div key={background.id} className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-medium text-foreground">{background.name}</p>
-                            <p className="mt-1 text-xs text-muted-foreground">{background.notes || 'No notes yet.'}</p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant={isDefault ? 'secondary' : 'outline'}
-                              onClick={() => {
-                                updateSectionFeedbackState('background-videos', { error: null, message: null });
-                                setBackgroundVideos({ ...backgroundVideos, defaultBackgroundVideoId: background.id });
-                              }}
-                            >
-                              {isDefault ? 'Default background' : 'Set as default'}
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                updateSectionFeedbackState('background-videos', { error: null, message: null });
-                                const remaining = backgroundVideos.backgrounds.filter((entry) => entry.id !== background.id);
-                                setBackgroundVideos({
-                                  defaultBackgroundVideoId: backgroundVideos.defaultBackgroundVideoId === background.id ? remaining[0]?.id : backgroundVideos.defaultBackgroundVideoId,
-                                  backgrounds: remaining,
-                                });
-                              }}
-                            >
-                              Delete
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
-                          <div className="space-y-3">
-                            <div className="space-y-2">
-                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Background name</label>
-                              <Input
-                                value={background.name}
-                                onChange={(event) => {
-                                  updateSectionFeedbackState('background-videos', { error: null, message: null });
-                                  setBackgroundVideos({
-                                    ...backgroundVideos,
-                                    backgrounds: backgroundVideos.backgrounds.map((entry) =>
-                                      entry.id === background.id ? { ...entry, name: event.target.value } : entry
-                                    ),
-                                  });
-                                }}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Notes</label>
-                              <Textarea
-                                value={background.notes || ''}
-                                onChange={(event) => {
-                                  updateSectionFeedbackState('background-videos', { error: null, message: null });
-                                  setBackgroundVideos({
-                                    ...backgroundVideos,
-                                    backgrounds: backgroundVideos.backgrounds.map((entry) =>
-                                      entry.id === background.id ? { ...entry, notes: event.target.value } : entry
-                                    ),
-                                  });
-                                }}
-                                className="min-h-[100px] text-xs"
-                                placeholder="Optional notes about where this background works best"
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Preview</p>
-                            {background.videoUrl ? (
-                              <video src={background.videoUrl} controls muted loop playsInline preload="metadata" className="aspect-[9/16] w-full rounded-lg border border-border bg-black object-cover" />
-                            ) : (
-                              <div className="flex aspect-[9/16] items-center justify-center rounded-lg border border-dashed border-border text-xs text-muted-foreground">
-                                Preview unavailable
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-                  No background videos yet. Upload one or more vertical (or croppable) loops here, then set a default so new projects inherit it automatically.
-                </div>
-              )}
-            </div>
-          ) : null}
-
-          <SectionFeedbackNotice feedback={sectionFeedback['background-videos']} />
         </Card>
       </section>
 
@@ -2359,60 +2178,383 @@ export default function ShortFormVideoSettingsPage() {
           <SectionFeedbackNotice feedback={sectionFeedback['image-styles']} />
         </Card>
       </section>
+      <section id="background-videos" className="scroll-mt-24">
+        <Card className="space-y-5 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <WorkflowSectionHeader
+              title="Looping background video library"
+              description="Upload and manage the reusable background videos used behind green-screen scene plates. Each project can override the default selection, and dashboard scene previews / final renders use the selected background."
+              status={dirtyBySection['background-videos'] ? 'needs review' : 'approved'}
+            />
+            <SectionActions
+              dirty={dirtyBySection['background-videos']}
+              saving={sectionFeedback['background-videos'].saving}
+              saveLabel="Save background library"
+              onSave={() => void saveSection('background-videos')}
+              onReset={() => resetSection('background-videos')}
+            />
+          </div>
 
-      {PROMPT_GROUPS.map((group) => {
-        const feedback = sectionFeedback[group.id];
-        const dirty = dirtyBySection[group.id];
-        return (
-          <section key={group.id} id={group.id} className="scroll-mt-24">
-            <Card className="space-y-5 p-5">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <WorkflowSectionHeader
-                  title={group.title}
-                  description={group.description}
-                  status={dirty ? 'needs review' : 'approved'}
-                />
-                <SectionActions
-                  dirty={dirty}
-                  saving={feedback.saving}
-                  saveLabel={`Save ${group.title.toLowerCase()}`}
-                  onSave={() => void saveSection(group.id)}
-                  onReset={() => resetSection(group.id)}
-                />
+          {backgroundVideos ? (
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-background/60 p-4">
+                <div>
+                  <h3 className="text-sm font-medium text-foreground">Background library</h3>
+                  <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
+                    These videos are looped to the full narration duration during final render, then the green-screen character plates are chroma-keyed over them. Scene preview tabs also composite against the selected project background.
+                  </p>
+                </div>
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-accent">
+                  <span>{backgroundVideoUpload.isUploading ? 'Uploading…' : 'Upload background video'}</span>
+                  <input
+                    type="file"
+                    accept="video/mp4,video/quicktime,video/webm,video/x-m4v,.mp4,.mov,.webm,.m4v"
+                    className="hidden"
+                    disabled={backgroundVideoUpload.isUploading}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) {
+                        void uploadBackgroundVideo(file);
+                      }
+                      event.currentTarget.value = '';
+                    }}
+                  />
+                </label>
               </div>
 
-              <div className="space-y-6">
-                {group.keys.map((key) => {
-                  const definition = promptDefinitionsByKey[key];
-                  return (
-                    <div key={key} className="space-y-2 border-t border-border pt-4 first:border-t-0 first:pt-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-sm font-medium text-foreground">{definition?.title || key}</h3>
-                        {definition?.stage ? (
-                          <span className="rounded-full border border-border px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
-                            {definition.stage}
-                          </span>
+              {backgroundVideoUpload.error ? <ValidationNotice title="Background upload failed" message={backgroundVideoUpload.error} /> : null}
+
+              {backgroundVideos.backgrounds.length > 0 ? (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {backgroundVideos.backgrounds.map((background) => {
+                    const isDefault = backgroundVideos.defaultBackgroundVideoId === background.id;
+                    return (
+                      <div key={background.id} className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{background.name}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">{background.notes || 'No notes yet.'}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={isDefault ? 'secondary' : 'outline'}
+                              onClick={() => {
+                                updateSectionFeedbackState('background-videos', { error: null, message: null });
+                                setBackgroundVideos({ ...backgroundVideos, defaultBackgroundVideoId: background.id });
+                              }}
+                            >
+                              {isDefault ? 'Default background' : 'Set as default'}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                updateSectionFeedbackState('background-videos', { error: null, message: null });
+                                const remaining = backgroundVideos.backgrounds.filter((entry) => entry.id !== background.id);
+                                setBackgroundVideos({
+                                  defaultBackgroundVideoId: backgroundVideos.defaultBackgroundVideoId === background.id ? remaining[0]?.id : backgroundVideos.defaultBackgroundVideoId,
+                                  backgrounds: remaining,
+                                });
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+                          <div className="space-y-3">
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Background name</label>
+                              <Input
+                                value={background.name}
+                                onChange={(event) => {
+                                  updateSectionFeedbackState('background-videos', { error: null, message: null });
+                                  setBackgroundVideos({
+                                    ...backgroundVideos,
+                                    backgrounds: backgroundVideos.backgrounds.map((entry) =>
+                                      entry.id === background.id ? { ...entry, name: event.target.value } : entry
+                                    ),
+                                  });
+                                }}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Notes</label>
+                              <Textarea
+                                value={background.notes || ''}
+                                onChange={(event) => {
+                                  updateSectionFeedbackState('background-videos', { error: null, message: null });
+                                  setBackgroundVideos({
+                                    ...backgroundVideos,
+                                    backgrounds: backgroundVideos.backgrounds.map((entry) =>
+                                      entry.id === background.id ? { ...entry, notes: event.target.value } : entry
+                                    ),
+                                  });
+                                }}
+                                className="min-h-[100px] text-xs"
+                                placeholder="Optional notes about where this background works best"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Preview</p>
+                            {background.videoUrl ? (
+                              <video src={background.videoUrl} controls muted loop playsInline preload="metadata" className="aspect-[9/16] w-full rounded-lg border border-border bg-black object-cover" />
+                            ) : (
+                              <div className="flex aspect-[9/16] items-center justify-center rounded-lg border border-dashed border-border text-xs text-muted-foreground">
+                                Preview unavailable
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+                  No background videos yet. Upload one or more vertical (or croppable) loops here, then set a default so new projects inherit it automatically.
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          <SectionFeedbackNotice feedback={sectionFeedback['background-videos']} />
+        </Card>
+      </section>
+
+      <section id="music-library" className="scroll-mt-24">
+        <Card className="space-y-5 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <WorkflowSectionHeader
+              title="Music soundtrack library"
+              description="Manage reusable ACE-Step soundtrack presets that the dashboard really uses for final-video generation. Each preset stores the music prompt design; ACE-Step still generates a fresh instrumental render each time, so this is a reusable prompt library rather than a locked deterministic song library."
+              status={dirtyBySection['music-library'] ? 'needs review' : 'approved'}
+            />
+            <SectionActions
+              dirty={dirtyBySection['music-library']}
+              saving={sectionFeedback['music-library'].saving}
+              saveLabel="Save music library"
+              onSave={() => void saveSection('music-library')}
+              onReset={() => resetSection('music-library')}
+            />
+          </div>
+
+          {videoRender ? (
+            <div className="space-y-5">
+              <div className="rounded-lg border border-border bg-background/60 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground">Saved soundtrack presets</h3>
+                    <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
+                      Each preset stores the ACE-Step prompt that describes the instrumental vibe. Because ACE-Step is prompt-driven, previews and final renders are new generations guided by that prompt — not the exact same waveform every time.
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={addMusic} disabled={sectionFeedback['music-library'].saving}>
+                    Add soundtrack
+                  </Button>
+                </div>
+
+                <div className="mt-4 grid gap-4 lg:grid-cols-[280px,1fr]">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Music library</label>
+                    <Select
+                      value={selectedMusicId || ''}
+                      onChange={(event) => setSelectedMusicId(event.target.value)}
+                      disabled={videoRender.musicTracks.length === 0}
+                    >
+                      {videoRender.musicTracks.map((track) => (
+                        <option key={track.id} value={track.id}>
+                          {track.name}{track.id === videoRender.defaultMusicTrackId ? ' (default)' : ''}
+                        </option>
+                      ))}
+                    </Select>
+                    <div className="rounded-lg border border-border bg-background/50 p-3 text-xs text-muted-foreground">
+                      <p>
+                        <span className="font-medium text-foreground">Default soundtrack:</span>{' '}
+                        {videoRender.musicTracks.find((track) => track.id === videoRender.defaultMusicTrackId)?.name || 'Not set'}
+                      </p>
+                      <p className="mt-2">
+                        <span className="font-medium text-foreground">Saved music mix volume:</span> {Math.round((videoRender.musicVolume || 0) * 100)}%
+                      </p>
+                      <p className="mt-2">Projects can override the soundtrack preset individually. The saved volume is global and is passed into the real final-video music mix.</p>
+                    </div>
+                  </div>
+
+                  {selectedMusic ? (
+                    <div className="space-y-4 rounded-lg border border-border bg-background/50 p-4">
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Soundtrack name</label>
+                          <Input
+                            value={selectedMusic.name}
+                            onChange={(event) => {
+                              updateSelectedMusic((track) => ({ ...track, name: event.target.value }));
+                            }}
+                            placeholder="Curiosity underscore"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Preview duration (seconds)</label>
+                          <Input
+                            type="number"
+                            min={6}
+                            max={30}
+                            value={selectedMusic.previewDurationSeconds || 12}
+                            onChange={(event) => {
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                previewDurationSeconds: Math.min(30, Math.max(6, Number(event.target.value) || 12)),
+                              }));
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <Button
+                          type="button"
+                          variant={selectedMusic.id === videoRender.defaultMusicTrackId ? 'default' : 'outline'}
+                          onClick={() => {
+                            updateSectionFeedbackState('music-library', { error: null, message: null });
+                            setVideoRender({ ...videoRender, defaultMusicTrackId: selectedMusic.id });
+                          }}
+                        >
+                          {selectedMusic.id === videoRender.defaultMusicTrackId ? 'Default soundtrack' : 'Set as default'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => deleteMusic(selectedMusic.id)}
+                          disabled={videoRender.musicTracks.length <= 1}
+                        >
+                          Delete soundtrack
+                        </Button>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Music prompt</label>
+                        <Textarea
+                          value={selectedMusic.prompt}
+                          onChange={(event) => {
+                            updateSelectedMusic((track) => ({ ...track, prompt: event.target.value }));
+                          }}
+                          className="min-h-[150px] font-mono text-xs"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          This prompt is passed to ACE-Step for preview generation and real final-video renders. Keep it honest about what the generator supports: it can shape the instrumental vibe, but it does not give you a deterministic reusable song ID here.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Notes</label>
+                        <Textarea
+                          value={selectedMusic.notes}
+                          onChange={(event) => {
+                            updateSelectedMusic((track) => ({ ...track, notes: event.target.value }));
+                          }}
+                          className="min-h-[90px] text-xs"
+                          placeholder="Optional notes about when to use this soundtrack"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Default music volume</label>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            value={videoRender.musicVolume}
+                            onChange={(event) => {
+                              updateSectionFeedbackState('music-library', { error: null, message: null });
+                              setVideoRender({ ...videoRender, musicVolume: Number(event.target.value) });
+                            }}
+                            className="w-full"
+                          />
+                          <div className="w-16 text-right text-sm text-foreground">{Math.round(videoRender.musicVolume * 100)}%</div>
+                        </div>
+                        <p className="text-xs text-muted-foreground">This exact saved volume is passed into the final ffmpeg music mix for every new final-video run.</p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Caption max words</label>
+                        <Input
+                          type="number"
+                          min={2}
+                          max={12}
+                          value={videoRender.captionMaxWords}
+                          onChange={(event) => {
+                            updateSectionFeedbackState('music-library', { error: null, message: null });
+                            setVideoRender({ ...videoRender, captionMaxWords: Math.max(2, Math.min(12, Number(event.target.value || 6))) });
+                          }}
+                          className="max-w-[140px]"
+                        />
+                        <p className="text-xs text-muted-foreground">Used by the deterministic caption generator that runs after forced alignment during the XML Script pipeline.</p>
+                      </div>
+
+                      <div className="space-y-4 rounded-lg border border-border bg-background/60 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <h3 className="text-sm font-medium text-foreground">Music preview loop</h3>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Generates a short ACE-Step instrumental preview for the currently selected soundtrack prompt using the saved preview duration and current saved mix volume.
+                            </p>
+                          </div>
+                          <Button onClick={() => void generateMusicPreview()} disabled={musicPreview.isLoading || sectionFeedback['music-library'].saving}>
+                            {musicPreview.isLoading ? 'Generating…' : 'Preview soundtrack'}
+                          </Button>
+                        </div>
+
+                        {musicPreview.error ? <ValidationNotice title="Music preview failed" message={musicPreview.error} /> : null}
+
+                        {musicPreview.isLoading ? (
+                          <div className="rounded-lg border border-border p-4">
+                            <OrbitLoader label="Generating ACE-Step music preview" />
+                          </div>
+                        ) : null}
+
+                        {musicPreview.audioUrl ? (
+                          <div className="space-y-3 rounded-lg border border-border bg-background/70 p-4">
+                            <div className="grid gap-3 md:grid-cols-3">
+                              <div>
+                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Previewing soundtrack</p>
+                                <p className="mt-1 text-sm text-foreground">{musicPreview.trackName}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Duration</p>
+                                <p className="mt-1 text-sm text-foreground">{musicPreview.durationSeconds}s</p>
+                              </div>
+                              <div>
+                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Applied volume</p>
+                                <p className="mt-1 text-sm text-foreground">{Math.round((musicPreview.musicVolume || 0) * 100)}%</p>
+                              </div>
+                            </div>
+                            <audio controls className="w-full" src={musicPreview.audioUrl} />
+                            <div>
+                              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Prompt snapshot used</p>
+                              <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{musicPreview.prompt}</p>
+                            </div>
+                          </div>
                         ) : null}
                       </div>
-                      {definition?.description ? <p className="text-sm text-muted-foreground">{definition.description}</p> : null}
-                      <Textarea
-                        value={prompts[key] || ''}
-                        onChange={(event) => {
-                          updateSectionFeedbackState(group.id, { error: null, message: null });
-                          setPrompts((current) => ({ ...current, [key]: event.target.value }));
-                        }}
-                        className="min-h-[220px] font-mono text-xs"
-                      />
                     </div>
-                  );
-                })}
+                  ) : null}
+                </div>
               </div>
+            </div>
+          ) : null}
 
-              <SectionFeedbackNotice feedback={feedback} />
-            </Card>
-          </section>
-        );
-      })}
+          <SectionFeedbackNotice feedback={sectionFeedback['music-library']} />
+        </Card>
+      </section>
+
+
     </div>
   );
 }

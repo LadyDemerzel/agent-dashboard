@@ -7,8 +7,6 @@ export type ShortFormPromptKey =
   | "hooksMore"
   | "researchGenerate"
   | "researchRevise"
-  | "scriptGenerate"
-  | "scriptRevise"
   | "sceneImagesGenerate"
   | "sceneImagesRevise"
   | "videoGenerate"
@@ -47,18 +45,6 @@ export const SHORT_FORM_PROMPT_DEFINITIONS: ShortFormPromptDefinition[] = [
     title: "Research revision",
     description: "Revision request sent to Oracle when research needs changes.",
     stage: "research",
-  },
-  {
-    key: "scriptGenerate",
-    title: "Script generation",
-    description: "Initial XML script request sent to Scribe after research approval.",
-    stage: "script",
-  },
-  {
-    key: "scriptRevise",
-    title: "Script revision",
-    description: "Revision request sent to Scribe when the XML script needs changes.",
-    stage: "script",
   },
   {
     key: "sceneImagesGenerate",
@@ -121,7 +107,7 @@ const DEFAULT_SHORT_FORM_WORKFLOW_PROMPTS: ShortFormWorkflowPrompts = {
     "Write the finished artifact to disk — do not stop at a draft in chat.",
     "Save to: {{researchPath}}",
     "Use YAML front matter with title, status: needs review, date, agent: Oracle, tags: [short-form-video, research].",
-    "The body should be markdown and should help Scribe write a multi-scene vertical-video XML script.",
+    "The body should be markdown and should help Scribe write a strong plain narration script first, then later inform the XML captions + visuals step.",
     "Project directory: {{projectDir}}",
   ].join("\n\n"),
   researchRevise: [
@@ -132,92 +118,11 @@ const DEFAULT_SHORT_FORM_WORKFLOW_PROMPTS: ShortFormWorkflowPrompts = {
     "Update the on-disk artifact in place — do not stop at a draft in chat.",
     "Save to: {{researchPath}}",
     "Use YAML front matter with title, status: needs review, date, agent: Oracle, tags: [short-form-video, research].",
-    "The body should be markdown and should help Scribe write a multi-scene vertical-video XML script.",
-    "Project directory: {{projectDir}}",
-  ].join("\n\n"),
-  scriptGenerate: [
-    "Create an XML short-form video script for the Agent Dashboard short-form workflow.",
-    "Topic: {{topic}}",
-    "Selected hook: {{selectedHookTextOrFallback}}",
-    "Use the approved research and selected hook to generate the script in the updated full-script-first XML format described below; the prompt itself contains the full XML contract, so do not rely on any external skill for schema guidance.",
-    "Write the finished script to disk — do not stop at a draft in chat.",
-    "Save to: {{scriptPath}}",
-    "Use YAML front matter with title, status: needs review, date, agent: Scribe, tags: [short-form-video, script, xml].",
-    "The markdown body after front matter must be raw XML only.",
-    "Return YAML front matter followed by raw XML only — no prose before or after the artifact, and no markdown code fences.",
-    "Pretty-print the XML with normal indentation and line breaks so each nested element is readable.",
-    "Required XML shape: <video><topic>...</topic><script>full spoken script here</script><scene referencePreviousSceneImage=\"true|false\" cameraPanX=\"-1..1\" cameraPanY=\"-1..1\" cameraZoom=\"0..1\" cameraShake=\"0..1\"><text>caption</text><image>visual direction</image></scene>...</video>. The scene attributes are optional and should stay sparse: use continuity or camera motion only when they clearly add meaning.",
-    "Escape XML-sensitive characters when needed.",
-    "Generate the FULL spoken script first, then derive scenes from it.",
-    "Target total runtime roughly 25–50 seconds.",
-    "Use 5–8 scenes unless the approved research or hook clearly calls for a meaningfully different count.",
-    "The first sentence of <script> is the hook and must be 10 or fewer words, with minimal punctuation and no dashes, colons, semicolons, or periods. Apostrophes, quotes, and parentheses are okay if truly needed.",
-    "Everything after the hook should read like normal spoken prose with punctuation and natural sentence flow.",
-    "Prefer natural contractions throughout the full spoken <script> whenever they would sound normal in speech: use forms like \"can't\" instead of \"cannot\", \"it's\" instead of \"it is\", and \"you're\" instead of \"you are\" unless the full form is genuinely more natural in context.",
-    "Use curiosity loops aggressively: open them early, keep them open as long as possible, and when one closes open another immediately so curiosity stays alive through the script.",
-    "Vary sentence lengths so adjacent sentences do not feel mechanically similar.",
-    "Scene <text> captions must be a lossless chunking of the full <script>: keep every spoken word in the same order, with no paraphrasing, summarizing, compression, or omission. The only allowed changes are splitting the text into scene-sized chunks of 10 or fewer words. Preserve apostrophes for contractions and preserve commas anywhere they occur inside the chunk. If you concatenate the scene <text> blocks back together, you should recover the full script text, including those apostrophes and in-chunk commas. Some spoken sentences may span multiple scenes.",
-    "Each scene <text> must stay inside a single sentence boundary. A caption may be one chunk of a longer sentence or one whole short sentence, but it must never contain the end of one sentence plus the start of the next. If a sentence boundary occurs, the next sentence must begin in the next scene.",
-    "The <script> content is the source of truth for TTS and forced alignment. Scene captions must be a faithful chunked projection of that same text, not an independent rewrite.",
-    "Scene <image> descriptions must describe a single cohesive full-frame composition, not a layout or graphic treatment.",
-    "Make each <image> materially more concrete than a vague concept sketch. In most scenes, specify the camera/viewpoint, subject facing direction, framing/crop (for example full body, three-quarter, waist-up, shoulders-up, or neck-up close-up), how close or zoomed-in the shot feels, and, when relevant, the subject's pose or body orientation relative to camera.",
-    "Keep each <image> concise but visually decisive: usually one sentence or two short clauses describing one frame, not a long paragraph, shot list, or multiple separate compositions.",
-    "Write each <image> as natural integrated scene direction: one believable environment or moment, subject embedded in the same scene, with any dark or charcoal background treated as the real environment and any top text-safe headroom implied as natural dark falloff or background continuation rather than a separate box or strip.",
-    "Do NOT use <image> wording that nudges the art toward tiles, boxes, panels, split-screen, before/after comparisons, collages, mockups, title cards, posters, framed prints, inset cards, picture-in-picture, floating rectangles, or boxed anatomy callouts unless the user explicitly asks for that layout.",
-    "Do NOT imply text inside the artwork. Avoid mentioning labels, signage, headers, title text, captions, annotations, callouts, UI chrome, overlays, posters, screen text, app windows, or readable words inside the generated image.",
-    "If the script moment involves comparison, anatomy emphasis, or multiple ideas, express that inside one unified scene with pose, depth, lighting, props, or subtle integrated visual cues instead of separate panels or labeled overlays.",
-    "Bad <image> direction examples: 'before and after split screen', 'poster with labels', 'title card above her face', 'three boxed comparison panels'. Good direction pattern: 'single full-frame side-profile portrait in a dark studio with subtle integrated posture cues and natural negative space fading darker near the top'.",
-    "For any scene that should visually continue from the previous generated frame, set referencePreviousSceneImage=\"true\" on that <scene>. When you do that, write the current <image> as a continuation of the previous image context rather than a fully standalone reset.",
-    "If the same recurring character appears across scenes, keep wardrobe continuity sensible and avoid gratuitous outfit changes. If a primary character reference is later supplied to scene generation, treat that reference outfit as the default persistent outfit unless a scene explicitly calls for a deliberate change.",
-    "Treat camera motion as rare intentional seasoning, not default coverage. Most scenes should omit cameraPanX/cameraPanY/cameraZoom/cameraShake entirely unless motion adds meaning.",
-    "Many consecutive motion-heavy scenes are usually jarring. Avoid stacking dramatic zooms or multiple motion-heavy scenes back to back unless there is a clear editorial reason.",
-    "When a scene truly benefits from motion, set only the needed attributes explicitly and keep them subtle by default. A practical starting range is about -0.18 to 0.18 for pan, 0.00 to 0.10 for zoom, and 0.00 to 0.04 for shake; go beyond that only when the moment genuinely earns it.",
-    "Good motion example: a single gentle push-in on the reveal scene. Bad motion pattern: repeated zoom-ins across nearly every scene just because motion is available.",
-    "If a scene does not need previous-image continuity or custom motion, omit those attributes instead of filling them with noisy defaults.",
-    "Approved research:\n{{approvedResearch}}",
-    "Project directory: {{projectDir}}",
-  ].join("\n\n"),
-  scriptRevise: [
-    "Create an XML short-form video script for the Agent Dashboard short-form workflow.",
-    "Topic: {{topic}}",
-    "Selected hook: {{selectedHookTextOrFallback}}",
-    "{{revisionInstructionLine}}",
-    "Update the existing script on disk in place — do not stop at a draft in chat.",
-    "Save to: {{scriptPath}}",
-    "Use YAML front matter with title, status: needs review, date, agent: Scribe, tags: [short-form-video, script, xml].",
-    "The markdown body after front matter must be raw XML only.",
-    "Return YAML front matter followed by raw XML only — no prose before or after the artifact, and no markdown code fences.",
-    "Pretty-print the XML with normal indentation and line breaks so each nested element is readable.",
-    "Required XML shape: <video><topic>...</topic><script>full spoken script here</script><scene referencePreviousSceneImage=\"true|false\" cameraPanX=\"-1..1\" cameraPanY=\"-1..1\" cameraZoom=\"0..1\" cameraShake=\"0..1\"><text>caption</text><image>visual direction</image></scene>...</video>. The scene attributes are optional and should stay sparse: use continuity or camera motion only when they clearly add meaning.",
-    "Escape XML-sensitive characters when needed.",
-    "Keep the workflow full-script-first: revise the full spoken <script> first, then revise scene captions so they still derive from it.",
-    "Target total runtime roughly 25–50 seconds unless the feedback clearly asks for something else.",
-    "Keep the scene count in the same general 5–8 scene range unless the feedback clearly asks for a materially different structure.",
-    "The first sentence of <script> is the hook and must stay within 10 or fewer words, with minimal punctuation and no dashes, colons, semicolons, or periods.",
-    "Everything after the hook should remain natural spoken prose with punctuation, curiosity-loop structure, varied sentence lengths, and natural contractions where they would sound normal in speech.",
-    "Scene <text> captions must remain a lossless chunking of the full <script>: keep every spoken word in the same order, with no paraphrasing, summarizing, compression, or omission. The only allowed changes are splitting the text into scene-sized chunks of 10 or fewer words. Preserve apostrophes for contractions and preserve commas anywhere they occur inside the chunk. If you concatenate the scene <text> blocks back together, you should recover the full script text, including those apostrophes and in-chunk commas.",
-    "Each scene <text> must stay inside a single sentence boundary. A caption may be one chunk of a longer sentence or one whole short sentence, but it must never contain the end of one sentence plus the start of the next. If a sentence boundary occurs, the next sentence must begin in the next scene.",
-    "The <script> content is the source of truth for TTS and forced alignment. Scene captions must remain a faithful chunked projection of that same text, not an independent rewrite.",
-    "Scene <image> descriptions must continue to describe a single cohesive full-frame composition, not a layout or graphic treatment.",
-    "Make each revised <image> materially more concrete than a vague concept sketch. In most scenes, specify the camera/viewpoint, subject facing direction, framing/crop (for example full body, three-quarter, waist-up, shoulders-up, or neck-up close-up), how close or zoomed-in the shot feels, and, when relevant, the subject's pose or body orientation relative to camera.",
-    "Keep each revised <image> concise but visually decisive: usually one sentence or two short clauses describing one frame, not a long paragraph, shot list, or multiple separate compositions.",
-    "Keep each <image> as natural integrated scene direction: one believable environment or moment, subject embedded in the same scene, with any dark or charcoal background treated as the real environment and any top text-safe headroom implied as natural dark falloff or background continuation rather than a separate box or strip.",
-    "Do NOT revise <image> wording toward tiles, boxes, panels, split-screen, before/after comparisons, collages, mockups, title cards, posters, framed prints, inset cards, picture-in-picture, floating rectangles, or boxed anatomy callouts unless the user explicitly asks for that layout.",
-    "Do NOT imply text inside the artwork. Avoid mentioning labels, signage, headers, title text, captions, annotations, callouts, UI chrome, overlays, posters, screen text, app windows, or readable words inside the generated image.",
-    "If the script moment involves comparison, anatomy emphasis, or multiple ideas, express that inside one unified scene with pose, depth, lighting, props, or subtle integrated visual cues instead of separate panels or labeled overlays.",
-    "Bad <image> direction examples: 'before and after split screen', 'poster with labels', 'title card above her face', 'three boxed comparison panels'. Good direction pattern: 'single full-frame side-profile portrait in a dark studio with subtle integrated posture cues and natural negative space fading darker near the top'.",
-    "For any scene that should visually continue from the previous generated frame, set referencePreviousSceneImage=\"true\" on that <scene>. When you do that, write the current <image> as a continuation of the previous image context rather than a fully standalone reset.",
-    "If the same recurring character appears across scenes, keep wardrobe continuity sensible and avoid gratuitous outfit changes. If a primary character reference is later supplied to scene generation, treat that reference outfit as the default persistent outfit unless a scene explicitly calls for a deliberate change.",
-    "Treat camera motion as rare intentional seasoning, not default coverage. Most scenes should omit cameraPanX/cameraPanY/cameraZoom/cameraShake entirely unless motion adds meaning.",
-    "Many consecutive motion-heavy scenes are usually jarring. Avoid stacking dramatic zooms or multiple motion-heavy scenes back to back unless there is a clear editorial reason.",
-    "When a scene truly benefits from motion, set only the needed attributes explicitly and keep them subtle by default. A practical starting range is about -0.18 to 0.18 for pan, 0.00 to 0.10 for zoom, and 0.00 to 0.04 for shake; go beyond that only when the moment genuinely earns it.",
-    "Good motion example: a single gentle push-in on the reveal scene. Bad motion pattern: repeated zoom-ins across nearly every scene just because motion is available.",
-    "If a scene does not need previous-image continuity or custom motion, omit those attributes instead of filling them with noisy defaults.",
-    "Approved research:\n{{approvedResearch}}",
+    "The body should be markdown and should help Scribe write a strong plain narration script first, then later inform the XML captions + visuals step.",
     "Project directory: {{projectDir}}",
   ].join("\n\n"),
   sceneImagesGenerate: [
-    "Generate scene images for a short-form XML script using the xml-scene-images skill.",
+    "Generate visuals for a short-form XML script using the xml-scene-images skill.",
     "Topic: {{topic}}",
     "Selected hook: {{selectedHookTextOrFallback}}",
     "Generate the scene-image set from the XML script.",
@@ -243,7 +148,7 @@ const DEFAULT_SHORT_FORM_WORKFLOW_PROMPTS: ShortFormWorkflowPrompts = {
     "Project directory: {{projectDir}}",
   ].join("\n\n"),
   sceneImagesRevise: [
-    "Generate scene images for a short-form XML script using the xml-scene-images skill.",
+    "Generate visuals for a short-form XML script using the xml-scene-images skill.",
     "Topic: {{topic}}",
     "Selected hook: {{selectedHookTextOrFallback}}",
     "Revise the scene images based on this feedback:\n{{notesOrFallback}}",
@@ -271,14 +176,14 @@ const DEFAULT_SHORT_FORM_WORKFLOW_PROMPTS: ShortFormWorkflowPrompts = {
   videoGenerate: [
     "Generate the final short-form video using the xml-scene-video skill.",
     "Topic: {{topic}}",
-    "Render the final vertical short-form video from the XML script and generated scene images.",
+    "Render the final vertical short-form video from the XML script and generated visuals.",
     "Use the updated xml-scene-video defaults explicitly instead of guessing: full-video Qwen3-TTS narration, transcript-driven Qwen3-ForcedAligner-0.6B timing against the known full script, and ACE-Step-1.5 instrumental background music when no music file is provided.",
     "Do not switch to macOS say unless Qwen fails and an emergency fallback is absolutely required. Qwen should be the intended path for this workflow.",
     "Use the skill's bundled generate_video.py workflow rather than rebuilding the ffmpeg/TTS/music pipeline ad hoc.",
-    "Recommended command shape: uv run --with pillow python3 ~/.openclaw/skills/xml-scene-video/scripts/generate_video.py --xml {{scriptPath}} --images-dir {{sceneImagesDir}} --output {{finalVideoPath}} --work-dir {{videoWorkDir}} --tts-engine qwen --voice-speaker Aiden --voice-instruct \"Educated American male narrator, slightly deeper and lower-pitched, polished and confident, calm authority, crisp social-video pacing, speak only English, no other languages or non-speech sounds.\" --ace-step-url http://127.0.0.1:8011 --music-prompt \"instrumental cinematic curiosity underscore, mysterious but pleasant, warm synth pulse, light percussion, airy textures, subtle piano and marimba accents, sense of discovery, modern and polished, no horror, no dread, no dark drones, no jump scares, no vocals, no singing, no choir, no spoken voice\" --music-volume 0.38 --force",
+    "Recommended command shape: uv run --with pillow python3 ~/.openclaw/skills/xml-scene-video/scripts/generate_video.py --xml {{scriptPath}} --images-dir {{sceneImagesDir}} --output {{finalVideoPath}} --work-dir {{videoWorkDir}} --tts-engine qwen --existing-voice {{xmlNarrationPath}} --existing-alignment {{xmlAlignmentPath}} --ace-step-url http://127.0.0.1:8011 --music-prompt \"instrumental cinematic curiosity underscore, mysterious but pleasant, warm synth pulse, light percussion, airy textures, subtle piano and marimba accents, sense of discovery, modern and polished, no horror, no dread, no dark drones, no jump scares, no vocals, no singing, no choir, no spoken voice\" --music-volume 0.38 --force",
     "Use the scene manifest to confirm scene ordering/captions, but assemble from the generated image files in {{sceneImagesDir}} using the uncaptioned assets for motion and caption overlays separately.",
-    "Read any per-scene cameraPanX, cameraPanY, cameraZoom, and cameraShake attributes from the XML and apply them to the scene image motion only, not to the caption overlay layer.",
-    "Camera motion is fully opt-in: if a cameraPanX/cameraPanY/cameraZoom/cameraShake attribute is omitted, do not apply that effect. If a scene omits all camera motion attributes, render it with no added camera motion.",
+    "Read any per-scene cameraPanX, cameraPanY, cameraZoom, cameraZoomStart, cameraZoomEnd, and cameraShake attributes from the XML and apply them to the scene image motion only, not to the caption overlay layer.",
+    "Camera motion is fully opt-in: if a cameraPanX/cameraPanY/cameraZoom/cameraZoomStart/cameraZoomEnd/cameraShake attribute is omitted, do not apply that effect. `cameraZoom` means static framing only; animated zoom should only happen when cameraZoomStart/cameraZoomEnd are explicitly present. If a scene omits all camera motion attributes, render it with no added camera motion.",
     "You must write both the playable video artifact and the review doc to disk before finishing.",
     "Read script from: {{scriptPath}}",
     "Read scene manifest from: {{sceneManifestPath}}",
@@ -295,10 +200,10 @@ const DEFAULT_SHORT_FORM_WORKFLOW_PROMPTS: ShortFormWorkflowPrompts = {
     "Keep the updated xml-scene-video defaults explicit during the revision unless the feedback specifically requests something else: full-video Qwen3-TTS narration, transcript-driven Qwen3-ForcedAligner-0.6B timing against the known full script, and ACE-Step-1.5 instrumental background music when no music file is provided.",
     "Do not switch to macOS say unless Qwen fails and an emergency fallback is absolutely required. Qwen should be the intended path for this workflow.",
     "Use the skill's bundled generate_video.py workflow rather than rebuilding the ffmpeg/TTS/music pipeline ad hoc.",
-    "Recommended command shape: uv run --with pillow python3 ~/.openclaw/skills/xml-scene-video/scripts/generate_video.py --xml {{scriptPath}} --images-dir {{sceneImagesDir}} --output {{finalVideoPath}} --work-dir {{videoWorkDir}} --tts-engine qwen --voice-speaker Aiden --voice-instruct \"Educated American male narrator, slightly deeper and lower-pitched, polished and confident, calm authority, crisp social-video pacing, speak only English, no other languages or non-speech sounds.\" --ace-step-url http://127.0.0.1:8011 --music-prompt \"instrumental cinematic curiosity underscore, mysterious but pleasant, warm synth pulse, light percussion, airy textures, subtle piano and marimba accents, sense of discovery, modern and polished, no horror, no dread, no dark drones, no jump scares, no vocals, no singing, no choir, no spoken voice\" --music-volume 0.38 --force",
+    "Recommended command shape: uv run --with pillow python3 ~/.openclaw/skills/xml-scene-video/scripts/generate_video.py --xml {{scriptPath}} --images-dir {{sceneImagesDir}} --output {{finalVideoPath}} --work-dir {{videoWorkDir}} --tts-engine qwen --existing-voice {{xmlNarrationPath}} --existing-alignment {{xmlAlignmentPath}} --ace-step-url http://127.0.0.1:8011 --music-prompt \"instrumental cinematic curiosity underscore, mysterious but pleasant, warm synth pulse, light percussion, airy textures, subtle piano and marimba accents, sense of discovery, modern and polished, no horror, no dread, no dark drones, no jump scares, no vocals, no singing, no choir, no spoken voice\" --music-volume 0.38 --force",
     "Use the scene manifest to confirm scene ordering/captions, but assemble from the generated image files in {{sceneImagesDir}} using the uncaptioned assets for motion and caption overlays separately.",
-    "Read any per-scene cameraPanX, cameraPanY, cameraZoom, and cameraShake attributes from the XML and apply them to the scene image motion only, not to the caption overlay layer.",
-    "Camera motion is fully opt-in: if a cameraPanX/cameraPanY/cameraZoom/cameraShake attribute is omitted, do not apply that effect. If a scene omits all camera motion attributes, render it with no added camera motion.",
+    "Read any per-scene cameraPanX, cameraPanY, cameraZoom, cameraZoomStart, cameraZoomEnd, and cameraShake attributes from the XML and apply them to the scene image motion only, not to the caption overlay layer.",
+    "Camera motion is fully opt-in: if a cameraPanX/cameraPanY/cameraZoom/cameraZoomStart/cameraZoomEnd/cameraShake attribute is omitted, do not apply that effect. `cameraZoom` means static framing only; animated zoom should only happen when cameraZoomStart/cameraZoomEnd are explicitly present. If a scene omits all camera motion attributes, render it with no added camera motion.",
     "You must update both the playable video artifact and the review doc on disk before finishing.",
     "Read script from: {{scriptPath}}",
     "Read scene manifest from: {{sceneManifestPath}}",
@@ -314,12 +219,35 @@ function ensureSettingsDir() {
   fs.mkdirSync(path.dirname(SETTINGS_PATH), { recursive: true });
 }
 
+function shouldResetStoredPrompt(key: ShortFormPromptKey, prompt: string) {
+  const normalized = prompt.replace(/\r/g, "").trim();
+  switch (key) {
+    case "researchGenerate":
+    case "researchRevise":
+      return normalized.includes("help Scribe write a multi-scene vertical-video XML script");
+    default:
+      return false;
+  }
+}
+
+function migrateStoredPrompts(stored: Partial<ShortFormWorkflowPrompts>) {
+  const migrated: Partial<ShortFormWorkflowPrompts> = { ...stored };
+  for (const key of Object.keys(DEFAULT_SHORT_FORM_WORKFLOW_PROMPTS) as ShortFormPromptKey[]) {
+    const current = migrated[key];
+    if (typeof current === "string" && shouldResetStoredPrompt(key, current)) {
+      migrated[key] = DEFAULT_SHORT_FORM_WORKFLOW_PROMPTS[key];
+    }
+  }
+  return migrated;
+}
+
 function readStoredPrompts(): Partial<ShortFormWorkflowPrompts> {
   if (!fs.existsSync(SETTINGS_PATH)) return {};
 
   try {
     const parsed = JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf-8")) as Partial<ShortFormWorkflowPrompts>;
-    return parsed && typeof parsed === "object" ? parsed : {};
+    if (!parsed || typeof parsed !== "object") return {};
+    return migrateStoredPrompts(parsed);
   } catch {
     return {};
   }

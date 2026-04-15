@@ -3,6 +3,11 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/Sidebar";
 import { InstantNavigationLoader } from "@/components/InstantNavigationLoader";
+import {
+  DASHBOARD_APP_NAME,
+  DEFAULT_DASHBOARD_DESCRIPTION,
+  DEFAULT_DASHBOARD_PAGE_TITLE,
+} from "@/lib/metadata";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,8 +20,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Agent Dashboard",
-  description: "Coordination hub for the agent team",
+  title: {
+    default: DEFAULT_DASHBOARD_PAGE_TITLE,
+    template: `%s | ${DASHBOARD_APP_NAME}`,
+  },
+  description: DEFAULT_DASHBOARD_DESCRIPTION,
 };
 
 export default function RootLayout({

@@ -55,11 +55,68 @@ export interface StageDoc {
   revision?: StageRevisionClient;
 }
 
+
+export interface TextScriptIterationClient {
+  number: number;
+  kind: 'generated' | 'manual';
+  createdAt?: string;
+  updatedAt?: string;
+  draftPath?: string;
+  draftContent: string;
+  reviewPath?: string;
+  overallGrade?: number;
+  reviewDecision?: 'pass' | 'needs-improvement' | 'manual-edit';
+  reviewFeedback?: string;
+  reviewContent?: string;
+  reviewSummary?: string;
+  isFinal?: boolean;
+}
+
+export interface TextScriptRunClient {
+  runId: string;
+  startedAt?: string;
+  completedAt?: string;
+  mode?: 'generate' | 'revise';
+  status: 'passed' | 'max-iterations-reached' | 'manual-edit' | 'running' | 'failed' | 'unknown';
+  maxIterations: number;
+  passingScore?: number;
+  overrideMaxIterations?: number;
+  reviewPrompt?: string;
+  finalIterationNumber?: number;
+  activeStep?: 'writing' | 'reviewing' | 'improving' | 'completed';
+  activeIterationNumber?: number;
+  activeStatusText?: string;
+  iterations: TextScriptIterationClient[];
+}
+
 export interface VideoPipelineDetailClient {
   id: string;
   label: string;
   format: 'text' | 'json';
   content: string;
+}
+
+export interface XmlPipelineStepClient {
+  id: string;
+  label: string;
+  status: 'completed' | 'active' | 'pending' | 'failed';
+  summary?: string;
+  updatedAt?: string;
+  progressPercent?: number;
+  progressLabel?: string;
+  details?: VideoPipelineDetailClient[];
+}
+
+export interface XmlPipelineClient {
+  status: 'running' | 'completed' | 'failed' | 'idle';
+  workDir?: string;
+  audioPath?: string;
+  transcriptPath?: string;
+  alignmentInputPath?: string;
+  alignmentOutputPath?: string;
+  captionPlanPath?: string;
+  warning?: string;
+  steps: XmlPipelineStepClient[];
 }
 
 export interface VideoPipelineStepClient {
@@ -82,15 +139,30 @@ export interface VideoPipelineClient {
   steps: VideoPipelineStepClient[];
 }
 
+export interface CaptionSection {
+  id: string;
+  index: number;
+  text: string;
+  start: number;
+  end: number;
+  wordCount?: number;
+}
+
 export interface Scene {
   id: string;
   number: number;
   caption: string;
+  startTime?: number;
+  endTime?: number;
   image?: string;
   previewImage?: string;
   previewVideo?: string;
   previewVideoBackgroundId?: string;
   notes?: string;
+  imageId?: string;
+  basedOnImageId?: string;
+  reusedExistingAsset?: boolean;
+  visualId?: string;
   status?: 'completed' | 'in-progress';
 }
 
@@ -111,6 +183,7 @@ export interface ShortFormProjectClient {
   selectedMusicName?: string;
   selectedBackgroundVideoId?: string;
   selectedBackgroundVideoName?: string;
+  captionMaxWordsOverride?: number;
   hooks: {
     pending: boolean;
     generations: HookGeneration[];
@@ -119,7 +192,8 @@ export interface ShortFormProjectClient {
     validationError?: string;
   };
   research: StageDoc;
-  script: StageDoc;
+  script: StageDoc & { textScriptRuns?: TextScriptRunClient[]; textScriptLatestRunId?: string; textScriptMaxIterationsOverride?: number };
+  xmlScript: StageDoc & { audioUrl?: string; audioPath?: string; captions?: CaptionSection[]; pipeline?: XmlPipelineClient };
   sceneImages: StageDoc & { scenes: Scene[]; sceneProgress?: SceneImageProgressSummaryClient };
   video: StageDoc & { videoUrl?: string; videoPath?: string; pipeline?: VideoPipelineClient };
 }
@@ -133,7 +207,8 @@ export interface ShortFormProjectRowClient {
   currentStage: string;
   hooks: { selectedHookText?: string; pending?: boolean };
   research: { status: string; pending?: boolean };
-  script: { status: string; pending?: boolean };
+  script: { status: string; pending?: boolean; textScriptLatestRunId?: string; textScriptMaxIterationsOverride?: number };
+  xmlScript: { status: string; pending?: boolean };
   sceneImages: { status: string; sceneCount: number; pending?: boolean };
   video: { status: string; videoUrl?: string; pending?: boolean };
 }
@@ -186,6 +261,78 @@ function normalizeHookGeneration(value: unknown): HookGeneration | null {
   };
 }
 
+function normalizeCaptionSection(value: unknown): CaptionSection | null {
+  const obj = asObject(value);
+  const id = asString(obj.id);
+  const text = asString(obj.text);
+  const index = typeof obj.index === 'number' ? obj.index : 0;
+  const start = typeof obj.start === 'number' ? obj.start : Number.NaN;
+  const end = typeof obj.end === 'number' ? obj.end : Number.NaN;
+  if (!id || !text || index < 1 || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+  return { id, index, text, start, end, wordCount: typeof obj.wordCount === 'number' ? obj.wordCount : undefined };
+}
+
+function normalizePipelineDetail(value: unknown): VideoPipelineDetailClient | null {
+  const detailObj = asObject(value);
+  const detailId = asString(detailObj.id);
+  const detailLabel = asString(detailObj.label);
+  const format = detailObj.format === 'json' ? 'json' : 'text';
+  const content = asString(detailObj.content);
+  if (!detailId || !detailLabel || !content) return null;
+  return { id: detailId, label: detailLabel, format, content };
+}
+
+function normalizeXmlPipeline(value: unknown): XmlPipelineClient | undefined {
+  const obj = asObject(value);
+  if (Object.keys(obj).length === 0) return undefined;
+
+  const steps = Array.isArray(obj.steps)
+    ? obj.steps
+        .map((step) => {
+          const stepObj = asObject(step);
+          const id = asString(stepObj.id);
+          const label = asString(stepObj.label);
+          if (!id || !label) return null;
+
+          const details = Array.isArray(stepObj.details)
+            ? stepObj.details.map(normalizePipelineDetail).filter((detail): detail is VideoPipelineDetailClient => Boolean(detail))
+            : [];
+
+          const status = stepObj.status === 'completed'
+            ? 'completed'
+            : stepObj.status === 'active'
+              ? 'active'
+              : stepObj.status === 'failed'
+                ? 'failed'
+                : 'pending';
+
+          return {
+            id,
+            label,
+            status,
+            summary: asOptionalString(stepObj.summary),
+            updatedAt: asOptionalString(stepObj.updatedAt),
+            progressPercent: typeof stepObj.progressPercent === 'number' ? stepObj.progressPercent : undefined,
+            progressLabel: asOptionalString(stepObj.progressLabel),
+            details,
+          } as XmlPipelineStepClient;
+        })
+        .filter((step): step is XmlPipelineStepClient => Boolean(step))
+    : [];
+
+  return {
+    status: obj.status === 'completed' ? 'completed' : obj.status === 'failed' ? 'failed' : obj.status === 'running' ? 'running' : 'idle',
+    workDir: asOptionalString(obj.workDir),
+    audioPath: asOptionalString(obj.audioPath),
+    transcriptPath: asOptionalString(obj.transcriptPath),
+    alignmentInputPath: asOptionalString(obj.alignmentInputPath),
+    alignmentOutputPath: asOptionalString(obj.alignmentOutputPath),
+    captionPlanPath: asOptionalString(obj.captionPlanPath),
+    warning: asOptionalString(obj.warning),
+    steps,
+  };
+}
+
 function normalizeVideoPipeline(value: unknown): VideoPipelineClient | undefined {
   const obj = asObject(value);
   if (Object.keys(obj).length === 0) return undefined;
@@ -199,17 +346,7 @@ function normalizeVideoPipeline(value: unknown): VideoPipelineClient | undefined
           if (!id || !label) return null;
 
           const details = Array.isArray(stepObj.details)
-            ? stepObj.details
-                .map((detail) => {
-                  const detailObj = asObject(detail);
-                  const detailId = asString(detailObj.id);
-                  const detailLabel = asString(detailObj.label);
-                  const format = detailObj.format === 'json' ? 'json' : 'text';
-                  const content = asString(detailObj.content);
-                  if (!detailId || !detailLabel || !content) return null;
-                  return { id: detailId, label: detailLabel, format, content } as VideoPipelineDetailClient;
-                })
-                .filter((detail): detail is VideoPipelineDetailClient => Boolean(detail))
+            ? stepObj.details.map(normalizePipelineDetail).filter((detail): detail is VideoPipelineDetailClient => Boolean(detail))
             : [];
 
           const status = stepObj.status === 'completed'
@@ -241,6 +378,80 @@ function normalizeVideoPipeline(value: unknown): VideoPipelineClient | undefined
     alignmentOutputPath: asOptionalString(obj.alignmentOutputPath),
     warning: asOptionalString(obj.warning),
     steps,
+  };
+}
+
+function normalizeTextScriptIteration(value: unknown): TextScriptIterationClient | null {
+  const obj = asObject(value);
+  const number = typeof obj.number === 'number' ? obj.number : 0;
+  const draftContent = asString(obj.draftContent);
+  if (number < 1 || !draftContent) return null;
+
+  return {
+    number,
+    kind: obj.kind === 'manual' ? 'manual' : 'generated',
+    createdAt: asOptionalString(obj.createdAt),
+    updatedAt: asOptionalString(obj.updatedAt),
+    draftPath: asOptionalString(obj.draftPath),
+    draftContent,
+    reviewPath: asOptionalString(obj.reviewPath),
+    overallGrade: typeof obj.overallGrade === 'number' ? obj.overallGrade : undefined,
+    reviewDecision: obj.reviewDecision === 'pass'
+      ? 'pass'
+      : obj.reviewDecision === 'needs-improvement'
+        ? 'needs-improvement'
+        : obj.reviewDecision === 'manual-edit'
+          ? 'manual-edit'
+          : undefined,
+    reviewFeedback: asOptionalString(obj.reviewFeedback),
+    reviewContent: asOptionalString(obj.reviewContent),
+    reviewSummary: asOptionalString(obj.reviewSummary),
+    isFinal: typeof obj.isFinal === 'boolean' ? obj.isFinal : undefined,
+  };
+}
+
+function normalizeTextScriptRun(value: unknown): TextScriptRunClient | undefined {
+  const obj = asObject(value);
+  const runId = asString(obj.runId);
+  if (!runId) return undefined;
+
+  const iterations = Array.isArray(obj.iterations)
+    ? obj.iterations.map(normalizeTextScriptIteration).filter((item): item is TextScriptIterationClient => Boolean(item))
+    : [];
+
+  return {
+    runId,
+    startedAt: asOptionalString(obj.startedAt),
+    completedAt: asOptionalString(obj.completedAt),
+    mode: obj.mode === 'revise' ? 'revise' : obj.mode === 'generate' ? 'generate' : undefined,
+    status: obj.status === 'passed'
+      ? 'passed'
+      : obj.status === 'max-iterations-reached'
+        ? 'max-iterations-reached'
+        : obj.status === 'manual-edit'
+          ? 'manual-edit'
+          : obj.status === 'running'
+            ? 'running'
+            : obj.status === 'failed'
+              ? 'failed'
+            : 'unknown',
+    maxIterations: typeof obj.maxIterations === 'number' ? obj.maxIterations : Math.max(1, iterations.length || 1),
+    passingScore: typeof obj.passingScore === 'number' ? obj.passingScore : undefined,
+    overrideMaxIterations: typeof obj.overrideMaxIterations === 'number' ? obj.overrideMaxIterations : undefined,
+    reviewPrompt: asOptionalString(obj.reviewPrompt),
+    finalIterationNumber: typeof obj.finalIterationNumber === 'number' ? obj.finalIterationNumber : undefined,
+    activeStep: obj.activeStep === 'writing'
+      ? 'writing'
+      : obj.activeStep === 'reviewing'
+        ? 'reviewing'
+        : obj.activeStep === 'improving'
+          ? 'improving'
+          : obj.activeStep === 'completed'
+            ? 'completed'
+            : undefined,
+    activeIterationNumber: typeof obj.activeIterationNumber === 'number' ? obj.activeIterationNumber : undefined,
+    activeStatusText: asOptionalString(obj.activeStatusText),
+    iterations,
   };
 }
 
@@ -311,11 +522,17 @@ function normalizeScene(value: unknown): Scene | null {
     id,
     number,
     caption,
+    startTime: typeof obj.startTime === 'number' ? obj.startTime : undefined,
+    endTime: typeof obj.endTime === 'number' ? obj.endTime : undefined,
     image: asOptionalString(obj.image),
     previewImage: asOptionalString(obj.previewImage),
     previewVideo: asOptionalString(obj.previewVideo),
     previewVideoBackgroundId: asOptionalString(obj.previewVideoBackgroundId),
     notes: asOptionalString(obj.notes),
+    imageId: asOptionalString(obj.imageId),
+    basedOnImageId: asOptionalString(obj.basedOnImageId),
+    reusedExistingAsset: typeof obj.reusedExistingAsset === 'boolean' ? obj.reusedExistingAsset : undefined,
+    visualId: asOptionalString(obj.visualId),
     status: obj.status === 'in-progress' ? 'in-progress' : obj.status === 'completed' ? 'completed' : undefined,
   };
 }
@@ -346,7 +563,11 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
   const obj = asObject(value);
   const hooks = asObject(obj.hooks);
   const research = normalizeStageDoc(obj.research);
-  const script = normalizeStageDoc(obj.script);
+  const scriptObj = asObject(obj.script);
+  const script = normalizeStageDoc(scriptObj);
+  const xmlScriptObj = asObject(obj.xmlScript);
+  const xmlScriptCaptions = Array.isArray(xmlScriptObj.captions) ? xmlScriptObj.captions.map(normalizeCaptionSection).filter((item): item is CaptionSection => Boolean(item)) : undefined;
+  const xmlScript = normalizeStageDoc(xmlScriptObj);
   const sceneImagesObj = asObject(obj.sceneImages);
   const videoObj = asObject(obj.video);
   const sceneImagesBase = normalizeStageDoc(sceneImagesObj);
@@ -386,6 +607,7 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
     selectedMusicName: asOptionalString(obj.selectedMusicName),
     selectedBackgroundVideoId: asOptionalString(obj.selectedBackgroundVideoId),
     selectedBackgroundVideoName: asOptionalString(obj.selectedBackgroundVideoName),
+    captionMaxWordsOverride: typeof obj.captionMaxWordsOverride === 'number' ? obj.captionMaxWordsOverride : undefined,
     hooks: {
       pending: asBoolean(hooks.pending),
       generations,
@@ -394,7 +616,25 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
       validationError: asOptionalString(hooks.validationError),
     },
     research,
-    script,
+    script: {
+      ...script,
+      textScriptRuns: Array.isArray(scriptObj.textScriptRuns)
+        ? scriptObj.textScriptRuns
+            .map(normalizeTextScriptRun)
+            .filter((run): run is TextScriptRunClient => Boolean(run))
+        : undefined,
+      textScriptLatestRunId: asOptionalString(scriptObj.textScriptLatestRunId),
+      textScriptMaxIterationsOverride: typeof scriptObj.textScriptMaxIterationsOverride === 'number'
+        ? scriptObj.textScriptMaxIterationsOverride
+        : undefined,
+    },
+    xmlScript: {
+      ...xmlScript,
+      audioUrl: asOptionalString(xmlScriptObj.audioUrl),
+      audioPath: asOptionalString(xmlScriptObj.audioPath),
+      captions: xmlScriptCaptions,
+      pipeline: normalizeXmlPipeline(xmlScriptObj.pipeline),
+    },
     sceneImages: {
       ...sceneImagesBase,
       scenes,
@@ -415,6 +655,7 @@ export function normalizeShortFormProjectRow(value: unknown): ShortFormProjectRo
   const hooks = asObject(obj.hooks);
   const research = asObject(obj.research);
   const script = asObject(obj.script);
+  const xmlScript = asObject(obj.xmlScript);
   const sceneImagesBase = asObject(obj.sceneImages);
   const videoBase = asObject(obj.video);
   const rawSceneImages = asObject(obj.sceneImages);
@@ -435,7 +676,13 @@ export function normalizeShortFormProjectRow(value: unknown): ShortFormProjectRo
       pending: asBoolean(hooks.pending),
     },
     research: { status: project.research.status, pending: asBoolean(research.pending) },
-    script: { status: project.script.status, pending: asBoolean(script.pending) },
+    script: {
+      status: project.script.status,
+      pending: asBoolean(script.pending),
+      textScriptLatestRunId: project.script.textScriptLatestRunId,
+      textScriptMaxIterationsOverride: project.script.textScriptMaxIterationsOverride,
+    },
+    xmlScript: { status: project.xmlScript.status, pending: asBoolean(xmlScript.pending) },
     sceneImages: { status: project.sceneImages.status, sceneCount, pending: asBoolean(sceneImagesBase.pending) },
     video: { status: project.video.status, videoUrl: project.video.videoUrl, pending: asBoolean(videoBase.pending) },
   };

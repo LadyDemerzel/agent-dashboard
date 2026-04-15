@@ -8,12 +8,12 @@ export function OrbitLoader({ label = "Loading" }: { label?: string }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-6" role="status" aria-live="polite">
       <div className="relative h-10 w-10">
-        <div className="absolute inset-0 rounded-full border border-zinc-500/35 animate-spin" />
+        <div className="absolute inset-0 rounded-full border border-blue-400/35 border-t-blue-400 animate-spin" />
         <div
-          className="absolute inset-1 rounded-full border border-zinc-300/25"
-          style={{ animation: "spin 1.8s linear infinite reverse" }}
+          className="absolute inset-1 rounded-full border border-cyan-300/25 border-b-cyan-300"
+          style={{ animation: "spin 1.4s linear infinite reverse" }}
         />
-        <div className="absolute inset-[31%] rounded-full bg-zinc-300/55 blur-[1px] animate-pulse" />
+        <div className="absolute inset-[31%] rounded-full bg-blue-300/70 blur-[1px] animate-pulse" />
       </div>
       <p className="text-xs tracking-[0.14em] uppercase text-muted-foreground">{label}</p>
     </div>

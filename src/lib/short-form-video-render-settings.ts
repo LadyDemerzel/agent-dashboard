@@ -54,6 +54,7 @@ export interface ShortFormVideoRenderSettings {
   defaultMusicTrackId?: string;
   musicVolume: number;
   musicTracks: ShortFormMusicLibraryEntry[];
+  captionMaxWords: number;
 }
 
 const SETTINGS_PATH = path.join(SHORT_FORM_VIDEOS_DIR, "_video-render-settings.json");
@@ -72,6 +73,7 @@ const DEFAULT_MUSIC_PROMPT =
   "instrumental cinematic curiosity underscore, mysterious but pleasant, warm synth pulse, light percussion, airy textures, subtle piano and marimba accents, sense of discovery, modern and polished, no horror, no dread, no dark drones, no jump scares, no vocals, no singing, no choir, no spoken voice";
 const DEFAULT_MUSIC_VOLUME = 0.38;
 const DEFAULT_MUSIC_PREVIEW_DURATION_SECONDS = 12;
+const DEFAULT_CAPTION_MAX_WORDS = 6;
 
 export const DEFAULT_SHORT_FORM_VOICE: ShortFormVoiceLibraryEntry = {
   id: DEFAULT_VOICE_ID,
@@ -100,6 +102,7 @@ const DEFAULT_SETTINGS: ShortFormVideoRenderSettings = {
   defaultMusicTrackId: DEFAULT_SHORT_FORM_MUSIC.id,
   musicVolume: DEFAULT_MUSIC_VOLUME,
   musicTracks: [DEFAULT_SHORT_FORM_MUSIC],
+  captionMaxWords: DEFAULT_CAPTION_MAX_WORDS,
 };
 
 function ensureSettingsDir() {
@@ -118,6 +121,12 @@ function clampMusicVolume(value: unknown, fallback = DEFAULT_MUSIC_VOLUME) {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(1, Math.max(0, parsed));
+}
+
+function clampCaptionMaxWords(value: unknown, fallback = DEFAULT_CAPTION_MAX_WORDS) {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(12, Math.max(2, Math.round(parsed)));
 }
 
 function normalizePreviewDurationSeconds(value: unknown, fallback = DEFAULT_MUSIC_PREVIEW_DURATION_SECONDS) {
@@ -257,6 +266,7 @@ function migrateLegacyQwenVoice(value: unknown): ShortFormVideoRenderSettings | 
     defaultMusicTrackId: DEFAULT_SHORT_FORM_MUSIC.id,
     musicVolume: DEFAULT_MUSIC_VOLUME,
     musicTracks: [DEFAULT_SHORT_FORM_MUSIC],
+    captionMaxWords: DEFAULT_CAPTION_MAX_WORDS,
   };
 }
 
@@ -293,6 +303,7 @@ function normalizeSettings(value: unknown): ShortFormVideoRenderSettings {
     ...(resolvedDefaultMusicTrackId ? { defaultMusicTrackId: resolvedDefaultMusicTrackId } : {}),
     musicVolume: clampMusicVolume(obj.musicVolume, DEFAULT_MUSIC_VOLUME),
     musicTracks,
+    captionMaxWords: clampCaptionMaxWords(obj.captionMaxWords, DEFAULT_CAPTION_MAX_WORDS),
   };
 }
 

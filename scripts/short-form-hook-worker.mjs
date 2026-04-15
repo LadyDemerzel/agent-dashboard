@@ -128,7 +128,7 @@ async function main() {
 
   const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0
     ? job.preferredModels
-    : ["openai-codex/gpt-5.4", "openrouter/anthropic/claude-3-haiku"];
+    : ["codex/gpt-5.4", "openrouter/anthropic/claude-3-haiku"];
 
   for (let index = 0; index < models.length; index += 1) {
     const model = models[index];

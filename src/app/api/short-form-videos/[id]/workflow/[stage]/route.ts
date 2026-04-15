@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
+import path from "path";
+import { randomUUID } from "crypto";
 import {
   appendStatusLog,
   readStatusLog,
@@ -7,6 +9,7 @@ import {
 } from "@/lib/status";
 import { createThread, getThreadsForDeliverable } from "@/lib/feedback";
 import { enqueueShortFormStageRun, getPreferredModelsForStage } from "@/lib/short-form-stage-runner";
+import { ensureXmlScriptDocument, getXmlScriptPath } from "@/lib/short-form-xml-script";
 import {
   ensureStageDocument,
   getLatestStageRequest,
@@ -14,6 +17,8 @@ import {
   getSceneManifestPath,
   getShortFormProject,
   getStageFilePath,
+  getTextScriptRunDir,
+  persistManualTextScriptIteration,
   updateLatestStageRequest,
   updatePendingStage,
   updateProjectMeta,
@@ -22,14 +27,20 @@ import {
   type ShortFormStageKey,
 } from "@/lib/short-form-videos";
 import { hasVersions, initializeVersionHistory, addVersion } from "@/lib/versions";
-import { getShortFormWorkflowPrompts, renderShortFormPrompt, type ShortFormPromptKey } from "@/lib/short-form-workflow-prompts";
+import { getShortFormWorkflowPrompts, renderShortFormPrompt } from "@/lib/short-form-workflow-prompts";
 import { resolveShortFormImageStyle } from "@/lib/short-form-image-styles";
 import {
   resolveShortFormBackgroundVideoAbsolutePath,
   resolveShortFormBackgroundVideoSelection,
 } from "@/lib/short-form-background-videos";
+import {
+  getShortFormTextScriptSettings,
+  SHORT_FORM_TEXT_SCRIPT_PASSING_SCORE,
+} from "@/lib/short-form-text-script-settings";
 
 export const dynamic = "force-dynamic";
+
+const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
 
 const STAGE_AGENT: Record<ShortFormStageKey, "oracle" | "scribe" | "workflow"> = {
   research: "oracle",
@@ -43,9 +54,9 @@ function getStageTitle(stage: ShortFormStageKey) {
     case "research":
       return "Research";
     case "script":
-      return "Script";
+      return "Text Script";
     case "scene-images":
-      return "Scene Images";
+      return "Visuals";
     case "video":
       return "Video";
   }
@@ -63,14 +74,14 @@ function ensureInitialStageDoc(projectId: string, stage: ShortFormStageKey, topi
       body: "# Research\n\nWaiting for Oracle to generate research.",
     },
     script: {
-      title: `${topic || "Short-form video"} XML script`,
+      title: `${topic || "Short-form video"} text script`,
       agent: "scribe",
-      body: "<video>\n  <topic>Waiting for topic</topic>\n  <script><!-- Waiting for Scribe to generate the full spoken script --></script>\n  <scene>\n    <text>Waiting for captions</text>\n    <image>Waiting for scene direction</image>\n  </scene>\n</video>",
+      body: "Waiting for Scribe to generate the plain narration text script.",
     },
     "scene-images": {
-      title: `${topic || "Short-form video"} scene images`,
+      title: `${topic || "Short-form video"} visuals`,
       agent: "workflow",
-      body: "# Scene Images\n\nWaiting for the dashboard workflow to generate the storyboard images and manifest.",
+      body: "# Visuals\n\nWaiting for the dashboard workflow to generate the visual manifest and green-screen assets.",
     },
     video: {
       title: `${topic || "Short-form video"} final video`,
@@ -95,19 +106,18 @@ function buildRevisionInstruction(stage: ShortFormStageKey, mode: "generate" | "
   const cleaned = notes?.trim();
   if (cleaned) {
     return stage === "script"
-      ? `Revise the existing XML script based on this feedback:
+      ? `Revise the existing plain text script based on this feedback:
 ${cleaned}`
       : `Revise the existing artifact based on this feedback:
 ${cleaned}`;
   }
   return stage === "script"
-    ? "No specific revision notes were supplied. Regenerate the existing XML script in place as a clean rerun from the approved inputs, preserving the current workflow requirements and writing the refreshed result back to the same path."
+    ? "No specific revision notes were supplied. Regenerate the existing plain text script in place as a clean rerun from the approved inputs, preserving the current workflow requirements and writing the refreshed result back to the same path."
     : "";
 }
 
-function promptKeyFor(stage: ShortFormStageKey, mode: "generate" | "revise"): ShortFormPromptKey {
+function promptKeyFor(stage: Exclude<ShortFormStageKey, "script">, mode: "generate" | "revise") {
   if (stage === "research") return mode === "generate" ? "researchGenerate" : "researchRevise";
-  if (stage === "script") return mode === "generate" ? "scriptGenerate" : "scriptRevise";
   if (stage === "scene-images") return mode === "generate" ? "sceneImagesGenerate" : "sceneImagesRevise";
   return mode === "generate" ? "videoGenerate" : "videoRevise";
 }
@@ -134,7 +144,8 @@ function getStageArtifactRequirements(stage: ShortFormStageKey, paths: {
         primary: paths.scriptPath,
         required: [paths.scriptPath],
         verification: [
-          `After writing, read back ${paths.scriptPath} and verify the XML reflects the latest requested script output for this run.`,
+          `After writing, read back ${paths.scriptPath} and verify the plain narration script reflects the latest requested text-script output for this run.`,
+          `The text-script body must be plain narration prose only. If you still see XML tags like <video>, <script>, <scene>, <text>, or <image>, the task is not complete.`,
         ],
       };
     case "scene-images":
@@ -173,9 +184,69 @@ function buildExecutionContract(stage: ShortFormStageKey, mode: "generate" | "re
   ].join("\n\n");
 }
 
+function buildTextScriptWorkflowConfig(
+  project: NonNullable<ReturnType<typeof getShortFormProject>>,
+  requestContext: { mode: "generate" | "revise"; notes?: string; textScriptRunId: string }
+) {
+  const textScriptSettings = getShortFormTextScriptSettings();
+  const writerPromptMode: "generate" | "revise" =
+    shouldUseCleanRerunPrompt("script", requestContext.mode, requestContext.notes) ? "generate" : "revise";
+  const projectDir = getProjectDir(project.id);
+  const researchPath = getStageFilePath(project.id, "research");
+  const scriptPath = getStageFilePath(project.id, "script");
+  const researchContent = fs.existsSync(researchPath) ? fs.readFileSync(researchPath, "utf-8") : "No approved research file found.";
+  const runDir = getTextScriptRunDir(project.id, requestContext.textScriptRunId);
+  const iterationsDir = path.join(runDir, "iterations");
+  const runManifestPath = path.join(runDir, "run.json");
+  const retentionSkillPath = path.join(HOME_DIR, ".openclaw", "skills", "video-script-retention", "SKILL.md");
+  const retentionPlaybookPath = path.join(HOME_DIR, ".openclaw", "skills", "video-script-retention", "references", "playbook.md");
+  const graderSkillPath = path.join(HOME_DIR, ".openclaw", "skills", "video-script-retention-grader", "SKILL.md");
+  const graderRubricPath = path.join(HOME_DIR, ".openclaw", "skills", "video-script-retention-grader", "references", "rubric.md");
+  const maxIterationsOverride = project.script.textScriptMaxIterationsOverride;
+  const maxIterations = maxIterationsOverride || textScriptSettings.defaultMaxIterations;
+  const passingScore = SHORT_FORM_TEXT_SCRIPT_PASSING_SCORE;
+
+  return {
+    task: [
+      "Direct workflow execution for Text Script.",
+      `Mode: ${requestContext.mode}`,
+      `Text script run id: ${requestContext.textScriptRunId}`,
+      `Run manifest path: ${runManifestPath}`,
+      `Final published script path: ${scriptPath}`,
+      `Max iterations: ${maxIterations}${maxIterationsOverride ? ` (project override; settings default is ${textScriptSettings.defaultMaxIterations})` : " (settings default)"}`,
+      `Passing score: ${passingScore}/100`,
+    ].join("\n"),
+    config: {
+      textScriptRunId: requestContext.textScriptRunId,
+      mode: requestContext.mode,
+      writerPromptMode,
+      topic: project.topic,
+      ...(project.selectedHookText ? { selectedHookText: project.selectedHookText } : {}),
+      approvedResearch: researchContent,
+      currentScriptContent: fs.existsSync(scriptPath) ? fs.readFileSync(scriptPath, "utf-8") : "",
+      ...(requestContext.notes ? { notes: requestContext.notes } : {}),
+      projectDir,
+      scriptPath,
+      runDir,
+      iterationsDir,
+      runManifestPath,
+      maxIterations,
+      ...(maxIterationsOverride ? { overrideMaxIterations: maxIterationsOverride } : {}),
+      passingScore,
+      generatePromptTemplate: textScriptSettings.generatePrompt,
+      revisePromptTemplate: textScriptSettings.revisePrompt,
+      reviewPromptTemplate: textScriptSettings.reviewPrompt,
+      retentionSkillPath,
+      retentionPlaybookPath,
+      graderSkillPath,
+      graderRubricPath,
+    },
+  };
+}
+
 function buildStageTask(
   project: NonNullable<ReturnType<typeof getShortFormProject>>,
-  stage: ShortFormStageKey,
+  stage: Exclude<ShortFormStageKey, "script">,
   requestContext: {
     mode: "generate" | "revise";
     notes?: string;
@@ -190,6 +261,7 @@ function buildStageTask(
   const sceneManifestPath = getSceneManifestPath(project.id);
   const sceneDocPath = getStageFilePath(project.id, "scene-images");
   const videoDocPath = getStageFilePath(project.id, "video");
+  const xmlScriptPath = getXmlScriptPath(project.id);
   const finalVideoPath = `${projectDir}/output/final-video.mp4`;
   const sceneImagesDir = `${projectDir}/scenes`;
   const videoWorkDir = `${projectDir}/output/xml-scene-video-work`;
@@ -201,7 +273,7 @@ function buildStageTask(
     notesOrFallback: requestContext.notes || "",
     revisionInstructionLine: buildRevisionInstruction(stage, requestContext.mode, requestContext.notes),
     researchPath,
-    scriptPath,
+    scriptPath: xmlScriptPath,
     sceneManifestPath,
     sceneDocPath,
     videoDocPath,
@@ -213,7 +285,7 @@ function buildStageTask(
   });
   const requirements = getStageArtifactRequirements(stage, {
     researchPath,
-    scriptPath,
+    scriptPath: xmlScriptPath,
     sceneManifestPath,
     sceneDocPath,
     videoDocPath,
@@ -276,10 +348,21 @@ export async function POST(
     : mode === "revise"
       ? "Requested changes: none. Treat this as a clean rerun/regeneration for the current scope rather than a targeted textual revision."
       : "Run direction: none";
+  // Every script trigger needs a fresh run id so regenerate/retry creates a new
+  // iteration history instead of mutating or pointing at the previous run.
+  const textScriptRunId = stage === "script"
+    ? randomUUID()
+    : undefined;
   const resolvedImageStyle = resolveShortFormImageStyle(project.selectedImageStyleId);
   const resolvedBackgroundVideo = resolveShortFormBackgroundVideoSelection(project.selectedBackgroundVideoId);
 
-  const task = stage === "scene-images" || stage === "video"
+  const textScriptWorkflow = stage === "script" && textScriptRunId
+    ? buildTextScriptWorkflowConfig(project, { mode, notes: requestNotes, textScriptRunId })
+    : null;
+
+  const task = stage === "script" && textScriptWorkflow
+    ? textScriptWorkflow.task
+    : stage === "scene-images" || stage === "video"
     ? [
         `Direct workflow execution for ${getStageTitle(stage)}.`,
         `Mode: ${mode}`,
@@ -296,10 +379,12 @@ export async function POST(
             : []),
         directWorkflowRequestLine,
       ].join("\n")
-    : buildStageTask(project, stage, { mode, notes: requestNotes });
+    : buildStageTask(project, "research", { mode, notes: requestNotes });
   const projectDir = getProjectDir(id);
   const researchPath = getStageFilePath(id, "research");
   const scriptPath = getStageFilePath(id, "script");
+  const xmlScriptPath = getXmlScriptPath(id);
+  ensureXmlScriptDocument(id, project.topic);
   const sceneManifestPath = getSceneManifestPath(id);
   const sceneDocPath = getStageFilePath(id, "scene-images");
   const videoDocPath = getStageFilePath(id, "video");
@@ -308,7 +393,7 @@ export async function POST(
   const videoWorkDir = `${projectDir}/output/xml-scene-video-work`;
   const requirements = getStageArtifactRequirements(stage, {
     researchPath,
-    scriptPath,
+    scriptPath: stage === "script" ? scriptPath : xmlScriptPath,
     sceneManifestPath,
     sceneDocPath,
     videoDocPath,
@@ -323,6 +408,7 @@ export async function POST(
     mode,
     ...(requestNotes ? { notes: requestNotes } : {}),
     ...(effectiveSceneId ? { sceneId: effectiveSceneId } : {}),
+    ...(textScriptRunId ? { textScriptRunId } : {}),
   });
 
   if (requestedAction !== "generate" && requestedAction !== "retry" && notes) {
@@ -344,11 +430,16 @@ export async function POST(
       requiredArtifacts: requirements.required,
       preferredModels: getPreferredModelsForStage(stage),
       directConfig:
-        stage === "scene-images"
+        stage === "script" && textScriptWorkflow
+          ? {
+              kind: "text-script" as const,
+              config: textScriptWorkflow.config,
+            }
+          : stage === "scene-images"
           ? {
               kind: "scene-images" as const,
               config: {
-                scriptPath,
+                scriptPath: xmlScriptPath,
                 outputDir: sceneImagesDir,
                 sceneManifestPath,
                 sceneDocPath,
@@ -369,7 +460,7 @@ export async function POST(
             ? {
                 kind: "video" as const,
                 config: {
-                  scriptPath,
+                  scriptPath: xmlScriptPath,
                   sceneManifestPath,
                   sceneImagesDir,
                   finalVideoPath,
@@ -398,6 +489,7 @@ export async function POST(
       mode,
       ...(requestNotes ? { notes: requestNotes } : {}),
       ...(effectiveSceneId ? { sceneId: effectiveSceneId } : {}),
+      ...(textScriptRunId ? { textScriptRunId } : {}),
     });
 
     return NextResponse.json({
@@ -445,6 +537,10 @@ export async function PATCH(
       initializeVersionHistory(filePath, finalContent, updatedBy);
     } else if (finalContent !== currentContent) {
       addVersion(filePath, finalContent, updatedBy, comment || "Updated from dashboard");
+    }
+
+    if (stage === "script" && finalContent !== currentContent) {
+      persistManualTextScriptIteration(id, finalContent, updatedBy, comment || "Manual dashboard edit");
     }
   }
 

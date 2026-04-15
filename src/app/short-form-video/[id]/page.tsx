@@ -6,15 +6,18 @@ import { useParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Badge } from '@/components/ui/badge';
+import { DiffViewer } from '@/components/DiffViewer';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { OrbitLoader, Skeleton } from '@/components/ui/loading';
-import { TopLevelComments } from '@/components/TopLevelComments';
+import { StatusBadge } from '@/components/StatusBadge';
 import { usePolling } from '@/components/usePolling';
+import { PipelinePanel, type PipelineStep } from '@/components/short-form-video/PipelinePanel';
 import { SectionNavigator, useSectionScrollSpy } from '@/components/short-form-video/SectionNavigator';
+import { SyntaxHighlightedCode } from '@/components/short-form-video/SyntaxHighlightedCode';
 import {
   AutoRefreshBanner,
   PendingNotice,
@@ -24,14 +27,15 @@ import {
   ValidationNotice,
   WorkflowSectionHeader,
 } from '@/components/short-form-video/WorkflowShared';
-import type { FeedbackThread } from '@/lib/feedback';
 import {
   normalizeShortFormProject,
   type HookOption,
   type Scene,
   type ShortFormProjectClient as Project,
   type StageDoc,
+  type TextScriptRunClient,
 } from '@/lib/short-form-video-client';
+import { generateClientDiff } from '@/lib/diff-client';
 
 interface ApiResponse<T> {
   success: boolean;
@@ -63,6 +67,25 @@ interface BackgroundVideoOption {
   videoUrl?: string;
 }
 
+
+type XmlPipelineStep = PipelineStep;
+
+interface XmlScriptDoc {
+  exists: boolean;
+  status: string;
+  content: string;
+  updatedAt?: string;
+  pending?: boolean;
+  audioUrl?: string;
+  audioPath?: string;
+  captions?: Array<{ id: string; index: number; text: string; start: number; end: number; wordCount?: number }>;
+  pipeline?: {
+    status: 'running' | 'completed' | 'failed' | 'idle';
+    warning?: string;
+    steps: Array<XmlPipelineStep & { progressPercent?: number; progressLabel?: string }>;
+  };
+}
+
 interface WorkflowSettingsResponse {
   prompts?: Record<string, string>;
   definitions?: Array<{ key: string; title: string; description: string; stage: string }>;
@@ -77,17 +100,22 @@ interface WorkflowSettingsResponse {
     defaultMusicTrackId?: string;
     musicVolume?: number;
     musicTracks?: MusicOption[];
+    captionMaxWords?: number;
   };
   backgroundVideos?: {
     defaultBackgroundVideoId?: string;
     backgrounds?: BackgroundVideoOption[];
+  };
+  textScript?: {
+    defaultMaxIterations?: number;
+    reviewPrompt?: string;
   };
 }
 
 type StageKey = 'research' | 'script' | 'scene-images' | 'video';
 
 function stageLabel(stage: StageKey | 'hooks') {
-  if (stage === 'scene-images') return 'Scene images';
+  if (stage === 'scene-images') return 'Visuals';
   if (stage === 'hooks') return 'Hooks';
   return stage.charAt(0).toUpperCase() + stage.slice(1);
 }
@@ -101,40 +129,87 @@ function extractBody(content: string) {
   return match ? match[1] : content;
 }
 
-function extractXmlTagContent(xml: string, tagName: string) {
-  const match = xml.match(new RegExp(`<${tagName}>([\\s\\S]*?)<\\/${tagName}>`, 'i'));
-  return match?.[1]?.replace(/\s+/g, ' ').trim() || '';
+type TextScriptPhase = 'writing' | 'reviewing' | 'improving' | 'completed' | 'idle';
+
+function getTextScriptPhaseLabel(phase: TextScriptPhase) {
+  if (phase === 'writing') return 'Writing draft';
+  if (phase === 'reviewing') return 'Grading draft';
+  if (phase === 'improving') return 'Improving draft';
+  if (phase === 'completed') return 'Completed';
+  return 'Idle';
 }
 
-function extractXmlTagContents(xml: string, tagName: string) {
-  return Array.from(xml.matchAll(new RegExp(`<${tagName}>([\\s\\S]*?)<\\/${tagName}>`, 'gi')))
-    .map((match) => match[1]?.replace(/\s+/g, ' ').trim() || '')
-    .filter(Boolean);
+function getTextScriptPhaseStatus(phase: TextScriptPhase, step: 'writing' | 'reviewing' | 'improving') {
+  if (phase === 'writing') return step === 'writing' ? 'active' : 'pending';
+  if (phase === 'reviewing') return step === 'writing' ? 'completed' : step === 'reviewing' ? 'active' : 'pending';
+  if (phase === 'improving') return step === 'improving' ? 'active' : 'completed';
+  if (phase === 'completed') return 'completed';
+  return 'pending';
 }
 
-function normalizeCaptionCoverageText(text: string) {
-  return text
-    .toLowerCase()
-    .replace(/[‘’]/g, "'")
-    .replace(/&amp;/g, 'and')
-    .replace(/[^a-z0-9\s',]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+function getTextScriptRunState(
+  run: TextScriptRunClient | undefined,
+  fallbackMaxIterations?: number | null
+) {
+  const iterations = run?.iterations || [];
+  const maxIterations = run?.maxIterations || fallbackMaxIterations || Math.max(1, iterations.length || 1);
+  const latestIteration = iterations[iterations.length - 1];
+  const activeStep = run?.activeStep;
+  const activeIterationNumber = run?.activeIterationNumber;
 
-function getCaptionCoverageWarning(fullScript: string, sceneTexts: string[]) {
-  const normalizedScript = normalizeCaptionCoverageText(fullScript);
-  const normalizedCaptions = normalizeCaptionCoverageText(sceneTexts.join(' '));
-
-  if (!normalizedScript || !normalizedCaptions) {
-    return null;
+  if (run?.status === 'running' && activeStep) {
+    const currentIteration = activeIterationNumber || latestIteration?.number || 1;
+    return {
+      phase: activeStep,
+      currentIteration,
+      maxIterations,
+      completedIterations:
+        activeStep === 'improving' || activeStep === 'completed'
+          ? Math.max(0, currentIteration - 1)
+          : Math.max(0, currentIteration - 1),
+      statusText: run.activeStatusText,
+    };
   }
 
-  if (normalizedScript === normalizedCaptions) {
-    return null;
+  if (!run || run.status === 'running') {
+    if (!latestIteration) {
+      return {
+        phase: 'writing' as const,
+        currentIteration: 1,
+        maxIterations,
+        completedIterations: 0,
+        statusText: run?.activeStatusText,
+      };
+    }
+
+    if (!latestIteration.reviewContent?.trim() && !latestIteration.reviewDecision) {
+      return {
+        phase: 'reviewing' as const,
+        currentIteration: latestIteration.number,
+        maxIterations,
+        completedIterations: Math.max(0, latestIteration.number - 1),
+        statusText: run?.activeStatusText,
+      };
+    }
+
+    if (latestIteration.reviewDecision === 'needs-improvement' && latestIteration.number < maxIterations) {
+      return {
+        phase: 'improving' as const,
+        currentIteration: latestIteration.number + 1,
+        maxIterations,
+        completedIterations: latestIteration.number,
+        statusText: run?.activeStatusText,
+      };
+    }
   }
 
-  return 'Scene captions do not currently form a lossless chunking of the full <script>. They should preserve every script word in order, keep each caption inside a single sentence boundary, and preserve apostrophes for contractions plus any commas that fall inside the chunk.';
+  return {
+    phase: iterations.length > 0 ? 'completed' as const : 'idle' as const,
+    currentIteration: latestIteration?.number || 0,
+    maxIterations,
+    completedIterations: iterations.filter((iteration) => iteration.reviewDecision && iteration.reviewDecision !== 'manual-edit').length,
+    statusText: run?.activeStatusText,
+  };
 }
 
 async function parseJsonResponse<T>(response: Response, fallbackMessage: string) {
@@ -145,7 +220,7 @@ async function parseJsonResponse<T>(response: Response, fallbackMessage: string)
   return payload;
 }
 
-function MarkdownOrCode({ content, mode }: { content: string; mode: 'markdown' | 'xml' | 'text' }) {
+function MarkdownOrCode({ content, mode }: { content: string; mode: 'markdown' | 'xml' | 'json' | 'text' }) {
   const body = useMemo(() => extractBody(content), [content]);
 
   if (!body.trim()) {
@@ -160,108 +235,30 @@ function MarkdownOrCode({ content, mode }: { content: string; mode: 'markdown' |
     );
   }
 
-  return (
-    <pre className="overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-background/70 p-4 text-xs text-foreground">
-      <code>{body}</code>
-    </pre>
-  );
-}
-
-function pipelineStepBadge(stepStatus: 'completed' | 'active' | 'pending' | 'failed') {
-  if (stepStatus === 'completed') return { label: 'Completed', variant: 'success' as const };
-  if (stepStatus === 'active') return { label: 'In progress', variant: 'info' as const };
-  if (stepStatus === 'failed') return { label: 'Needs attention', variant: 'destructive' as const };
-  return { label: 'Pending', variant: 'secondary' as const };
-}
-
-function DebugContent({ content, format }: { content: string; format: 'text' | 'json' }) {
-  if (!content.trim()) {
-    return <p className="text-xs text-muted-foreground">No data captured.</p>;
-  }
-
-  return (
-    <pre className="overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-background/70 p-3 text-[11px] leading-5 text-foreground">
-      <code>{content}</code>
-    </pre>
-  );
+  return <SyntaxHighlightedCode content={body} language={mode === 'xml' ? 'xml' : mode === 'json' ? 'json' : 'text'} />;
 }
 
 function VideoPipelinePanel({ project }: { project: Project }) {
   const pipeline = project.video.pipeline;
-  const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    if (!pipeline) return;
-    setExpandedSteps((prev) => {
-      const next: Record<string, boolean> = {};
-      for (const step of pipeline.steps) {
-        next[step.id] = prev[step.id] ?? Boolean(project.video.pending && (step.status === 'active' || step.status === 'failed'));
-      }
-      return next;
-    });
-  }, [pipeline, project.video.pending]);
 
   if (!pipeline || pipeline.steps.length === 0) return null;
 
   return (
-    <div className="space-y-4 rounded-lg border border-border p-4">
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-medium text-foreground">Final-video pipeline</h3>
-          <Badge variant={pipeline.status === 'completed' ? 'success' : pipeline.status === 'failed' ? 'destructive' : pipeline.status === 'running' ? 'info' : 'secondary'}>
-            {pipeline.status === 'completed' ? 'Completed' : pipeline.status === 'failed' ? 'Failed' : pipeline.status === 'running' ? 'Running' : 'Idle'}
-          </Badge>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          This shows the actual persisted pipeline artifacts so you can inspect what Qwen and the aligner used, even after the run finishes.
-        </p>
-        <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+    <PipelinePanel
+      title="Final-video pipeline"
+      description="This shows the actual persisted final-video artifacts, including whether narration/alignment were reused from XML Script or regenerated, plus the timing path the renderer actually used."
+      status={pipeline.status}
+      warning={pipeline.warning}
+      steps={pipeline.steps}
+      metadata={(
+        <>
           {pipeline.workDir ? <span>Work dir: {pipeline.workDir}</span> : null}
           {pipeline.transcriptPath ? <span>Transcript: {pipeline.transcriptPath}</span> : null}
           {pipeline.alignmentInputPath ? <span>Alignment input: {pipeline.alignmentInputPath}</span> : null}
           {pipeline.alignmentOutputPath ? <span>Alignment output: {pipeline.alignmentOutputPath}</span> : null}
-        </div>
-        {pipeline.warning ? <ValidationNotice title="Timing/alignment warning" message={pipeline.warning} className="mt-3" /> : null}
-      </div>
-
-      <div className="space-y-3">
-        {pipeline.steps.map((step, index) => {
-          const badge = pipelineStepBadge(step.status);
-          const isExpanded = expandedSteps[step.id] ?? false;
-          return (
-            <div key={step.id} className="rounded-lg border border-border bg-background/40 p-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Step {index + 1}</span>
-                    <h4 className="text-sm font-medium text-foreground">{step.label}</h4>
-                    <Badge variant={badge.variant}>{badge.label}</Badge>
-                  </div>
-                  {step.summary ? <p className="text-sm text-muted-foreground">{step.summary}</p> : null}
-                  {step.updatedAt ? <p className="text-xs text-muted-foreground">Updated {new Date(step.updatedAt).toLocaleString()}</p> : null}
-                </div>
-                {step.details && step.details.length > 0 ? (
-                  <Button type="button" variant="outline" size="sm" onClick={() => setExpandedSteps((prev) => ({ ...prev, [step.id]: !isExpanded }))}>
-                    {isExpanded ? 'Collapse details' : 'Expand details'}
-                  </Button>
-                ) : null}
-              </div>
-
-              {isExpanded && step.details && step.details.length > 0 ? (
-                <div className="mt-4 space-y-3">
-                  {step.details.map((detail) => (
-                    <div key={detail.id} className="space-y-2 rounded-lg border border-border/80 p-3">
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{detail.label}</p>
-                      <DebugContent content={detail.content} format={detail.format} />
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-    </div>
+        </>
+      )}
+    />
   );
 }
 
@@ -278,8 +275,11 @@ function HookSection({
   const [editingHookId, setEditingHookId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [editingRationale, setEditingRationale] = useState('');
+  const [expanded, setExpanded] = useState(!project.hooks.selectedHookId);
+  const [draftSelectedHookId, setDraftSelectedHookId] = useState<string | null>(project.hooks.selectedHookId ?? null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const hooks = project.hooks.generations.flatMap((generation) =>
     generation.options.map((option) => ({
       ...option,
@@ -288,14 +288,47 @@ function HookSection({
       isManual: generation.id.startsWith('manual-'),
     }))
   );
+  const hooksById = useMemo(() => new Map(hooks.map((option) => [option.id, option])), [hooks]);
+  const savedSelectedHookId = project.hooks.selectedHookId ?? null;
+  const savedSelectedHook = savedSelectedHookId ? hooksById.get(savedSelectedHookId) ?? null : null;
+  const editingOriginal = editingHookId ? hooksById.get(editingHookId) ?? null : null;
+  const normalizedEditingText = editingText.trim();
+  const normalizedEditingRationale = editingRationale.trim();
+  const hasDraftEdit = Boolean(
+    editingHookId &&
+      editingOriginal &&
+      (normalizedEditingText !== editingOriginal.text || normalizedEditingRationale !== (editingOriginal.rationale ?? ''))
+  );
+  const hasInvalidDraftEdit = Boolean(editingHookId && !normalizedEditingText);
+  const draftSelectionChanged = (draftSelectedHookId ?? null) !== savedSelectedHookId;
+  const hasUnsavedChanges = draftSelectionChanged || hasDraftEdit;
+  const compactView = Boolean(savedSelectedHook && !expanded);
+  const visibleHooks = compactView && savedSelectedHook ? [savedSelectedHook] : hooks;
   const hookStatus = project.hooks.pending
     ? 'working'
-    : project.hooks.selectedHookText
-      ? 'approved'
-      : hooks.length > 0
-        ? 'needs review'
-        : 'draft';
+    : hasUnsavedChanges
+      ? 'needs review'
+      : project.hooks.selectedHookText
+        ? 'approved'
+        : hooks.length > 0
+          ? 'needs review'
+          : 'draft';
   const manualMutationsBlocked = project.hooks.pending || Boolean(project.hooks.validationError);
+
+  useEffect(() => {
+    setExpanded(!project.hooks.selectedHookId);
+    setDraftSelectedHookId(project.hooks.selectedHookId ?? null);
+    setEditingHookId(null);
+    setEditingText('');
+    setEditingRationale('');
+    setError(null);
+  }, [project.id, project.hooks.selectedHookId]);
+
+  useEffect(() => {
+    if (!expanded && !editingHookId) {
+      setDraftSelectedHookId(savedSelectedHookId);
+    }
+  }, [savedSelectedHookId, expanded, editingHookId]);
 
   async function trigger(action: 'generate' | 'more') {
     setSaving(true);
@@ -319,25 +352,9 @@ function HookSection({
     }
   }
 
-  async function selectHook(option: HookOption) {
-    setSaving(true);
+  function selectHook(option: HookOption) {
+    setDraftSelectedHookId(option.id);
     setError(null);
-
-    try {
-      await parseJsonResponse(
-        await fetch(`/api/short-form-videos/${project.id}/hooks`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'select', hookId: option.id, hookText: option.text }),
-        }),
-        'Failed to select hook'
-      );
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to select hook');
-    } finally {
-      setSaving(false);
-    }
   }
 
   async function addHook() {
@@ -345,7 +362,7 @@ function HookSection({
     setError(null);
 
     try {
-      await parseJsonResponse(
+      const payload = await parseJsonResponse<Project>(
         await fetch(`/api/short-form-videos/${project.id}/hooks`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -359,6 +376,7 @@ function HookSection({
       );
       setManualHookText('');
       setManualHookRationale('');
+      setDraftSelectedHookId(payload.data?.hooks?.selectedHookId ?? payload.data?.selectedHookId ?? draftSelectedHookId);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add hook');
@@ -380,37 +398,28 @@ function HookSection({
     setEditingRationale('');
   }
 
-  async function saveHookEdit() {
-    if (!editingHookId) return;
-
-    setSaving(true);
+  function startChangingHook() {
+    setExpanded(true);
+    setDraftSelectedHookId(savedSelectedHookId);
+    cancelEdit();
     setError(null);
-
-    try {
-      await parseJsonResponse(
-        await fetch(`/api/short-form-videos/${project.id}/hooks`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'edit',
-            hookId: editingHookId,
-            text: editingText,
-            rationale: editingRationale,
-          }),
-        }),
-        'Failed to save hook changes'
-      );
-      cancelEdit();
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save hook changes');
-    } finally {
-      setSaving(false);
-    }
   }
 
-  async function deleteHook(option: HookOption) {
-    if (!window.confirm(`Delete this hook?\n\n${option.text}`)) {
+  function cancelExpandedMode() {
+    setExpanded(false);
+    setDraftSelectedHookId(savedSelectedHookId);
+    cancelEdit();
+    setError(null);
+  }
+
+  async function saveHook() {
+    if (hasInvalidDraftEdit) {
+      setError('Hook text is required');
+      return;
+    }
+
+    if (!hasUnsavedChanges) {
+      setExpanded(false);
       return;
     }
 
@@ -418,7 +427,55 @@ function HookSection({
     setError(null);
 
     try {
-      await parseJsonResponse(
+      if (hasDraftEdit && editingHookId) {
+        await parseJsonResponse(
+          await fetch(`/api/short-form-videos/${project.id}/hooks`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'edit',
+              hookId: editingHookId,
+              text: normalizedEditingText,
+              rationale: normalizedEditingRationale,
+            }),
+          }),
+          'Failed to save hook changes'
+        );
+      }
+
+      if (draftSelectedHookId && draftSelectionChanged) {
+        await parseJsonResponse(
+          await fetch(`/api/short-form-videos/${project.id}/hooks`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'select', hookId: draftSelectedHookId }),
+          }),
+          'Failed to save selected hook'
+        );
+      }
+
+      cancelEdit();
+      setExpanded(false);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save hook');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteHook(option: HookOption) {
+    if (!window.confirm(`Delete this hook?
+
+${option.text}`)) {
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      const payload = await parseJsonResponse<Project>(
         await fetch(`/api/short-form-videos/${project.id}/hooks`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
@@ -429,6 +486,7 @@ function HookSection({
       if (editingHookId === option.id) {
         cancelEdit();
       }
+      setDraftSelectedHookId(payload.data?.hooks?.selectedHookId ?? payload.data?.selectedHookId ?? null);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete hook');
@@ -441,7 +499,7 @@ function HookSection({
     <Card className="space-y-4 p-5">
       <WorkflowSectionHeader
         title="Hook"
-        description="Scribe generates multiple hook options using the content-hooks skill from the topic. You can also add, edit, or delete hooks manually here; selection stays single-select and downstream stages keep using the currently selected hook."
+        description="Scribe generates multiple hook options using the content-hooks skill from the topic. In the default view, only the approved hook stays visible. Use Change hook to open the full editor, compare options, add manual hooks, generate more, and explicitly save the final selection."
         status={hookStatus}
       />
 
@@ -471,21 +529,57 @@ function HookSection({
             />
           ) : null}
         </div>
-      ) : (
+      ) : null}
+
+      {hooks.length > 0 ? (
         <>
+          {expanded ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-background/60 px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={hasUnsavedChanges ? 'secondary' : 'outline'}>
+                  {hasUnsavedChanges ? 'Unsaved changes' : 'Editing hook selection'}
+                </Badge>
+                {savedSelectedHook ? <Badge variant="outline">Approved hook saved</Badge> : null}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {savedSelectedHook ? (
+                  <Button variant="outline" onClick={cancelExpandedMode} disabled={saving}>
+                    Cancel
+                  </Button>
+                ) : null}
+                <Button onClick={() => void saveHook()} disabled={saving || hasInvalidDraftEdit || !hasUnsavedChanges}>
+                  {saving ? 'Saving…' : 'Save hook'}
+                </Button>
+              </div>
+            </div>
+          ) : savedSelectedHook ? (
+            <div className="flex justify-end">
+              <Button variant="outline" onClick={startChangingHook} disabled={saving || project.hooks.pending}>
+                Change hook
+              </Button>
+            </div>
+          ) : null}
+
           <div className="grid gap-3">
-            {hooks.map((option) => {
-              const selected = option.id === project.hooks.selectedHookId;
-              const editing = editingHookId === option.id;
+            {visibleHooks.map((option) => {
+              const isSavedSelected = option.id === savedSelectedHookId;
+              const isDraftSelected = option.id === draftSelectedHookId;
+              const editing = expanded && editingHookId === option.id;
+              const cardClass = isDraftSelected
+                ? isSavedSelected
+                  ? 'border-emerald-500 bg-emerald-500/10'
+                  : 'border-amber-500 bg-amber-500/10'
+                : isSavedSelected
+                  ? 'border-emerald-500/60 bg-emerald-500/5'
+                  : 'border-border';
+
               return (
-                <div
-                  key={option.id}
-                  className={`rounded-lg border p-4 transition-colors ${selected ? 'border-emerald-500 bg-emerald-500/10' : 'border-border'}`}
-                >
+                <div key={option.id} className={`rounded-lg border p-4 transition-colors ${cardClass}`}>
                   {editing ? (
                     <div className="space-y-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        {selected ? <Badge variant="outline">Selected</Badge> : null}
+                        {isSavedSelected ? <Badge variant="outline">Saved</Badge> : null}
+                        {isDraftSelected ? <Badge variant="secondary">Draft selection</Badge> : null}
                         {option.isManual ? <Badge variant="outline">Manual</Badge> : null}
                       </div>
                       <Textarea
@@ -500,11 +594,8 @@ function HookSection({
                         placeholder="Optional rationale"
                       />
                       <div className="flex flex-wrap gap-2">
-                        <Button onClick={() => void saveHookEdit()} disabled={saving || !editingText.trim()}>
-                          {saving ? 'Saving…' : 'Save hook'}
-                        </Button>
                         <Button variant="outline" onClick={cancelEdit} disabled={saving}>
-                          Cancel
+                          Done editing
                         </Button>
                       </div>
                     </div>
@@ -512,25 +603,28 @@ function HookSection({
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <button
                         type="button"
-                        onClick={() => void selectHook(option)}
-                        disabled={saving}
-                        className="flex-1 text-left"
+                        onClick={() => selectHook(option)}
+                        disabled={saving || !expanded}
+                        className={`flex-1 text-left ${expanded ? '' : 'cursor-default'}`}
                       >
                         <div className="flex flex-wrap items-center gap-2">
-                          {selected ? <Badge variant="outline">Selected</Badge> : null}
+                          {isSavedSelected ? <Badge variant="outline">Saved</Badge> : null}
+                          {isDraftSelected && expanded ? <Badge variant="secondary">Draft selection</Badge> : null}
                           {option.isManual ? <Badge variant="outline">Manual</Badge> : null}
                         </div>
                         <p className="mt-2 text-sm text-foreground">{option.text}</p>
                         {option.rationale ? <p className="mt-2 text-xs text-muted-foreground">{option.rationale}</p> : null}
                       </button>
-                      <div className="flex shrink-0 flex-wrap gap-2">
-                        <Button variant="outline" onClick={() => beginEdit(option)} disabled={saving || manualMutationsBlocked}>
-                          Edit
-                        </Button>
-                        <Button variant="outline" onClick={() => void deleteHook(option)} disabled={saving || manualMutationsBlocked}>
-                          Delete
-                        </Button>
-                      </div>
+                      {expanded ? (
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          <Button variant="outline" onClick={() => beginEdit(option)} disabled={saving || manualMutationsBlocked}>
+                            Edit
+                          </Button>
+                          <Button variant="outline" onClick={() => void deleteHook(option)} disabled={saving || manualMutationsBlocked}>
+                            Delete
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                   )}
                 </div>
@@ -538,48 +632,52 @@ function HookSection({
             })}
           </div>
 
-          <div className="space-y-3 border-t border-border pt-4">
-            <div>
-              <h3 className="text-sm font-medium text-foreground">Add hook manually</h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Manual hooks are saved into this project’s hooks.json alongside generated batches. If nothing is selected yet, the newly added hook becomes the selected hook automatically.
-              </p>
-            </div>
-            <Textarea
-              value={manualHookText}
-              onChange={(event) => setManualHookText(event.target.value)}
-              placeholder="Manual hook text (up to 10 words)"
-              className="min-h-[90px]"
-            />
-            <Input
-              value={manualHookRationale}
-              onChange={(event) => setManualHookRationale(event.target.value)}
-              placeholder="Optional rationale"
-            />
-            <Button onClick={() => void addHook()} disabled={saving || manualMutationsBlocked || !manualHookText.trim()}>
-              {saving ? 'Saving…' : 'Add manual hook'}
-            </Button>
-          </div>
+          {expanded ? (
+            <>
+              <div className="space-y-3 border-t border-border pt-4">
+                <div>
+                  <h3 className="text-sm font-medium text-foreground">Add hook manually</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Manual hooks are saved into this project’s hooks.json alongside generated batches. If nothing is selected yet, the newly added hook becomes the selected hook automatically.
+                  </p>
+                </div>
+                <Textarea
+                  value={manualHookText}
+                  onChange={(event) => setManualHookText(event.target.value)}
+                  placeholder="Manual hook text (up to 10 words)"
+                  className="min-h-[90px]"
+                />
+                <Input
+                  value={manualHookRationale}
+                  onChange={(event) => setManualHookRationale(event.target.value)}
+                  placeholder="Optional rationale"
+                />
+                <Button onClick={() => void addHook()} disabled={saving || manualMutationsBlocked || !manualHookText.trim()}>
+                  {saving ? 'Saving…' : 'Add manual hook'}
+                </Button>
+              </div>
 
-          <div className="space-y-3 border-t border-border pt-4">
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional direction for more hooks (e.g. punchier, more contrarian, more curiosity-driven)"
-              className="min-h-[90px]"
-            />
-            <Button variant="outline" onClick={() => void trigger('more')} disabled={project.hooks.pending || saving}>
-              {project.hooks.pending || saving ? 'Generating…' : 'Generate more hooks'}
-            </Button>
-            {project.hooks.pending ? (
-              <PendingNotice
-                label="Generating additional hook options"
-                hint="You can keep this page open — it will refresh automatically while the new batch is being written."
-              />
-            ) : null}
-          </div>
+              <div className="space-y-3 border-t border-border pt-4">
+                <Textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Optional direction for more hooks (e.g. punchier, more contrarian, more curiosity-driven)"
+                  className="min-h-[90px]"
+                />
+                <Button variant="outline" onClick={() => void trigger('more')} disabled={project.hooks.pending || saving}>
+                  {project.hooks.pending || saving ? 'Generating…' : 'Generate more hooks'}
+                </Button>
+                {project.hooks.pending ? (
+                  <PendingNotice
+                    label="Generating additional hook options"
+                    hint="You can keep this page open — it will refresh automatically while the new batch is being written."
+                  />
+                ) : null}
+              </div>
+            </>
+          ) : null}
         </>
-      )}
+      ) : null}
 
       {hooks.length === 0 ? (
         <div className="space-y-3 border-t border-border pt-4">
@@ -609,6 +707,508 @@ function HookSection({
   );
 }
 
+function getXmlPipelineSteps(doc: XmlScriptDoc | null, ids: string[]) {
+  const steps = doc?.pipeline?.steps || [];
+  return ids.map((id) => steps.find((step) => step.id === id)).filter((step): step is NonNullable<typeof steps[number]> => Boolean(step));
+}
+
+function getXmlPipelineStep(doc: XmlScriptDoc | null, id: string) {
+  return doc?.pipeline?.steps.find((step) => step.id === id) || null;
+}
+
+function getXmlPipelineTaskStatus(steps: Array<XmlPipelineStep & { progressPercent?: number; progressLabel?: string }>): 'running' | 'completed' | 'failed' | 'idle' {
+  if (steps.some((step) => step.status === 'failed')) return 'failed';
+  if (steps.some((step) => step.status === 'active')) return 'running';
+  if (steps.length > 0 && steps.every((step) => step.status === 'completed')) return 'completed';
+  return 'idle';
+}
+
+function XmlTaskPipelinePanel({
+  doc,
+  title,
+  description,
+  stepIds,
+}: {
+  doc: XmlScriptDoc | null;
+  title: string;
+  description: string;
+  stepIds: string[];
+}) {
+  const steps = getXmlPipelineSteps(doc, stepIds);
+  if (steps.length === 0) return null;
+
+  return (
+    <PipelinePanel
+      title={title}
+      description={description}
+      status={getXmlPipelineTaskStatus(steps)}
+      warning={doc?.pipeline?.warning}
+      steps={steps}
+    />
+  );
+}
+
+function formatTimelineSeconds(value: number) {
+  if (!Number.isFinite(value)) return '0.0s';
+  return `${value.toFixed(1)}s`;
+}
+
+function VisualCaptionTimeline({ captions, scenes }: { captions: NonNullable<Project['xmlScript']['captions']>; scenes: Project['sceneImages']['scenes'] }) {
+  const visualSpans = scenes.filter((scene) => typeof scene.startTime === 'number' && typeof scene.endTime === 'number' && (scene.endTime || 0) > (scene.startTime || 0));
+  const captionSpans = (captions || []).filter((caption) => caption.end > caption.start);
+  const maxEnd = Math.max(
+    ...visualSpans.map((scene) => scene.endTime || 0),
+    ...captionSpans.map((caption) => caption.end),
+    0,
+  );
+
+  if (maxEnd <= 0 || (visualSpans.length === 0 && captionSpans.length === 0)) return null;
+
+  return (
+    <div className="rounded-lg border border-border bg-background/60 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-medium text-foreground">Caption / visual timeline</h3>
+          <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
+            Top lane = deterministic captions JSON. Bottom lane = XML visual spans. Width is proportional to actual time so you can see overlaps instead of a 1:1 caption-to-image mapping.
+          </p>
+        </div>
+        <Badge variant="outline">{formatTimelineSeconds(maxEnd)} total</Badge>
+      </div>
+      <div className="mt-4 space-y-4 overflow-x-auto pb-2">
+        <div className="min-w-[720px] space-y-3">
+          <div>
+            <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Captions</div>
+            <div className="relative h-16 rounded-md border border-border bg-background/70">
+              {captionSpans.map((caption) => (
+                <div
+                  key={caption.id}
+                  className="absolute top-2 h-12 overflow-hidden rounded bg-primary/15 px-2 py-1 text-[11px] text-foreground ring-1 ring-primary/30"
+                  style={{
+                    left: `${(caption.start / maxEnd) * 100}%`,
+                    width: `${Math.max(3, ((caption.end - caption.start) / maxEnd) * 100)}%`,
+                  }}
+                  title={`${caption.text} (${formatTimelineSeconds(caption.start)} → ${formatTimelineSeconds(caption.end)})`}
+                >
+                  <div className="truncate font-medium">{caption.text}</div>
+                  <div className="truncate text-[10px] text-muted-foreground">{formatTimelineSeconds(caption.start)} → {formatTimelineSeconds(caption.end)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Visuals</div>
+            <div className="relative h-16 rounded-md border border-border bg-background/70">
+              {visualSpans.map((scene) => (
+                <div
+                  key={scene.id}
+                  className="absolute top-2 h-12 overflow-hidden rounded bg-emerald-500/15 px-2 py-1 text-[11px] text-foreground ring-1 ring-emerald-500/30"
+                  style={{
+                    left: `${((scene.startTime || 0) / maxEnd) * 100}%`,
+                    width: `${Math.max(3, (((scene.endTime || 0) - (scene.startTime || 0)) / maxEnd) * 100)}%`,
+                  }}
+                  title={`${scene.caption} (${formatTimelineSeconds(scene.startTime || 0)} → ${formatTimelineSeconds(scene.endTime || 0)})`}
+                >
+                  <div className="truncate font-medium">V{scene.number} · {scene.caption}</div>
+                  <div className="truncate text-[10px] text-muted-foreground">{formatTimelineSeconds(scene.startTime || 0)} → {formatTimelineSeconds(scene.endTime || 0)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function XMLScriptSection({ project, onProjectRefresh }: { project: Project; onProjectRefresh: () => Promise<unknown> }) {
+  const [doc, setDoc] = useState<XmlScriptDoc | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [requestNotes, setRequestNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([]);
+  const [defaultVoiceId, setDefaultVoiceId] = useState<string>('');
+  const [defaultCaptionMaxWords, setDefaultCaptionMaxWords] = useState<number | null>(null);
+  const [projectCaptionMaxWordsOverride, setProjectCaptionMaxWordsOverride] = useState<string>(project.captionMaxWordsOverride ? String(project.captionMaxWordsOverride) : '');
+  const [savingVoice, setSavingVoice] = useState(false);
+  const [savingCaptionMaxWords, setSavingCaptionMaxWords] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [captionMaxWordsError, setCaptionMaxWordsError] = useState<string | null>(null);
+  const shouldPoll = Boolean(project.id && (loading || doc?.pending || doc?.pipeline?.status === 'running'));
+
+  const load = useCallback(async () => {
+    try {
+      setRefreshing(true);
+      const payload = await parseJsonResponse<XmlScriptDoc>(await fetch(`/api/short-form-videos/${project.id}/xml-script`, { cache: 'no-store' }), 'Failed to load XML script');
+      setDoc(payload.data || null);
+      setDraft(payload.data?.content || '');
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load XML script');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [project.id]);
+
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!shouldPoll) return;
+    const timer = window.setInterval(() => { void load(); }, 4000);
+    return () => window.clearInterval(timer);
+  }, [load, shouldPoll]);
+
+  useEffect(() => {
+    setProjectCaptionMaxWordsOverride(project.captionMaxWordsOverride ? String(project.captionMaxWordsOverride) : '');
+  }, [project.captionMaxWordsOverride]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadVoiceOptions() {
+      try {
+        const payload = await parseJsonResponse<WorkflowSettingsResponse>(
+          await fetch('/api/short-form-videos/settings', { cache: 'no-store' }),
+          'Failed to load voice settings'
+        );
+        const nextVoices = Array.isArray(payload.data?.videoRender?.voices)
+          ? payload.data.videoRender.voices.filter(
+              (voice): voice is VoiceOption => Boolean(voice && typeof voice.id === 'string' && typeof voice.name === 'string')
+            )
+          : [];
+        if (!cancelled) {
+          setVoiceOptions(nextVoices);
+          setDefaultVoiceId(payload.data?.videoRender?.defaultVoiceId || '');
+          setDefaultCaptionMaxWords(typeof payload.data?.videoRender?.captionMaxWords === 'number' ? payload.data.videoRender.captionMaxWords : null);
+        }
+      } catch {
+        if (!cancelled) {
+          setVoiceOptions([]);
+          setDefaultVoiceId('');
+          setDefaultCaptionMaxWords(null);
+        }
+      }
+    }
+
+    void loadVoiceOptions();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function saveManual(status?: string) {
+    setSaving(true);
+    try {
+      const payload = await parseJsonResponse<XmlScriptDoc>(await fetch(`/api/short-form-videos/${project.id}/xml-script`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: draft, ...(status ? { status } : {}) }),
+      }), 'Failed to save XML script');
+      setDoc(payload.data || null);
+      setEditing(false);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save XML script');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveProjectVoice(voiceId: string) {
+    setSavingVoice(true);
+    setVoiceError(null);
+    try {
+      await parseJsonResponse(
+        await fetch(`/api/short-form-videos/${project.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ selectedVoiceId: voiceId }),
+        }),
+        'Failed to update XML narration voice'
+      );
+      await onProjectRefresh();
+    } catch (err) {
+      setVoiceError(err instanceof Error ? err.message : 'Failed to update XML narration voice');
+    } finally {
+      setSavingVoice(false);
+    }
+  }
+
+  async function saveProjectCaptionMaxWords(value: string | null) {
+    setSavingCaptionMaxWords(true);
+    setCaptionMaxWordsError(null);
+    try {
+      await parseJsonResponse(
+        await fetch(`/api/short-form-videos/${project.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ captionMaxWordsOverride: value === null ? null : Math.max(2, Math.min(12, Number(value) || 6)) }),
+        }),
+        'Failed to update XML caption max words override'
+      );
+      await onProjectRefresh();
+    } catch (err) {
+      setCaptionMaxWordsError(err instanceof Error ? err.message : 'Failed to update XML caption max words override');
+    } finally {
+      setSavingCaptionMaxWords(false);
+    }
+  }
+
+  const activeVoiceLabel = project.selectedVoiceName || voiceOptions.find((voice) => voice.id === defaultVoiceId)?.name || 'default voice';
+  const effectiveCaptionMaxWords = project.captionMaxWordsOverride || defaultCaptionMaxWords;
+  const narrationStatus = getXmlPipelineTaskStatus(getXmlPipelineSteps(doc, ['narration', 'alignment']));
+  const captionsStep = getXmlPipelineStep(doc, 'captions');
+  const captionsStatus = getXmlPipelineTaskStatus(getXmlPipelineSteps(doc, ['captions']));
+  const visualsStep = getXmlPipelineStep(doc, 'xml');
+  const visualsStatus = getXmlPipelineTaskStatus(getXmlPipelineSteps(doc, ['xml']));
+  const captionsJsonDetail = captionsStep?.details?.find((detail) => detail.id === 'caption-plan') || null;
+
+  async function triggerTask(task: 'full' | 'narration' | 'captions' | 'visuals') {
+    setSaving(true);
+    try {
+      const payload = await parseJsonResponse<XmlScriptDoc>(await fetch(`/api/short-form-videos/${project.id}/xml-script`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task, notes: requestNotes }),
+      }), 'Failed to start XML workflow task');
+      if (task === 'visuals' || task === 'full') {
+        setRequestNotes('');
+      }
+      setDoc(payload.data || null);
+      setDraft(payload.data?.content || '');
+      setError(null);
+      void onProjectRefresh().catch(() => undefined);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start XML workflow task');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card id="narration-audio" className="space-y-4 p-5">
+        <WorkflowSectionHeader
+          title="Narration Audio"
+          description="Generate the reusable narration WAV and forced alignment JSON first. Final Video reuses these exact artifacts instead of regenerating them."
+          status={narrationStatus === 'running' ? 'working' : narrationStatus === 'completed' ? 'approved' : narrationStatus === 'failed' ? 'failed' : 'draft'}
+        />
+        {error ? <ValidationNotice title="XML workflow issue" message={error} /> : null}
+        {voiceError ? <ValidationNotice title="Narration voice issue" message={voiceError} /> : null}
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => void triggerTask('narration')} disabled={saving || doc?.pending}>
+            {saving ? 'Starting…' : doc?.audioUrl ? 'Regenerate narration audio' : 'Generate narration audio'}
+          </Button>
+          <Button variant="outline" onClick={() => void load()} disabled={refreshing}>
+            {refreshing ? 'Refreshing…' : 'Refresh'}
+          </Button>
+        </div>
+        <div className="rounded-lg border border-border bg-background/60 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium text-foreground">Voice for narration</h3>
+              <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
+                Choose the narration voice before running Narration Audio. Captions and visuals planning can then rerun independently against the same narration/alignment artifacts.
+              </p>
+            </div>
+            <Link href="/short-form-video/settings#tts-voice" target="_blank" rel="noreferrer" className="text-xs text-muted-foreground hover:text-foreground">
+              Open voice library ↗
+            </Link>
+          </div>
+          <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
+            <Select
+              value={project.selectedVoiceId || defaultVoiceId || ''}
+              onChange={(event) => void saveProjectVoice(event.target.value)}
+              disabled={savingVoice || voiceOptions.length === 0 || Boolean(doc?.pending)}
+              className="max-w-sm"
+            >
+              {voiceOptions.map((voice) => (
+                <option key={voice.id} value={voice.id}>
+                  {voice.name}{voice.id === defaultVoiceId ? ' (default)' : ''}
+                </option>
+              ))}
+            </Select>
+            <div className="text-xs text-muted-foreground">
+              {savingVoice
+                ? 'Saving narration voice…'
+                : project.selectedVoiceName
+                  ? `Current narration voice: ${project.selectedVoiceName}`
+                  : defaultVoiceId
+                    ? `Using the current default voice: ${activeVoiceLabel}`
+                    : 'Using the fallback default voice.'}
+            </div>
+          </div>
+        </div>
+        <XmlTaskPipelinePanel
+          doc={doc}
+          title="Narration Audio pipeline"
+          description="This task has two pipeline steps: generate narration audio, then run forced alignment."
+          stepIds={['narration', 'alignment']}
+        />
+        {doc?.audioUrl ? (
+          <div className="space-y-2 rounded-lg border border-border bg-background/60 p-4">
+            <div>
+              <h3 className="text-sm font-medium text-foreground">Generated narration preview</h3>
+              <p className="mt-1 text-xs text-muted-foreground">This narration audio will be reused by the final video render.</p>
+            </div>
+            <audio src={doc.audioUrl} controls className="w-full" preload="metadata" />
+          </div>
+        ) : null}
+      </Card>
+
+      <Card id="plan-captions" className="space-y-4 p-5">
+        <WorkflowSectionHeader
+          title="Plan Captions"
+          description="Generate the deterministic caption JSON from the existing transcript + forced alignment. This reruns independently without regenerating narration audio."
+          status={captionsStatus === 'running' ? 'working' : captionsStatus === 'completed' ? 'approved' : captionsStatus === 'failed' ? 'failed' : 'draft'}
+        />
+        {captionMaxWordsError ? <ValidationNotice title="Caption settings issue" message={captionMaxWordsError} /> : null}
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => void triggerTask('captions')} disabled={saving || doc?.pending}>
+            {saving ? 'Starting…' : (doc?.captions?.length || 0) > 0 ? 'Re-plan captions' : 'Plan captions'}
+          </Button>
+          <Button variant="outline" onClick={() => void load()} disabled={refreshing}>
+            {refreshing ? 'Refreshing…' : 'Refresh'}
+          </Button>
+        </div>
+        <div className="rounded-lg border border-border bg-background/60 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium text-foreground">Caption max words</h3>
+              <p className="mt-1 text-xs text-muted-foreground">Optional project override for deterministic caption chunking. Leave blank to use the global setting.</p>
+            </div>
+            <Link href="/short-form-video/settings#music-library" target="_blank" rel="noreferrer" className="text-xs text-muted-foreground hover:text-foreground">
+              Open global setting ↗
+            </Link>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-[auto_auto_1fr] sm:items-center">
+            <Input
+              type="number"
+              min={2}
+              max={12}
+              value={projectCaptionMaxWordsOverride}
+              onChange={(event) => setProjectCaptionMaxWordsOverride(event.target.value)}
+              placeholder={defaultCaptionMaxWords ? String(defaultCaptionMaxWords) : 'Default'}
+              className="w-24"
+              disabled={savingCaptionMaxWords || Boolean(doc?.pending)}
+            />
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => void saveProjectCaptionMaxWords(projectCaptionMaxWordsOverride || null)} disabled={savingCaptionMaxWords || Boolean(doc?.pending)}>
+                {savingCaptionMaxWords ? 'Saving…' : 'Save'}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => void saveProjectCaptionMaxWords(null)} disabled={savingCaptionMaxWords || !project.captionMaxWordsOverride || Boolean(doc?.pending)}>
+                Reset
+              </Button>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {savingCaptionMaxWords
+                ? 'Saving caption override…'
+                : project.captionMaxWordsOverride
+                  ? `Effective max: ${project.captionMaxWordsOverride} words (project override)`
+                  : effectiveCaptionMaxWords
+                    ? `Effective max: ${effectiveCaptionMaxWords} words (global default)`
+                    : 'Uses the global default when caption planning starts.'}
+            </div>
+          </div>
+        </div>
+        {captionsStatus === 'running' ? (
+          <PendingNotice
+            label={captionsStep?.progressLabel || 'Planning captions'}
+            hint={captionsStep?.summary || 'Reusing narration + alignment artifacts to rebuild deterministic captions.'}
+          />
+        ) : null}
+        <div className="rounded-lg border border-border bg-background/60 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium text-foreground">Deterministic captions JSON</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {captionsStep?.summary || 'Caption planning output appears here after the deterministic caption pass completes.'}
+              </p>
+            </div>
+            <StatusBadge
+              status={captionsStatus === 'running' ? 'working' : captionsStatus === 'completed' ? 'completed' : captionsStatus === 'failed' ? 'failed' : 'draft'}
+              compact
+            />
+          </div>
+          {captionsJsonDetail ? (
+            <details className="mt-4 rounded-md border border-border bg-background/70 p-3">
+              <summary className="cursor-pointer text-sm font-medium text-foreground">View caption JSON</summary>
+              <div className="mt-3">
+                <MarkdownOrCode content={captionsJsonDetail.content} mode="json" />
+              </div>
+            </details>
+          ) : (
+            <div className="mt-4 text-sm text-muted-foreground">No caption JSON yet. Run Plan Captions after Narration Audio finishes.</div>
+          )}
+        </div>
+      </Card>
+
+      <Card id="plan-visuals" className="space-y-4 p-5">
+        <WorkflowSectionHeader
+          title="Plan Visuals"
+          description="Write the visuals-only XML artifact from the approved script plus the existing narration/alignment/caption artifacts."
+          status={visualsStatus === 'running' ? 'working' : doc?.status || 'draft'}
+        />
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => void triggerTask('visuals')} disabled={saving || doc?.pending}>
+            {saving ? 'Starting…' : doc?.exists ? 'Re-plan visuals' : 'Plan visuals'}
+          </Button>
+          {doc?.exists ? (
+            <Button variant="secondary" onClick={() => void saveManual('approved')} disabled={saving}>
+              Approve XML script
+            </Button>
+          ) : null}
+          <Button variant="outline" onClick={() => void setEditing((current) => !current)}>{editing ? 'Cancel edit' : 'Edit XML'}</Button>
+          <Button variant="outline" onClick={() => void load()} disabled={refreshing}>
+            {refreshing ? 'Refreshing…' : 'Refresh'}
+          </Button>
+        </div>
+        <div className="rounded-lg border border-border bg-background/60 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium text-foreground">Visual planning notes</h3>
+              <p className="mt-1 text-xs text-muted-foreground">Preferred XML schema: <code>&lt;assets&gt;</code> defines reusable green-screen image assets, and <code>&lt;timeline&gt;</code> defines timed visual entries only. Captions live in a separate deterministic JSON artifact.</p>
+            </div>
+            <StatusBadge
+              status={visualsStatus === 'running' ? 'working' : doc?.status || 'draft'}
+              compact
+            />
+          </div>
+          <Textarea value={requestNotes} onChange={(e) => setRequestNotes(e.target.value)} className="mt-4 min-h-[84px]" placeholder="Optional notes for the visuals planning pass — for example new visual direction or debugging notes." />
+        </div>
+        {visualsStatus === 'running' ? (
+          <PendingNotice
+            label={visualsStep?.progressLabel || 'Planning visuals'}
+            hint={visualsStep?.summary || 'Reusing narration, alignment, and caption artifacts to write the XML visuals plan.'}
+          />
+        ) : null}
+        {loading && !doc ? <OrbitLoader label="Loading XML script" /> : null}
+        {editing ? (
+          <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+            <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} className="min-h-[320px] font-mono text-xs" />
+            <div className="flex gap-2">
+              <Button onClick={() => void saveManual()} disabled={saving}>Save XML</Button>
+              <Button variant="ghost" onClick={() => { setEditing(false); setDraft(doc?.content || ''); }}>Discard</Button>
+            </div>
+          </div>
+        ) : doc?.content ? (
+          <details className="rounded-lg border border-border bg-background/60 p-4">
+            <summary className="cursor-pointer text-sm font-medium text-foreground">Generated XML script</summary>
+            <p className="mt-2 text-xs text-muted-foreground">Collapsed by default to keep the planning section focused. Expand when you want to inspect the XML.</p>
+            <div className="mt-4">
+              <MarkdownOrCode content={doc.content} mode="xml" />
+            </div>
+          </details>
+        ) : <div className="text-sm text-muted-foreground">No XML script yet. Run Plan Visuals after the text script is approved.</div>}
+      </Card>
+    </div>
+  );
+}
+
 function StageReviewSection({
   projectId,
   title,
@@ -622,6 +1222,7 @@ function StageReviewSection({
   onRefresh,
   extra,
   collapseDocumentByDefault = false,
+  showExtraWhenEmpty = false,
 }: {
   projectId: string;
   title: string;
@@ -635,15 +1236,14 @@ function StageReviewSection({
   onRefresh: () => Promise<unknown>;
   extra?: React.ReactNode;
   collapseDocumentByDefault?: boolean;
+  showExtraWhenEmpty?: boolean;
 }) {
-  const [threads, setThreads] = useState<FeedbackThread[]>([]);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(doc.content);
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(doc.status || 'draft');
   const [actionError, setActionError] = useState<string | null>(null);
-  const [threadsLoading, setThreadsLoading] = useState(false);
   const [documentExpanded, setDocumentExpanded] = useState(!collapseDocumentByDefault);
 
   useEffect(() => {
@@ -656,34 +1256,6 @@ function StageReviewSection({
       setDocumentExpanded(!collapseDocumentByDefault);
     }
   }, [doc.exists, collapseDocumentByDefault]);
-
-  const fetchThreads = useCallback(async () => {
-    setThreadsLoading(true);
-    try {
-      const payload = await parseJsonResponse<{ threads?: FeedbackThread[] }>(
-        await fetch(`/api/short-form-videos/${projectId}/workflow/${stage}/feedback`),
-        `Failed to load ${title.toLowerCase()} feedback`
-      );
-      setActionError(null);
-      setThreads(payload.data?.threads || []);
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : `Failed to load ${title.toLowerCase()} feedback`);
-    } finally {
-      setThreadsLoading(false);
-    }
-  }, [projectId, stage, title]);
-
-  useEffect(() => {
-    void fetchThreads();
-  }, [fetchThreads]);
-
-  useEffect(() => {
-    if (!doc.pending) return;
-    const id = window.setInterval(() => {
-      void fetchThreads();
-    }, 5000);
-    return () => window.clearInterval(id);
-  }, [doc.pending, fetchThreads]);
 
   async function triggerGenerate() {
     setSaving(true);
@@ -755,62 +1327,10 @@ function StageReviewSection({
 
       setNote('');
       await onRefresh();
-      await fetchThreads();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : `Failed to update ${title.toLowerCase()} status`);
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function addComment(content: string) {
-    setActionError(null);
-    try {
-      await parseJsonResponse(
-        await fetch(`/api/short-form-videos/${projectId}/workflow/${stage}/feedback`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content }),
-        }),
-        `Failed to add ${title.toLowerCase()} comment`
-      );
-      await fetchThreads();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : `Failed to add ${title.toLowerCase()} comment`);
-    }
-  }
-
-  async function addReply(threadId: string, content: string) {
-    setActionError(null);
-    try {
-      await parseJsonResponse(
-        await fetch(`/api/short-form-videos/${projectId}/workflow/${stage}/feedback/${threadId}/comments`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content, author: 'user' }),
-        }),
-        `Failed to reply on ${title.toLowerCase()}`
-      );
-      await fetchThreads();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : `Failed to reply on ${title.toLowerCase()}`);
-    }
-  }
-
-  async function updateThread(threadId: string, nextStatus: 'open' | 'resolved') {
-    setActionError(null);
-    try {
-      await parseJsonResponse(
-        await fetch(`/api/short-form-videos/${projectId}/workflow/${stage}/feedback/${threadId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: nextStatus }),
-        }),
-        `Failed to update ${title.toLowerCase()} feedback thread`
-      );
-      await fetchThreads();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : `Failed to update ${title.toLowerCase()} feedback thread`);
     }
   }
 
@@ -896,6 +1416,7 @@ function StageReviewSection({
               hint="This page keeps polling while the background job runs."
             />
           ) : null}
+          {showExtraWhenEmpty ? extra : null}
         </div>
       ) : (
         <>
@@ -992,61 +1513,338 @@ function StageReviewSection({
           )}
 
           {extra}
-
-          {threadsLoading && threads.length === 0 ? (
-            <div className="rounded-lg border border-border p-4">
-              <OrbitLoader label={`Loading ${title.toLowerCase()} feedback`} />
-            </div>
-          ) : null}
-
-          <TopLevelComments
-            threads={threads}
-            deliverableId={`${projectId}:${stage}`}
-            onCreateThread={addComment}
-            onAddComment={addReply}
-            onResolveThread={(threadId) => updateThread(threadId, 'resolved')}
-            onReopenThread={(threadId) => updateThread(threadId, 'open')}
-          />
         </>
       )}
     </Card>
   );
 }
 
-function ScriptSummaryPanel({ content }: { content: string }) {
-  const body = useMemo(() => extractBody(content), [content]);
-  const fullScript = useMemo(() => extractXmlTagContent(body, 'script'), [body]);
-  const sceneTexts = useMemo(() => extractXmlTagContents(body, 'text'), [body]);
-  const captionCoverageWarning = useMemo(() => getCaptionCoverageWarning(fullScript, sceneTexts), [fullScript, sceneTexts]);
+function TextScriptHistoryPanel({
+  project,
+  onProjectRefresh,
+}: {
+  project: Project;
+  onProjectRefresh: () => Promise<unknown>;
+}) {
+  const body = useMemo(() => extractBody(project.script.content).trim(), [project.script.content]);
+  const sentences = useMemo(() => body.split(/(?<=[.!?])\s+/).filter(Boolean), [body]);
+  const firstSentence = sentences[0] || '';
+  const firstSentenceWordCount = useMemo(() => firstSentence ? firstSentence.split(/\s+/).filter(Boolean).length : 0, [firstSentence]);
+  const runs = useMemo(() => project.script.textScriptRuns || [], [project.script.textScriptRuns]);
+  const latestRun = runs[0];
+  const [selectedRunId, setSelectedRunId] = useState<string>(latestRun?.runId || '');
+  const [selectedIterationNumber, setSelectedIterationNumber] = useState<number>(0);
+  const [compareIterationNumber, setCompareIterationNumber] = useState<number>(0);
+  const [projectOverride, setProjectOverride] = useState<string>(project.script.textScriptMaxIterationsOverride ? String(project.script.textScriptMaxIterationsOverride) : '');
+  const [defaultMaxIterations, setDefaultMaxIterations] = useState<number | null>(null);
+  const [savingOverride, setSavingOverride] = useState(false);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
 
-  if (!fullScript) {
-    return (
-      <ValidationNotice
-        title="Full spoken script missing"
-        message="This XML should include a top-level <script> block. That full script is what Qwen TTS and forced alignment now use."
-      />
-    );
+  useEffect(() => {
+    setSelectedRunId(latestRun?.runId || '');
+    setSelectedIterationNumber(0);
+    setCompareIterationNumber(0);
+  }, [latestRun?.runId]);
+
+  useEffect(() => {
+    setProjectOverride(project.script.textScriptMaxIterationsOverride ? String(project.script.textScriptMaxIterationsOverride) : '');
+  }, [project.script.textScriptMaxIterationsOverride]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDefaults() {
+      try {
+        const payload = await parseJsonResponse<WorkflowSettingsResponse>(
+          await fetch('/api/short-form-videos/settings'),
+          'Failed to load text-script settings'
+        );
+        const value = payload.data?.textScript?.defaultMaxIterations;
+        if (!cancelled && typeof value === 'number') {
+          setDefaultMaxIterations(value);
+        }
+      } catch {
+        if (!cancelled) setDefaultMaxIterations(null);
+      }
+    }
+    void loadDefaults();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedRun = useMemo(
+    () => runs.find((run) => run.runId === selectedRunId) || latestRun,
+    [latestRun, runs, selectedRunId]
+  );
+
+  useEffect(() => {
+    if (!selectedRun) {
+      setSelectedIterationNumber(0);
+      setCompareIterationNumber(0);
+      return;
+    }
+    const finalIteration = selectedRun.iterations.find((iteration) => iteration.isFinal)
+      || selectedRun.iterations[selectedRun.iterations.length - 1];
+    const nextSelected = finalIteration?.number || 0;
+    setSelectedIterationNumber((current) => {
+      if (current && selectedRun.iterations.some((iteration) => iteration.number === current)) return current;
+      return nextSelected;
+    });
+    setCompareIterationNumber((current) => {
+      if (current && selectedRun.iterations.some((iteration) => iteration.number === current)) return current;
+      return nextSelected > 1 ? nextSelected - 1 : 0;
+    });
+  }, [selectedRun]);
+
+  const selectedIteration = selectedRun?.iterations.find((iteration) => iteration.number === selectedIterationNumber)
+    || selectedRun?.iterations.find((iteration) => iteration.isFinal)
+    || selectedRun?.iterations[selectedRun?.iterations.length - 1];
+  const compareIteration = selectedRun?.iterations.find((iteration) => iteration.number === compareIterationNumber);
+  const selectedIterationBody = selectedIteration ? extractBody(selectedIteration.draftContent).trim() : body;
+  const compareIterationBody = compareIteration ? extractBody(compareIteration.draftContent).trim() : '';
+  const effectiveMaxIterations = project.script.textScriptMaxIterationsOverride || defaultMaxIterations || latestRun?.maxIterations || 1;
+  const activeRun = latestRun?.status === 'running' ? latestRun : undefined;
+  const runState = getTextScriptRunState(activeRun, effectiveMaxIterations);
+  const showPipelineState = project.script.pending;
+  const selectedDraftTitle = selectedIteration
+    ? `Iteration ${selectedIteration.number} draft${selectedIteration.isFinal ? ' · final' : ''}${selectedIteration.kind === 'manual' ? ' · manual edit' : ''}`
+    : 'Approved narration text';
+  const selectedDraftDescription = selectedIteration
+    ? compareIteration
+      ? `Showing the full draft for iteration ${selectedIteration.number}. Diffing against iteration ${compareIteration.number} below.`
+      : `Showing the full saved draft for iteration ${selectedIteration.number}. No comparison selected.`
+    : 'This plain script becomes the narration source of truth. The XML Script step below will generate the AI audio first, then forced alignment, then deterministic captions JSON, then the visuals-only XML.';
+
+  const diff = useMemo(() => {
+    if (!selectedIteration || !compareIteration || compareIteration.number === selectedIteration.number) return null;
+    return {
+      ...generateClientDiff(compareIterationBody, selectedIterationBody, 'script.md'),
+      fromVersion: compareIteration.number,
+      toVersion: selectedIteration.number,
+      fromTimestamp: compareIteration.updatedAt || compareIteration.createdAt || '',
+      toTimestamp: selectedIteration.updatedAt || selectedIteration.createdAt || '',
+    };
+  }, [compareIteration, compareIterationBody, selectedIteration, selectedIterationBody]);
+
+  async function saveProjectOverride(value: string | null) {
+    setSavingOverride(true);
+    setOverrideError(null);
+    try {
+      await parseJsonResponse(
+        await fetch(`/api/short-form-videos/${project.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ textScriptMaxIterationsOverride: value === null ? null : Math.max(1, Math.min(8, Number(value) || 1)) }),
+        }),
+        'Failed to save text-script override'
+      );
+      await onProjectRefresh();
+    } catch (err) {
+      setOverrideError(err instanceof Error ? err.message : 'Failed to save text-script override');
+    } finally {
+      setSavingOverride(false);
+    }
   }
 
   return (
-    <div className="space-y-3">
-      {captionCoverageWarning ? (
+    <div className="space-y-4">
+      {!body && !selectedIterationBody ? (
         <ValidationNotice
-          title="Scene caption coverage warning"
-          message={captionCoverageWarning}
+          title="Text script missing"
+          message="This section should contain only the approved narration text. The XML Script step will generate narration audio, forced alignment, deterministic captions JSON, and visuals from it."
         />
       ) : null}
+
+      {firstSentence && firstSentenceWordCount > 10 ? (
+        <ValidationNotice
+          title="Hook length warning"
+          message={`The first sentence currently looks like ${firstSentenceWordCount} words. The hook should stay at 10 words or fewer.`}
+        />
+      ) : null}
+
+      {overrideError ? <ValidationNotice title="Text-script override failed" message={overrideError} /> : null}
+
+      <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-medium text-foreground">Text script status</h3>
+              {selectedRun ? <Badge variant="secondary">Run {selectedRun.runId.slice(0, 8)}</Badge> : null}
+              {selectedRun ? (
+                <Badge variant={selectedRun.status === 'passed' ? 'success' : selectedRun.status === 'max-iterations-reached' || selectedRun.status === 'failed' ? 'destructive' : 'secondary'}>
+                  {selectedRun.status.replace(/-/g, ' ')}
+                </Badge>
+              ) : null}
+              {selectedIteration?.overallGrade !== undefined ? <Badge variant="outline">Grade {selectedIteration.overallGrade}/100</Badge> : null}
+              {showPipelineState ? (
+                <Badge variant="secondary">
+                  Iteration {runState.currentIteration || 1} / {runState.maxIterations}
+                </Badge>
+              ) : null}
+              {showPipelineState ? <Badge variant="outline">{getTextScriptPhaseLabel(runState.phase)}</Badge> : null}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Compact iteration controls live here so the script section stays useful without getting bulky.
+            </p>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Effective max: {project.script.textScriptMaxIterationsOverride ? `${project.script.textScriptMaxIterationsOverride} (project override)` : defaultMaxIterations ? `${defaultMaxIterations} (global default)` : 'global default'}
+          </div>
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <div className="space-y-1">
+            <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Run</label>
+            <Select value={selectedRun?.runId || ''} onChange={(event) => setSelectedRunId(event.target.value)}>
+              {runs.length > 0 ? runs.map((run) => (
+                <option key={run.runId} value={run.runId}>
+                  {run.runId.slice(0, 8)} · {run.status.replace(/-/g, ' ')}
+                </option>
+              )) : <option value="">No runs yet</option>}
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">View draft</label>
+            <Select value={selectedIteration ? String(selectedIteration.number) : ''} onChange={(event) => setSelectedIterationNumber(Number(event.target.value))}>
+              {selectedRun?.iterations.length ? selectedRun.iterations.map((iteration) => (
+                <option key={iteration.number} value={iteration.number}>
+                  Iteration {iteration.number}{iteration.isFinal ? ' · final' : ''}{iteration.kind === 'manual' ? ' · manual' : ''}
+                </option>
+              )) : <option value="">No iterations yet</option>}
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Compare</label>
+            <Select value={compareIteration ? String(compareIteration.number) : '0'} onChange={(event) => setCompareIterationNumber(Number(event.target.value))}>
+              <option value="0">No comparison</option>
+              {selectedRun?.iterations
+                .filter((iteration) => !selectedIteration || iteration.number !== selectedIteration.number)
+                .map((iteration) => (
+                  <option key={iteration.number} value={iteration.number}>
+                    Iteration {iteration.number}{iteration.kind === 'manual' ? ' · manual' : ''}
+                  </option>
+                ))}
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Max iters</label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={1}
+                max={8}
+                value={projectOverride}
+                onChange={(event) => setProjectOverride(event.target.value)}
+                placeholder={defaultMaxIterations ? String(defaultMaxIterations) : 'Default'}
+                className="w-20"
+              />
+              <Button size="sm" onClick={() => void saveProjectOverride(projectOverride || null)} disabled={savingOverride}>
+                {savingOverride ? 'Saving…' : 'Save'}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => void saveProjectOverride(null)} disabled={savingOverride || !project.script.textScriptMaxIterationsOverride}>
+                Reset
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {showPipelineState ? (
+          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Live iterative pipeline</span>
+              <span>Current iteration {runState.currentIteration || 1} of up to {runState.maxIterations}</span>
+              {runState.completedIterations > 0 ? <span>· {runState.completedIterations} completed cycle{runState.completedIterations === 1 ? '' : 's'}</span> : null}
+            </div>
+            {runState.statusText ? (
+              <p className="mt-2 text-xs text-muted-foreground">{runState.statusText}</p>
+            ) : null}
+            <div className="mt-3 grid gap-2 md:grid-cols-3">
+              {([
+                ['writing', 'Write draft'],
+                ['reviewing', 'Grade draft'],
+                ['improving', 'Improve draft'],
+              ] as const).map(([stepId, label]) => {
+                const stepStatus = getTextScriptPhaseStatus(runState.phase, stepId);
+                return (
+                  <div
+                    key={stepId}
+                    className={`rounded-md border px-3 py-2 text-sm ${
+                      stepStatus === 'active'
+                        ? 'border-emerald-500/40 bg-emerald-500/10 text-foreground'
+                        : stepStatus === 'completed'
+                          ? 'border-border bg-background/70 text-muted-foreground'
+                          : 'border-border/70 bg-background/40 text-muted-foreground/80'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">{label}</span>
+                      <Badge variant={stepStatus === 'active' ? 'success' : stepStatus === 'completed' ? 'secondary' : 'outline'}>
+                        {stepStatus === 'active' ? 'Active' : stepStatus === 'completed' ? 'Done' : 'Next'}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs opacity-80">
+                      {stepId === 'writing'
+                        ? `Iteration ${runState.currentIteration || 1}`
+                        : stepId === 'reviewing'
+                          ? `Draft ${runState.currentIteration || 1}`
+                          : `Prepare draft ${runState.currentIteration || 1}`}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
       <div className="space-y-3 rounded-lg border border-border p-4">
         <div>
-          <h3 className="text-sm font-medium text-foreground">Full spoken script</h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            This is the narration source of truth. Scene captions should be a lossless chunking of it: 10 or fewer words per scene, no dropped or paraphrased words, apostrophes for contractions preserved, commas preserved when they fall inside the chunk, and no single caption may cross a sentence boundary.
-          </p>
+          <h3 className="text-sm font-medium text-foreground">{selectedDraftTitle}</h3>
+          <p className="mt-1 text-xs text-muted-foreground">{selectedDraftDescription}</p>
         </div>
-        <div className="rounded-lg border border-border bg-background/70 p-4 text-sm leading-6 text-foreground">
-          {fullScript}
+        <div className="rounded-lg border border-border bg-background/70 p-4 text-sm leading-6 text-foreground whitespace-pre-wrap break-words">
+          {selectedIterationBody || body || 'Nothing here yet.'}
         </div>
       </div>
+
+      {selectedRun?.status === 'max-iterations-reached' ? (
+        <ValidationNotice
+          title="Max iterations reached"
+          message="This run hit the configured max-iteration limit before the review step passed. The latest draft was still published to the Text Script stage so you can inspect/edit it, but the final review explains what still needs work."
+        />
+      ) : null}
+
+      {selectedIteration ? (
+        <details className="rounded-lg border border-border bg-background/60 p-4">
+          <summary className="cursor-pointer text-sm font-medium text-foreground">
+            Review feedback for iteration {selectedIteration.number}
+          </summary>
+          <div className="mt-3 space-y-2 text-sm text-foreground">
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Badge variant="secondary">Decision: {selectedIteration.reviewDecision || 'n/a'}</Badge>
+              {selectedIteration.overallGrade !== undefined ? (
+                <Badge variant={selectedRun?.passingScore !== undefined && selectedIteration.overallGrade >= selectedRun.passingScore ? 'success' : 'outline'}>
+                  Overall grade: {selectedIteration.overallGrade}/100
+                </Badge>
+              ) : null}
+              {selectedIteration.kind === 'manual' ? <Badge variant="outline">Manual edit</Badge> : null}
+            </div>
+            {selectedIteration.reviewSummary ? <p>{selectedIteration.reviewSummary}</p> : null}
+            {selectedIteration.reviewFeedback ? (
+              <div className="rounded-md border border-border bg-background/70 p-3 whitespace-pre-wrap break-words">
+                {selectedIteration.reviewFeedback}
+              </div>
+            ) : null}
+            {selectedIteration.reviewContent ? (
+              <div className="rounded-md border border-border bg-background/70 p-3 whitespace-pre-wrap break-words text-xs text-muted-foreground">
+                {selectedIteration.reviewContent}
+              </div>
+            ) : null}
+          </div>
+        </details>
+      ) : null}
+
+      {compareIteration && diff ? <DiffViewer diff={diff} showStats maxHeight="420px" /> : null}
     </div>
   );
 }
@@ -1123,11 +1921,11 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ selectedImageStyleId: styleId }),
         }),
-        'Failed to update image style'
+        'Failed to update visual style'
       );
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update image style');
+      setError(err instanceof Error ? err.message : 'Failed to update visual style');
     } finally {
       setSavingStyle(false);
     }
@@ -1184,25 +1982,25 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
   return (
     <StageReviewSection
       projectId={project.id}
-      title="Scene Images"
+      title="Visuals"
       stage="scene-images"
-      description="Once the XML script is approved, the dashboard runs the xml-scene-images workflow directly to generate green-screen storyboard scene plates. The generated artwork itself should contain no baked-in text or final baked-in background; captions are overlaid separately and the selected project background video is composited behind each scene in preview/final render. If a scene sets referencePreviousSceneImage='true', the generator also chains in the previous actual generated scene image for continuity. The currently selected reusable image style is applied on top of the shared/common constraints for this project’s scene generation run."
+      description="Once the XML script is approved, the dashboard runs the visuals workflow directly to generate or reuse the needed green-screen visual plates from the XML asset/timeline model. Exact asset reuse never regenerates the image unnecessarily; reference-derived new assets remain explicit in the XML and manifest for debugging. Captions are overlaid separately and the selected background video is composited behind each visual in preview/final render."
       doc={project.sceneImages}
       mode="markdown"
-      emptyText="No scene images yet. Generate the storyboard after approving the XML script."
-      triggerLabel="Generate scene images"
+      emptyText="No visuals yet. Generate them after approving the XML script."
+      triggerLabel="Generate visuals"
       triggerDescription={`This should create green-screen scene plates using the selected image style${project.selectedImageStyleName ? ` (${project.selectedImageStyleName})` : ''}${project.selectedBackgroundVideoName ? ` and prepare preview compositing against ${project.selectedBackgroundVideoName}` : ''}.`}
       onRefresh={refresh}
       collapseDocumentByDefault
       extra={
         <div className="space-y-4">
-          {error ? <ValidationNotice title="Scene image change request failed" message={error} /> : null}
+          {error ? <ValidationNotice title="Visual change request failed" message={error} /> : null}
           <div className="rounded-lg border border-border bg-background/60 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h3 className="text-sm font-medium text-foreground">Image style for this project</h3>
+                <h3 className="text-sm font-medium text-foreground">Visual style for this project</h3>
                 <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-                  Pick the reusable style that should feed the direct scene-image generation path. Shared/common constraints from settings still apply regardless of which style you choose.
+                  Pick the reusable style that should feed the direct visual generation path. Shared/common constraints from settings still apply regardless of which style you choose.
                 </p>
               </div>
               <Link
@@ -1240,7 +2038,7 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
           <div className="rounded-lg border border-border bg-background/60 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h3 className="text-sm font-medium text-foreground">Looping background video for this project</h3>
+                <h3 className="text-sm font-medium text-foreground">Looping background video for this visual project</h3>
                 <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
                   Pick which saved background video should sit behind the green-screen characters for scene previews and final render. New projects default to the library default automatically.
                 </p>
@@ -1282,7 +2080,12 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
             <div className="rounded-lg border border-border bg-background/60 p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="secondary">{sceneProgress.completed}/{sceneProgress.total} completed</Badge>
-                {sceneProgress.pending > 0 ? <Badge variant="outline">{sceneProgress.pending} in progress</Badge> : null}
+                {sceneProgress.pending > 0 ? (
+                  <div className="inline-flex items-center gap-2">
+                    <StatusBadge status="working" compact />
+                    <span className="text-xs text-muted-foreground">{sceneProgress.pending} scene{sceneProgress.pending === 1 ? '' : 's'}</span>
+                  </div>
+                ) : null}
                 {sceneProgress.scope === 'single' && sceneProgress.targetSceneId ? (
                   <Badge variant="outline">Revising {sceneProgress.targetSceneId}</Badge>
                 ) : null}
@@ -1297,9 +2100,12 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
                     : sceneProgress.scope === 'chain'
                       ? 'The targeted scene and any downstream continuity-linked scenes are tracked as part of this rerun. Scenes outside that chain remain visible.'
                       : 'Completed scenes stay visible while the remaining scene slots render as loading placeholders.'
-                  : 'All expected scene images for the latest run are available.'}
+                  : 'All expected visuals for the latest run are available.'}
               </p>
             </div>
+          ) : null}
+          {((project.xmlScript.captions?.length || 0) > 0 || project.sceneImages.scenes.some((scene) => typeof scene.startTime === 'number' && typeof scene.endTime === 'number')) ? (
+            <VisualCaptionTimeline captions={project.xmlScript.captions || []} scenes={project.sceneImages.scenes} />
           ) : null}
           {project.sceneImages.scenes.length > 0 ? (
             <div className="overflow-x-auto pb-2">
@@ -1315,12 +2121,10 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
                     <div key={scene.id} className="w-[260px] shrink-0 space-y-3 rounded-lg border border-border bg-background/60 p-3">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-xs text-muted-foreground">Scene {scene.number}</p>
+                          <p className="text-xs text-muted-foreground">Visual {scene.number}</p>
                           <p className="mt-1 text-sm font-medium text-foreground">{scene.caption}</p>
                         </div>
-                        <Badge variant={sceneBusy ? 'secondary' : 'success'}>
-                          {sceneBusy ? 'In progress' : 'Done'}
-                        </Badge>
+                        {sceneBusy ? <StatusBadge status="in-progress" compact /> : <StatusBadge status="completed" compact />}
                       </div>
                       {!sceneBusy ? (
                         <div className="flex rounded-md border border-border bg-background/70 p-1 text-[11px]">
@@ -1346,7 +2150,7 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
                         <div className="relative aspect-[9/16] w-full overflow-hidden rounded-md border border-dashed border-border bg-muted/40">
                           <Skeleton className="h-full w-full rounded-none" />
                           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center">
-                            <OrbitLoader label={`Rendering scene ${scene.number}`} />
+                            <OrbitLoader label={`Rendering visual ${scene.number}`} />
                             <p className="text-xs text-muted-foreground">This slot updates automatically when the new image lands.</p>
                           </div>
                         </div>
@@ -1376,6 +2180,14 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
                           No image yet
                         </div>
                       )}
+                      {(scene.imageId || scene.basedOnImageId || scene.reusedExistingAsset) ? (
+                        <div className="flex flex-wrap gap-2">
+                          {scene.imageId ? <Badge variant="outline">imageId: {scene.imageId}</Badge> : null}
+                          {scene.reusedExistingAsset ? <Badge variant="secondary">reused asset</Badge> : null}
+                          {scene.basedOnImageId ? <Badge variant="outline">basedOn: {scene.basedOnImageId}</Badge> : null}
+                          {scene.visualId ? <Badge variant="outline">{scene.visualId}</Badge> : null}
+                        </div>
+                      ) : null}
                       <div className="space-y-2">
                         <Textarea
                           value={requestByScene[scene.id] || ''}
@@ -1399,10 +2211,10 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
                         {submittingScene === scene.id
                           ? 'Sending…'
                           : sceneBusy
-                            ? 'Scene is rendering…'
+                            ? 'Visual is rendering…'
                             : (requestByScene[scene.id] || '').trim()
-                              ? 'Request scene changes'
-                              : 'Rerender scene'}
+                              ? 'Request visual changes'
+                              : 'Rerender visual'}
                       </Button>
                     </div>
                   );
@@ -1422,9 +2234,7 @@ function VideoSection({ project, refresh }: { project: Project; refresh: () => P
   const [defaultVoiceId, setDefaultVoiceId] = useState<string>('');
   const [defaultMusicId, setDefaultMusicId] = useState<string>('');
   const [musicVolume, setMusicVolume] = useState<number>(0.38);
-  const [savingVoice, setSavingVoice] = useState(false);
   const [savingMusic, setSavingMusic] = useState(false);
-  const [voiceError, setVoiceError] = useState<string | null>(null);
   const [musicError, setMusicError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1470,26 +2280,6 @@ function VideoSection({ project, refresh }: { project: Project; refresh: () => P
     };
   }, []);
 
-  async function saveProjectVoice(voiceId: string) {
-    setSavingVoice(true);
-    setVoiceError(null);
-    try {
-      await parseJsonResponse(
-        await fetch(`/api/short-form-videos/${project.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ selectedVoiceId: voiceId }),
-        }),
-        'Failed to update project voice'
-      );
-      await refresh();
-    } catch (err) {
-      setVoiceError(err instanceof Error ? err.message : 'Failed to update project voice');
-    } finally {
-      setSavingVoice(false);
-    }
-  }
-
   async function saveProjectMusic(musicId: string) {
     setSavingMusic(true);
     setMusicError(null);
@@ -1518,57 +2308,38 @@ function VideoSection({ project, refresh }: { project: Project; refresh: () => P
       projectId={project.id}
       title="Video"
       stage="video"
-      description="After scene images are approved, the dashboard renders the final short-form video directly through the xml-scene-video workflow using the selected reusable Qwen voice, transcript-driven forced alignment, a full-duration looping background video track, green-screen chroma key compositing, ACE-Step instrumental background music, and per-scene XML camera motion that applies only to the image layer when explicitly set in the XML."
+      description="After visuals are approved, the dashboard renders the final short-form video directly through the xml-scene-video workflow by reusing the narration + forced-alignment artifacts already produced during the XML Script step, plus a full-duration looping background video track, green-screen chroma key compositing, ACE-Step instrumental background music, and per-visual XML camera motion that applies only to the image layer when explicitly set in the XML."
       doc={project.video}
       mode="markdown"
-      emptyText="No video yet. Generate the final video after approving the scene images."
+      emptyText="No video yet. Generate the final video after approving the visuals."
       triggerLabel="Generate final video"
-      triggerDescription={`The video should be rendered from the XML <script> and approved scene assets using the selected voice${activeVoiceLabel ? ` (${activeVoiceLabel})` : ''}${activeMusicLabel ? `, soundtrack preset ${activeMusicLabel}` : ''}${project.selectedBackgroundVideoName ? `, the looping background video ${project.selectedBackgroundVideoName}` : ''}, plus the saved music mix volume (${Math.round(musicVolume * 100)}%) and the default forced-alignment + ACE-Step final-video path unless explicitly overridden. Any scene-level cameraPanX/cameraPanY/cameraZoom/cameraShake values should affect image motion only, not the caption overlay, and omitted camera attributes should apply no motion for that effect.`}
+      triggerDescription={`The video should be rendered from the XML <script> and approved scene assets by reusing the saved XML-step narration/alignment artifacts${activeVoiceLabel ? ` (voice source currently shown as ${activeVoiceLabel} in XML Script)` : ''}${activeMusicLabel ? `, soundtrack preset ${activeMusicLabel}` : ''}${project.selectedBackgroundVideoName ? `, the looping background video ${project.selectedBackgroundVideoName}` : ''}, plus the saved music mix volume (${Math.round(musicVolume * 100)}%) and the default forced-alignment + ACE-Step final-video path unless explicitly overridden. Any scene-level cameraPanX/cameraPanY/cameraZoom/cameraZoomStart/cameraZoomEnd/cameraShake values should affect image motion only, not the caption overlay; cameraZoom means fixed framing only, while animated zoom should come from explicit cameraZoomStart/cameraZoomEnd values.`}
       onRefresh={refresh}
       collapseDocumentByDefault
       extra={
         <div className="space-y-4">
-          {voiceError ? <ValidationNotice title="Voice selection failed" message={voiceError} /> : null}
           {musicError ? <ValidationNotice title="Soundtrack selection failed" message={musicError} /> : null}
           <div className="rounded-lg border border-border bg-background/60 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h3 className="text-sm font-medium text-foreground">Voice for this project</h3>
+                <h3 className="text-sm font-medium text-foreground">Narration source</h3>
                 <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-                  Pick which saved voice library entry should drive real final-video narration for this project. If you do not override it, the current global default voice is used.
+                  Final Video does not pick or regenerate its own voice anymore. It reuses the narration WAV + forced alignment already created in the XML Script step.
                 </p>
               </div>
               <Link
-                href="/short-form-video/settings#tts-voice"
-                target="_blank"
-                rel="noreferrer"
+                href="#xml-script"
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
-                Open voice library ↗
+                Jump to XML Script ↑
               </Link>
             </div>
-            <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
-              <Select
-                value={project.selectedVoiceId || defaultVoiceId || ''}
-                onChange={(event) => void saveProjectVoice(event.target.value)}
-                disabled={savingVoice || voiceOptions.length === 0}
-                className="max-w-sm"
-              >
-                {voiceOptions.map((voice) => (
-                  <option key={voice.id} value={voice.id}>
-                    {voice.name}{voice.id === defaultVoiceId ? ' (default)' : ''}
-                  </option>
-                ))}
-              </Select>
-              <div className="text-xs text-muted-foreground">
-                {savingVoice
-                  ? 'Saving voice selection…'
-                  : project.selectedVoiceName
-                    ? `Current project voice: ${project.selectedVoiceName}`
-                    : defaultVoiceId
-                      ? `Using the current default voice: ${activeVoiceLabel}`
-                      : 'Using the fallback default voice.'}
-              </div>
+            <div className="mt-3 text-xs text-muted-foreground">
+              {project.selectedVoiceName
+                ? `XML narration voice currently selected for this project: ${project.selectedVoiceName}`
+                : defaultVoiceId
+                  ? `XML narration currently falls back to the default voice: ${activeVoiceLabel}`
+                  : 'XML narration will use the fallback default voice until a project/default voice is selected.'}
             </div>
           </div>
           <div className="rounded-lg border border-border bg-background/60 p-4">
@@ -1617,7 +2388,7 @@ function VideoSection({ project, refresh }: { project: Project; refresh: () => P
           </div>
           <div className="rounded-lg border border-border bg-background/60 p-4 text-xs text-muted-foreground">
             <span className="font-medium text-foreground">Looping background video:</span>{' '}
-            {project.selectedBackgroundVideoName || 'Not selected yet. Choose one in the Scene Images section before rendering the final video.'}
+            {project.selectedBackgroundVideoName || 'Not selected yet. Choose one in the Visual Images section before rendering the final video.'}
           </div>
           <VideoPipelinePanel project={project} />
           {project.video.videoUrl ? (
@@ -1632,7 +2403,7 @@ function VideoSection({ project, refresh }: { project: Project; refresh: () => P
   );
 }
 
-type DetailSectionId = 'topic' | 'hook' | 'research' | 'script' | 'scene-images' | 'video';
+type DetailSectionId = 'topic' | 'hook' | 'research' | 'script' | 'narration-audio' | 'plan-captions' | 'plan-visuals' | 'scene-images' | 'video';
 
 interface DetailSectionNavItem {
   id: DetailSectionId;
@@ -1654,6 +2425,22 @@ function getSectionStatus(project: Project | null, sectionId: DetailSectionId) {
       return project.research.pending ? 'working' : project.research.status || 'draft';
     case 'script':
       return project.script.pending ? 'working' : project.script.status || 'draft';
+    case 'narration-audio': {
+      const narrationSteps = project.xmlScript.pipeline?.steps.filter((step) => step.id === 'narration' || step.id === 'alignment') || [];
+      if (narrationSteps.some((step) => step.status === 'failed')) return 'failed';
+      if (narrationSteps.some((step) => step.status === 'active')) return 'working';
+      if (narrationSteps.length > 0 && narrationSteps.every((step) => step.status === 'completed')) return 'approved';
+      return approved(project.script.status) ? 'ready' : 'draft';
+    }
+    case 'plan-captions': {
+      const captionsStep = project.xmlScript.pipeline?.steps.find((step) => step.id === 'captions');
+      if (captionsStep?.status === 'failed') return 'failed';
+      if (captionsStep?.status === 'active') return 'working';
+      if (captionsStep?.status === 'completed') return 'approved';
+      return approved(project.script.status) ? 'ready' : 'draft';
+    }
+    case 'plan-visuals':
+      return project.xmlScript.pending ? 'working' : project.xmlScript.status || (approved(project.script.status) ? 'ready' : 'draft');
     case 'scene-images':
       return project.sceneImages.pending ? 'working' : project.sceneImages.status || 'draft';
     case 'video':
@@ -1673,7 +2460,7 @@ export default function ShortFormVideoDetailPage() {
   const [savingTopic, setSavingTopic] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
 
-  const shouldPoll = Boolean(projectId && (!project || project.pendingStages.length > 0 || savingTopic));
+  const shouldPoll = Boolean(projectId && (!project || (project?.pendingStages.length ?? 0) > 0 || project?.xmlScript.pending || savingTopic));
   const {
     loading,
     refreshing,
@@ -1750,7 +2537,7 @@ export default function ShortFormVideoDetailPage() {
   const showHook = project ? project.topic.trim().length > 0 : false;
   const showResearch = project ? Boolean(project.selectedHookText) : false;
   const showScript = project ? approved(project.research.status) : false;
-  const showSceneImages = project ? approved(project.script.status) : false;
+  const showSceneImages = project ? approved(project.xmlScript.status) : false;
   const showVideo = project ? approved(project.sceneImages.status) : false;
   const activeStages = project ? project.pendingStages.map(stageLabel) : [];
   const sections = useMemo<DetailSectionNavItem[]>(
@@ -1758,9 +2545,12 @@ export default function ShortFormVideoDetailPage() {
       { id: 'topic', label: 'Topic', available: true, status: getSectionStatus(project, 'topic') },
       { id: 'hook', label: 'Hook', available: showHook, unavailableLabel: 'Locked', status: getSectionStatus(project, 'hook') },
       { id: 'research', label: 'Research', available: showResearch, unavailableLabel: 'Locked', status: getSectionStatus(project, 'research') },
-      { id: 'script', label: 'Script', available: showScript, unavailableLabel: 'Locked', status: getSectionStatus(project, 'script') },
-      { id: 'scene-images', label: 'Scene Images', available: showSceneImages, unavailableLabel: 'Locked', status: getSectionStatus(project, 'scene-images') },
-      { id: 'video', label: 'Video', available: showVideo, unavailableLabel: 'Locked', status: getSectionStatus(project, 'video') },
+      { id: 'script', label: 'Text Script', available: showScript, unavailableLabel: 'Locked', status: getSectionStatus(project, 'script') },
+      { id: 'narration-audio', label: 'Narration Audio', available: showScript, unavailableLabel: 'Locked', status: getSectionStatus(project, 'narration-audio') },
+      { id: 'plan-captions', label: 'Plan Captions', available: showScript, unavailableLabel: 'Locked', status: getSectionStatus(project, 'plan-captions') },
+      { id: 'plan-visuals', label: 'Plan Visuals', available: showScript, unavailableLabel: 'Locked', status: getSectionStatus(project, 'plan-visuals') },
+      { id: 'scene-images', label: 'Visuals', available: showSceneImages, unavailableLabel: 'Locked', status: getSectionStatus(project, 'scene-images') },
+      { id: 'video', label: 'Final Video', available: showVideo, unavailableLabel: 'Locked', status: getSectionStatus(project, 'video') },
     ],
     [project, showHook, showResearch, showScript, showSceneImages, showVideo]
   );
@@ -1874,18 +2664,27 @@ export default function ShortFormVideoDetailPage() {
         <section id="script" className="scroll-mt-24">
           <StageReviewSection
           projectId={project.id}
-          title="Script"
+          title="Text Script"
           stage="script"
-          description="Scribe generates the XML short-form script from the selected hook and approved research, starting with a full spoken <script> that prefers natural contractions and then deriving scene captions as a lossless 10-words-or-fewer chunking of that same text, with apostrophes and in-chunk commas preserved and each caption staying inside a single sentence boundary. Scene tags can also optionally declare previous-image continuity and intentionally sparse per-scene camera motion."
+          description="Scribe writes the approved plain narration script first. This section is text only: no XML, no caption chunks, and no image directions. The first sentence is still the hook."
           doc={project.script}
-          mode="xml"
-          emptyText="No script yet. Generate it after approving the research."
-          triggerLabel="Generate XML script"
-          triggerDescription="The script should follow the updated XML pattern: a top-level <script> full narration block that prefers natural contractions, plus scene captions that preserve every script word in order, preserve apostrophes and in-chunk commas, stay within 10-or-fewer-word lines, and never cross a sentence boundary. Scenes may also use referencePreviousSceneImage plus cameraPanX/cameraPanY/cameraZoom/cameraShake when genuinely helpful, but most scenes should omit camera motion entirely and any motion that is used should usually stay subtle."
+          mode="text"
+          emptyText="No text script yet. Generate it after approving the research."
+          triggerLabel="Generate text script"
+          triggerDescription="This should create the plain narration script only. The XML Script step below will later generate narration audio, forced alignment, deterministic captions JSON, and visuals XML from this approved text."
           onRefresh={refreshProject}
-          extra={<ScriptSummaryPanel content={project.script.content} />}
+          extra={<TextScriptHistoryPanel project={project} onProjectRefresh={refreshProject} />}
+          showExtraWhenEmpty
         />
         </section>
+      ) : null}
+
+      {showScript ? (
+        <div className="space-y-6">
+          <section className="scroll-mt-24">
+            <XMLScriptSection project={project} onProjectRefresh={refreshProject} />
+          </section>
+        </div>
       ) : null}
 
       {showSceneImages ? (

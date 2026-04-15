@@ -34,6 +34,32 @@ export interface DirectVideoConfig {
   notes?: string;
 }
 
+export interface DirectTextScriptConfig {
+  textScriptRunId: string;
+  mode: "generate" | "revise";
+  writerPromptMode: "generate" | "revise";
+  topic: string;
+  selectedHookText?: string;
+  approvedResearch: string;
+  currentScriptContent?: string;
+  notes?: string;
+  projectDir: string;
+  scriptPath: string;
+  runDir: string;
+  iterationsDir: string;
+  runManifestPath: string;
+  maxIterations: number;
+  overrideMaxIterations?: number;
+  passingScore: number;
+  generatePromptTemplate: string;
+  revisePromptTemplate: string;
+  reviewPromptTemplate: string;
+  retentionSkillPath: string;
+  retentionPlaybookPath: string;
+  graderSkillPath: string;
+  graderRubricPath: string;
+}
+
 export interface ShortFormStageRunJob {
   runId: string;
   projectId: string;
@@ -48,6 +74,7 @@ export interface ShortFormStageRunJob {
   verificationTimeoutMs: number;
   verificationPollMs: number;
   directConfig?:
+    | { kind: "text-script"; config: DirectTextScriptConfig }
     | { kind: "scene-images"; config: DirectSceneImagesConfig }
     | { kind: "video"; config: DirectVideoConfig };
 }
@@ -56,7 +83,7 @@ const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
 const REPO_ROOT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard");
 const WORKER_PATH = path.join(REPO_ROOT, "scripts", "short-form-stage-worker.mjs");
 const DEFAULT_RELIABLE_MODEL =
-  process.env.SHORT_FORM_RELIABLE_MODEL || "openai-codex/gpt-5.4";
+  process.env.SHORT_FORM_RELIABLE_MODEL || "codex/gpt-5.4";
 const DEFAULT_RETRY_MODEL =
   process.env.SHORT_FORM_RETRY_MODEL || "openrouter/anthropic/claude-3-haiku";
 

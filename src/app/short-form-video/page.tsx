@@ -16,7 +16,8 @@ import {
 
 function stageLabel(project: ProjectRow) {
   if (project.video.pending || project.video.videoUrl) return 'Video';
-  if (project.sceneImages.pending || project.sceneImages.sceneCount > 0) return 'Scene Images';
+  if (project.sceneImages.pending || project.sceneImages.sceneCount > 0) return 'Visuals';
+  if (project.xmlScript.pending || project.xmlScript.status !== 'draft') return 'XML Script';
   if (project.script.pending || project.script.status !== 'draft') return 'Script';
   if (project.research.pending || project.research.status !== 'draft') return 'Research';
   if (project.hooks.pending || project.hooks.selectedHookText) return 'Hook selected';
@@ -34,12 +35,14 @@ function secondaryProjectText(project: ProjectRow) {
 function tableStatus(project: ProjectRow) {
   if (project.video.pending) return 'working';
   if (project.sceneImages.pending) return 'working';
+  if (project.xmlScript.pending) return 'working';
   if (project.script.pending) return 'working';
   if (project.research.pending) return 'working';
   if (project.hooks.pending) return 'working';
 
   if (project.video.videoUrl) return project.video.status;
   if (project.sceneImages.sceneCount > 0) return project.sceneImages.status;
+  if (project.xmlScript.status !== 'draft') return project.xmlScript.status;
   if (project.script.status !== 'draft') return project.script.status;
   if (project.research.status !== 'draft') return project.research.status;
   if (project.hooks.selectedHookText) return 'approved';

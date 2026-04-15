@@ -1,16 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { PageLoadingShell } from "@/components/ui/loading";
 
 export function InstantNavigationLoader() {
   const pathname = usePathname();
-  const [isNavigating, setIsNavigating] = useState(false);
-
-  useEffect(() => {
-    setIsNavigating(false);
-  }, [pathname]);
+  const [pendingPath, setPendingPath] = useState<string | null>(null);
+  const currentPath = useMemo(() => pathname || "/", [pathname]);
+  const isNavigating = pendingPath !== null && pendingPath !== currentPath;
 
   useEffect(() => {
     const onClickCapture = (event: MouseEvent) => {
@@ -32,7 +30,7 @@ export function InstantNavigationLoader() {
       const next = `${url.pathname}${url.search}`;
       if (current === next) return;
 
-      setIsNavigating(true);
+      setPendingPath(next);
     };
 
     window.addEventListener("click", onClickCapture, true);

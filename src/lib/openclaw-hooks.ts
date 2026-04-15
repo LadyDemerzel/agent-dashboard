@@ -50,7 +50,7 @@ export async function spawnAgentViaWebhook(options: {
       sessionKey: options.sessionKey || `hook:${options.agentId}:${options.label}`,
       wakeMode: "now",
       deliver: false,
-      model: options.model || process.env.SHORT_FORM_RELIABLE_MODEL || "openai-codex/gpt-5.4",
+      model: options.model || process.env.SHORT_FORM_RELIABLE_MODEL || "codex/gpt-5.4",
     }),
   });
 

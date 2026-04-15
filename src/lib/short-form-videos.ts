@@ -6,6 +6,11 @@ import { readFeedback, type FeedbackThread } from "@/lib/feedback";
 import { resolveShortFormImageStyle } from "@/lib/short-form-image-styles";
 import { resolveShortFormMusicSelection, resolveShortFormVoiceSelection } from "@/lib/short-form-video-render-settings";
 import { resolveShortFormBackgroundVideoSelection } from "@/lib/short-form-background-videos";
+import {
+  getXmlScriptDocument,
+  getXmlScriptPath,
+  type XmlScriptDocumentSummary,
+} from "@/lib/short-form-xml-script";
 
 export type ShortFormStageKey = "research" | "script" | "scene-images" | "video";
 export type PendingStageKey = "hooks" | ShortFormStageKey;
@@ -104,6 +109,8 @@ export interface SceneImageArtifact {
   id: string;
   number: number;
   caption: string;
+  startTime?: number;
+  endTime?: number;
   image?: string;
   previewImage?: string;
   previewVideo?: string;
@@ -128,6 +135,7 @@ interface GeneratedSceneImageArtifact extends SceneImageArtifact {
 export interface StageRequestContext {
   requestedAt: string;
   runId?: string;
+  textScriptRunId?: string;
   action: "generate" | "revise" | "request-scene-change";
   mode: "generate" | "revise";
   notes?: string;
@@ -158,6 +166,8 @@ export interface ShortFormProjectMeta {
   selectedVoiceId?: string;
   selectedMusicId?: string;
   selectedBackgroundVideoId?: string;
+  textScriptMaxIterationsOverride?: number;
+  captionMaxWordsOverride?: number;
   latestHookRequest?: HookRequestContext;
   latestStageRequests?: Partial<Record<ShortFormStageKey, StageRequestContext>>;
 }
@@ -198,6 +208,39 @@ export interface StageDocumentSummary {
   pending?: boolean;
   validationError?: string;
   revision?: StageRevisionState;
+}
+
+export interface TextScriptIterationSummary {
+  number: number;
+  kind: "generated" | "manual";
+  createdAt?: string;
+  updatedAt?: string;
+  draftPath?: string;
+  draftContent: string;
+  reviewPath?: string;
+  overallGrade?: number;
+  reviewDecision?: "pass" | "needs-improvement" | "manual-edit";
+  reviewFeedback?: string;
+  reviewContent?: string;
+  reviewSummary?: string;
+  isFinal?: boolean;
+}
+
+export interface TextScriptRunSummary {
+  runId: string;
+  startedAt?: string;
+  completedAt?: string;
+  mode?: "generate" | "revise";
+  status: "passed" | "max-iterations-reached" | "manual-edit" | "running" | "failed" | "unknown";
+  maxIterations: number;
+  passingScore?: number;
+  overrideMaxIterations?: number;
+  reviewPrompt?: string;
+  finalIterationNumber?: number;
+  activeStep?: "writing" | "reviewing" | "improving" | "completed";
+  activeIterationNumber?: number;
+  activeStatusText?: string;
+  iterations: TextScriptIterationSummary[];
 }
 
 export interface VideoPipelineDetail {
@@ -243,6 +286,7 @@ export interface ShortFormProject {
   selectedMusicName?: string;
   selectedBackgroundVideoId?: string;
   selectedBackgroundVideoName?: string;
+  captionMaxWordsOverride?: number;
   currentStage: string;
   pendingStages: PendingStageKey[];
   hooks: {
@@ -253,7 +297,8 @@ export interface ShortFormProject {
     validationError?: string;
   };
   research: StageDocumentSummary;
-  script: StageDocumentSummary;
+  script: StageDocumentSummary & { textScriptRuns?: TextScriptRunSummary[]; textScriptLatestRunId?: string; textScriptMaxIterationsOverride?: number };
+  xmlScript: XmlScriptDocumentSummary;
   sceneImages: StageDocumentSummary & {
     scenes: SceneImageArtifact[];
     sceneProgress?: SceneImageProgressSummary;
@@ -281,6 +326,12 @@ export interface ShortFormProjectRow {
     pending?: boolean;
   };
   script: {
+    status: string;
+    pending?: boolean;
+    textScriptLatestRunId?: string;
+    textScriptMaxIterationsOverride?: number;
+  };
+  xmlScript: {
     status: string;
     pending?: boolean;
   };
@@ -313,8 +364,8 @@ export const SHORT_FORM_VIDEOS_DIR = path.join(
 
 const STAGE_PLACEHOLDER_BODIES: Record<ShortFormStageKey, string> = {
   research: "# Research\n\nWaiting for Oracle to generate research.",
-  script: "<video>\n  <topic>Waiting for topic</topic>\n  <script><!-- Waiting for Scribe to generate the full spoken script --></script>\n  <scene>\n    <text>Waiting for captions</text>\n    <image>Waiting for scene direction</image>\n  </scene>\n</video>",
-  "scene-images": "# Scene Images\n\nWaiting for the dashboard workflow to generate the storyboard images and manifest.",
+  script: "Waiting for Scribe to generate the plain narration text script.",
+  "scene-images": "# Visuals\n\nWaiting for the dashboard workflow to generate the storyboard images and manifest.",
   video: "# Final Video\n\nWaiting for the dashboard workflow to generate the final rendered video.",
 };
 
@@ -396,6 +447,19 @@ export function getStageFilePath(projectId: string, stage: ShortFormStageKey) {
   }
 }
 
+
+export function getTextScriptRunsDir(projectId: string) {
+  return path.join(getProjectDir(projectId), "text-script-runs");
+}
+
+export function getTextScriptRunDir(projectId: string, runId: string) {
+  return path.join(getTextScriptRunsDir(projectId), runId);
+}
+
+export function getTextScriptRunManifestPath(projectId: string, runId: string) {
+  return path.join(getTextScriptRunDir(projectId, runId), "run.json");
+}
+
 export function getSceneManifestPath(projectId: string) {
   return path.join(getProjectDir(projectId), "scene-images.json");
 }
@@ -455,6 +519,123 @@ function isOptionalString(value: unknown): value is string | undefined {
 
 function isIsoDateString(value: string) {
   return !Number.isNaN(Date.parse(value));
+}
+
+function normalizeTextScriptRunStatus(value: unknown): TextScriptRunSummary["status"] {
+  return value === "passed"
+    ? "passed"
+    : value === "max-iterations-reached"
+      ? "max-iterations-reached"
+      : value === "manual-edit"
+        ? "manual-edit"
+        : value === "running"
+          ? "running"
+          : value === "failed"
+            ? "failed"
+          : "unknown";
+}
+
+function normalizeTextScriptReviewDecision(value: unknown): TextScriptIterationSummary["reviewDecision"] {
+  return value === "pass"
+    ? "pass"
+    : value === "needs-improvement"
+      ? "needs-improvement"
+      : value === "manual-edit"
+        ? "manual-edit"
+        : undefined;
+}
+
+function readTextScriptRuns(projectId: string): TextScriptRunSummary[] {
+  const runsDir = getTextScriptRunsDir(projectId);
+  if (!fs.existsSync(runsDir)) return [];
+
+  try {
+    const runs: Array<TextScriptRunSummary | null> = fs.readdirSync(runsDir)
+      .map((runId) => {
+        const runDir = path.join(runsDir, runId);
+        if (!fs.existsSync(runDir) || !fs.statSync(runDir).isDirectory()) {
+          return null;
+        }
+
+        const manifestPath = path.join(runDir, "run.json");
+        const manifest = readJsonFile<Record<string, unknown> | null>(manifestPath, null);
+        if (!manifest || typeof manifest !== "object") {
+          return null;
+        }
+
+        const rawIterations = Array.isArray(manifest.iterations) ? manifest.iterations : [];
+        const iterations = rawIterations.map((raw) => {
+          const item = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+          const draftPath = typeof item.draftPath === "string" ? item.draftPath : undefined;
+          const reviewPath = typeof item.reviewPath === "string" ? item.reviewPath : undefined;
+          const absoluteDraftPath = draftPath ? path.join(runDir, draftPath) : undefined;
+          const absoluteReviewPath = reviewPath ? path.join(runDir, reviewPath) : undefined;
+          const draftContent = absoluteDraftPath && fs.existsSync(absoluteDraftPath)
+            ? fs.readFileSync(absoluteDraftPath, "utf-8")
+            : "";
+          const reviewContent = absoluteReviewPath && fs.existsSync(absoluteReviewPath)
+            ? fs.readFileSync(absoluteReviewPath, "utf-8")
+            : undefined;
+
+          return {
+            number: typeof item.number === "number" ? item.number : 0,
+            kind: item.kind === "manual" ? "manual" : "generated",
+            createdAt: typeof item.createdAt === "string" ? item.createdAt : undefined,
+            updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : undefined,
+            draftPath,
+            draftContent,
+            reviewPath,
+            overallGrade: typeof item.overallGrade === "number" && Number.isFinite(item.overallGrade)
+              ? Math.max(0, Math.min(100, Math.round(item.overallGrade)))
+              : undefined,
+            reviewDecision: normalizeTextScriptReviewDecision(item.reviewDecision),
+            reviewFeedback: typeof item.reviewFeedback === "string" ? item.reviewFeedback : undefined,
+            reviewContent,
+            reviewSummary: typeof item.reviewSummary === "string" ? item.reviewSummary : undefined,
+            isFinal: Boolean(item.isFinal),
+          } satisfies TextScriptIterationSummary;
+        }).filter((item) => item.number > 0 && item.draftContent.trim().length > 0)
+          .sort((a, b) => a.number - b.number);
+
+        return {
+          runId: typeof manifest.runId === "string" && manifest.runId ? manifest.runId : runId,
+          startedAt: typeof manifest.startedAt === "string" ? manifest.startedAt : undefined,
+          completedAt: typeof manifest.completedAt === "string" ? manifest.completedAt : undefined,
+          mode: manifest.mode === "revise" ? "revise" : manifest.mode === "generate" ? "generate" : undefined,
+          status: normalizeTextScriptRunStatus(manifest.status),
+          maxIterations: typeof manifest.maxIterations === "number" && Number.isFinite(manifest.maxIterations)
+            ? Math.max(1, Math.round(manifest.maxIterations))
+            : Math.max(1, iterations.length || 1),
+          passingScore: typeof manifest.passingScore === "number" && Number.isFinite(manifest.passingScore)
+            ? Math.max(0, Math.min(100, Math.round(manifest.passingScore)))
+            : undefined,
+          overrideMaxIterations: typeof manifest.overrideMaxIterations === "number" && Number.isFinite(manifest.overrideMaxIterations)
+            ? Math.max(1, Math.round(manifest.overrideMaxIterations))
+            : undefined,
+          reviewPrompt: typeof manifest.reviewPrompt === "string" ? manifest.reviewPrompt : undefined,
+          finalIterationNumber: typeof manifest.finalIterationNumber === "number" ? manifest.finalIterationNumber : undefined,
+          activeStep: manifest.activeStep === "writing"
+            ? "writing"
+            : manifest.activeStep === "reviewing"
+              ? "reviewing"
+              : manifest.activeStep === "improving"
+                ? "improving"
+                : manifest.activeStep === "completed"
+                  ? "completed"
+                  : undefined,
+          activeIterationNumber: typeof manifest.activeIterationNumber === "number" && Number.isFinite(manifest.activeIterationNumber)
+            ? Math.max(1, Math.round(manifest.activeIterationNumber))
+            : undefined,
+          activeStatusText: typeof manifest.activeStatusText === "string" ? manifest.activeStatusText : undefined,
+          iterations,
+        } satisfies TextScriptRunSummary;
+      })
+      ;
+    const filteredRuns = runs.filter(Boolean) as TextScriptRunSummary[];
+    return filteredRuns.sort((a, b) => new Date(b.startedAt || b.completedAt || 0).getTime() - new Date(a.startedAt || a.completedAt || 0).getTime());
+  } catch {
+    return [];
+  }
 }
 
 function validateRelativeMediaPath(value: unknown, fieldPath: string) {
@@ -724,6 +905,58 @@ export function updateLatestStageRequest(projectId: string, stage: ShortFormStag
   });
 }
 
+export function persistManualTextScriptIteration(projectId: string, content: string, updatedBy = "ittai", comment?: string) {
+  const runs = readTextScriptRuns(projectId);
+  const existing = runs[0];
+  const now = new Date().toISOString();
+  const runId = existing?.runId || `manual-${now.replace(/[-:TZ.]/g, "").slice(0, 14)}`;
+  const runDir = getTextScriptRunDir(projectId, runId);
+  ensureDir(runDir);
+  ensureDir(path.join(runDir, "iterations"));
+
+  const manifestPath = getTextScriptRunManifestPath(projectId, runId);
+  const raw = readJsonFile<Record<string, unknown>>(manifestPath, {});
+  const iterations = Array.isArray(raw.iterations) ? [...raw.iterations] as Array<Record<string, unknown>> : [];
+  const latest = iterations.length > 0 ? iterations[iterations.length - 1] : undefined;
+  const latestIsManual = latest?.kind === "manual";
+  const iterationNumber = latestIsManual
+    ? (typeof latest?.number === "number" ? latest.number : iterations.length || 1)
+    : iterations.length + 1;
+  const draftRelativePath = `iterations/${String(iterationNumber).padStart(2, "0")}-draft.md`;
+
+  fs.writeFileSync(path.join(runDir, draftRelativePath), content, "utf-8");
+
+  const entry = {
+    number: iterationNumber,
+    kind: "manual",
+    createdAt: latestIsManual && typeof latest?.createdAt === "string" ? latest.createdAt : now,
+    updatedAt: now,
+    draftPath: draftRelativePath,
+    reviewDecision: "manual-edit",
+    reviewSummary: comment || "Manual dashboard edit",
+    reviewFeedback: comment || `Edited manually in the dashboard by ${updatedBy}.`,
+    isFinal: true,
+  } satisfies Record<string, unknown>;
+
+  const normalizedIterations = latestIsManual
+    ? [...iterations.slice(0, -1), entry]
+    : [...iterations.map((item) => ({ ...item, isFinal: false })), entry];
+
+  const nextManifest = {
+    ...raw,
+    runId,
+    startedAt: typeof raw.startedAt === "string" ? raw.startedAt : now,
+    completedAt: now,
+    mode: raw.mode === "revise" ? "revise" : raw.mode === "generate" ? "generate" : "revise",
+    status: "manual-edit",
+    finalIterationNumber: iterationNumber,
+    iterations: normalizedIterations,
+  };
+
+  fs.writeFileSync(manifestPath, JSON.stringify(nextManifest, null, 2), "utf-8");
+  return { runId, iterationNumber };
+}
+
 function readHooksResult(projectId: string): JsonReadResult<HookGeneration[]> {
   const json = readJsonFileDetailed<{ generations?: unknown }>(getHooksPath(projectId), { generations: [] });
   if (json.error) {
@@ -826,6 +1059,10 @@ function readGeneratedSceneManifestResult(projectId: string): JsonReadResult<Gen
     const previewVideoBackgroundId = (scene as { preview_video_background_id?: unknown }).preview_video_background_id;
     const imagePrompt = (scene as { image_prompt?: unknown }).image_prompt;
     const duration = (scene as { duration?: unknown }).duration;
+    const imageId = (scene as { image_id?: unknown }).image_id;
+    const basedOnImageId = (scene as { based_on_image_id?: unknown }).based_on_image_id;
+    const reusedExistingAsset = (scene as { reused_existing_asset?: unknown }).reused_existing_asset;
+    const visualId = (scene as { visual_id?: unknown }).visual_id;
 
     if (!Number.isInteger(number) || Number(number) < 1) {
       return { data: [], error: `${prefix}.index must be a positive integer.` };
@@ -856,6 +1093,7 @@ function readGeneratedSceneManifestResult(projectId: string): JsonReadResult<Gen
       id: `scene-${Number(number)}`,
       number: Number(number),
       caption: caption.trim(),
+      ...parseVisualTimingHint(typeof duration === "string" ? duration.trim() : undefined),
       ...(image ? { image } : {}),
       ...(previewImage ? { previewImage } : {}),
       ...(previewVideo ? { previewVideo } : {}),
@@ -864,10 +1102,25 @@ function readGeneratedSceneManifestResult(projectId: string): JsonReadResult<Gen
         : {}),
       ...(typeof imagePrompt === "string" && imagePrompt.trim() ? { notes: imagePrompt.trim() } : {}),
       ...(typeof duration === "string" && duration.trim() ? { duration: duration.trim() } : {}),
+      ...(typeof imageId === "string" && imageId.trim() ? { imageId: imageId.trim() } : {}),
+      ...(typeof basedOnImageId === "string" && basedOnImageId.trim() ? { basedOnImageId: basedOnImageId.trim() } : {}),
+      ...(typeof reusedExistingAsset === "boolean" ? { reusedExistingAsset } : {}),
+      ...(typeof visualId === "string" && visualId.trim() ? { visualId: visualId.trim() } : {}),
     });
   }
 
   return { data: normalized };
+}
+
+function parseVisualTimingHint(duration?: string) {
+  if (typeof duration !== "string") return {};
+  const match = duration.trim().match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/);
+  if (!match) return {};
+  const startTime = Number(match[1]);
+  const endTime = Number(match[2]);
+  return Number.isFinite(startTime) && Number.isFinite(endTime) && endTime > startTime
+    ? { startTime, endTime }
+    : {};
 }
 
 function getFileMtimeMs(filePath: string) {
@@ -902,6 +1155,8 @@ function sceneManifestNeedsSync(projectId: string, primary: JsonReadResult<Scene
       current.id !== next.id ||
       current.number !== next.number ||
       current.caption !== next.caption ||
+      current.startTime !== next.startTime ||
+      current.endTime !== next.endTime ||
       current.image !== next.image ||
       current.previewImage !== next.previewImage ||
       current.previewVideo !== next.previewVideo ||
@@ -979,8 +1234,8 @@ function buildSceneImagesReviewDocument(projectId: string, scenes: Array<{ numbe
   const title = typeof parsed?.frontMatter.title === "string" && parsed.frontMatter.title.trim()
     ? parsed.frontMatter.title.trim()
     : topic
-      ? `Scene Images: ${topic}`
-      : "Scene Images";
+      ? `Visuals: ${topic}`
+      : "Visuals";
 
   const frontMatter = generateFrontMatter({
     title,
@@ -1001,11 +1256,11 @@ function buildSceneImagesReviewDocument(projectId: string, scenes: Array<{ numbe
   return [
     frontMatter,
     "",
-    "# Scene Images Review Document",
+    "# Visuals Review Document",
     "",
     "## Summary",
     "",
-    `Generated **${scenes.length} scene images** for the latest approved XML script. Each scene should have an uncaptioned export for assembly and a captioned preview for review.`,
+    `Generated **${scenes.length} visuals** for the latest approved XML script. Each scene should have an uncaptioned export for assembly and a captioned preview for review.`,
     "",
     "## Scene Breakdown",
     "",
@@ -1043,10 +1298,12 @@ export function synchronizeSceneImagesArtifacts(projectId: string) {
 
   if (shouldSyncManifest) {
     const strictManifest = {
-      scenes: generated.data.map(({ id, number, caption, image, previewImage, notes }) => ({
+      scenes: generated.data.map(({ id, number, caption, startTime, endTime, image, previewImage, notes }) => ({
         id,
         number,
         caption,
+        ...(typeof startTime === "number" ? { startTime } : {}),
+        ...(typeof endTime === "number" ? { endTime } : {}),
         ...(image ? { image } : {}),
         ...(previewImage ? { previewImage } : {}),
         ...(notes ? { notes } : {}),
@@ -1163,13 +1420,13 @@ function normalizeXmlText(value: string) {
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+    .replace(/&#39;|&apos;/g, "'")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 function readExpectedScriptScenes(projectId: string): Array<{ id: string; number: number; caption: string; referencePreviousSceneImage?: boolean }> {
-  const scriptPath = getStageFilePath(projectId, "script");
+  const scriptPath = getXmlScriptPath(projectId);
   if (!fs.existsSync(scriptPath)) return [];
 
   try {
@@ -1679,24 +1936,27 @@ function deriveStageRevisionState(
   const agentRun = workflowRun || findRelevantAgentRun(stage, filePath, requestedAt);
   const now = Date.now();
   const lastEventMs = agentRun?.lastEventAt ? Date.parse(agentRun.lastEventAt) : Number.NaN;
-  const runInactive = !workflowRun && Number.isFinite(lastEventMs)
-    ? now - lastEventMs >= getStageRunInactivityFailureMs(stage)
+  const inactivityMs = getStageRunInactivityFailureMs(stage);
+  const runInactive = Number.isFinite(lastEventMs)
+    ? now - lastEventMs >= inactivityMs
     : false;
   const runCompleted = workflowRun
-    ? agentRun?.status === "failed"
+    ? agentRun?.status === "failed" || runInactive
     : Boolean(agentRun?.completedAt) || runInactive;
   const isFailed = workflowRun
-    ? agentRun?.status === "failed"
+    ? agentRun?.status === "failed" || runInactive
     : Boolean(agentRun?.errorMessage) || runCompleted;
   const isPending = workflowRun
-    ? agentRun?.status === "running"
+    ? agentRun?.status === "running" && !runInactive
     : !isFailed;
-  const isStale = !workflowRun;
+  const isStale = !workflowRun || runInactive;
   const stageName = stage === "scene-images" ? "scene image" : stage;
   const warning = isFailed
     ? agentRun?.errorMessage
       ? `The latest ${stageName} ${mode === "generate" ? "generation" : "revision"} run ended before a new artifact was written. ${agentRun.errorMessage}`
-      : `The latest ${stageName} ${mode === "generate" ? "generation" : "revision"} run appears to have finished without writing the required artifact(s).`
+      : runInactive
+        ? `The latest ${stageName} ${mode === "generate" ? "generation" : "revision"} stopped making progress for more than ${Math.round(inactivityMs / 60_000)} minutes and did not write the required artifact(s).`
+        : `The latest ${stageName} ${mode === "generate" ? "generation" : "revision"} run appears to have finished without writing the required artifact(s).`
     : undefined;
 
   return {
@@ -1922,6 +2182,12 @@ function buildVideoPipelineSummary(
   const transcriptDone = stepDone(transcriptPath);
   const voiceDone = stepDone(combinedVoicePath);
   const alignmentDone = stepDone(alignmentOutputPath);
+  const voiceSource = typeof manifest?.voice_source === "string" ? manifest.voice_source : undefined;
+  const alignmentSource = typeof manifest?.alignment_source === "string" ? manifest.alignment_source : undefined;
+  const timingSource = typeof manifest?.timing_source === "string" ? manifest.timing_source : undefined;
+  const reusesXmlVoice = voiceSource === "existing-artifact";
+  const reusesXmlAlignment = alignmentSource === "existing-artifact";
+  const usesXmlTimeline = timingSource === "xml-timeline" || manifestAlignment?.alignment_strategy === "xml-timeline";
   const timingFromManifestDone = Boolean(manifestAlignment) && (!shouldRequireFreshArtifacts || hasFreshFileAtPath(manifestPath, requestedAtMs));
   const timingFromRenderedScenesDone = shouldRequireFreshArtifacts
     ? hasFreshMatchingFileAtPath(motionScenesDir, requestedAtMs, (entry) => /^scene-\d+\.mp4$/i.test(entry)) ||
@@ -1932,10 +2198,12 @@ function buildVideoPipelineSummary(
       );
   const timingDone = timingFromManifestDone || timingFromRenderedScenesDone || stepDone(visualOnlyPath) || stepDone(videoArtifactPath);
   const timingSummary = timingFromManifestDone
-    ? summarizeAlignmentDebug(manifestAlignment) || "Scene timing was derived from the alignment step."
+    ? (usesXmlTimeline
+        ? summarizeAlignmentDebug(manifestAlignment) || "Scene timing came directly from the XML timeline produced during the XML Script step."
+        : summarizeAlignmentDebug(manifestAlignment) || "Scene timing was derived from the alignment step.")
     : timingFromRenderedScenesDone || stepDone(visualOnlyPath) || stepDone(videoArtifactPath)
       ? "Scene timing was inferred from downstream render artifacts."
-      : "Waiting for scene boundary and duration calculations.";
+      : (usesXmlTimeline ? "Waiting for XML timeline timing artifacts." : "Waiting for scene boundary and duration calculations.");
   const timingUpdatedAt = getFileUpdatedAt(manifestPath)
     || getLatestMatchingFileUpdatedAt(motionScenesDir, (entry) => /^scene-\d+\.mp4$/i.test(entry))
     || getLatestMatchingFileUpdatedAt(captionedScenesDir, (entry) => /^scene-\d+\.mp4$/i.test(entry))
@@ -1966,9 +2234,11 @@ function buildVideoPipelineSummary(
   const steps: VideoPipelineStep[] = [
     {
       id: "transcript",
-      label: "Prepare Qwen transcript",
+      label: reusesXmlVoice ? "Load XML narration transcript" : "Prepare narration transcript",
       status: stepStatus(transcriptDone, currentStep === "transcript"),
-      summary: transcriptDone ? "Transcript written for the full-video narration." : "Waiting for the narration transcript to be written.",
+      summary: transcriptDone
+        ? (reusesXmlVoice ? "Transcript copied from the XML Script pipeline for final-video reuse." : "Transcript written for the full-video narration.")
+        : (reusesXmlVoice ? "Waiting for the XML-script transcript artifact to be available." : "Waiting for the narration transcript to be written."),
       updatedAt: getFileUpdatedAt(transcriptPath),
       details: [
         transcript ? { id: "transcript", label: "Transcript passed to Qwen3-TTS", format: "text", content: transcript } : undefined,
@@ -1977,9 +2247,11 @@ function buildVideoPipelineSummary(
     },
     {
       id: "voice",
-      label: "Generate narration audio",
+      label: reusesXmlVoice ? "Reuse XML narration audio" : "Generate narration audio",
       status: stepStatus(voiceDone, currentStep === "voice"),
-      summary: voiceDone ? `Narration audio exists${typeof manifest?.voice_duration === "number" ? ` (${manifest.voice_duration.toFixed(2)}s)` : ""}.` : "Waiting for the combined narration WAV.",
+      summary: voiceDone
+        ? `${reusesXmlVoice ? "Reused" : "Generated"} narration audio${typeof manifest?.voice_duration === "number" ? ` (${manifest.voice_duration.toFixed(2)}s)` : ""}.`
+        : (reusesXmlVoice ? "Waiting for the XML narration WAV to be available." : "Waiting for the combined narration WAV."),
       updatedAt: getFileUpdatedAt(combinedVoicePath),
       details: [
         manifest && (manifest.tts_engine || manifest.tts_voice || manifest.voice_instruct)
@@ -2000,9 +2272,11 @@ function buildVideoPipelineSummary(
     },
     {
       id: "alignment",
-      label: "Run force alignment",
+      label: reusesXmlAlignment ? "Reuse XML forced alignment" : "Run force alignment",
       status: stepStatus(alignmentDone, currentStep === "alignment"),
-      summary: alignmentDone ? (summarizeAlignmentDebug(manifestAlignment) || "Force-alignment output is available.") : "Waiting for the alignment model input/output.",
+      summary: alignmentDone
+        ? (summarizeAlignmentDebug(manifestAlignment) || `${reusesXmlAlignment ? "Reused" : "Generated"} force-alignment output is available.`)
+        : (reusesXmlAlignment ? "Waiting for the XML forced-alignment JSON to be available." : "Waiting for the alignment model input/output."),
       updatedAt: getFileUpdatedAt(alignmentOutputPath),
       details: [
         alignmentInput ? { id: "alignment-input", label: "Data passed to force alignment", format: "json", content: stringifyDebugContent(alignmentInput) } : undefined,
@@ -2012,7 +2286,7 @@ function buildVideoPipelineSummary(
     },
     {
       id: "timing",
-      label: "Derive scene timing",
+      label: usesXmlTimeline ? "Apply XML caption + visual timing" : "Derive scene timing",
       status: stepStatus(timingDone, currentStep === "timing"),
       summary: timingSummary,
       updatedAt: timingUpdatedAt,
@@ -2083,11 +2357,13 @@ function inferCurrentStage(project: {
   selectedHookText?: string;
   research: StageDocumentSummary;
   script: StageDocumentSummary;
+  xmlScript: XmlScriptDocumentSummary;
   sceneImages: StageDocumentSummary & { scenes: SceneImageArtifact[]; sceneProgress?: SceneImageProgressSummary };
   video: StageDocumentSummary & { videoUrl?: string };
 }) {
   if (project.video.videoUrl) return "video";
   if (project.sceneImages.scenes.length > 0) return "scene-images";
+  if (project.xmlScript.exists) return "xml-script";
   if (project.script.exists) return "script";
   if (project.research.exists) return "research";
   if (project.selectedHookText) return "hook";
@@ -2196,7 +2472,14 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
     ? hookRun.errorMessage || "The latest hook generation run finished without writing hooks.json."
     : undefined;
   const research = { ...readStageDocument(projectId, "research", { pending: Boolean(meta.pendingResearch) }), pending: Boolean(meta.pendingResearch) };
-  const script = { ...readStageDocument(projectId, "script", { pending: Boolean(meta.pendingScript) }), pending: Boolean(meta.pendingScript) };
+  const textScriptRuns = readTextScriptRuns(projectId);
+  const script = {
+    ...readStageDocument(projectId, "script", { pending: Boolean(meta.pendingScript) }),
+    pending: Boolean(meta.pendingScript),
+    textScriptRuns,
+    textScriptLatestRunId: textScriptRuns[0]?.runId,
+    textScriptMaxIterationsOverride: meta.textScriptMaxIterationsOverride,
+  };
   const sceneImages = { ...getSceneImagesStage(projectId, { pending: Boolean(meta.pendingSceneImages) }), pending: Boolean(meta.pendingSceneImages) };
   const video = { ...getVideoStage(projectId, { pending: Boolean(meta.pendingVideo) }), pending: Boolean(meta.pendingVideo) };
 
@@ -2225,6 +2508,7 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
 
   const resolvedResearch = { ...research, pending: Boolean(nextMeta.pendingResearch || research.revision?.isPending) };
   const resolvedScript = { ...script, pending: Boolean(nextMeta.pendingScript || script.revision?.isPending) };
+  const resolvedXmlScript = getXmlScriptDocument(projectId, { expectedVoiceId: nextMeta.selectedVoiceId });
   const resolvedSceneImages = {
     ...sceneImages,
     scenes: attachScenePreviewVideoUrls(projectId, sceneImages.scenes, resolvedBackground.resolvedBackgroundVideoId),
@@ -2248,6 +2532,7 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
     selectedMusicName: resolvedMusic.music?.name,
     selectedBackgroundVideoId: resolvedBackground.resolvedBackgroundVideoId,
     selectedBackgroundVideoName: resolvedBackground.background?.name,
+    captionMaxWordsOverride: nextMeta.captionMaxWordsOverride,
     currentStage: "topic",
     pendingStages: getPendingStages(nextMeta, {
       research: resolvedResearch,
@@ -2264,6 +2549,7 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
     },
     research: resolvedResearch,
     script: resolvedScript,
+    xmlScript: resolvedXmlScript,
     sceneImages: resolvedSceneImages,
     video: resolvedVideo,
   };
@@ -2301,6 +2587,12 @@ export function listShortFormProjectRows(): ShortFormProjectRow[] {
         script: {
           status: project.script.status,
           pending: project.script.pending,
+          textScriptLatestRunId: project.script.textScriptLatestRunId,
+          textScriptMaxIterationsOverride: project.script.textScriptMaxIterationsOverride,
+        },
+        xmlScript: {
+          status: project.xmlScript.status,
+          pending: project.xmlScript.pending,
         },
         sceneImages: {
           status: project.sceneImages.status,
