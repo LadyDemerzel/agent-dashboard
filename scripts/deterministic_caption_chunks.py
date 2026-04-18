@@ -15,6 +15,12 @@ from spacy.language import Language
 from spacy.tokens import Doc, Token
 
 PUNCT_BREAKS = {",", ".", ";", "—", "–", "-", "?", "!", ":"}
+HARD_BREAK_PUNCTUATION = {
+    ",": "forced-comma",
+    ".": "forced-sentence-end",
+    "!": "forced-sentence-end",
+    "?": "forced-sentence-end",
+}
 COORD_CONJ = {"and", "but", "or", "for", "nor"}
 SUBORD_CONJ = {"because", "if", "although", "though", "while", "when", "unless", "since"}
 PREPOSITIONS = {
@@ -268,6 +274,33 @@ def attached_phrase_starts(doc: Doc, words: list[ScriptWord]) -> set[int]:
     return starts
 
 
+def add_boundary_after_token(doc: Doc, token_to_word: dict[int, int], token: Token, callback) -> int | None:
+    for next_token_i in range(token.i + 1, len(doc)):
+        boundary_word_index = token_to_word.get(next_token_i)
+        if boundary_word_index is not None:
+            callback(boundary_word_index)
+            return boundary_word_index
+    return None
+
+
+
+def forced_punctuation_boundaries(doc: Doc, words: list[ScriptWord]) -> dict[int, str]:
+    token_to_word = token_i_to_word_index(words)
+    boundaries: dict[int, str] = {}
+
+    for token in doc:
+        reason = HARD_BREAK_PUNCTUATION.get(token.text)
+        if reason is None:
+            continue
+        boundary = add_boundary_after_token(doc, token_to_word, token, lambda boundary_word_index: boundary_word_index)
+        if boundary is None or not (0 < boundary < len(words)):
+            continue
+        boundaries.setdefault(boundary, reason)
+
+    return boundaries
+
+
+
 def candidate_breakpoints(doc: Doc, words: list[ScriptWord]) -> dict[int, list[str]]:
     reasons: dict[int, list[str]] = {}
     token_to_word = token_i_to_word_index(words)
@@ -283,11 +316,7 @@ def candidate_breakpoints(doc: Doc, words: list[ScriptWord]) -> dict[int, list[s
             add(boundary_word_index, reason)
 
     def add_after_token(token: Token, reason: str):
-        for next_token_i in range(token.i + 1, len(doc)):
-            boundary_word_index = token_to_word.get(next_token_i)
-            if boundary_word_index is not None:
-                add(boundary_word_index, reason)
-                return
+        add_boundary_after_token(doc, token_to_word, token, lambda boundary_word_index: add(boundary_word_index, reason))
 
     def subtree_word_indices(token: Token) -> list[int]:
         return sorted({token_to_word[t.i] for t in token.subtree if t.i in token_to_word})
@@ -540,18 +569,32 @@ def choose_chunks(doc: Doc, words: list[ScriptWord], max_words: int, *, final_re
     protected = protected_ranges(doc, words)
     attached_starts = attached_phrase_starts(doc, words)
     reasons = candidate_breakpoints(doc, words)
-    return divide_span(
-        doc,
-        words,
-        0,
-        len(words),
-        max_words,
-        2,
-        reasons,
-        protected,
-        attached_starts,
-        final_reason=final_reason,
-    )
+    forced_boundaries = forced_punctuation_boundaries(doc, words)
+
+    chunks: list[tuple[int, int, list[str]]] = []
+    start = 0
+    ordered_forced_boundaries = sorted(forced_boundaries)
+    for boundary in [*ordered_forced_boundaries, len(words)]:
+        if boundary <= start:
+            continue
+        span_final_reason = forced_boundaries.get(boundary, final_reason)
+        chunks.extend(
+            divide_span(
+                doc,
+                words,
+                start,
+                boundary,
+                max_words,
+                2,
+                reasons,
+                protected,
+                attached_starts,
+                final_reason=span_final_reason,
+            )
+        )
+        start = boundary
+
+    return chunks
 
 
 def alignment_words(payload: dict[str, Any]) -> list[dict[str, Any]]:

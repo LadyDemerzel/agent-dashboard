@@ -197,6 +197,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     for (const voice of candidate.voices) {
+      const sourceType = voice.sourceType === "uploaded-reference" ? "uploaded-reference" : "generated";
       if (typeof voice.id !== "string" || !voice.id.trim()) {
         return NextResponse.json({ success: false, error: "Each voice must have an id" }, { status: 400 });
       }
@@ -206,13 +207,21 @@ export async function PATCH(request: NextRequest) {
       if (voice.mode !== "voice-design" && voice.mode !== "custom-voice") {
         return NextResponse.json({ success: false, error: `Voice ${voice.name} has an unsupported mode` }, { status: 400 });
       }
-      if (typeof voice.voiceDesignPrompt !== "string" || !voice.voiceDesignPrompt.trim()) {
+      if (sourceType !== "uploaded-reference" && (typeof voice.voiceDesignPrompt !== "string" || !voice.voiceDesignPrompt.trim())) {
         return NextResponse.json({ success: false, error: `Voice ${voice.name} needs a VoiceDesign prompt` }, { status: 400 });
       }
       if (typeof voice.previewText !== "string" || !voice.previewText.trim()) {
         return NextResponse.json({ success: false, error: `Voice ${voice.name} needs preview sample text` }, { status: 400 });
       }
-      if (voice.mode === "custom-voice" && (typeof voice.speaker !== "string" || !voice.speaker.trim())) {
+      if (sourceType === "uploaded-reference") {
+        if (typeof voice.referenceAudioRelativePath !== "string" || !voice.referenceAudioRelativePath.trim()) {
+          return NextResponse.json({ success: false, error: `Uploaded reference voice ${voice.name} must include an uploaded audio file` }, { status: 400 });
+        }
+        if (typeof voice.referenceText !== "string" || !voice.referenceText.trim()) {
+          return NextResponse.json({ success: false, error: `Uploaded reference voice ${voice.name} must include the transcript of the uploaded clip` }, { status: 400 });
+        }
+      }
+      if (sourceType !== "uploaded-reference" && voice.mode === "custom-voice" && (typeof voice.speaker !== "string" || !voice.speaker.trim())) {
         return NextResponse.json({ success: false, error: `Legacy/custom voice ${voice.name} must include a speaker` }, { status: 400 });
       }
     }

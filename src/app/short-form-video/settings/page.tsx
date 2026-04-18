@@ -93,10 +93,12 @@ interface ImageStyleSettings {
 }
 
 type VoiceMode = 'voice-design' | 'custom-voice';
+type VoiceSourceType = 'generated' | 'uploaded-reference';
 
 interface VoiceLibraryEntry {
   id: string;
   name: string;
+  sourceType?: VoiceSourceType;
   mode: VoiceMode;
   voiceDesignPrompt: string;
   notes: string;
@@ -252,6 +254,21 @@ interface BackgroundVideoUploadState {
   error: string | null;
 }
 
+interface VoiceReferenceUploadState {
+  isUploading: boolean;
+  error: string | null;
+}
+
+interface VoiceReferenceUploadResponse {
+  success: boolean;
+  data?: {
+    referenceAudioRelativePath: string;
+    audioUrl?: string;
+    uploadedAt?: string;
+  };
+  error?: string;
+}
+
 interface TtsPreviewState {
   isLoading: boolean;
   error: string | null;
@@ -381,12 +398,27 @@ function createVoiceDraft(index: number): VoiceLibraryEntry {
   return {
     id: `voice-${Date.now()}-${index}`,
     name: `New voice ${index}`,
+    sourceType: 'generated',
     mode: 'voice-design',
     voiceDesignPrompt:
       'Educated American English narrator with calm authority, polished pacing, natural warmth, and crisp short-form delivery. Speak only English and avoid non-speech sounds.',
     notes: '',
     previewText:
       'Most people think their face shape is fixed, but posture, breathing, and muscular balance change more than you expect. In this lesson, I will walk through the habits that matter most, the mistakes that waste effort, and the small adjustments that create visible changes over time. Keep your shoulders relaxed, your neck long, and your breathing steady as we go step by step.',
+  };
+}
+
+function createUploadedReferenceVoiceDraft(index: number): VoiceLibraryEntry {
+  return {
+    id: `voice-upload-${Date.now()}-${index}`,
+    name: `Uploaded voice ${index}`,
+    sourceType: 'uploaded-reference',
+    mode: 'voice-design',
+    voiceDesignPrompt: 'Use the uploaded reference clip for voice cloning.',
+    notes: '',
+    previewText:
+      'Most people think their face shape is fixed, but posture, breathing, and muscular balance change more than you expect. In this lesson, I will walk through the habits that matter most, the mistakes that waste effort, and the small adjustments that create visible changes over time. Keep your shoulders relaxed, your neck long, and your breathing steady as we go step by step.',
+    referenceText: '',
   };
 }
 
@@ -463,7 +495,9 @@ async function parseTtsPreviewResponse(response: Response) {
 }
 
 function hasSavedVoiceSample(voice: VoiceLibraryEntry | null | undefined) {
-  if (!voice?.referenceAudioRelativePath || !voice.referenceText || !voice.referencePrompt || !voice.referenceMode) return false;
+  if (!voice?.referenceAudioRelativePath || !voice.referenceText) return false;
+  if (voice.sourceType === 'uploaded-reference') return true;
+  if (!voice.referencePrompt || !voice.referenceMode) return false;
   if (voice.referencePrompt !== voice.voiceDesignPrompt || voice.referenceMode !== voice.mode) return false;
   if (voice.mode === 'custom-voice' && voice.referenceSpeaker !== voice.speaker) return false;
   return true;
@@ -478,6 +512,10 @@ function buildSavedVoiceAudioUrl(voice: VoiceLibraryEntry | null | undefined, ca
     .join('/');
   const query = cacheBust ? `?v=${cacheBust}` : '';
   return `/api/short-form-videos/settings/voice-library-files/${encodedPath}${query}`;
+}
+
+function getVoiceSourceLabel(voice: VoiceLibraryEntry | null | undefined) {
+  return voice?.sourceType === 'uploaded-reference' ? 'Uploaded reference' : voice?.mode === 'custom-voice' ? 'Legacy custom voice' : 'Generated VoiceDesign';
 }
 
 async function parseMusicPreviewResponse(response: Response) {
@@ -695,6 +733,7 @@ export default function ShortFormVideoSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [styleTestsById, setStyleTestsById] = useState<Record<string, StyleTestState>>({});
   const [styleReferenceUploadsById, setStyleReferenceUploadsById] = useState<Record<string, StyleReferenceUploadState>>({});
+  const [voiceReferenceUploadsById, setVoiceReferenceUploadsById] = useState<Record<string, VoiceReferenceUploadState>>({});
   const [backgroundVideoUpload, setBackgroundVideoUpload] = useState<BackgroundVideoUploadState>({ isUploading: false, error: null });
   const [sectionFeedback, setSectionFeedback] = useState<Record<SettingsSectionId, SectionFeedback>>(createEmptySectionFeedback());
   const [ttsPreview, setTtsPreview] = useState<TtsPreviewState>({
@@ -813,6 +852,7 @@ export default function ShortFormVideoSettingsPage() {
   }, [musicPreview.audioUrl, selectedMusic]);
   const selectedStyleTest = selectedStyle ? styleTestsById[selectedStyle.id] : undefined;
   const selectedStyleUpload = selectedStyle ? styleReferenceUploadsById[selectedStyle.id] : undefined;
+  const selectedVoiceUpload = selectedVoice ? voiceReferenceUploadsById[selectedVoice.id] : undefined;
   const anyStyleTesting = useMemo(
     () => Object.values(styleTestsById).some((styleTest) => styleTest.isLoading),
     [styleTestsById]
@@ -1493,11 +1533,96 @@ export default function ShortFormVideoSettingsPage() {
     });
   }
 
+  async function uploadReferenceVoice(file: File) {
+    if (!selectedVoiceId) return;
+
+    setVoiceReferenceUploadsById((current) => ({
+      ...current,
+      [selectedVoiceId]: { isUploading: true, error: null },
+    }));
+    updateSectionFeedbackState('tts-voice', { error: null, message: null });
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('voiceId', selectedVoiceId);
+
+      const response = await fetch('/api/short-form-videos/settings/voice-library/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const payload = (await response.json().catch(() => ({}))) as VoiceReferenceUploadResponse;
+
+      if (!response.ok || payload.success === false || !payload.data?.referenceAudioRelativePath) {
+        throw new Error(payload.error || 'Failed to upload reference voice');
+      }
+
+      setVideoRender((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          voices: current.voices.map((voice) => {
+            if (voice.id !== selectedVoiceId) return voice;
+            const transcript = voice.referenceText || voice.previewText;
+            return {
+              ...voice,
+              sourceType: 'uploaded-reference',
+              referenceAudioRelativePath: payload.data!.referenceAudioRelativePath,
+              referenceGeneratedAt: payload.data!.uploadedAt,
+              referenceText: transcript,
+              previewText: transcript,
+              referencePrompt: undefined,
+              referenceMode: undefined,
+              referenceSpeaker: undefined,
+            };
+          }),
+        };
+      });
+      setTtsPreview({
+        isLoading: false,
+        error: null,
+        audioUrl: payload.data.audioUrl || null,
+        reusedExisting: true,
+      });
+      setVoiceReferenceUploadsById((current) => ({
+        ...current,
+        [selectedVoiceId]: { isUploading: false, error: null },
+      }));
+      updateSectionFeedbackState('tts-voice', {
+        saving: false,
+        error: null,
+        message: 'Uploaded a reference clip. Update the transcript if needed, then save the voice library so projects can reuse this exact audio.',
+      });
+    } catch (err) {
+      setVoiceReferenceUploadsById((current) => ({
+        ...current,
+        [selectedVoiceId]: {
+          isUploading: false,
+          error: err instanceof Error ? err.message : 'Failed to upload reference voice',
+        },
+      }));
+    }
+  }
+
   function addVoice() {
     if (!videoRender) return;
     updateSectionFeedbackState('tts-voice', { error: null, message: null });
     const nextVoice = createVoiceDraft(videoRender.voices.length + 1);
     const dedupedId = `${slugify(nextVoice.name) || 'voice'}-${Date.now()}`;
+    nextVoice.id = dedupedId;
+    setVideoRender({
+      ...videoRender,
+      defaultVoiceId: videoRender.defaultVoiceId || dedupedId,
+      voices: [...videoRender.voices, nextVoice],
+    });
+    setSelectedVoiceId(dedupedId);
+  }
+
+  function addUploadedReferenceVoice() {
+    if (!videoRender) return;
+    updateSectionFeedbackState('tts-voice', { error: null, message: null });
+    const nextVoice = createUploadedReferenceVoiceDraft(videoRender.voices.length + 1);
+    const dedupedId = `${slugify(nextVoice.name) || 'uploaded-voice'}-${Date.now()}`;
     nextVoice.id = dedupedId;
     setVideoRender({
       ...videoRender,
@@ -1516,6 +1641,12 @@ export default function ShortFormVideoSettingsPage() {
       ...videoRender,
       defaultVoiceId: nextDefault,
       voices: remaining,
+    });
+    setVoiceReferenceUploadsById((current) => {
+      if (!(voiceId in current)) return current;
+      const next = { ...current };
+      delete next[voiceId];
+      return next;
     });
     setSelectedVoiceId(remaining[0]?.id || null);
   }
@@ -1873,7 +2004,7 @@ export default function ShortFormVideoSettingsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => void loadSettings()} disabled={loading || anySectionSaving || anyStyleTesting || ttsPreview.isLoading || selectedStyleUpload?.isUploading || backgroundVideoUpload.isUploading}>
+          <Button variant="outline" onClick={() => void loadSettings()} disabled={loading || anySectionSaving || anyStyleTesting || ttsPreview.isLoading || selectedStyleUpload?.isUploading || selectedVoiceUpload?.isUploading || backgroundVideoUpload.isUploading}>
             Reload page state
           </Button>
         </div>
@@ -1990,9 +2121,14 @@ export default function ShortFormVideoSettingsPage() {
                       VoiceDesign uses Qwen&apos;s <code>voice-design</code> mode, which means the design text is the real control. It does not expose a reusable deterministic speaker ID in the current local runner. Legacy/custom entries still use built-in speakers plus instructions and are kept here only for migration and fallback.
                     </p>
                   </div>
-                  <Button variant="outline" onClick={addVoice} disabled={sectionFeedback['tts-voice'].saving}>
-                    Add voice
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" onClick={addVoice} disabled={sectionFeedback['tts-voice'].saving}>
+                      Add generated voice
+                    </Button>
+                    <Button variant="outline" onClick={addUploadedReferenceVoice} disabled={sectionFeedback['tts-voice'].saving}>
+                      Add uploaded reference
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="mt-4 grid gap-4 lg:grid-cols-[280px,1fr]">
@@ -2005,7 +2141,7 @@ export default function ShortFormVideoSettingsPage() {
                     >
                       {videoRender.voices.map((voice) => (
                         <option key={voice.id} value={voice.id}>
-                          {voice.name}{voice.id === videoRender.defaultVoiceId ? ' (default)' : ''}
+                          {voice.name} [{getVoiceSourceLabel(voice)}]{voice.id === videoRender.defaultVoiceId ? ' (default)' : ''}
                         </option>
                       ))}
                     </Select>
@@ -2020,7 +2156,7 @@ export default function ShortFormVideoSettingsPage() {
 
                   {selectedVoice ? (
                     <div className="space-y-4 rounded-lg border border-border bg-background/50 p-4">
-                      <div className="grid gap-4 md:grid-cols-2">
+                      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                         <div className="space-y-2">
                           <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Voice name</label>
                           <Input
@@ -2032,30 +2168,64 @@ export default function ShortFormVideoSettingsPage() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Mode</label>
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Voice source</label>
                           <Select
-                            value={selectedVoice.mode}
+                            value={selectedVoice.sourceType || 'generated'}
                             onChange={(event) => {
-                              const mode = event.target.value === 'custom-voice' ? 'custom-voice' : 'voice-design';
-                              updateSelectedVoice((voice) => ({
-                                ...voice,
-                                mode,
-                                ...(mode === 'custom-voice'
-                                  ? {
-                                      speaker: voice.speaker || 'Aiden',
-                                      legacyInstruct: voice.legacyInstruct || voice.voiceDesignPrompt,
-                                    }
-                                  : {}),
-                              }));
+                              const sourceType = event.target.value === 'uploaded-reference' ? 'uploaded-reference' : 'generated';
+                              updateSelectedVoice((voice) => {
+                                const transcript = voice.referenceText || voice.previewText;
+                                return {
+                                  ...voice,
+                                  sourceType,
+                                  mode: sourceType === 'uploaded-reference' ? 'voice-design' : voice.mode,
+                                  previewText: transcript,
+                                  referenceText: sourceType === 'uploaded-reference' ? transcript : voice.referenceText,
+                                  ...(sourceType === 'uploaded-reference'
+                                    ? {
+                                        referencePrompt: undefined,
+                                        referenceMode: undefined,
+                                        referenceSpeaker: undefined,
+                                      }
+                                    : {}),
+                                };
+                              });
                             }}
                           >
-                            <option value="voice-design">VoiceDesign</option>
-                            <option value="custom-voice">Legacy custom voice</option>
+                            <option value="generated">Generated voice library entry</option>
+                            <option value="uploaded-reference">Uploaded reference clip</option>
                           </Select>
                         </div>
+                        {(selectedVoice.sourceType || 'generated') === 'generated' ? (
+                          <div className="space-y-2">
+                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Mode</label>
+                            <Select
+                              value={selectedVoice.mode}
+                              onChange={(event) => {
+                                const mode = event.target.value === 'custom-voice' ? 'custom-voice' : 'voice-design';
+                                updateSelectedVoice((voice) => ({
+                                  ...voice,
+                                  mode,
+                                  ...(mode === 'custom-voice'
+                                    ? {
+                                        speaker: voice.speaker || 'Aiden',
+                                        legacyInstruct: voice.legacyInstruct || voice.voiceDesignPrompt,
+                                      }
+                                    : {}),
+                                }));
+                              }}
+                            >
+                              <option value="voice-design">VoiceDesign</option>
+                              <option value="custom-voice">Legacy custom voice</option>
+                            </Select>
+                          </div>
+                        ) : null}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                          {getVoiceSourceLabel(selectedVoice)}
+                        </span>
                         <Button
                           type="button"
                           variant={selectedVoice.id === videoRender.defaultVoiceId ? 'default' : 'outline'}
@@ -2076,42 +2246,46 @@ export default function ShortFormVideoSettingsPage() {
                         </Button>
                       </div>
 
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          {selectedVoice.mode === 'voice-design' ? 'VoiceDesign prompt' : 'Voice description / legacy instruction snapshot'}
-                        </label>
-                        <Textarea
-                          value={selectedVoice.voiceDesignPrompt}
-                          onChange={(event) => {
-                            updateSelectedVoice((voice) => ({
-                              ...voice,
-                              voiceDesignPrompt: event.target.value,
-                              ...(voice.mode === 'custom-voice' ? { legacyInstruct: event.target.value } : {}),
-                            }));
-                          }}
-                          className="min-h-[150px] font-mono text-xs"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          {selectedVoice.mode === 'voice-design'
-                            ? 'This prompt shapes the reusable reference clip in Qwen voice-design mode. Qwen still does not expose a locked speaker ID here, so the practical stabilization path is generating and then reusing the saved sample below.'
-                            : 'This legacy/custom entry still passes speaker + instruction text into Qwen custom-voice mode so older behavior remains runnable.'}
-                        </p>
-                      </div>
+                      {(selectedVoice.sourceType || 'generated') === 'generated' ? (
+                        <>
+                          <div className="space-y-2">
+                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                              {selectedVoice.mode === 'voice-design' ? 'VoiceDesign prompt' : 'Voice description / legacy instruction snapshot'}
+                            </label>
+                            <Textarea
+                              value={selectedVoice.voiceDesignPrompt}
+                              onChange={(event) => {
+                                updateSelectedVoice((voice) => ({
+                                  ...voice,
+                                  voiceDesignPrompt: event.target.value,
+                                  ...(voice.mode === 'custom-voice' ? { legacyInstruct: event.target.value } : {}),
+                                }));
+                              }}
+                              className="min-h-[150px] font-mono text-xs"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              {selectedVoice.mode === 'voice-design'
+                                ? 'This prompt shapes the reusable reference clip in Qwen voice-design mode. Qwen still does not expose a locked speaker ID here, so the practical stabilization path is generating and then reusing the saved sample below.'
+                                : 'This legacy/custom entry still passes speaker + instruction text into Qwen custom-voice mode so older behavior remains runnable.'}
+                            </p>
+                          </div>
 
-                      {selectedVoice.mode === 'custom-voice' ? (
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Legacy speaker</label>
-                          <Input
-                            value={selectedVoice.speaker || ''}
-                            onChange={(event) => {
-                              updateSelectedVoice((voice) => ({ ...voice, speaker: event.target.value }));
-                            }}
-                            placeholder="Aiden"
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Used only for legacy/custom voice entries. VoiceDesign entries ignore speaker and use the design prompt alone.
-                          </p>
-                        </div>
+                          {selectedVoice.mode === 'custom-voice' ? (
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Legacy speaker</label>
+                              <Input
+                                value={selectedVoice.speaker || ''}
+                                onChange={(event) => {
+                                  updateSelectedVoice((voice) => ({ ...voice, speaker: event.target.value }));
+                                }}
+                                placeholder="Aiden"
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Used only for legacy/custom voice entries. VoiceDesign entries ignore speaker and use the design prompt alone.
+                              </p>
+                            </div>
+                          ) : null}
+                        </>
                       ) : null}
 
                       <div className="space-y-2">
@@ -2127,39 +2301,90 @@ export default function ShortFormVideoSettingsPage() {
                       </div>
 
                       <div className="space-y-4 rounded-lg border border-border bg-background/60 p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <h3 className="text-sm font-medium text-foreground">Saved voice sample</h3>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              Generate one reusable reference clip for this voice entry. XML narration runs then switch to voice-clone mode and reuse this exact sample instead of asking Qwen to redesign the voice on every narration chunk. If a project reaches XML narration before you click this, the worker now auto-saves the first generated reference clip back into the voice library too.
-                            </p>
-                          </div>
-                          <Button onClick={() => void generateTtsPreview()} disabled={ttsPreview.isLoading || sectionFeedback['tts-voice'].saving}>
-                            {ttsPreview.isLoading ? 'Generating…' : hasSavedVoiceSample(selectedVoice) ? 'Regenerate saved sample' : 'Generate saved sample'}
-                          </Button>
-                        </div>
+                        {(selectedVoice.sourceType || 'generated') === 'uploaded-reference' ? (
+                          <>
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <h3 className="text-sm font-medium text-foreground">Uploaded reference voice</h3>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Upload a short recording and transcript. The dashboard converts common audio uploads to mono WAV, saves the clip in the voice library, and then XML narration reuses that exact reference clip in Qwen voice-clone mode.
+                                </p>
+                              </div>
+                              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-accent">
+                                <span>{selectedVoiceUpload?.isUploading ? 'Uploading…' : savedVoiceAudioUrl ? 'Replace reference audio' : 'Upload reference audio'}</span>
+                                <input
+                                  type="file"
+                                  accept="audio/wav,audio/wave,audio/x-wav,audio/mpeg,audio/mp3,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/opus,audio/webm,video/webm,.wav,.mp3,.m4a,.aac,.mp4,.ogg,.opus,.webm"
+                                  className="hidden"
+                                  disabled={selectedVoiceUpload?.isUploading}
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    if (file) {
+                                      void uploadReferenceVoice(file);
+                                    }
+                                    event.currentTarget.value = '';
+                                  }}
+                                />
+                              </label>
+                            </div>
 
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Reference/sample text</label>
-                          <Textarea
-                            value={selectedVoice.previewText}
-                            onChange={(event) => {
-                              updateSelectedVoice((voice) => ({ ...voice, previewText: event.target.value }));
-                            }}
-                            className="min-h-[110px] font-mono text-xs"
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            This text becomes the saved cloning reference. Keep it reasonably representative. The generator will automatically extend very short text into a longer one-chunk reference clip so the saved sample stays more stable across longer narrations.
-                          </p>
-                        </div>
+                            {selectedVoiceUpload?.error ? <ValidationNotice title="Reference upload failed" message={selectedVoiceUpload.error} /> : null}
 
-                        {ttsPreview.error ? <ValidationNotice title="Saved voice sample failed" message={ttsPreview.error} /> : null}
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Transcript for the uploaded clip</label>
+                              <Textarea
+                                value={selectedVoice.referenceText || selectedVoice.previewText}
+                                onChange={(event) => {
+                                  updateSelectedVoice((voice) => ({
+                                    ...voice,
+                                    referenceText: event.target.value,
+                                    previewText: event.target.value,
+                                  }));
+                                }}
+                                className="min-h-[110px] font-mono text-xs"
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Keep this aligned with the uploaded recording. Qwen uses the saved clip plus this transcript as the cloning reference during narration generation.
+                              </p>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <h3 className="text-sm font-medium text-foreground">Saved voice sample</h3>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Generate one reusable reference clip for this voice entry. XML narration runs then switch to voice-clone mode and reuse this exact sample instead of asking Qwen to redesign the voice on every narration chunk. If a project reaches XML narration before you click this, the worker now auto-saves the first generated reference clip back into the voice library too.
+                                </p>
+                              </div>
+                              <Button onClick={() => void generateTtsPreview()} disabled={ttsPreview.isLoading || sectionFeedback['tts-voice'].saving}>
+                                {ttsPreview.isLoading ? 'Generating…' : hasSavedVoiceSample(selectedVoice) ? 'Regenerate saved sample' : 'Generate saved sample'}
+                              </Button>
+                            </div>
 
-                        {ttsPreview.isLoading ? (
-                          <div className="rounded-lg border border-border p-4">
-                            <OrbitLoader label="Generating reusable Qwen voice sample" />
-                          </div>
-                        ) : null}
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Reference/sample text</label>
+                              <Textarea
+                                value={selectedVoice.previewText}
+                                onChange={(event) => {
+                                  updateSelectedVoice((voice) => ({ ...voice, previewText: event.target.value }));
+                                }}
+                                className="min-h-[110px] font-mono text-xs"
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                This text becomes the saved cloning reference. Keep it reasonably representative. The generator will automatically extend very short text into a longer one-chunk reference clip so the saved sample stays more stable across longer narrations.
+                              </p>
+                            </div>
+
+                            {ttsPreview.error ? <ValidationNotice title="Saved voice sample failed" message={ttsPreview.error} /> : null}
+
+                            {ttsPreview.isLoading ? (
+                              <div className="rounded-lg border border-border p-4">
+                                <OrbitLoader label="Generating reusable Qwen voice sample" />
+                              </div>
+                            ) : null}
+                          </>
+                        )}
 
                         {savedVoiceAudioUrl ? (
                           <div className="space-y-3 rounded-lg border border-border bg-background/70 p-4">
@@ -2176,24 +2401,38 @@ export default function ShortFormVideoSettingsPage() {
                             <audio controls className="w-full" src={savedVoiceAudioUrl} />
                             <div className="grid gap-3 md:grid-cols-2">
                               <div>
-                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Mode used</p>
-                                <p className="mt-1 text-sm text-foreground">{(selectedVoice.referenceMode || selectedVoice.mode) === 'custom-voice' ? 'Legacy custom voice' : 'VoiceDesign'}</p>
+                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Voice source</p>
+                                <p className="mt-1 text-sm text-foreground">{(selectedVoice.sourceType || 'generated') === 'uploaded-reference' ? 'Uploaded reference clip' : 'Generated reference sample'}</p>
                               </div>
-                              {(selectedVoice.referenceSpeaker || selectedVoice.speaker) ? (
+                              {(selectedVoice.sourceType || 'generated') === 'generated' ? (
+                                <div>
+                                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Mode used</p>
+                                  <p className="mt-1 text-sm text-foreground">{(selectedVoice.referenceMode || selectedVoice.mode) === 'custom-voice' ? 'Legacy custom voice' : 'VoiceDesign'}</p>
+                                </div>
+                              ) : null}
+                              {(selectedVoice.referenceSpeaker || selectedVoice.speaker) && (selectedVoice.sourceType || 'generated') === 'generated' ? (
                                 <div>
                                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Speaker used</p>
                                   <p className="mt-1 text-sm text-foreground">{selectedVoice.referenceSpeaker || selectedVoice.speaker}</p>
                                 </div>
                               ) : null}
                             </div>
-                            <div>
-                              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Prompt snapshot used</p>
-                              <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{selectedVoice.referencePrompt || selectedVoice.voiceDesignPrompt}</p>
-                            </div>
+                            {(selectedVoice.sourceType || 'generated') === 'generated' ? (
+                              <div>
+                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Prompt snapshot used</p>
+                                <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{selectedVoice.referencePrompt || selectedVoice.voiceDesignPrompt}</p>
+                              </div>
+                            ) : null}
                             {selectedVoice.referenceGeneratedAt ? (
                               <p className="text-xs text-muted-foreground">
                                 Saved {new Date(selectedVoice.referenceGeneratedAt).toLocaleString()}.
-                                {ttsPreview.reusedExisting === true ? ' Reused the existing reference clip on the latest request.' : ttsPreview.reusedExisting === false ? ' Regenerated the saved reference clip on the latest request.' : ''}
+                                {(selectedVoice.sourceType || 'generated') === 'generated'
+                                  ? ttsPreview.reusedExisting === true
+                                    ? ' Reused the existing reference clip on the latest request.'
+                                    : ttsPreview.reusedExisting === false
+                                      ? ' Regenerated the saved reference clip on the latest request.'
+                                      : ''
+                                  : ' Uploaded clips are reused directly during narration generation.'}
                               </p>
                             ) : null}
                           </div>

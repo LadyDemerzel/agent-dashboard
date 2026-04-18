@@ -1,0 +1,17 @@
+{
+  "captions": [
+    {
+      "id": "caption-1",
+      "index": 1,
+      "text": "Lift your tongue lightly",
+      "start": 0.0,
+      "end": 0.72,
+      "words": [
+        { "text": "Lift", "start": 0.00, "end": 0.18 },
+        { "text": "your", "start": 0.18, "end": 0.36 },
+        { "text": "tongue", "start": 0.36, "end": 0.54 },
+        { "text": "lightly", "start": 0.54, "end": 0.72 }
+      ]
+    }
+  ]
+}

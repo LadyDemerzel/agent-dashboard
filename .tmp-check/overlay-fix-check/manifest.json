@@ -1,0 +1,4698 @@
+{
+  "schemaVersion": "2026-04-animated-caption-overlays-v1",
+  "width": 1080,
+  "height": 1920,
+  "bottomMargin": 220,
+  "animationPreset": "pop",
+  "entries": [
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.0,
+      "end": 0.058,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0001.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.058,
+      "end": 0.134,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0002.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.134,
+      "end": 0.24,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0003.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.24,
+      "end": 0.32,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0004.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.32,
+      "end": 0.358,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0005.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.358,
+      "end": 0.41,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0006.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.41,
+      "end": 0.48,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0007.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.48,
+      "end": 0.56,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0008.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.56,
+      "end": 0.637,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0009.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.637,
+      "end": 0.739,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0010.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.739,
+      "end": 0.88,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0011.png"
+    },
+    {
+      "captionId": "caption-2",
+      "captionIndex": 2,
+      "start": 0.88,
+      "end": 0.918,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0012.png"
+    },
+    {
+      "captionId": "caption-2",
+      "captionIndex": 2,
+      "start": 0.918,
+      "end": 0.97,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0013.png"
+    },
+    {
+      "captionId": "caption-2",
+      "captionIndex": 2,
+      "start": 0.97,
+      "end": 1.04,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0014.png"
+    },
+    {
+      "captionId": "caption-2",
+      "captionIndex": 2,
+      "start": 1.04,
+      "end": 1.213,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0015.png"
+    },
+    {
+      "captionId": "caption-2",
+      "captionIndex": 2,
+      "start": 1.213,
+      "end": 1.443,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0016.png"
+    },
+    {
+      "captionId": "caption-2",
+      "captionIndex": 2,
+      "start": 1.443,
+      "end": 1.76,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0017.png"
+    },
+    {
+      "captionId": "caption-3",
+      "captionIndex": 3,
+      "start": 1.92,
+      "end": 1.958,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0018.png"
+    },
+    {
+      "captionId": "caption-3",
+      "captionIndex": 3,
+      "start": 1.958,
+      "end": 2.01,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0019.png"
+    },
+    {
+      "captionId": "caption-3",
+      "captionIndex": 3,
+      "start": 2.01,
+      "end": 2.08,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0020.png"
+    },
+    {
+      "captionId": "caption-3",
+      "captionIndex": 3,
+      "start": 2.08,
+      "end": 2.138,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0021.png"
+    },
+    {
+      "captionId": "caption-3",
+      "captionIndex": 3,
+      "start": 2.138,
+      "end": 2.214,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0022.png"
+    },
+    {
+      "captionId": "caption-3",
+      "captionIndex": 3,
+      "start": 2.214,
+      "end": 2.32,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0023.png"
+    },
+    {
+      "captionId": "caption-3",
+      "captionIndex": 3,
+      "start": 2.32,
+      "end": 2.378,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0024.png"
+    },
+    {
+      "captionId": "caption-3",
+      "captionIndex": 3,
+      "start": 2.378,
+      "end": 2.454,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0025.png"
+    },
+    {
+      "captionId": "caption-3",
+      "captionIndex": 3,
+      "start": 2.454,
+      "end": 2.56,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0026.png"
+    },
+    {
+      "captionId": "caption-3",
+      "captionIndex": 3,
+      "start": 2.56,
+      "end": 2.64,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0027.png"
+    },
+    {
+      "captionId": "caption-3",
+      "captionIndex": 3,
+      "start": 2.64,
+      "end": 2.678,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0028.png"
+    },
+    {
+      "captionId": "caption-3",
+      "captionIndex": 3,
+      "start": 2.678,
+      "end": 2.73,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0029.png"
+    },
+    {
+      "captionId": "caption-3",
+      "captionIndex": 3,
+      "start": 2.73,
+      "end": 2.8,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0030.png"
+    },
+    {
+      "captionId": "caption-3",
+      "captionIndex": 3,
+      "start": 2.8,
+      "end": 2.896,
+      "activeIndex": 5,
+      "progress": 0.0,
+      "relativePath": "overlay-0031.png"
+    },
+    {
+      "captionId": "caption-3",
+      "captionIndex": 3,
+      "start": 2.896,
+      "end": 3.024,
+      "activeIndex": 5,
+      "progress": 0.55,
+      "relativePath": "overlay-0032.png"
+    },
+    {
+      "captionId": "caption-3",
+      "captionIndex": 3,
+      "start": 3.024,
+      "end": 3.2,
+      "activeIndex": 5,
+      "progress": 1.0,
+      "relativePath": "overlay-0033.png"
+    },
+    {
+      "captionId": "caption-4",
+      "captionIndex": 4,
+      "start": 3.2,
+      "end": 3.277,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0034.png"
+    },
+    {
+      "captionId": "caption-4",
+      "captionIndex": 4,
+      "start": 3.277,
+      "end": 3.379,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0035.png"
+    },
+    {
+      "captionId": "caption-4",
+      "captionIndex": 4,
+      "start": 3.379,
+      "end": 3.52,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0036.png"
+    },
+    {
+      "captionId": "caption-4",
+      "captionIndex": 4,
+      "start": 3.52,
+      "end": 3.558,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0037.png"
+    },
+    {
+      "captionId": "caption-4",
+      "captionIndex": 4,
+      "start": 3.558,
+      "end": 3.61,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0038.png"
+    },
+    {
+      "captionId": "caption-4",
+      "captionIndex": 4,
+      "start": 3.61,
+      "end": 3.68,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0039.png"
+    },
+    {
+      "captionId": "caption-5",
+      "captionIndex": 5,
+      "start": 3.68,
+      "end": 3.814,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0040.png"
+    },
+    {
+      "captionId": "caption-5",
+      "captionIndex": 5,
+      "start": 3.814,
+      "end": 3.994,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0041.png"
+    },
+    {
+      "captionId": "caption-5",
+      "captionIndex": 5,
+      "start": 3.994,
+      "end": 4.24,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0042.png"
+    },
+    {
+      "captionId": "caption-5",
+      "captionIndex": 5,
+      "start": 4.24,
+      "end": 4.32,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0043.png"
+    },
+    {
+      "captionId": "caption-5",
+      "captionIndex": 5,
+      "start": 4.32,
+      "end": 4.397,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0044.png"
+    },
+    {
+      "captionId": "caption-5",
+      "captionIndex": 5,
+      "start": 4.397,
+      "end": 4.499,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0045.png"
+    },
+    {
+      "captionId": "caption-5",
+      "captionIndex": 5,
+      "start": 4.499,
+      "end": 4.64,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0046.png"
+    },
+    {
+      "captionId": "caption-5",
+      "captionIndex": 5,
+      "start": 4.64,
+      "end": 4.717,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0047.png"
+    },
+    {
+      "captionId": "caption-5",
+      "captionIndex": 5,
+      "start": 4.717,
+      "end": 4.819,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0048.png"
+    },
+    {
+      "captionId": "caption-5",
+      "captionIndex": 5,
+      "start": 4.819,
+      "end": 4.96,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0049.png"
+    },
+    {
+      "captionId": "caption-5",
+      "captionIndex": 5,
+      "start": 4.96,
+      "end": 5.01,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0050.png"
+    },
+    {
+      "captionId": "caption-5",
+      "captionIndex": 5,
+      "start": 4.96,
+      "end": 5.037,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0051.png"
+    },
+    {
+      "captionId": "caption-5",
+      "captionIndex": 5,
+      "start": 5.037,
+      "end": 5.139,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0052.png"
+    },
+    {
+      "captionId": "caption-5",
+      "captionIndex": 5,
+      "start": 5.139,
+      "end": 5.28,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0053.png"
+    },
+    {
+      "captionId": "caption-5",
+      "captionIndex": 5,
+      "start": 5.28,
+      "end": 5.376,
+      "activeIndex": 5,
+      "progress": 0.0,
+      "relativePath": "overlay-0054.png"
+    },
+    {
+      "captionId": "caption-5",
+      "captionIndex": 5,
+      "start": 5.376,
+      "end": 5.504,
+      "activeIndex": 5,
+      "progress": 0.55,
+      "relativePath": "overlay-0055.png"
+    },
+    {
+      "captionId": "caption-5",
+      "captionIndex": 5,
+      "start": 5.504,
+      "end": 5.68,
+      "activeIndex": 5,
+      "progress": 1.0,
+      "relativePath": "overlay-0056.png"
+    },
+    {
+      "captionId": "caption-6",
+      "captionIndex": 6,
+      "start": 5.76,
+      "end": 5.837,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0057.png"
+    },
+    {
+      "captionId": "caption-6",
+      "captionIndex": 6,
+      "start": 5.837,
+      "end": 5.939,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0058.png"
+    },
+    {
+      "captionId": "caption-6",
+      "captionIndex": 6,
+      "start": 5.939,
+      "end": 6.08,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0059.png"
+    },
+    {
+      "captionId": "caption-6",
+      "captionIndex": 6,
+      "start": 6.08,
+      "end": 6.138,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0060.png"
+    },
+    {
+      "captionId": "caption-6",
+      "captionIndex": 6,
+      "start": 6.138,
+      "end": 6.214,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0061.png"
+    },
+    {
+      "captionId": "caption-6",
+      "captionIndex": 6,
+      "start": 6.214,
+      "end": 6.32,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0062.png"
+    },
+    {
+      "captionId": "caption-6",
+      "captionIndex": 6,
+      "start": 6.32,
+      "end": 6.416,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0063.png"
+    },
+    {
+      "captionId": "caption-6",
+      "captionIndex": 6,
+      "start": 6.416,
+      "end": 6.544,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0064.png"
+    },
+    {
+      "captionId": "caption-6",
+      "captionIndex": 6,
+      "start": 6.544,
+      "end": 6.72,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0065.png"
+    },
+    {
+      "captionId": "caption-6",
+      "captionIndex": 6,
+      "start": 6.72,
+      "end": 6.778,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0066.png"
+    },
+    {
+      "captionId": "caption-6",
+      "captionIndex": 6,
+      "start": 6.778,
+      "end": 6.854,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0067.png"
+    },
+    {
+      "captionId": "caption-6",
+      "captionIndex": 6,
+      "start": 6.854,
+      "end": 6.96,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0068.png"
+    },
+    {
+      "captionId": "caption-6",
+      "captionIndex": 6,
+      "start": 6.96,
+      "end": 7.04,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0069.png"
+    },
+    {
+      "captionId": "caption-6",
+      "captionIndex": 6,
+      "start": 7.04,
+      "end": 7.117,
+      "activeIndex": 5,
+      "progress": 0.0,
+      "relativePath": "overlay-0070.png"
+    },
+    {
+      "captionId": "caption-6",
+      "captionIndex": 6,
+      "start": 7.117,
+      "end": 7.219,
+      "activeIndex": 5,
+      "progress": 0.55,
+      "relativePath": "overlay-0071.png"
+    },
+    {
+      "captionId": "caption-6",
+      "captionIndex": 6,
+      "start": 7.219,
+      "end": 7.36,
+      "activeIndex": 5,
+      "progress": 1.0,
+      "relativePath": "overlay-0072.png"
+    },
+    {
+      "captionId": "caption-7",
+      "captionIndex": 7,
+      "start": 7.36,
+      "end": 7.418,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0073.png"
+    },
+    {
+      "captionId": "caption-7",
+      "captionIndex": 7,
+      "start": 7.418,
+      "end": 7.494,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0074.png"
+    },
+    {
+      "captionId": "caption-7",
+      "captionIndex": 7,
+      "start": 7.494,
+      "end": 7.6,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0075.png"
+    },
+    {
+      "captionId": "caption-7",
+      "captionIndex": 7,
+      "start": 7.6,
+      "end": 7.715,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0076.png"
+    },
+    {
+      "captionId": "caption-7",
+      "captionIndex": 7,
+      "start": 7.715,
+      "end": 7.869,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0077.png"
+    },
+    {
+      "captionId": "caption-7",
+      "captionIndex": 7,
+      "start": 7.869,
+      "end": 8.08,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0078.png"
+    },
+    {
+      "captionId": "caption-7",
+      "captionIndex": 7,
+      "start": 8.08,
+      "end": 8.16,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0079.png"
+    },
+    {
+      "captionId": "caption-7",
+      "captionIndex": 7,
+      "start": 8.16,
+      "end": 8.218,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0080.png"
+    },
+    {
+      "captionId": "caption-7",
+      "captionIndex": 7,
+      "start": 8.218,
+      "end": 8.294,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0081.png"
+    },
+    {
+      "captionId": "caption-7",
+      "captionIndex": 7,
+      "start": 8.294,
+      "end": 8.4,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0082.png"
+    },
+    {
+      "captionId": "caption-7",
+      "captionIndex": 7,
+      "start": 8.4,
+      "end": 8.534,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0083.png"
+    },
+    {
+      "captionId": "caption-7",
+      "captionIndex": 7,
+      "start": 8.534,
+      "end": 8.714,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0084.png"
+    },
+    {
+      "captionId": "caption-7",
+      "captionIndex": 7,
+      "start": 8.714,
+      "end": 8.96,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0085.png"
+    },
+    {
+      "captionId": "caption-8",
+      "captionIndex": 8,
+      "start": 9.12,
+      "end": 9.197,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0086.png"
+    },
+    {
+      "captionId": "caption-8",
+      "captionIndex": 8,
+      "start": 9.197,
+      "end": 9.299,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0087.png"
+    },
+    {
+      "captionId": "caption-8",
+      "captionIndex": 8,
+      "start": 9.299,
+      "end": 9.44,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0088.png"
+    },
+    {
+      "captionId": "caption-8",
+      "captionIndex": 8,
+      "start": 9.44,
+      "end": 9.517,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0089.png"
+    },
+    {
+      "captionId": "caption-8",
+      "captionIndex": 8,
+      "start": 9.517,
+      "end": 9.619,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0090.png"
+    },
+    {
+      "captionId": "caption-8",
+      "captionIndex": 8,
+      "start": 9.619,
+      "end": 9.76,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0091.png"
+    },
+    {
+      "captionId": "caption-9",
+      "captionIndex": 9,
+      "start": 9.76,
+      "end": 9.84,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0092.png"
+    },
+    {
+      "captionId": "caption-9",
+      "captionIndex": 9,
+      "start": 9.84,
+      "end": 9.936,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0093.png"
+    },
+    {
+      "captionId": "caption-9",
+      "captionIndex": 9,
+      "start": 9.936,
+      "end": 10.064,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0094.png"
+    },
+    {
+      "captionId": "caption-9",
+      "captionIndex": 9,
+      "start": 10.064,
+      "end": 10.24,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0095.png"
+    },
+    {
+      "captionId": "caption-9",
+      "captionIndex": 9,
+      "start": 10.24,
+      "end": 10.29,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0096.png"
+    },
+    {
+      "captionId": "caption-9",
+      "captionIndex": 9,
+      "start": 10.24,
+      "end": 10.317,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0097.png"
+    },
+    {
+      "captionId": "caption-9",
+      "captionIndex": 9,
+      "start": 10.317,
+      "end": 10.419,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0098.png"
+    },
+    {
+      "captionId": "caption-9",
+      "captionIndex": 9,
+      "start": 10.419,
+      "end": 10.56,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0099.png"
+    },
+    {
+      "captionId": "caption-9",
+      "captionIndex": 9,
+      "start": 10.56,
+      "end": 10.656,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0100.png"
+    },
+    {
+      "captionId": "caption-9",
+      "captionIndex": 9,
+      "start": 10.656,
+      "end": 10.784,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0101.png"
+    },
+    {
+      "captionId": "caption-9",
+      "captionIndex": 9,
+      "start": 10.784,
+      "end": 10.96,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0102.png"
+    },
+    {
+      "captionId": "caption-10",
+      "captionIndex": 10,
+      "start": 11.44,
+      "end": 11.478,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0103.png"
+    },
+    {
+      "captionId": "caption-10",
+      "captionIndex": 10,
+      "start": 11.478,
+      "end": 11.53,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0104.png"
+    },
+    {
+      "captionId": "caption-10",
+      "captionIndex": 10,
+      "start": 11.53,
+      "end": 11.6,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0105.png"
+    },
+    {
+      "captionId": "caption-10",
+      "captionIndex": 10,
+      "start": 11.6,
+      "end": 11.658,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0106.png"
+    },
+    {
+      "captionId": "caption-10",
+      "captionIndex": 10,
+      "start": 11.658,
+      "end": 11.734,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0107.png"
+    },
+    {
+      "captionId": "caption-10",
+      "captionIndex": 10,
+      "start": 11.734,
+      "end": 11.84,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0108.png"
+    },
+    {
+      "captionId": "caption-10",
+      "captionIndex": 10,
+      "start": 11.84,
+      "end": 11.878,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0109.png"
+    },
+    {
+      "captionId": "caption-10",
+      "captionIndex": 10,
+      "start": 11.878,
+      "end": 11.93,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0110.png"
+    },
+    {
+      "captionId": "caption-10",
+      "captionIndex": 10,
+      "start": 11.93,
+      "end": 12.0,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0111.png"
+    },
+    {
+      "captionId": "caption-10",
+      "captionIndex": 10,
+      "start": 12.0,
+      "end": 12.077,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0112.png"
+    },
+    {
+      "captionId": "caption-10",
+      "captionIndex": 10,
+      "start": 12.077,
+      "end": 12.179,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0113.png"
+    },
+    {
+      "captionId": "caption-10",
+      "captionIndex": 10,
+      "start": 12.179,
+      "end": 12.32,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0114.png"
+    },
+    {
+      "captionId": "caption-10",
+      "captionIndex": 10,
+      "start": 12.32,
+      "end": 12.358,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0115.png"
+    },
+    {
+      "captionId": "caption-10",
+      "captionIndex": 10,
+      "start": 12.358,
+      "end": 12.41,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0116.png"
+    },
+    {
+      "captionId": "caption-10",
+      "captionIndex": 10,
+      "start": 12.41,
+      "end": 12.48,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0117.png"
+    },
+    {
+      "captionId": "caption-11",
+      "captionIndex": 11,
+      "start": 12.48,
+      "end": 12.518,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0118.png"
+    },
+    {
+      "captionId": "caption-11",
+      "captionIndex": 11,
+      "start": 12.518,
+      "end": 12.57,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0119.png"
+    },
+    {
+      "captionId": "caption-11",
+      "captionIndex": 11,
+      "start": 12.57,
+      "end": 12.64,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0120.png"
+    },
+    {
+      "captionId": "caption-11",
+      "captionIndex": 11,
+      "start": 12.64,
+      "end": 12.736,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0121.png"
+    },
+    {
+      "captionId": "caption-11",
+      "captionIndex": 11,
+      "start": 12.736,
+      "end": 12.864,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0122.png"
+    },
+    {
+      "captionId": "caption-11",
+      "captionIndex": 11,
+      "start": 12.864,
+      "end": 13.04,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0123.png"
+    },
+    {
+      "captionId": "caption-11",
+      "captionIndex": 11,
+      "start": 13.04,
+      "end": 13.078,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0124.png"
+    },
+    {
+      "captionId": "caption-11",
+      "captionIndex": 11,
+      "start": 13.078,
+      "end": 13.13,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0125.png"
+    },
+    {
+      "captionId": "caption-11",
+      "captionIndex": 11,
+      "start": 13.13,
+      "end": 13.2,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0126.png"
+    },
+    {
+      "captionId": "caption-11",
+      "captionIndex": 11,
+      "start": 13.2,
+      "end": 13.296,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0127.png"
+    },
+    {
+      "captionId": "caption-11",
+      "captionIndex": 11,
+      "start": 13.296,
+      "end": 13.424,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0128.png"
+    },
+    {
+      "captionId": "caption-11",
+      "captionIndex": 11,
+      "start": 13.424,
+      "end": 13.6,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0129.png"
+    },
+    {
+      "captionId": "caption-11",
+      "captionIndex": 11,
+      "start": 13.6,
+      "end": 13.715,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0130.png"
+    },
+    {
+      "captionId": "caption-11",
+      "captionIndex": 11,
+      "start": 13.715,
+      "end": 13.869,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0131.png"
+    },
+    {
+      "captionId": "caption-11",
+      "captionIndex": 11,
+      "start": 13.869,
+      "end": 14.08,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0132.png"
+    },
+    {
+      "captionId": "caption-12",
+      "captionIndex": 12,
+      "start": 14.24,
+      "end": 14.278,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0133.png"
+    },
+    {
+      "captionId": "caption-12",
+      "captionIndex": 12,
+      "start": 14.278,
+      "end": 14.33,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0134.png"
+    },
+    {
+      "captionId": "caption-12",
+      "captionIndex": 12,
+      "start": 14.33,
+      "end": 14.4,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0135.png"
+    },
+    {
+      "captionId": "caption-12",
+      "captionIndex": 12,
+      "start": 14.4,
+      "end": 14.477,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0136.png"
+    },
+    {
+      "captionId": "caption-12",
+      "captionIndex": 12,
+      "start": 14.477,
+      "end": 14.579,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0137.png"
+    },
+    {
+      "captionId": "caption-12",
+      "captionIndex": 12,
+      "start": 14.579,
+      "end": 14.72,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0138.png"
+    },
+    {
+      "captionId": "caption-12",
+      "captionIndex": 12,
+      "start": 14.72,
+      "end": 14.778,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0139.png"
+    },
+    {
+      "captionId": "caption-12",
+      "captionIndex": 12,
+      "start": 14.778,
+      "end": 14.854,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0140.png"
+    },
+    {
+      "captionId": "caption-12",
+      "captionIndex": 12,
+      "start": 14.854,
+      "end": 14.96,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0141.png"
+    },
+    {
+      "captionId": "caption-12",
+      "captionIndex": 12,
+      "start": 14.96,
+      "end": 15.094,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0142.png"
+    },
+    {
+      "captionId": "caption-12",
+      "captionIndex": 12,
+      "start": 15.094,
+      "end": 15.274,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0143.png"
+    },
+    {
+      "captionId": "caption-12",
+      "captionIndex": 12,
+      "start": 15.274,
+      "end": 15.52,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0144.png"
+    },
+    {
+      "captionId": "caption-12",
+      "captionIndex": 12,
+      "start": 15.52,
+      "end": 15.68,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0145.png"
+    },
+    {
+      "captionId": "caption-12",
+      "captionIndex": 12,
+      "start": 15.68,
+      "end": 15.776,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0146.png"
+    },
+    {
+      "captionId": "caption-12",
+      "captionIndex": 12,
+      "start": 15.776,
+      "end": 15.904,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0147.png"
+    },
+    {
+      "captionId": "caption-12",
+      "captionIndex": 12,
+      "start": 15.904,
+      "end": 16.08,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0148.png"
+    },
+    {
+      "captionId": "caption-13",
+      "captionIndex": 13,
+      "start": 16.16,
+      "end": 16.198,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0149.png"
+    },
+    {
+      "captionId": "caption-13",
+      "captionIndex": 13,
+      "start": 16.198,
+      "end": 16.25,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0150.png"
+    },
+    {
+      "captionId": "caption-13",
+      "captionIndex": 13,
+      "start": 16.25,
+      "end": 16.32,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0151.png"
+    },
+    {
+      "captionId": "caption-13",
+      "captionIndex": 13,
+      "start": 16.32,
+      "end": 16.416,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0152.png"
+    },
+    {
+      "captionId": "caption-13",
+      "captionIndex": 13,
+      "start": 16.416,
+      "end": 16.544,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0153.png"
+    },
+    {
+      "captionId": "caption-13",
+      "captionIndex": 13,
+      "start": 16.544,
+      "end": 16.72,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0154.png"
+    },
+    {
+      "captionId": "caption-14",
+      "captionIndex": 14,
+      "start": 16.88,
+      "end": 16.96,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0155.png"
+    },
+    {
+      "captionId": "caption-14",
+      "captionIndex": 14,
+      "start": 16.96,
+      "end": 17.018,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0156.png"
+    },
+    {
+      "captionId": "caption-14",
+      "captionIndex": 14,
+      "start": 17.018,
+      "end": 17.094,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0157.png"
+    },
+    {
+      "captionId": "caption-14",
+      "captionIndex": 14,
+      "start": 17.094,
+      "end": 17.2,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0158.png"
+    },
+    {
+      "captionId": "caption-14",
+      "captionIndex": 14,
+      "start": 17.2,
+      "end": 17.25,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0159.png"
+    },
+    {
+      "captionId": "caption-14",
+      "captionIndex": 14,
+      "start": 17.2,
+      "end": 17.296,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0160.png"
+    },
+    {
+      "captionId": "caption-14",
+      "captionIndex": 14,
+      "start": 17.296,
+      "end": 17.424,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0161.png"
+    },
+    {
+      "captionId": "caption-14",
+      "captionIndex": 14,
+      "start": 17.424,
+      "end": 17.6,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0162.png"
+    },
+    {
+      "captionId": "caption-15",
+      "captionIndex": 15,
+      "start": 17.84,
+      "end": 17.878,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0163.png"
+    },
+    {
+      "captionId": "caption-15",
+      "captionIndex": 15,
+      "start": 17.878,
+      "end": 17.93,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0164.png"
+    },
+    {
+      "captionId": "caption-15",
+      "captionIndex": 15,
+      "start": 17.93,
+      "end": 18.0,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0165.png"
+    },
+    {
+      "captionId": "caption-15",
+      "captionIndex": 15,
+      "start": 18.0,
+      "end": 18.038,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0166.png"
+    },
+    {
+      "captionId": "caption-15",
+      "captionIndex": 15,
+      "start": 18.038,
+      "end": 18.09,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0167.png"
+    },
+    {
+      "captionId": "caption-15",
+      "captionIndex": 15,
+      "start": 18.09,
+      "end": 18.16,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0168.png"
+    },
+    {
+      "captionId": "caption-15",
+      "captionIndex": 15,
+      "start": 18.16,
+      "end": 18.237,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0169.png"
+    },
+    {
+      "captionId": "caption-15",
+      "captionIndex": 15,
+      "start": 18.237,
+      "end": 18.339,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0170.png"
+    },
+    {
+      "captionId": "caption-15",
+      "captionIndex": 15,
+      "start": 18.339,
+      "end": 18.48,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0171.png"
+    },
+    {
+      "captionId": "caption-16",
+      "captionIndex": 16,
+      "start": 18.56,
+      "end": 18.618,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0172.png"
+    },
+    {
+      "captionId": "caption-16",
+      "captionIndex": 16,
+      "start": 18.618,
+      "end": 18.694,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0173.png"
+    },
+    {
+      "captionId": "caption-16",
+      "captionIndex": 16,
+      "start": 18.694,
+      "end": 18.8,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0174.png"
+    },
+    {
+      "captionId": "caption-16",
+      "captionIndex": 16,
+      "start": 18.8,
+      "end": 18.88,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0175.png"
+    },
+    {
+      "captionId": "caption-16",
+      "captionIndex": 16,
+      "start": 18.88,
+      "end": 19.034,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0176.png"
+    },
+    {
+      "captionId": "caption-16",
+      "captionIndex": 16,
+      "start": 19.034,
+      "end": 19.238,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0177.png"
+    },
+    {
+      "captionId": "caption-16",
+      "captionIndex": 16,
+      "start": 19.238,
+      "end": 19.52,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0178.png"
+    },
+    {
+      "captionId": "caption-17",
+      "captionIndex": 17,
+      "start": 19.6,
+      "end": 19.715,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0179.png"
+    },
+    {
+      "captionId": "caption-17",
+      "captionIndex": 17,
+      "start": 19.715,
+      "end": 19.869,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0180.png"
+    },
+    {
+      "captionId": "caption-17",
+      "captionIndex": 17,
+      "start": 19.869,
+      "end": 20.08,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0181.png"
+    },
+    {
+      "captionId": "caption-17",
+      "captionIndex": 17,
+      "start": 20.08,
+      "end": 20.16,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0182.png"
+    },
+    {
+      "captionId": "caption-17",
+      "captionIndex": 17,
+      "start": 20.16,
+      "end": 20.256,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0183.png"
+    },
+    {
+      "captionId": "caption-17",
+      "captionIndex": 17,
+      "start": 20.256,
+      "end": 20.384,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0184.png"
+    },
+    {
+      "captionId": "caption-17",
+      "captionIndex": 17,
+      "start": 20.384,
+      "end": 20.56,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0185.png"
+    },
+    {
+      "captionId": "caption-18",
+      "captionIndex": 18,
+      "start": 20.72,
+      "end": 20.758,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0186.png"
+    },
+    {
+      "captionId": "caption-18",
+      "captionIndex": 18,
+      "start": 20.758,
+      "end": 20.81,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0187.png"
+    },
+    {
+      "captionId": "caption-18",
+      "captionIndex": 18,
+      "start": 20.81,
+      "end": 20.88,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0188.png"
+    },
+    {
+      "captionId": "caption-18",
+      "captionIndex": 18,
+      "start": 20.88,
+      "end": 20.938,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0189.png"
+    },
+    {
+      "captionId": "caption-18",
+      "captionIndex": 18,
+      "start": 20.938,
+      "end": 21.014,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0190.png"
+    },
+    {
+      "captionId": "caption-18",
+      "captionIndex": 18,
+      "start": 21.014,
+      "end": 21.12,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0191.png"
+    },
+    {
+      "captionId": "caption-18",
+      "captionIndex": 18,
+      "start": 21.12,
+      "end": 21.254,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0192.png"
+    },
+    {
+      "captionId": "caption-18",
+      "captionIndex": 18,
+      "start": 21.254,
+      "end": 21.434,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0193.png"
+    },
+    {
+      "captionId": "caption-18",
+      "captionIndex": 18,
+      "start": 21.434,
+      "end": 21.68,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0194.png"
+    },
+    {
+      "captionId": "caption-19",
+      "captionIndex": 19,
+      "start": 21.68,
+      "end": 21.738,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0195.png"
+    },
+    {
+      "captionId": "caption-19",
+      "captionIndex": 19,
+      "start": 21.738,
+      "end": 21.814,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0196.png"
+    },
+    {
+      "captionId": "caption-19",
+      "captionIndex": 19,
+      "start": 21.814,
+      "end": 21.92,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0197.png"
+    },
+    {
+      "captionId": "caption-19",
+      "captionIndex": 19,
+      "start": 21.92,
+      "end": 21.997,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0198.png"
+    },
+    {
+      "captionId": "caption-19",
+      "captionIndex": 19,
+      "start": 21.997,
+      "end": 22.099,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0199.png"
+    },
+    {
+      "captionId": "caption-19",
+      "captionIndex": 19,
+      "start": 22.099,
+      "end": 22.24,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0200.png"
+    },
+    {
+      "captionId": "caption-19",
+      "captionIndex": 19,
+      "start": 22.24,
+      "end": 22.298,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0201.png"
+    },
+    {
+      "captionId": "caption-19",
+      "captionIndex": 19,
+      "start": 22.298,
+      "end": 22.374,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0202.png"
+    },
+    {
+      "captionId": "caption-19",
+      "captionIndex": 19,
+      "start": 22.374,
+      "end": 22.48,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0203.png"
+    },
+    {
+      "captionId": "caption-19",
+      "captionIndex": 19,
+      "start": 22.48,
+      "end": 22.56,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0204.png"
+    },
+    {
+      "captionId": "caption-19",
+      "captionIndex": 19,
+      "start": 22.56,
+      "end": 22.598,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0205.png"
+    },
+    {
+      "captionId": "caption-19",
+      "captionIndex": 19,
+      "start": 22.598,
+      "end": 22.65,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0206.png"
+    },
+    {
+      "captionId": "caption-19",
+      "captionIndex": 19,
+      "start": 22.65,
+      "end": 22.72,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0207.png"
+    },
+    {
+      "captionId": "caption-19",
+      "captionIndex": 19,
+      "start": 22.72,
+      "end": 22.797,
+      "activeIndex": 5,
+      "progress": 0.0,
+      "relativePath": "overlay-0208.png"
+    },
+    {
+      "captionId": "caption-19",
+      "captionIndex": 19,
+      "start": 22.797,
+      "end": 22.899,
+      "activeIndex": 5,
+      "progress": 0.55,
+      "relativePath": "overlay-0209.png"
+    },
+    {
+      "captionId": "caption-19",
+      "captionIndex": 19,
+      "start": 22.899,
+      "end": 23.04,
+      "activeIndex": 5,
+      "progress": 1.0,
+      "relativePath": "overlay-0210.png"
+    },
+    {
+      "captionId": "caption-20",
+      "captionIndex": 20,
+      "start": 23.2,
+      "end": 23.28,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0211.png"
+    },
+    {
+      "captionId": "caption-20",
+      "captionIndex": 20,
+      "start": 23.28,
+      "end": 23.318,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0212.png"
+    },
+    {
+      "captionId": "caption-20",
+      "captionIndex": 20,
+      "start": 23.318,
+      "end": 23.37,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0213.png"
+    },
+    {
+      "captionId": "caption-20",
+      "captionIndex": 20,
+      "start": 23.37,
+      "end": 23.44,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0214.png"
+    },
+    {
+      "captionId": "caption-20",
+      "captionIndex": 20,
+      "start": 23.44,
+      "end": 23.52,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0215.png"
+    },
+    {
+      "captionId": "caption-20",
+      "captionIndex": 20,
+      "start": 23.52,
+      "end": 23.616,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0216.png"
+    },
+    {
+      "captionId": "caption-20",
+      "captionIndex": 20,
+      "start": 23.616,
+      "end": 23.744,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0217.png"
+    },
+    {
+      "captionId": "caption-20",
+      "captionIndex": 20,
+      "start": 23.744,
+      "end": 23.92,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0218.png"
+    },
+    {
+      "captionId": "caption-21",
+      "captionIndex": 21,
+      "start": 23.92,
+      "end": 24.016,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0219.png"
+    },
+    {
+      "captionId": "caption-21",
+      "captionIndex": 21,
+      "start": 24.016,
+      "end": 24.144,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0220.png"
+    },
+    {
+      "captionId": "caption-21",
+      "captionIndex": 21,
+      "start": 24.144,
+      "end": 24.32,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0221.png"
+    },
+    {
+      "captionId": "caption-21",
+      "captionIndex": 21,
+      "start": 24.32,
+      "end": 24.48,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0222.png"
+    },
+    {
+      "captionId": "caption-21",
+      "captionIndex": 21,
+      "start": 24.48,
+      "end": 24.595,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0223.png"
+    },
+    {
+      "captionId": "caption-21",
+      "captionIndex": 21,
+      "start": 24.595,
+      "end": 24.749,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0224.png"
+    },
+    {
+      "captionId": "caption-21",
+      "captionIndex": 21,
+      "start": 24.749,
+      "end": 24.96,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0225.png"
+    },
+    {
+      "captionId": "caption-22",
+      "captionIndex": 22,
+      "start": 24.96,
+      "end": 24.998,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0226.png"
+    },
+    {
+      "captionId": "caption-22",
+      "captionIndex": 22,
+      "start": 24.998,
+      "end": 25.05,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0227.png"
+    },
+    {
+      "captionId": "caption-22",
+      "captionIndex": 22,
+      "start": 25.05,
+      "end": 25.12,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0228.png"
+    },
+    {
+      "captionId": "caption-22",
+      "captionIndex": 22,
+      "start": 25.12,
+      "end": 25.178,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0229.png"
+    },
+    {
+      "captionId": "caption-22",
+      "captionIndex": 22,
+      "start": 25.178,
+      "end": 25.254,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0230.png"
+    },
+    {
+      "captionId": "caption-22",
+      "captionIndex": 22,
+      "start": 25.254,
+      "end": 25.36,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0231.png"
+    },
+    {
+      "captionId": "caption-22",
+      "captionIndex": 22,
+      "start": 25.36,
+      "end": 25.44,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0232.png"
+    },
+    {
+      "captionId": "caption-22",
+      "captionIndex": 22,
+      "start": 25.44,
+      "end": 25.517,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0233.png"
+    },
+    {
+      "captionId": "caption-22",
+      "captionIndex": 22,
+      "start": 25.517,
+      "end": 25.619,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0234.png"
+    },
+    {
+      "captionId": "caption-22",
+      "captionIndex": 22,
+      "start": 25.619,
+      "end": 25.76,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0235.png"
+    },
+    {
+      "captionId": "caption-22",
+      "captionIndex": 22,
+      "start": 25.76,
+      "end": 25.84,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0236.png"
+    },
+    {
+      "captionId": "caption-22",
+      "captionIndex": 22,
+      "start": 25.84,
+      "end": 25.917,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0237.png"
+    },
+    {
+      "captionId": "caption-22",
+      "captionIndex": 22,
+      "start": 25.917,
+      "end": 26.019,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0238.png"
+    },
+    {
+      "captionId": "caption-22",
+      "captionIndex": 22,
+      "start": 26.019,
+      "end": 26.16,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0239.png"
+    },
+    {
+      "captionId": "caption-22",
+      "captionIndex": 22,
+      "start": 26.16,
+      "end": 26.237,
+      "activeIndex": 5,
+      "progress": 0.0,
+      "relativePath": "overlay-0240.png"
+    },
+    {
+      "captionId": "caption-22",
+      "captionIndex": 22,
+      "start": 26.237,
+      "end": 26.339,
+      "activeIndex": 5,
+      "progress": 0.55,
+      "relativePath": "overlay-0241.png"
+    },
+    {
+      "captionId": "caption-22",
+      "captionIndex": 22,
+      "start": 26.339,
+      "end": 26.48,
+      "activeIndex": 5,
+      "progress": 1.0,
+      "relativePath": "overlay-0242.png"
+    },
+    {
+      "captionId": "caption-23",
+      "captionIndex": 23,
+      "start": 26.48,
+      "end": 26.576,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0243.png"
+    },
+    {
+      "captionId": "caption-23",
+      "captionIndex": 23,
+      "start": 26.576,
+      "end": 26.704,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0244.png"
+    },
+    {
+      "captionId": "caption-23",
+      "captionIndex": 23,
+      "start": 26.704,
+      "end": 26.88,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0245.png"
+    },
+    {
+      "captionId": "caption-24",
+      "captionIndex": 24,
+      "start": 26.88,
+      "end": 26.938,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0246.png"
+    },
+    {
+      "captionId": "caption-24",
+      "captionIndex": 24,
+      "start": 26.938,
+      "end": 27.014,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0247.png"
+    },
+    {
+      "captionId": "caption-24",
+      "captionIndex": 24,
+      "start": 27.014,
+      "end": 27.12,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0248.png"
+    },
+    {
+      "captionId": "caption-24",
+      "captionIndex": 24,
+      "start": 27.12,
+      "end": 27.2,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0249.png"
+    },
+    {
+      "captionId": "caption-24",
+      "captionIndex": 24,
+      "start": 27.2,
+      "end": 27.296,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0250.png"
+    },
+    {
+      "captionId": "caption-24",
+      "captionIndex": 24,
+      "start": 27.296,
+      "end": 27.424,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0251.png"
+    },
+    {
+      "captionId": "caption-24",
+      "captionIndex": 24,
+      "start": 27.424,
+      "end": 27.6,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0252.png"
+    },
+    {
+      "captionId": "caption-25",
+      "captionIndex": 25,
+      "start": 27.76,
+      "end": 27.818,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0253.png"
+    },
+    {
+      "captionId": "caption-25",
+      "captionIndex": 25,
+      "start": 27.818,
+      "end": 27.894,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0254.png"
+    },
+    {
+      "captionId": "caption-25",
+      "captionIndex": 25,
+      "start": 27.894,
+      "end": 28.0,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0255.png"
+    },
+    {
+      "captionId": "caption-25",
+      "captionIndex": 25,
+      "start": 28.0,
+      "end": 28.08,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0256.png"
+    },
+    {
+      "captionId": "caption-25",
+      "captionIndex": 25,
+      "start": 28.08,
+      "end": 28.176,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0257.png"
+    },
+    {
+      "captionId": "caption-25",
+      "captionIndex": 25,
+      "start": 28.176,
+      "end": 28.304,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0258.png"
+    },
+    {
+      "captionId": "caption-25",
+      "captionIndex": 25,
+      "start": 28.304,
+      "end": 28.48,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0259.png"
+    },
+    {
+      "captionId": "caption-26",
+      "captionIndex": 26,
+      "start": 28.64,
+      "end": 28.69,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0260.png"
+    },
+    {
+      "captionId": "caption-26",
+      "captionIndex": 26,
+      "start": 28.64,
+      "end": 28.736,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0261.png"
+    },
+    {
+      "captionId": "caption-26",
+      "captionIndex": 26,
+      "start": 28.736,
+      "end": 28.864,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0262.png"
+    },
+    {
+      "captionId": "caption-26",
+      "captionIndex": 26,
+      "start": 28.864,
+      "end": 29.04,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0263.png"
+    },
+    {
+      "captionId": "caption-26",
+      "captionIndex": 26,
+      "start": 29.04,
+      "end": 29.12,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0264.png"
+    },
+    {
+      "captionId": "caption-26",
+      "captionIndex": 26,
+      "start": 29.12,
+      "end": 29.197,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0265.png"
+    },
+    {
+      "captionId": "caption-26",
+      "captionIndex": 26,
+      "start": 29.197,
+      "end": 29.299,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0266.png"
+    },
+    {
+      "captionId": "caption-26",
+      "captionIndex": 26,
+      "start": 29.299,
+      "end": 29.44,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0267.png"
+    },
+    {
+      "captionId": "caption-26",
+      "captionIndex": 26,
+      "start": 29.44,
+      "end": 29.478,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0268.png"
+    },
+    {
+      "captionId": "caption-26",
+      "captionIndex": 26,
+      "start": 29.478,
+      "end": 29.53,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0269.png"
+    },
+    {
+      "captionId": "caption-26",
+      "captionIndex": 26,
+      "start": 29.53,
+      "end": 29.6,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0270.png"
+    },
+    {
+      "captionId": "caption-27",
+      "captionIndex": 27,
+      "start": 29.68,
+      "end": 29.76,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0271.png"
+    },
+    {
+      "captionId": "caption-27",
+      "captionIndex": 27,
+      "start": 29.76,
+      "end": 29.875,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0272.png"
+    },
+    {
+      "captionId": "caption-27",
+      "captionIndex": 27,
+      "start": 29.875,
+      "end": 30.029,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0273.png"
+    },
+    {
+      "captionId": "caption-27",
+      "captionIndex": 27,
+      "start": 30.029,
+      "end": 30.24,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0274.png"
+    },
+    {
+      "captionId": "caption-27",
+      "captionIndex": 27,
+      "start": 30.24,
+      "end": 30.317,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0275.png"
+    },
+    {
+      "captionId": "caption-27",
+      "captionIndex": 27,
+      "start": 30.317,
+      "end": 30.419,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0276.png"
+    },
+    {
+      "captionId": "caption-27",
+      "captionIndex": 27,
+      "start": 30.419,
+      "end": 30.56,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0277.png"
+    },
+    {
+      "captionId": "caption-27",
+      "captionIndex": 27,
+      "start": 30.56,
+      "end": 30.637,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0278.png"
+    },
+    {
+      "captionId": "caption-27",
+      "captionIndex": 27,
+      "start": 30.637,
+      "end": 30.739,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0279.png"
+    },
+    {
+      "captionId": "caption-27",
+      "captionIndex": 27,
+      "start": 30.739,
+      "end": 30.88,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0280.png"
+    },
+    {
+      "captionId": "caption-27",
+      "captionIndex": 27,
+      "start": 30.88,
+      "end": 30.918,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0281.png"
+    },
+    {
+      "captionId": "caption-27",
+      "captionIndex": 27,
+      "start": 30.918,
+      "end": 30.97,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0282.png"
+    },
+    {
+      "captionId": "caption-27",
+      "captionIndex": 27,
+      "start": 30.97,
+      "end": 31.04,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0283.png"
+    },
+    {
+      "captionId": "caption-27",
+      "captionIndex": 27,
+      "start": 31.04,
+      "end": 31.078,
+      "activeIndex": 5,
+      "progress": 0.0,
+      "relativePath": "overlay-0284.png"
+    },
+    {
+      "captionId": "caption-27",
+      "captionIndex": 27,
+      "start": 31.078,
+      "end": 31.13,
+      "activeIndex": 5,
+      "progress": 0.55,
+      "relativePath": "overlay-0285.png"
+    },
+    {
+      "captionId": "caption-27",
+      "captionIndex": 27,
+      "start": 31.13,
+      "end": 31.2,
+      "activeIndex": 5,
+      "progress": 1.0,
+      "relativePath": "overlay-0286.png"
+    },
+    {
+      "captionId": "caption-28",
+      "captionIndex": 28,
+      "start": 31.6,
+      "end": 31.677,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0287.png"
+    },
+    {
+      "captionId": "caption-28",
+      "captionIndex": 28,
+      "start": 31.677,
+      "end": 31.779,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0288.png"
+    },
+    {
+      "captionId": "caption-28",
+      "captionIndex": 28,
+      "start": 31.779,
+      "end": 31.92,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0289.png"
+    },
+    {
+      "captionId": "caption-28",
+      "captionIndex": 28,
+      "start": 31.92,
+      "end": 32.0,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0290.png"
+    },
+    {
+      "captionId": "caption-28",
+      "captionIndex": 28,
+      "start": 32.0,
+      "end": 32.08,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0291.png"
+    },
+    {
+      "captionId": "caption-28",
+      "captionIndex": 28,
+      "start": 32.08,
+      "end": 32.157,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0292.png"
+    },
+    {
+      "captionId": "caption-28",
+      "captionIndex": 28,
+      "start": 32.157,
+      "end": 32.259,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0293.png"
+    },
+    {
+      "captionId": "caption-28",
+      "captionIndex": 28,
+      "start": 32.259,
+      "end": 32.4,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0294.png"
+    },
+    {
+      "captionId": "caption-28",
+      "captionIndex": 28,
+      "start": 32.4,
+      "end": 32.458,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0295.png"
+    },
+    {
+      "captionId": "caption-28",
+      "captionIndex": 28,
+      "start": 32.458,
+      "end": 32.534,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0296.png"
+    },
+    {
+      "captionId": "caption-28",
+      "captionIndex": 28,
+      "start": 32.534,
+      "end": 32.64,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0297.png"
+    },
+    {
+      "captionId": "caption-28",
+      "captionIndex": 28,
+      "start": 32.64,
+      "end": 32.717,
+      "activeIndex": 5,
+      "progress": 0.0,
+      "relativePath": "overlay-0298.png"
+    },
+    {
+      "captionId": "caption-28",
+      "captionIndex": 28,
+      "start": 32.717,
+      "end": 32.819,
+      "activeIndex": 5,
+      "progress": 0.55,
+      "relativePath": "overlay-0299.png"
+    },
+    {
+      "captionId": "caption-28",
+      "captionIndex": 28,
+      "start": 32.819,
+      "end": 32.96,
+      "activeIndex": 5,
+      "progress": 1.0,
+      "relativePath": "overlay-0300.png"
+    },
+    {
+      "captionId": "caption-29",
+      "captionIndex": 29,
+      "start": 33.12,
+      "end": 33.158,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0301.png"
+    },
+    {
+      "captionId": "caption-29",
+      "captionIndex": 29,
+      "start": 33.158,
+      "end": 33.21,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0302.png"
+    },
+    {
+      "captionId": "caption-29",
+      "captionIndex": 29,
+      "start": 33.21,
+      "end": 33.28,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0303.png"
+    },
+    {
+      "captionId": "caption-29",
+      "captionIndex": 29,
+      "start": 33.28,
+      "end": 33.357,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0304.png"
+    },
+    {
+      "captionId": "caption-29",
+      "captionIndex": 29,
+      "start": 33.357,
+      "end": 33.459,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0305.png"
+    },
+    {
+      "captionId": "caption-29",
+      "captionIndex": 29,
+      "start": 33.459,
+      "end": 33.6,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0306.png"
+    },
+    {
+      "captionId": "caption-29",
+      "captionIndex": 29,
+      "start": 33.6,
+      "end": 33.658,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0307.png"
+    },
+    {
+      "captionId": "caption-29",
+      "captionIndex": 29,
+      "start": 33.658,
+      "end": 33.734,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0308.png"
+    },
+    {
+      "captionId": "caption-29",
+      "captionIndex": 29,
+      "start": 33.734,
+      "end": 33.84,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0309.png"
+    },
+    {
+      "captionId": "caption-29",
+      "captionIndex": 29,
+      "start": 33.84,
+      "end": 33.917,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0310.png"
+    },
+    {
+      "captionId": "caption-29",
+      "captionIndex": 29,
+      "start": 33.917,
+      "end": 34.019,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0311.png"
+    },
+    {
+      "captionId": "caption-29",
+      "captionIndex": 29,
+      "start": 34.019,
+      "end": 34.16,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0312.png"
+    },
+    {
+      "captionId": "caption-29",
+      "captionIndex": 29,
+      "start": 34.16,
+      "end": 34.237,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0313.png"
+    },
+    {
+      "captionId": "caption-29",
+      "captionIndex": 29,
+      "start": 34.237,
+      "end": 34.339,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0314.png"
+    },
+    {
+      "captionId": "caption-29",
+      "captionIndex": 29,
+      "start": 34.339,
+      "end": 34.48,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0315.png"
+    },
+    {
+      "captionId": "caption-30",
+      "captionIndex": 30,
+      "start": 34.48,
+      "end": 34.518,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0316.png"
+    },
+    {
+      "captionId": "caption-30",
+      "captionIndex": 30,
+      "start": 34.518,
+      "end": 34.57,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0317.png"
+    },
+    {
+      "captionId": "caption-30",
+      "captionIndex": 30,
+      "start": 34.57,
+      "end": 34.64,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0318.png"
+    },
+    {
+      "captionId": "caption-30",
+      "captionIndex": 30,
+      "start": 34.64,
+      "end": 34.717,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0319.png"
+    },
+    {
+      "captionId": "caption-30",
+      "captionIndex": 30,
+      "start": 34.717,
+      "end": 34.819,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0320.png"
+    },
+    {
+      "captionId": "caption-30",
+      "captionIndex": 30,
+      "start": 34.819,
+      "end": 34.96,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0321.png"
+    },
+    {
+      "captionId": "caption-30",
+      "captionIndex": 30,
+      "start": 34.96,
+      "end": 35.04,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0322.png"
+    },
+    {
+      "captionId": "caption-30",
+      "captionIndex": 30,
+      "start": 35.04,
+      "end": 35.136,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0323.png"
+    },
+    {
+      "captionId": "caption-30",
+      "captionIndex": 30,
+      "start": 35.136,
+      "end": 35.264,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0324.png"
+    },
+    {
+      "captionId": "caption-30",
+      "captionIndex": 30,
+      "start": 35.264,
+      "end": 35.44,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0325.png"
+    },
+    {
+      "captionId": "caption-30",
+      "captionIndex": 30,
+      "start": 35.44,
+      "end": 35.536,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0326.png"
+    },
+    {
+      "captionId": "caption-30",
+      "captionIndex": 30,
+      "start": 35.536,
+      "end": 35.664,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0327.png"
+    },
+    {
+      "captionId": "caption-30",
+      "captionIndex": 30,
+      "start": 35.664,
+      "end": 35.84,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0328.png"
+    },
+    {
+      "captionId": "caption-31",
+      "captionIndex": 31,
+      "start": 35.84,
+      "end": 35.898,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0329.png"
+    },
+    {
+      "captionId": "caption-31",
+      "captionIndex": 31,
+      "start": 35.898,
+      "end": 35.974,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0330.png"
+    },
+    {
+      "captionId": "caption-31",
+      "captionIndex": 31,
+      "start": 35.974,
+      "end": 36.08,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0331.png"
+    },
+    {
+      "captionId": "caption-31",
+      "captionIndex": 31,
+      "start": 36.08,
+      "end": 36.157,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0332.png"
+    },
+    {
+      "captionId": "caption-31",
+      "captionIndex": 31,
+      "start": 36.157,
+      "end": 36.259,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0333.png"
+    },
+    {
+      "captionId": "caption-31",
+      "captionIndex": 31,
+      "start": 36.259,
+      "end": 36.4,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0334.png"
+    },
+    {
+      "captionId": "caption-31",
+      "captionIndex": 31,
+      "start": 36.4,
+      "end": 36.515,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0335.png"
+    },
+    {
+      "captionId": "caption-31",
+      "captionIndex": 31,
+      "start": 36.515,
+      "end": 36.669,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0336.png"
+    },
+    {
+      "captionId": "caption-31",
+      "captionIndex": 31,
+      "start": 36.669,
+      "end": 36.88,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0337.png"
+    },
+    {
+      "captionId": "caption-31",
+      "captionIndex": 31,
+      "start": 36.88,
+      "end": 36.957,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0338.png"
+    },
+    {
+      "captionId": "caption-31",
+      "captionIndex": 31,
+      "start": 36.957,
+      "end": 37.059,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0339.png"
+    },
+    {
+      "captionId": "caption-31",
+      "captionIndex": 31,
+      "start": 37.059,
+      "end": 37.2,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0340.png"
+    },
+    {
+      "captionId": "caption-31",
+      "captionIndex": 31,
+      "start": 37.2,
+      "end": 37.296,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0341.png"
+    },
+    {
+      "captionId": "caption-31",
+      "captionIndex": 31,
+      "start": 37.296,
+      "end": 37.424,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0342.png"
+    },
+    {
+      "captionId": "caption-31",
+      "captionIndex": 31,
+      "start": 37.424,
+      "end": 37.6,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0343.png"
+    },
+    {
+      "captionId": "caption-32",
+      "captionIndex": 32,
+      "start": 37.76,
+      "end": 37.798,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0344.png"
+    },
+    {
+      "captionId": "caption-32",
+      "captionIndex": 32,
+      "start": 37.798,
+      "end": 37.85,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0345.png"
+    },
+    {
+      "captionId": "caption-32",
+      "captionIndex": 32,
+      "start": 37.85,
+      "end": 37.92,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0346.png"
+    },
+    {
+      "captionId": "caption-32",
+      "captionIndex": 32,
+      "start": 37.92,
+      "end": 37.958,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0347.png"
+    },
+    {
+      "captionId": "caption-32",
+      "captionIndex": 32,
+      "start": 37.958,
+      "end": 38.01,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0348.png"
+    },
+    {
+      "captionId": "caption-32",
+      "captionIndex": 32,
+      "start": 38.01,
+      "end": 38.08,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0349.png"
+    },
+    {
+      "captionId": "caption-32",
+      "captionIndex": 32,
+      "start": 38.08,
+      "end": 38.16,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0350.png"
+    },
+    {
+      "captionId": "caption-32",
+      "captionIndex": 32,
+      "start": 38.16,
+      "end": 38.237,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0351.png"
+    },
+    {
+      "captionId": "caption-32",
+      "captionIndex": 32,
+      "start": 38.237,
+      "end": 38.339,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0352.png"
+    },
+    {
+      "captionId": "caption-32",
+      "captionIndex": 32,
+      "start": 38.339,
+      "end": 38.48,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0353.png"
+    },
+    {
+      "captionId": "caption-33",
+      "captionIndex": 33,
+      "start": 38.48,
+      "end": 38.56,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0354.png"
+    },
+    {
+      "captionId": "caption-33",
+      "captionIndex": 33,
+      "start": 38.56,
+      "end": 38.656,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0355.png"
+    },
+    {
+      "captionId": "caption-33",
+      "captionIndex": 33,
+      "start": 38.656,
+      "end": 38.784,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0356.png"
+    },
+    {
+      "captionId": "caption-33",
+      "captionIndex": 33,
+      "start": 38.784,
+      "end": 38.96,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0357.png"
+    },
+    {
+      "captionId": "caption-33",
+      "captionIndex": 33,
+      "start": 38.96,
+      "end": 39.075,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0358.png"
+    },
+    {
+      "captionId": "caption-33",
+      "captionIndex": 33,
+      "start": 39.075,
+      "end": 39.229,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0359.png"
+    },
+    {
+      "captionId": "caption-33",
+      "captionIndex": 33,
+      "start": 39.229,
+      "end": 39.44,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0360.png"
+    },
+    {
+      "captionId": "caption-33",
+      "captionIndex": 33,
+      "start": 39.44,
+      "end": 39.478,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0361.png"
+    },
+    {
+      "captionId": "caption-33",
+      "captionIndex": 33,
+      "start": 39.478,
+      "end": 39.53,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0362.png"
+    },
+    {
+      "captionId": "caption-33",
+      "captionIndex": 33,
+      "start": 39.53,
+      "end": 39.6,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0363.png"
+    },
+    {
+      "captionId": "caption-33",
+      "captionIndex": 33,
+      "start": 39.6,
+      "end": 39.734,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0364.png"
+    },
+    {
+      "captionId": "caption-33",
+      "captionIndex": 33,
+      "start": 39.734,
+      "end": 39.914,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0365.png"
+    },
+    {
+      "captionId": "caption-33",
+      "captionIndex": 33,
+      "start": 39.914,
+      "end": 40.16,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0366.png"
+    },
+    {
+      "captionId": "caption-33",
+      "captionIndex": 33,
+      "start": 40.16,
+      "end": 40.24,
+      "activeIndex": 5,
+      "progress": 0.0,
+      "relativePath": "overlay-0367.png"
+    },
+    {
+      "captionId": "caption-34",
+      "captionIndex": 34,
+      "start": 40.24,
+      "end": 40.317,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0368.png"
+    },
+    {
+      "captionId": "caption-34",
+      "captionIndex": 34,
+      "start": 40.317,
+      "end": 40.419,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0369.png"
+    },
+    {
+      "captionId": "caption-34",
+      "captionIndex": 34,
+      "start": 40.419,
+      "end": 40.56,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0370.png"
+    },
+    {
+      "captionId": "caption-34",
+      "captionIndex": 34,
+      "start": 40.56,
+      "end": 40.694,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0371.png"
+    },
+    {
+      "captionId": "caption-34",
+      "captionIndex": 34,
+      "start": 40.694,
+      "end": 40.874,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0372.png"
+    },
+    {
+      "captionId": "caption-34",
+      "captionIndex": 34,
+      "start": 40.874,
+      "end": 41.12,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0373.png"
+    },
+    {
+      "captionId": "caption-35",
+      "captionIndex": 35,
+      "start": 41.12,
+      "end": 41.158,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0374.png"
+    },
+    {
+      "captionId": "caption-35",
+      "captionIndex": 35,
+      "start": 41.158,
+      "end": 41.21,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0375.png"
+    },
+    {
+      "captionId": "caption-35",
+      "captionIndex": 35,
+      "start": 41.21,
+      "end": 41.28,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0376.png"
+    },
+    {
+      "captionId": "caption-35",
+      "captionIndex": 35,
+      "start": 41.28,
+      "end": 41.36,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0377.png"
+    },
+    {
+      "captionId": "caption-35",
+      "captionIndex": 35,
+      "start": 41.36,
+      "end": 41.44,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0378.png"
+    },
+    {
+      "captionId": "caption-36",
+      "captionIndex": 36,
+      "start": 41.44,
+      "end": 41.52,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0379.png"
+    },
+    {
+      "captionId": "caption-36",
+      "captionIndex": 36,
+      "start": 41.52,
+      "end": 41.597,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0380.png"
+    },
+    {
+      "captionId": "caption-36",
+      "captionIndex": 36,
+      "start": 41.597,
+      "end": 41.699,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0381.png"
+    },
+    {
+      "captionId": "caption-36",
+      "captionIndex": 36,
+      "start": 41.699,
+      "end": 41.84,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0382.png"
+    },
+    {
+      "captionId": "caption-36",
+      "captionIndex": 36,
+      "start": 41.84,
+      "end": 41.89,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0383.png"
+    },
+    {
+      "captionId": "caption-36",
+      "captionIndex": 36,
+      "start": 41.84,
+      "end": 41.917,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0384.png"
+    },
+    {
+      "captionId": "caption-36",
+      "captionIndex": 36,
+      "start": 41.917,
+      "end": 42.019,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0385.png"
+    },
+    {
+      "captionId": "caption-36",
+      "captionIndex": 36,
+      "start": 42.019,
+      "end": 42.16,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0386.png"
+    },
+    {
+      "captionId": "caption-36",
+      "captionIndex": 36,
+      "start": 42.16,
+      "end": 42.275,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0387.png"
+    },
+    {
+      "captionId": "caption-36",
+      "captionIndex": 36,
+      "start": 42.275,
+      "end": 42.429,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0388.png"
+    },
+    {
+      "captionId": "caption-36",
+      "captionIndex": 36,
+      "start": 42.429,
+      "end": 42.64,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0389.png"
+    },
+    {
+      "captionId": "caption-37",
+      "captionIndex": 37,
+      "start": 42.72,
+      "end": 42.797,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0390.png"
+    },
+    {
+      "captionId": "caption-37",
+      "captionIndex": 37,
+      "start": 42.797,
+      "end": 42.899,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0391.png"
+    },
+    {
+      "captionId": "caption-37",
+      "captionIndex": 37,
+      "start": 42.899,
+      "end": 43.04,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0392.png"
+    },
+    {
+      "captionId": "caption-37",
+      "captionIndex": 37,
+      "start": 43.04,
+      "end": 43.174,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0393.png"
+    },
+    {
+      "captionId": "caption-37",
+      "captionIndex": 37,
+      "start": 43.174,
+      "end": 43.354,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0394.png"
+    },
+    {
+      "captionId": "caption-37",
+      "captionIndex": 37,
+      "start": 43.354,
+      "end": 43.6,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0395.png"
+    },
+    {
+      "captionId": "caption-38",
+      "captionIndex": 38,
+      "start": 43.68,
+      "end": 43.76,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0396.png"
+    },
+    {
+      "captionId": "caption-38",
+      "captionIndex": 38,
+      "start": 43.76,
+      "end": 43.875,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0397.png"
+    },
+    {
+      "captionId": "caption-38",
+      "captionIndex": 38,
+      "start": 43.875,
+      "end": 44.029,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0398.png"
+    },
+    {
+      "captionId": "caption-38",
+      "captionIndex": 38,
+      "start": 44.029,
+      "end": 44.24,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0399.png"
+    },
+    {
+      "captionId": "caption-38",
+      "captionIndex": 38,
+      "start": 44.24,
+      "end": 44.32,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0400.png"
+    },
+    {
+      "captionId": "caption-38",
+      "captionIndex": 38,
+      "start": 44.32,
+      "end": 44.4,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0401.png"
+    },
+    {
+      "captionId": "caption-38",
+      "captionIndex": 38,
+      "start": 44.4,
+      "end": 44.458,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0402.png"
+    },
+    {
+      "captionId": "caption-38",
+      "captionIndex": 38,
+      "start": 44.458,
+      "end": 44.534,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0403.png"
+    },
+    {
+      "captionId": "caption-38",
+      "captionIndex": 38,
+      "start": 44.534,
+      "end": 44.64,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0404.png"
+    },
+    {
+      "captionId": "caption-38",
+      "captionIndex": 38,
+      "start": 44.64,
+      "end": 44.755,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0405.png"
+    },
+    {
+      "captionId": "caption-38",
+      "captionIndex": 38,
+      "start": 44.755,
+      "end": 44.909,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0406.png"
+    },
+    {
+      "captionId": "caption-38",
+      "captionIndex": 38,
+      "start": 44.909,
+      "end": 45.12,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0407.png"
+    },
+    {
+      "captionId": "caption-39",
+      "captionIndex": 39,
+      "start": 45.28,
+      "end": 45.338,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0408.png"
+    },
+    {
+      "captionId": "caption-39",
+      "captionIndex": 39,
+      "start": 45.338,
+      "end": 45.414,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0409.png"
+    },
+    {
+      "captionId": "caption-39",
+      "captionIndex": 39,
+      "start": 45.414,
+      "end": 45.52,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0410.png"
+    },
+    {
+      "captionId": "caption-39",
+      "captionIndex": 39,
+      "start": 45.52,
+      "end": 45.6,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0411.png"
+    },
+    {
+      "captionId": "caption-39",
+      "captionIndex": 39,
+      "start": 45.6,
+      "end": 45.677,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0412.png"
+    },
+    {
+      "captionId": "caption-39",
+      "captionIndex": 39,
+      "start": 45.677,
+      "end": 45.779,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0413.png"
+    },
+    {
+      "captionId": "caption-39",
+      "captionIndex": 39,
+      "start": 45.779,
+      "end": 45.92,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0414.png"
+    },
+    {
+      "captionId": "caption-39",
+      "captionIndex": 39,
+      "start": 45.92,
+      "end": 45.978,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0415.png"
+    },
+    {
+      "captionId": "caption-39",
+      "captionIndex": 39,
+      "start": 45.978,
+      "end": 46.054,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0416.png"
+    },
+    {
+      "captionId": "caption-39",
+      "captionIndex": 39,
+      "start": 46.054,
+      "end": 46.16,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0417.png"
+    },
+    {
+      "captionId": "caption-39",
+      "captionIndex": 39,
+      "start": 46.16,
+      "end": 46.24,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0418.png"
+    },
+    {
+      "captionId": "caption-39",
+      "captionIndex": 39,
+      "start": 46.24,
+      "end": 46.298,
+      "activeIndex": 5,
+      "progress": 0.0,
+      "relativePath": "overlay-0419.png"
+    },
+    {
+      "captionId": "caption-39",
+      "captionIndex": 39,
+      "start": 46.298,
+      "end": 46.374,
+      "activeIndex": 5,
+      "progress": 0.55,
+      "relativePath": "overlay-0420.png"
+    },
+    {
+      "captionId": "caption-39",
+      "captionIndex": 39,
+      "start": 46.374,
+      "end": 46.48,
+      "activeIndex": 5,
+      "progress": 1.0,
+      "relativePath": "overlay-0421.png"
+    },
+    {
+      "captionId": "caption-40",
+      "captionIndex": 40,
+      "start": 46.48,
+      "end": 46.576,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0422.png"
+    },
+    {
+      "captionId": "caption-40",
+      "captionIndex": 40,
+      "start": 46.576,
+      "end": 46.704,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0423.png"
+    },
+    {
+      "captionId": "caption-40",
+      "captionIndex": 40,
+      "start": 46.704,
+      "end": 46.88,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0424.png"
+    },
+    {
+      "captionId": "caption-40",
+      "captionIndex": 40,
+      "start": 46.88,
+      "end": 47.04,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0425.png"
+    },
+    {
+      "captionId": "caption-40",
+      "captionIndex": 40,
+      "start": 47.04,
+      "end": 47.098,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0426.png"
+    },
+    {
+      "captionId": "caption-40",
+      "captionIndex": 40,
+      "start": 47.098,
+      "end": 47.174,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0427.png"
+    },
+    {
+      "captionId": "caption-40",
+      "captionIndex": 40,
+      "start": 47.174,
+      "end": 47.28,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0428.png"
+    },
+    {
+      "captionId": "caption-40",
+      "captionIndex": 40,
+      "start": 47.28,
+      "end": 47.338,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0429.png"
+    },
+    {
+      "captionId": "caption-40",
+      "captionIndex": 40,
+      "start": 47.338,
+      "end": 47.414,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0430.png"
+    },
+    {
+      "captionId": "caption-40",
+      "captionIndex": 40,
+      "start": 47.414,
+      "end": 47.52,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0431.png"
+    },
+    {
+      "captionId": "caption-40",
+      "captionIndex": 40,
+      "start": 47.52,
+      "end": 47.635,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0432.png"
+    },
+    {
+      "captionId": "caption-40",
+      "captionIndex": 40,
+      "start": 47.635,
+      "end": 47.789,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0433.png"
+    },
+    {
+      "captionId": "caption-40",
+      "captionIndex": 40,
+      "start": 47.789,
+      "end": 48.0,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0434.png"
+    },
+    {
+      "captionId": "caption-41",
+      "captionIndex": 41,
+      "start": 48.0,
+      "end": 48.038,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0435.png"
+    },
+    {
+      "captionId": "caption-41",
+      "captionIndex": 41,
+      "start": 48.038,
+      "end": 48.09,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0436.png"
+    },
+    {
+      "captionId": "caption-41",
+      "captionIndex": 41,
+      "start": 48.09,
+      "end": 48.16,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0437.png"
+    },
+    {
+      "captionId": "caption-41",
+      "captionIndex": 41,
+      "start": 48.16,
+      "end": 48.198,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0438.png"
+    },
+    {
+      "captionId": "caption-41",
+      "captionIndex": 41,
+      "start": 48.198,
+      "end": 48.25,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0439.png"
+    },
+    {
+      "captionId": "caption-41",
+      "captionIndex": 41,
+      "start": 48.25,
+      "end": 48.32,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0440.png"
+    },
+    {
+      "captionId": "caption-41",
+      "captionIndex": 41,
+      "start": 48.32,
+      "end": 48.474,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0441.png"
+    },
+    {
+      "captionId": "caption-41",
+      "captionIndex": 41,
+      "start": 48.474,
+      "end": 48.678,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0442.png"
+    },
+    {
+      "captionId": "caption-41",
+      "captionIndex": 41,
+      "start": 48.678,
+      "end": 48.96,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0443.png"
+    },
+    {
+      "captionId": "caption-41",
+      "captionIndex": 41,
+      "start": 48.96,
+      "end": 48.998,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0444.png"
+    },
+    {
+      "captionId": "caption-41",
+      "captionIndex": 41,
+      "start": 48.998,
+      "end": 49.05,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0445.png"
+    },
+    {
+      "captionId": "caption-41",
+      "captionIndex": 41,
+      "start": 49.05,
+      "end": 49.12,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0446.png"
+    },
+    {
+      "captionId": "caption-41",
+      "captionIndex": 41,
+      "start": 49.12,
+      "end": 49.274,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0447.png"
+    },
+    {
+      "captionId": "caption-41",
+      "captionIndex": 41,
+      "start": 49.274,
+      "end": 49.478,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0448.png"
+    },
+    {
+      "captionId": "caption-41",
+      "captionIndex": 41,
+      "start": 49.478,
+      "end": 49.76,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0449.png"
+    },
+    {
+      "captionId": "caption-42",
+      "captionIndex": 42,
+      "start": 49.84,
+      "end": 49.92,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0450.png"
+    },
+    {
+      "captionId": "caption-42",
+      "captionIndex": 42,
+      "start": 49.92,
+      "end": 49.978,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0451.png"
+    },
+    {
+      "captionId": "caption-42",
+      "captionIndex": 42,
+      "start": 49.978,
+      "end": 50.054,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0452.png"
+    },
+    {
+      "captionId": "caption-42",
+      "captionIndex": 42,
+      "start": 50.054,
+      "end": 50.16,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0453.png"
+    },
+    {
+      "captionId": "caption-42",
+      "captionIndex": 42,
+      "start": 50.16,
+      "end": 50.256,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0454.png"
+    },
+    {
+      "captionId": "caption-42",
+      "captionIndex": 42,
+      "start": 50.256,
+      "end": 50.384,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0455.png"
+    },
+    {
+      "captionId": "caption-42",
+      "captionIndex": 42,
+      "start": 50.384,
+      "end": 50.56,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0456.png"
+    },
+    {
+      "captionId": "caption-42",
+      "captionIndex": 42,
+      "start": 50.56,
+      "end": 50.598,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0457.png"
+    },
+    {
+      "captionId": "caption-42",
+      "captionIndex": 42,
+      "start": 50.598,
+      "end": 50.65,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0458.png"
+    },
+    {
+      "captionId": "caption-42",
+      "captionIndex": 42,
+      "start": 50.65,
+      "end": 50.72,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0459.png"
+    },
+    {
+      "captionId": "caption-42",
+      "captionIndex": 42,
+      "start": 50.72,
+      "end": 50.778,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0460.png"
+    },
+    {
+      "captionId": "caption-42",
+      "captionIndex": 42,
+      "start": 50.778,
+      "end": 50.854,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0461.png"
+    },
+    {
+      "captionId": "caption-42",
+      "captionIndex": 42,
+      "start": 50.854,
+      "end": 50.96,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0462.png"
+    },
+    {
+      "captionId": "caption-42",
+      "captionIndex": 42,
+      "start": 50.96,
+      "end": 51.075,
+      "activeIndex": 5,
+      "progress": 0.0,
+      "relativePath": "overlay-0463.png"
+    },
+    {
+      "captionId": "caption-42",
+      "captionIndex": 42,
+      "start": 51.075,
+      "end": 51.229,
+      "activeIndex": 5,
+      "progress": 0.55,
+      "relativePath": "overlay-0464.png"
+    },
+    {
+      "captionId": "caption-42",
+      "captionIndex": 42,
+      "start": 51.229,
+      "end": 51.44,
+      "activeIndex": 5,
+      "progress": 1.0,
+      "relativePath": "overlay-0465.png"
+    },
+    {
+      "captionId": "caption-43",
+      "captionIndex": 43,
+      "start": 51.6,
+      "end": 51.68,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0466.png"
+    },
+    {
+      "captionId": "caption-43",
+      "captionIndex": 43,
+      "start": 51.68,
+      "end": 51.776,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0467.png"
+    },
+    {
+      "captionId": "caption-43",
+      "captionIndex": 43,
+      "start": 51.776,
+      "end": 51.904,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0468.png"
+    },
+    {
+      "captionId": "caption-43",
+      "captionIndex": 43,
+      "start": 51.904,
+      "end": 52.08,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0469.png"
+    },
+    {
+      "captionId": "caption-43",
+      "captionIndex": 43,
+      "start": 52.08,
+      "end": 52.118,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0470.png"
+    },
+    {
+      "captionId": "caption-43",
+      "captionIndex": 43,
+      "start": 52.118,
+      "end": 52.17,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0471.png"
+    },
+    {
+      "captionId": "caption-43",
+      "captionIndex": 43,
+      "start": 52.17,
+      "end": 52.24,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0472.png"
+    },
+    {
+      "captionId": "caption-43",
+      "captionIndex": 43,
+      "start": 52.24,
+      "end": 52.355,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0473.png"
+    },
+    {
+      "captionId": "caption-43",
+      "captionIndex": 43,
+      "start": 52.355,
+      "end": 52.509,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0474.png"
+    },
+    {
+      "captionId": "caption-43",
+      "captionIndex": 43,
+      "start": 52.509,
+      "end": 52.72,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0475.png"
+    },
+    {
+      "captionId": "caption-43",
+      "captionIndex": 43,
+      "start": 52.72,
+      "end": 52.797,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0476.png"
+    },
+    {
+      "captionId": "caption-43",
+      "captionIndex": 43,
+      "start": 52.797,
+      "end": 52.899,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0477.png"
+    },
+    {
+      "captionId": "caption-43",
+      "captionIndex": 43,
+      "start": 52.899,
+      "end": 53.04,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0478.png"
+    },
+    {
+      "captionId": "caption-43",
+      "captionIndex": 43,
+      "start": 53.04,
+      "end": 53.136,
+      "activeIndex": 5,
+      "progress": 0.0,
+      "relativePath": "overlay-0479.png"
+    },
+    {
+      "captionId": "caption-43",
+      "captionIndex": 43,
+      "start": 53.136,
+      "end": 53.264,
+      "activeIndex": 5,
+      "progress": 0.55,
+      "relativePath": "overlay-0480.png"
+    },
+    {
+      "captionId": "caption-43",
+      "captionIndex": 43,
+      "start": 53.264,
+      "end": 53.44,
+      "activeIndex": 5,
+      "progress": 1.0,
+      "relativePath": "overlay-0481.png"
+    },
+    {
+      "captionId": "caption-44",
+      "captionIndex": 44,
+      "start": 53.6,
+      "end": 53.638,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0482.png"
+    },
+    {
+      "captionId": "caption-44",
+      "captionIndex": 44,
+      "start": 53.638,
+      "end": 53.69,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0483.png"
+    },
+    {
+      "captionId": "caption-44",
+      "captionIndex": 44,
+      "start": 53.69,
+      "end": 53.76,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0484.png"
+    },
+    {
+      "captionId": "caption-44",
+      "captionIndex": 44,
+      "start": 53.76,
+      "end": 53.84,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0485.png"
+    },
+    {
+      "captionId": "caption-44",
+      "captionIndex": 44,
+      "start": 53.84,
+      "end": 53.92,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0486.png"
+    },
+    {
+      "captionId": "caption-44",
+      "captionIndex": 44,
+      "start": 53.92,
+      "end": 53.978,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0487.png"
+    },
+    {
+      "captionId": "caption-44",
+      "captionIndex": 44,
+      "start": 53.978,
+      "end": 54.054,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0488.png"
+    },
+    {
+      "captionId": "caption-44",
+      "captionIndex": 44,
+      "start": 54.054,
+      "end": 54.16,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0489.png"
+    },
+    {
+      "captionId": "caption-44",
+      "captionIndex": 44,
+      "start": 54.16,
+      "end": 54.24,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0490.png"
+    },
+    {
+      "captionId": "caption-44",
+      "captionIndex": 44,
+      "start": 54.24,
+      "end": 54.317,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0491.png"
+    },
+    {
+      "captionId": "caption-44",
+      "captionIndex": 44,
+      "start": 54.317,
+      "end": 54.419,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0492.png"
+    },
+    {
+      "captionId": "caption-44",
+      "captionIndex": 44,
+      "start": 54.419,
+      "end": 54.56,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0493.png"
+    },
+    {
+      "captionId": "caption-44",
+      "captionIndex": 44,
+      "start": 54.56,
+      "end": 54.598,
+      "activeIndex": 5,
+      "progress": 0.0,
+      "relativePath": "overlay-0494.png"
+    },
+    {
+      "captionId": "caption-44",
+      "captionIndex": 44,
+      "start": 54.598,
+      "end": 54.65,
+      "activeIndex": 5,
+      "progress": 0.55,
+      "relativePath": "overlay-0495.png"
+    },
+    {
+      "captionId": "caption-44",
+      "captionIndex": 44,
+      "start": 54.65,
+      "end": 54.72,
+      "activeIndex": 5,
+      "progress": 1.0,
+      "relativePath": "overlay-0496.png"
+    },
+    {
+      "captionId": "caption-45",
+      "captionIndex": 45,
+      "start": 54.72,
+      "end": 54.835,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0497.png"
+    },
+    {
+      "captionId": "caption-45",
+      "captionIndex": 45,
+      "start": 54.835,
+      "end": 54.989,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0498.png"
+    },
+    {
+      "captionId": "caption-45",
+      "captionIndex": 45,
+      "start": 54.989,
+      "end": 55.2,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0499.png"
+    },
+    {
+      "captionId": "caption-45",
+      "captionIndex": 45,
+      "start": 55.2,
+      "end": 55.36,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0500.png"
+    },
+    {
+      "captionId": "caption-45",
+      "captionIndex": 45,
+      "start": 55.36,
+      "end": 55.418,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0501.png"
+    },
+    {
+      "captionId": "caption-45",
+      "captionIndex": 45,
+      "start": 55.418,
+      "end": 55.494,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0502.png"
+    },
+    {
+      "captionId": "caption-45",
+      "captionIndex": 45,
+      "start": 55.494,
+      "end": 55.6,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0503.png"
+    },
+    {
+      "captionId": "caption-45",
+      "captionIndex": 45,
+      "start": 55.6,
+      "end": 55.715,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0504.png"
+    },
+    {
+      "captionId": "caption-45",
+      "captionIndex": 45,
+      "start": 55.715,
+      "end": 55.869,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0505.png"
+    },
+    {
+      "captionId": "caption-45",
+      "captionIndex": 45,
+      "start": 55.869,
+      "end": 56.08,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0506.png"
+    },
+    {
+      "captionId": "caption-46",
+      "captionIndex": 46,
+      "start": 56.24,
+      "end": 56.278,
+      "activeIndex": 0,
+      "progress": 0.0,
+      "relativePath": "overlay-0507.png"
+    },
+    {
+      "captionId": "caption-46",
+      "captionIndex": 46,
+      "start": 56.278,
+      "end": 56.33,
+      "activeIndex": 0,
+      "progress": 0.55,
+      "relativePath": "overlay-0508.png"
+    },
+    {
+      "captionId": "caption-46",
+      "captionIndex": 46,
+      "start": 56.33,
+      "end": 56.4,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "relativePath": "overlay-0509.png"
+    },
+    {
+      "captionId": "caption-46",
+      "captionIndex": 46,
+      "start": 56.4,
+      "end": 56.477,
+      "activeIndex": 1,
+      "progress": 0.0,
+      "relativePath": "overlay-0510.png"
+    },
+    {
+      "captionId": "caption-46",
+      "captionIndex": 46,
+      "start": 56.477,
+      "end": 56.579,
+      "activeIndex": 1,
+      "progress": 0.55,
+      "relativePath": "overlay-0511.png"
+    },
+    {
+      "captionId": "caption-46",
+      "captionIndex": 46,
+      "start": 56.579,
+      "end": 56.72,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "relativePath": "overlay-0512.png"
+    },
+    {
+      "captionId": "caption-46",
+      "captionIndex": 46,
+      "start": 56.72,
+      "end": 56.816,
+      "activeIndex": 2,
+      "progress": 0.0,
+      "relativePath": "overlay-0513.png"
+    },
+    {
+      "captionId": "caption-46",
+      "captionIndex": 46,
+      "start": 56.816,
+      "end": 56.944,
+      "activeIndex": 2,
+      "progress": 0.55,
+      "relativePath": "overlay-0514.png"
+    },
+    {
+      "captionId": "caption-46",
+      "captionIndex": 46,
+      "start": 56.944,
+      "end": 57.12,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "relativePath": "overlay-0515.png"
+    },
+    {
+      "captionId": "caption-46",
+      "captionIndex": 46,
+      "start": 57.12,
+      "end": 57.158,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "relativePath": "overlay-0516.png"
+    },
+    {
+      "captionId": "caption-46",
+      "captionIndex": 46,
+      "start": 57.158,
+      "end": 57.21,
+      "activeIndex": 3,
+      "progress": 0.55,
+      "relativePath": "overlay-0517.png"
+    },
+    {
+      "captionId": "caption-46",
+      "captionIndex": 46,
+      "start": 57.21,
+      "end": 57.28,
+      "activeIndex": 3,
+      "progress": 1.0,
+      "relativePath": "overlay-0518.png"
+    },
+    {
+      "captionId": "caption-46",
+      "captionIndex": 46,
+      "start": 57.28,
+      "end": 57.395,
+      "activeIndex": 4,
+      "progress": 0.0,
+      "relativePath": "overlay-0519.png"
+    },
+    {
+      "captionId": "caption-46",
+      "captionIndex": 46,
+      "start": 57.395,
+      "end": 57.549,
+      "activeIndex": 4,
+      "progress": 0.55,
+      "relativePath": "overlay-0520.png"
+    },
+    {
+      "captionId": "caption-46",
+      "captionIndex": 46,
+      "start": 57.549,
+      "end": 57.76,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "relativePath": "overlay-0521.png"
+    }
+  ]
+}

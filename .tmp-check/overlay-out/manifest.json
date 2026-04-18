@@ -1,0 +1,233 @@
+{
+  "schemaVersion": "2026-04-animated-caption-overlays-v1",
+  "width": 1080,
+  "height": 1920,
+  "bottomMargin": 220,
+  "animationPreset": "pop",
+  "fps": 30.0,
+  "fontWeight": 300,
+  "renderedImageCount": 22,
+  "entryCount": 22,
+  "entries": [
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.0,
+      "end": 0.033,
+      "activeIndex": 0,
+      "progress": 0.0926,
+      "frameIndex": 0,
+      "relativePath": "overlay-0001.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.033,
+      "end": 0.067,
+      "activeIndex": 0,
+      "progress": 0.2778,
+      "frameIndex": 1,
+      "relativePath": "overlay-0002.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.067,
+      "end": 0.1,
+      "activeIndex": 0,
+      "progress": 0.463,
+      "frameIndex": 2,
+      "relativePath": "overlay-0003.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.1,
+      "end": 0.133,
+      "activeIndex": 0,
+      "progress": 0.6481,
+      "frameIndex": 3,
+      "relativePath": "overlay-0004.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.133,
+      "end": 0.167,
+      "activeIndex": 0,
+      "progress": 0.8333,
+      "frameIndex": 4,
+      "relativePath": "overlay-0005.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.167,
+      "end": 0.2,
+      "activeIndex": 1,
+      "progress": 0.0185,
+      "frameIndex": 5,
+      "relativePath": "overlay-0006.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.2,
+      "end": 0.233,
+      "activeIndex": 1,
+      "progress": 0.2037,
+      "frameIndex": 6,
+      "relativePath": "overlay-0007.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.233,
+      "end": 0.267,
+      "activeIndex": 1,
+      "progress": 0.3889,
+      "frameIndex": 7,
+      "relativePath": "overlay-0008.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.267,
+      "end": 0.3,
+      "activeIndex": 1,
+      "progress": 0.5741,
+      "frameIndex": 8,
+      "relativePath": "overlay-0009.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.3,
+      "end": 0.333,
+      "activeIndex": 1,
+      "progress": 0.7593,
+      "frameIndex": 9,
+      "relativePath": "overlay-0010.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.333,
+      "end": 0.367,
+      "activeIndex": 1,
+      "progress": 0.9444,
+      "frameIndex": 10,
+      "relativePath": "overlay-0011.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.367,
+      "end": 0.4,
+      "activeIndex": 2,
+      "progress": 0.1296,
+      "frameIndex": 11,
+      "relativePath": "overlay-0012.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.4,
+      "end": 0.433,
+      "activeIndex": 2,
+      "progress": 0.3148,
+      "frameIndex": 12,
+      "relativePath": "overlay-0013.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.433,
+      "end": 0.467,
+      "activeIndex": 2,
+      "progress": 0.5,
+      "frameIndex": 13,
+      "relativePath": "overlay-0014.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.467,
+      "end": 0.5,
+      "activeIndex": 2,
+      "progress": 0.6852,
+      "frameIndex": 14,
+      "relativePath": "overlay-0015.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.5,
+      "end": 0.533,
+      "activeIndex": 2,
+      "progress": 0.8704,
+      "frameIndex": 15,
+      "relativePath": "overlay-0016.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.533,
+      "end": 0.567,
+      "activeIndex": 3,
+      "progress": 0.0556,
+      "frameIndex": 16,
+      "relativePath": "overlay-0017.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.567,
+      "end": 0.6,
+      "activeIndex": 3,
+      "progress": 0.2407,
+      "frameIndex": 17,
+      "relativePath": "overlay-0018.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.6,
+      "end": 0.633,
+      "activeIndex": 3,
+      "progress": 0.4259,
+      "frameIndex": 18,
+      "relativePath": "overlay-0019.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.633,
+      "end": 0.667,
+      "activeIndex": 3,
+      "progress": 0.6111,
+      "frameIndex": 19,
+      "relativePath": "overlay-0020.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.667,
+      "end": 0.7,
+      "activeIndex": 3,
+      "progress": 0.7963,
+      "frameIndex": 20,
+      "relativePath": "overlay-0021.png"
+    },
+    {
+      "captionId": "caption-1",
+      "captionIndex": 1,
+      "start": 0.7,
+      "end": 0.72,
+      "activeIndex": 3,
+      "progress": 0.9815,
+      "frameIndex": 21,
+      "relativePath": "overlay-0022.png"
+    }
+  ]
+}

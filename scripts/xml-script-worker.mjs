@@ -51,6 +51,7 @@ const VOICE_REFERENCE_EXTENSION_TEXT = " Keep your shoulders relaxed, breathe th
 const DEFAULT_VOICE_SELECTION = {
   id: "voice-calm-authority",
   name: "Female Calm Authority",
+  sourceType: "generated",
   mode: "voice-design",
   voiceDesignPrompt: "Adult female voice. Pitch: lower-register, smooth, and resonant. Tone: warm, grounded, confident, and highly articulate. Pacing: conversational, engaging, very fast-paced, but with natural pauses for emphasis. Emotion: friendly, encouraging, and knowledgeable, sounding like a trusted expert speaking one-on-one with a close friend. Volume: moderate, with an intimate, close-mic feel. Pronunciation is crisp and clear without sounding robotic.",
   previewText: DEFAULT_VOICE_REFERENCE_TEXT,
@@ -68,6 +69,10 @@ function normalizeTask(value) {
 
 function normalizeString(value, fallback = "") {
   return typeof value === "string" ? value.trim() : fallback;
+}
+
+function normalizeVoiceSourceType(value) {
+  return value === "uploaded-reference" ? "uploaded-reference" : "generated";
 }
 
 function normalizeStoredRelativePath(value) {
@@ -735,6 +740,7 @@ async function main() {
       ? {
           id: typeof job.selectedVoice.id === "string" && job.selectedVoice.id.trim() ? job.selectedVoice.id.trim() : DEFAULT_VOICE_SELECTION.id,
           name: typeof job.selectedVoice.name === "string" && job.selectedVoice.name.trim() ? job.selectedVoice.name.trim() : DEFAULT_VOICE_SELECTION.name,
+          sourceType: normalizeVoiceSourceType(job.selectedVoice.sourceType),
           mode: job.selectedVoice.mode === "custom-voice" ? "custom-voice" : "voice-design",
           voiceDesignPrompt:
             typeof job.selectedVoice.voiceDesignPrompt === "string" && job.selectedVoice.voiceDesignPrompt.trim()
@@ -780,17 +786,25 @@ async function main() {
     const pauseRemovalSettings = normalizePauseRemovalSettings(job.pauseRemoval);
 
     if (task === "full" || task === "narration") {
-      const normalizedReferenceText = normalizeVoiceReferenceText(selectedVoice.referenceText || selectedVoice.previewText || DEFAULT_VOICE_SELECTION.previewText);
-      const savedReferenceAudioPath = selectedVoice.referenceAudioRelativePath
-        ? resolveVoiceLibraryAbsolutePath(normalizeStoredRelativePath(selectedVoice.referenceAudioRelativePath) || "")
+      const isUploadedReferenceVoice = selectedVoice.sourceType === "uploaded-reference";
+      const referenceTranscript = isUploadedReferenceVoice
+        ? normalizeString(selectedVoice.referenceText)
+        : normalizeVoiceReferenceText(selectedVoice.referenceText || selectedVoice.previewText || DEFAULT_VOICE_SELECTION.previewText);
+      const savedReferenceRelativePath = normalizeStoredRelativePath(selectedVoice.referenceAudioRelativePath);
+      const savedReferenceAudioPath = savedReferenceRelativePath
+        ? resolveVoiceLibraryAbsolutePath(savedReferenceRelativePath)
         : null;
       const canReuseSavedReference = Boolean(
         savedReferenceAudioPath
         && fs.existsSync(savedReferenceAudioPath)
-        && selectedVoice.referencePrompt === selectedVoice.voiceDesignPrompt
-        && selectedVoice.referenceMode === selectedVoice.mode
-        && selectedVoice.referenceText === normalizedReferenceText
-        && (selectedVoice.mode !== "custom-voice" || selectedVoice.referenceSpeaker === (selectedVoice.speaker || undefined))
+        && (
+          isUploadedReferenceVoice
+            ? Boolean(referenceTranscript)
+            : selectedVoice.referencePrompt === selectedVoice.voiceDesignPrompt
+              && selectedVoice.referenceMode === selectedVoice.mode
+              && selectedVoice.referenceText === referenceTranscript
+              && (selectedVoice.mode !== "custom-voice" || selectedVoice.referenceSpeaker === (selectedVoice.speaker || undefined))
+        )
       );
       const referenceDir = path.join(voiceDir, "reference");
       let referenceAudioPath = canReuseSavedReference
@@ -798,11 +812,16 @@ async function main() {
         : path.join(referenceDir, `${sanitizePathSegment(selectedVoice.id)}-reference.wav`);
       const referenceTextPath = path.join(referenceDir, "reference.txt");
       ensureDir(referenceDir);
-      fs.writeFileSync(referenceTextPath, `${normalizedReferenceText}\n`, "utf-8");
+
+      if (isUploadedReferenceVoice && !canReuseSavedReference) {
+        throw new Error("Uploaded reference voice is missing its saved audio clip or transcript. Re-upload the reference clip in Short-form Video settings and save the voice library before running narration.");
+      }
+
+      fs.writeFileSync(referenceTextPath, `${referenceTranscript}\n`, "utf-8");
       let persistedReference = null;
 
       if (!canReuseSavedReference) {
-        attempts.push({ step: "voice-reference", startedAt: new Date().toISOString(), voice: selectedVoice, referenceText: normalizedReferenceText });
+        attempts.push({ step: "voice-reference", startedAt: new Date().toISOString(), voice: selectedVoice, referenceText: referenceTranscript });
         liveProgress = { step: "voice-reference", label: "Generating reusable voice reference", percent: 0 };
         updateStatus();
         await runStreaming("bash", [
@@ -852,7 +871,7 @@ async function main() {
         attempts[attempts.length - 1].output = referenceAudioPath;
 
         try {
-          persistedReference = persistVoiceReferenceToLibrary(selectedVoice, normalizedReferenceText, referenceAudioPath);
+          persistedReference = persistVoiceReferenceToLibrary(selectedVoice, referenceTranscript, referenceAudioPath);
           referenceAudioPath = persistedReference.absolutePath;
         } catch {
           persistedReference = null;
@@ -861,16 +880,17 @@ async function main() {
 
       const voiceSelectionForRun = {
         ...selectedVoice,
-        previewText: normalizedReferenceText,
+        previewText: selectedVoice.previewText,
         referenceAudioPath,
         ...(persistedReference?.relativePath ? { referenceAudioRelativePath: persistedReference.relativePath } : {}),
-        referenceText: normalizedReferenceText,
-        referencePrompt: selectedVoice.voiceDesignPrompt,
-        referenceMode: selectedVoice.mode,
-        ...(selectedVoice.speaker ? { referenceSpeaker: selectedVoice.speaker } : {}),
+        referenceText: referenceTranscript,
+        ...(isUploadedReferenceVoice ? {} : { referencePrompt: selectedVoice.voiceDesignPrompt, referenceMode: selectedVoice.mode }),
+        ...(selectedVoice.speaker && !isUploadedReferenceVoice ? { referenceSpeaker: selectedVoice.speaker } : {}),
         ...(persistedReference?.generatedAt ? { referenceGeneratedAt: persistedReference.generatedAt } : {}),
         narrationMode: "voice-clone",
-        referenceSource: (canReuseSavedReference || persistedReference) ? "saved-library" : "generated-for-run",
+        referenceSource: isUploadedReferenceVoice
+          ? "uploaded-reference"
+          : (canReuseSavedReference || persistedReference) ? "saved-library" : "generated-for-run",
       };
       writeJson(voiceSelectionPath, voiceSelectionForRun);
       attempts.push({ step: "narration", startedAt: new Date().toISOString(), voice: voiceSelectionForRun });
@@ -886,7 +906,7 @@ async function main() {
         "--ref-audio",
         referenceAudioPath,
         "--ref-text",
-        normalizedReferenceText,
+        referenceTranscript,
         "--text-file",
         transcriptPath,
         "--output",

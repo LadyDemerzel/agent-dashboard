@@ -133,6 +133,7 @@ function createDefaultVoice() {
   return {
     id: DEFAULT_VOICE_ID,
     name: "Calm Authority",
+    sourceType: "generated",
     mode: DEFAULT_VOICE_MODE,
     voiceDesignPrompt: DEFAULT_VOICE_INSTRUCT,
     notes: "Starter VoiceDesign preset for short-form narration.",
@@ -144,19 +145,33 @@ function normalizeVoiceMode(value, fallback = DEFAULT_VOICE_MODE) {
   return value === "custom-voice" ? "custom-voice" : fallback;
 }
 
+function normalizeVoiceSourceType(value) {
+  return value === "uploaded-reference" ? "uploaded-reference" : "generated";
+}
+
+function buildUploadedReferenceFallbackPrompt(name) {
+  const normalizedName = normalizeString(name, "uploaded reference voice") || "uploaded reference voice";
+  return `Use the uploaded reference clip for the saved voice \"${normalizedName}\" when cloning narration.`;
+}
+
 function normalizeVoiceEntry(value, fallback, index) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
 
   const mode = normalizeVoiceMode(value.mode, fallback.mode);
+  const sourceType = normalizeVoiceSourceType(value.sourceType);
+  const name = normalizeString(value.name, fallback.name || `Voice ${index + 1}`);
   const voice = {
     id: normalizeString(value.id, fallback.id || `voice-${index + 1}`),
-    name: normalizeString(value.name, fallback.name || `Voice ${index + 1}`),
+    name,
+    sourceType,
     mode,
     voiceDesignPrompt: normalizeString(
       value.voiceDesignPrompt,
-      normalizeString(value.legacyInstruct, fallback.voiceDesignPrompt || DEFAULT_VOICE_INSTRUCT)
+      sourceType === "uploaded-reference"
+        ? buildUploadedReferenceFallbackPrompt(name)
+        : normalizeString(value.legacyInstruct, fallback.voiceDesignPrompt || DEFAULT_VOICE_INSTRUCT)
     ),
     notes: normalizeString(value.notes, fallback.notes || ""),
     previewText: normalizeString(value.previewText, fallback.previewText || DEFAULT_VOICE_PREVIEW_TEXT),
@@ -166,6 +181,13 @@ function normalizeVoiceEntry(value, fallback, index) {
     voice.speaker = normalizeString(value.speaker, fallback.speaker || DEFAULT_VOICE_SPEAKER);
     voice.legacyInstruct = normalizeString(value.legacyInstruct, fallback.legacyInstruct || voice.voiceDesignPrompt);
     voice.voiceDesignPrompt = normalizeString(value.voiceDesignPrompt, voice.legacyInstruct || DEFAULT_VOICE_INSTRUCT);
+  }
+
+  if (typeof value.referenceAudioRelativePath === "string" && value.referenceAudioRelativePath.trim()) {
+    voice.referenceAudioRelativePath = value.referenceAudioRelativePath.trim();
+  }
+  if (typeof value.referenceText === "string" && value.referenceText.trim()) {
+    voice.referenceText = value.referenceText.trim();
   }
 
   return voice;
@@ -1689,6 +1711,7 @@ function readXmlVoiceSelection(projectId) {
     return {
       id: normalizeString(value.id, fallback.id),
       name: normalizeString(value.name, fallback.name),
+      sourceType: normalizeVoiceSourceType(value.sourceType),
       mode,
       voiceDesignPrompt: normalizeString(value.voiceDesignPrompt, fallback.voiceDesignPrompt),
       ...(mode === "custom-voice"
@@ -2599,8 +2622,12 @@ function buildVideoReviewDoc(projectId, config, selectedVoice = createDefaultVoi
     "",
     `- Final video: \`${relativeVideo}\``,
     `- Work directory: \`${relativeWorkDir}\``,
-    `- Narration voice: Qwen / ${selectedVoice.mode === "voice-design" ? `VoiceDesign \`${selectedVoice.name}\`` : `legacy custom voice \`${selectedVoice.name}\` / speaker \`${selectedVoice.speaker || DEFAULT_VOICE_SPEAKER}\``}`,
-    `- Voice prompt: ${selectedVoice.voiceDesignPrompt}`,
+    `- Narration voice: Qwen / ${selectedVoice.sourceType === "uploaded-reference"
+      ? `uploaded reference voice \`${selectedVoice.name}\``
+      : selectedVoice.mode === "voice-design"
+        ? `VoiceDesign \`${selectedVoice.name}\``
+        : `legacy custom voice \`${selectedVoice.name}\` / speaker \`${selectedVoice.speaker || DEFAULT_VOICE_SPEAKER}\``}`,
+    `- Voice prompt: ${selectedVoice.sourceType === "uploaded-reference" ? "Uses the saved uploaded reference clip for voice-clone narration." : selectedVoice.voiceDesignPrompt}`,
     `- Looping background video: ${config.backgroundVideoName ? `\`${config.backgroundVideoName}\`` : "Not configured"}`,
     `- Caption style: ${captionStyleSelection?.style?.name ? `\`${captionStyleSelection.style.name}\` (${captionStyleSelection.style.animationPreset})` : config.captionStyleName ? `\`${config.captionStyleName}\`` : "Default/fallback"}`,
     `- Music path: ${selectedMusic?.generatedAudioRelativePath ? `\`${selectedMusic.generatedAudioRelativePath}\`` : "Not configured"}`,

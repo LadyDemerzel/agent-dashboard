@@ -54,6 +54,7 @@ interface VoiceOption {
   id: string;
   name: string;
   mode?: 'voice-design' | 'custom-voice';
+  sourceType?: 'generated' | 'uploaded-reference';
 }
 
 interface MusicOption {
@@ -1176,7 +1177,7 @@ function XMLScriptSection({ project, onProjectRefresh }: { project: Project; onP
             >
               {voiceOptions.map((voice) => (
                 <option key={voice.id} value={voice.id}>
-                  {voice.name}{voice.id === defaultVoiceId ? ' (default)' : ''}
+                  {voice.name}{voice.sourceType === 'uploaded-reference' ? ' [uploaded reference]' : voice.mode === 'custom-voice' ? ' [legacy custom]' : ' [generated]'}{voice.id === defaultVoiceId ? ' (default)' : ''}
                 </option>
               ))}
             </Select>

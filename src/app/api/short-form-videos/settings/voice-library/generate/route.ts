@@ -108,7 +108,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Saved voice entry not found" }, { status: 404 });
   }
 
-  const referenceText = normalizeReferenceText(voice);
+  const isUploadedReferenceVoice = voice.sourceType === "uploaded-reference";
+  const referenceText = isUploadedReferenceVoice
+    ? normalizeString(voice.referenceText, normalizeString(voice.previewText))
+    : normalizeReferenceText(voice);
   const canonicalRelativePath = voice.referenceAudioRelativePath || `${sanitizePathSegment(voice.id)}/reference.wav`;
   const absolutePath = path.resolve(getShortFormVoiceLibraryDir(), canonicalRelativePath);
   const workDir = path.dirname(absolutePath);
@@ -116,6 +119,25 @@ export async function POST(request: NextRequest) {
   const metaPath = path.join(workDir, "meta.json");
   fs.mkdirSync(workDir, { recursive: true });
   fs.writeFileSync(transcriptPath, `${referenceText}\n`, "utf-8");
+
+  if (isUploadedReferenceVoice) {
+    if (!voice.referenceAudioRelativePath || !fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
+      return NextResponse.json({ success: false, error: "Uploaded reference clip is missing. Re-upload the voice clip in Short-form Video settings." }, { status: 400 });
+    }
+    if (!referenceText) {
+      return NextResponse.json({ success: false, error: "Uploaded reference voice needs a transcript before it can be reused." }, { status: 400 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        voice,
+        videoRender: settings,
+        reusedExisting: true,
+        audioUrl: buildAudioUrl(voice.referenceAudioRelativePath),
+      },
+    });
+  }
 
   const canReuseExisting = Boolean(
     !force

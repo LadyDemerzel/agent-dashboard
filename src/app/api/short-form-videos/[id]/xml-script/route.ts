@@ -234,6 +234,7 @@ export async function POST(
     selectedVoice: {
       id: selectedVoice.voice.id,
       name: selectedVoice.voice.name,
+      sourceType: selectedVoice.voice.sourceType,
       mode: selectedVoice.voice.mode,
       voiceDesignPrompt: selectedVoice.voice.voiceDesignPrompt,
       previewText: selectedVoice.voice.previewText,

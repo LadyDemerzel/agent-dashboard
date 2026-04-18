@@ -1,0 +1,464 @@
+{
+  "schemaVersion": "2026-04-animated-caption-overlays-v1",
+  "width": 1080,
+  "height": 1920,
+  "bottomMargin": 220,
+  "animationPreset": "pop",
+  "fps": 30.0,
+  "fontWeight": 800,
+  "wordSpacing": -4.0,
+  "renderedImageCount": 40,
+  "entryCount": 45,
+  "entries": [
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.0,
+      "end": 0.033,
+      "activeIndex": 0,
+      "progress": 0.0694,
+      "frameIndex": 0,
+      "relativePath": "overlay-0001.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.033,
+      "end": 0.067,
+      "activeIndex": 0,
+      "progress": 0.2083,
+      "frameIndex": 1,
+      "relativePath": "overlay-0002.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.067,
+      "end": 0.1,
+      "activeIndex": 0,
+      "progress": 0.3472,
+      "frameIndex": 2,
+      "relativePath": "overlay-0003.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.1,
+      "end": 0.133,
+      "activeIndex": 0,
+      "progress": 0.4861,
+      "frameIndex": 3,
+      "relativePath": "overlay-0004.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.133,
+      "end": 0.167,
+      "activeIndex": 0,
+      "progress": 0.625,
+      "frameIndex": 4,
+      "relativePath": "overlay-0005.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.167,
+      "end": 0.2,
+      "activeIndex": 0,
+      "progress": 0.7639,
+      "frameIndex": 5,
+      "relativePath": "overlay-0006.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.2,
+      "end": 0.233,
+      "activeIndex": 0,
+      "progress": 0.9028,
+      "frameIndex": 6,
+      "relativePath": "overlay-0007.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.233,
+      "end": 0.267,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "frameIndex": 7,
+      "relativePath": "overlay-0008.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.267,
+      "end": 0.3,
+      "activeIndex": 0,
+      "progress": 1.0,
+      "frameIndex": 8,
+      "relativePath": "overlay-0008.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.3,
+      "end": 0.333,
+      "activeIndex": 1,
+      "progress": 0.0694,
+      "frameIndex": 9,
+      "relativePath": "overlay-0009.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.333,
+      "end": 0.367,
+      "activeIndex": 1,
+      "progress": 0.2083,
+      "frameIndex": 10,
+      "relativePath": "overlay-0010.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.367,
+      "end": 0.4,
+      "activeIndex": 1,
+      "progress": 0.3472,
+      "frameIndex": 11,
+      "relativePath": "overlay-0011.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.4,
+      "end": 0.433,
+      "activeIndex": 1,
+      "progress": 0.4861,
+      "frameIndex": 12,
+      "relativePath": "overlay-0012.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.433,
+      "end": 0.467,
+      "activeIndex": 1,
+      "progress": 0.625,
+      "frameIndex": 13,
+      "relativePath": "overlay-0013.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.467,
+      "end": 0.5,
+      "activeIndex": 1,
+      "progress": 0.7639,
+      "frameIndex": 14,
+      "relativePath": "overlay-0014.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.5,
+      "end": 0.533,
+      "activeIndex": 1,
+      "progress": 0.9028,
+      "frameIndex": 15,
+      "relativePath": "overlay-0015.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.533,
+      "end": 0.567,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "frameIndex": 16,
+      "relativePath": "overlay-0016.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.567,
+      "end": 0.6,
+      "activeIndex": 1,
+      "progress": 1.0,
+      "frameIndex": 17,
+      "relativePath": "overlay-0016.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.6,
+      "end": 0.633,
+      "activeIndex": 2,
+      "progress": 0.0694,
+      "frameIndex": 18,
+      "relativePath": "overlay-0017.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.633,
+      "end": 0.667,
+      "activeIndex": 2,
+      "progress": 0.2083,
+      "frameIndex": 19,
+      "relativePath": "overlay-0018.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.667,
+      "end": 0.7,
+      "activeIndex": 2,
+      "progress": 0.3472,
+      "frameIndex": 20,
+      "relativePath": "overlay-0019.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.7,
+      "end": 0.733,
+      "activeIndex": 2,
+      "progress": 0.4861,
+      "frameIndex": 21,
+      "relativePath": "overlay-0020.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.733,
+      "end": 0.767,
+      "activeIndex": 2,
+      "progress": 0.625,
+      "frameIndex": 22,
+      "relativePath": "overlay-0021.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.767,
+      "end": 0.8,
+      "activeIndex": 2,
+      "progress": 0.7639,
+      "frameIndex": 23,
+      "relativePath": "overlay-0022.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.8,
+      "end": 0.833,
+      "activeIndex": 2,
+      "progress": 0.9028,
+      "frameIndex": 24,
+      "relativePath": "overlay-0023.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.833,
+      "end": 0.867,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "frameIndex": 25,
+      "relativePath": "overlay-0024.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.867,
+      "end": 0.9,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "frameIndex": 26,
+      "relativePath": "overlay-0024.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.9,
+      "end": 0.933,
+      "activeIndex": 2,
+      "progress": 1.0,
+      "frameIndex": 27,
+      "relativePath": "overlay-0024.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.933,
+      "end": 0.967,
+      "activeIndex": 3,
+      "progress": 0.0,
+      "frameIndex": 28,
+      "relativePath": "overlay-0025.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 0.967,
+      "end": 1.0,
+      "activeIndex": 3,
+      "progress": 0.1389,
+      "frameIndex": 29,
+      "relativePath": "overlay-0026.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 1.0,
+      "end": 1.033,
+      "activeIndex": 3,
+      "progress": 0.2778,
+      "frameIndex": 30,
+      "relativePath": "overlay-0027.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 1.033,
+      "end": 1.067,
+      "activeIndex": 3,
+      "progress": 0.4167,
+      "frameIndex": 31,
+      "relativePath": "overlay-0028.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 1.067,
+      "end": 1.1,
+      "activeIndex": 3,
+      "progress": 0.5556,
+      "frameIndex": 32,
+      "relativePath": "overlay-0029.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 1.1,
+      "end": 1.133,
+      "activeIndex": 3,
+      "progress": 0.6944,
+      "frameIndex": 33,
+      "relativePath": "overlay-0030.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 1.133,
+      "end": 1.167,
+      "activeIndex": 3,
+      "progress": 0.8333,
+      "frameIndex": 34,
+      "relativePath": "overlay-0031.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 1.167,
+      "end": 1.2,
+      "activeIndex": 3,
+      "progress": 0.9722,
+      "frameIndex": 35,
+      "relativePath": "overlay-0032.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 1.2,
+      "end": 1.233,
+      "activeIndex": 4,
+      "progress": 0.0694,
+      "frameIndex": 36,
+      "relativePath": "overlay-0033.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 1.233,
+      "end": 1.267,
+      "activeIndex": 4,
+      "progress": 0.2083,
+      "frameIndex": 37,
+      "relativePath": "overlay-0034.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 1.267,
+      "end": 1.3,
+      "activeIndex": 4,
+      "progress": 0.3472,
+      "frameIndex": 38,
+      "relativePath": "overlay-0035.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 1.3,
+      "end": 1.333,
+      "activeIndex": 4,
+      "progress": 0.4861,
+      "frameIndex": 39,
+      "relativePath": "overlay-0036.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 1.333,
+      "end": 1.367,
+      "activeIndex": 4,
+      "progress": 0.625,
+      "frameIndex": 40,
+      "relativePath": "overlay-0037.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 1.367,
+      "end": 1.4,
+      "activeIndex": 4,
+      "progress": 0.7639,
+      "frameIndex": 41,
+      "relativePath": "overlay-0038.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 1.4,
+      "end": 1.433,
+      "activeIndex": 4,
+      "progress": 0.9028,
+      "frameIndex": 42,
+      "relativePath": "overlay-0039.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 1.433,
+      "end": 1.467,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "frameIndex": 43,
+      "relativePath": "overlay-0040.png"
+    },
+    {
+      "captionId": "c1",
+      "captionIndex": 1,
+      "start": 1.467,
+      "end": 1.5,
+      "activeIndex": 4,
+      "progress": 1.0,
+      "frameIndex": 44,
+      "relativePath": "overlay-0040.png"
+    }
+  ]
+}

@@ -12,11 +12,13 @@ const SHORT_FORM_VIDEOS_DIR = path.join(
 );
 
 export type ShortFormQwenVoiceMode = "voice-design" | "custom-voice";
+export type ShortFormVoiceSourceType = "generated" | "uploaded-reference";
 export type ShortFormCaptionAnimationPreset = "none" | "stable-pop" | "fluid-pop" | "pulse" | "glow";
 
 export interface ShortFormVoiceLibraryEntry {
   id: string;
   name: string;
+  sourceType?: ShortFormVoiceSourceType;
   mode: ShortFormQwenVoiceMode;
   voiceDesignPrompt: string;
   notes: string;
@@ -146,6 +148,7 @@ export const DEFAULT_SHORT_FORM_PAUSE_REMOVAL_SETTINGS: ShortFormPauseRemovalSet
 export const DEFAULT_SHORT_FORM_VOICE: ShortFormVoiceLibraryEntry = {
   id: DEFAULT_VOICE_ID,
   name: "Calm Authority",
+  sourceType: "generated",
   mode: "voice-design",
   voiceDesignPrompt: DEFAULT_VOICE_DESIGN_PROMPT,
   notes: "Starter VoiceDesign preset for short-form narration.",
@@ -275,6 +278,15 @@ function normalizeString(value: unknown, fallback = "") {
 
 function normalizeMode(value: unknown): ShortFormQwenVoiceMode {
   return value === "custom-voice" ? "custom-voice" : "voice-design";
+}
+
+function normalizeVoiceSourceType(value: unknown): ShortFormVoiceSourceType {
+  return value === "uploaded-reference" ? "uploaded-reference" : "generated";
+}
+
+function buildUploadedReferenceFallbackPrompt(name: string) {
+  const normalizedName = name.trim() || "uploaded reference voice";
+  return `Use the uploaded reference clip for the saved voice \"${normalizedName}\" when cloning narration.`;
 }
 
 function normalizeCaptionAnimationPreset(
@@ -471,18 +483,31 @@ function resolveVoiceLibraryAbsolutePath(relativePath: string) {
   return path.resolve(VOICE_LIBRARY_DIR, relativePath);
 }
 
-function readReusableVoiceArtifact(voice: ShortFormVoiceLibraryEntry, obj: Record<string, unknown>) {
+function readReusableVoiceArtifact(
+  voice: ShortFormVoiceLibraryEntry,
+  obj: Record<string, unknown>
+): Pick<
+  ShortFormVoiceLibraryEntry,
+  "referenceAudioRelativePath" | "referenceText" | "referencePrompt" | "referenceMode" | "referenceSpeaker" | "referenceGeneratedAt"
+> | null {
   const referenceAudioRelativePath = normalizeStoredRelativePath(obj.referenceAudioRelativePath);
   const referenceText = normalizeString(obj.referenceText);
   const referencePrompt = normalizeString(obj.referencePrompt);
-  const referenceMode = obj.referenceMode === "custom-voice" ? "custom-voice" : "voice-design";
+  const referenceMode = obj.referenceMode === "custom-voice"
+    ? "custom-voice"
+    : obj.referenceMode === "voice-design"
+      ? "voice-design"
+      : undefined;
   const referenceSpeaker = normalizeString(obj.referenceSpeaker) || undefined;
   const voiceLibraryDir = path.resolve(VOICE_LIBRARY_DIR);
 
-  if (!referenceAudioRelativePath || !referenceText || !referencePrompt) return null;
-  if (referencePrompt !== voice.voiceDesignPrompt) return null;
-  if (referenceMode !== voice.mode) return null;
-  if (voice.mode === "custom-voice" && referenceSpeaker !== (voice.speaker || undefined)) return null;
+  if (!referenceAudioRelativePath || !referenceText) return null;
+  if (voice.sourceType !== "uploaded-reference") {
+    if (!referencePrompt) return null;
+    if (referencePrompt !== voice.voiceDesignPrompt) return null;
+    if (referenceMode !== voice.mode) return null;
+    if (voice.mode === "custom-voice" && referenceSpeaker !== (voice.speaker || undefined)) return null;
+  }
 
   const absolutePath = resolveVoiceLibraryAbsolutePath(referenceAudioRelativePath);
   if (
@@ -496,11 +521,11 @@ function readReusableVoiceArtifact(voice: ShortFormVoiceLibraryEntry, obj: Recor
   return {
     referenceAudioRelativePath,
     referenceText,
-    referencePrompt,
-    referenceMode,
+    ...(referencePrompt ? { referencePrompt } : {}),
+    ...(referenceMode ? { referenceMode } : {}),
     ...(referenceSpeaker ? { referenceSpeaker } : {}),
     ...(normalizeString(obj.referenceGeneratedAt) ? { referenceGeneratedAt: normalizeString(obj.referenceGeneratedAt) } : {}),
-  } satisfies Pick<ShortFormVoiceLibraryEntry, "referenceAudioRelativePath" | "referenceText" | "referencePrompt" | "referenceMode" | "referenceSpeaker" | "referenceGeneratedAt">;
+  };
 }
 
 function readReusableMusicArtifact(track: ShortFormMusicLibraryEntry, obj: Record<string, unknown>) {
@@ -594,13 +619,18 @@ function normalizeVoiceEntry(value: unknown, fallback: ShortFormVoiceLibraryEntr
 
   const obj = value as Record<string, unknown>;
   const mode = normalizeMode(obj.mode);
-  const promptFallback = mode === "voice-design"
-    ? fallback.voiceDesignPrompt
-    : normalizeString(obj.legacyInstruct, fallback.legacyInstruct || fallback.voiceDesignPrompt);
+  const sourceType = normalizeVoiceSourceType(obj.sourceType);
+  const normalizedName = normalizeString(obj.name, fallback.name || `Voice ${index + 1}`);
+  const promptFallback = sourceType === "uploaded-reference"
+    ? buildUploadedReferenceFallbackPrompt(normalizedName)
+    : mode === "voice-design"
+      ? fallback.voiceDesignPrompt
+      : normalizeString(obj.legacyInstruct, fallback.legacyInstruct || fallback.voiceDesignPrompt);
 
   const normalized: ShortFormVoiceLibraryEntry = {
     id: normalizeString(obj.id, fallback.id || `voice-${index + 1}`),
-    name: normalizeString(obj.name, fallback.name || `Voice ${index + 1}`),
+    name: normalizedName,
+    sourceType,
     mode,
     voiceDesignPrompt: normalizeString(obj.voiceDesignPrompt, promptFallback),
     notes: normalizeString(obj.notes, fallback.notes),
@@ -629,8 +659,8 @@ function normalizeVoiceEntry(value: unknown, fallback: ShortFormVoiceLibraryEntr
   if (artifact) {
     normalized.referenceAudioRelativePath = artifact.referenceAudioRelativePath;
     normalized.referenceText = artifact.referenceText;
-    normalized.referencePrompt = artifact.referencePrompt;
-    normalized.referenceMode = artifact.referenceMode;
+    if (artifact.referencePrompt) normalized.referencePrompt = artifact.referencePrompt;
+    if (artifact.referenceMode) normalized.referenceMode = artifact.referenceMode;
     if (artifact.referenceSpeaker) normalized.referenceSpeaker = artifact.referenceSpeaker;
     if (artifact.referenceGeneratedAt) normalized.referenceGeneratedAt = artifact.referenceGeneratedAt;
   }

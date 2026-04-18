@@ -32,10 +32,34 @@ class DeterministicCaptionChunkTests(unittest.TestCase):
         self.assertEqual(
             chunks,
             [
-                "the first filter people run on",
-                "you, and how it changes opportunity",
+                "the first filter people",
+                "run on you",
+                "and how it changes opportunity",
             ],
         )
+
+    def test_forces_split_on_comma_even_when_sentence_fits_under_cap(self) -> None:
+        chunks = self.build_text_chunks("Short clause, next clause.", max_words=6)
+        self.assertEqual(chunks, ["Short clause", "next clause"])
+
+    def test_forces_split_on_comma_even_for_single_word_lead_in(self) -> None:
+        chunks = self.build_text_chunks("Well, maybe.", max_words=6)
+        self.assertEqual(chunks, ["Well", "maybe"])
+
+    def test_forces_split_on_sentence_end_when_parser_merges_sentences(self) -> None:
+        chunks = self.build_text_chunks(
+            "The second you force it, the dominant side steals the rep. Watch for the first little jump, then slow that side down.",
+            max_words=4,
+        )
+        self.assertTrue(any(chunk.endswith("rep") for chunk in chunks), chunks)
+        self.assertTrue(any(chunk.startswith("Watch") for chunk in chunks), chunks)
+        self.assertFalse(any("rep. Watch" in chunk for chunk in chunks), chunks)
+        rep_index = next(index for index, chunk in enumerate(chunks) if chunk.endswith("rep"))
+        self.assertTrue(chunks[rep_index + 1].startswith("Watch"), chunks)
+
+    def test_forces_split_on_sentence_end_even_when_full_span_fits_under_cap(self) -> None:
+        chunks = self.build_text_chunks("Tiny win. Big shift.", max_words=6)
+        self.assertEqual(chunks, ["Tiny win", "Big shift"])
 
     def test_keeps_attached_phrase_when_it_fits_under_cap(self) -> None:
         chunks = self.build_text_chunks(
@@ -237,8 +261,9 @@ class DeterministicCaptionChunkTests(unittest.TestCase):
                 ("then slow that side down", 12.16, 13.20),
                 ("and guide the weaker side", 13.20, 14.32),
                 ("until both corners rise together", 14.32, 15.92),
-                ("That’s what makes your face look", 16.08, 17.64),
-                ("calmer, more even", 17.64, 18.72),
+                ("That’s what makes your face", 16.08, 17.40),
+                ("look calmer", 17.40, 18.04),
+                ("more even", 18.16, 18.72),
                 ("and better controlled on camera", 18.88, 20.24),
             ],
         )
