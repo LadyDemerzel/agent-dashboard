@@ -22,6 +22,126 @@ FONT_CANDIDATES = {
     "trebuchet": [SYSTEM_FONT_DIR / "Trebuchet MS.ttf", SYSTEM_FONT_DIR / "Trebuchet MS Bold.ttf"],
     "times": [SYSTEM_FONT_DIR / "Times New Roman.ttf", SYSTEM_FONT_DIR / "Times New Roman Bold.ttf"],
 }
+DEFAULT_EASING = "linear"
+DEFAULT_ANIMATION_PRESET = "stable-pop"
+VALID_EASINGS = {
+    "linear",
+    "ease-in-quad",
+    "ease-out-quad",
+    "ease-in-out-quad",
+    "ease-out-cubic",
+    "ease-in-out-cubic",
+    "ease-out-back",
+}
+VALID_COLOR_MODES = {"style-active-word", "style-outline", "style-shadow", "custom"}
+
+
+def track(keyframes: list[tuple[float, float, str | None]]) -> dict[str, Any]:
+    return {
+        "keyframes": [
+            {"time": float(time), "value": float(value), **({"easing": easing} if easing else {})}
+            for time, value, easing in keyframes
+        ]
+    }
+
+
+BUILT_IN_ANIMATION_CONFIGS: dict[str, dict[str, Any]] = {
+    "none": {
+        "version": 1,
+        "layoutMode": "stable",
+        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 120, "maxMs": 1000, "fixedMs": 240},
+        "colors": {
+            "outlineColorMode": "style-outline",
+            "shadowColorMode": "style-shadow",
+            "glowColorMode": "style-active-word",
+        },
+        "motion": {
+            "scale": track([(0, 1, None), (1, 1, None)]),
+            "translateXEm": track([(0, 0, None), (1, 0, None)]),
+            "translateYEm": track([(0, 0, None), (1, 0, None)]),
+            "extraOutlineWidth": track([(0, 0, None), (1, 0, None)]),
+            "extraBlur": track([(0, 0, None), (1, 0, None)]),
+            "glowStrength": track([(0, 0, None), (1, 0, None)]),
+            "shadowOpacityMultiplier": track([(0, 1, None), (1, 1, None)]),
+        },
+    },
+    "stable-pop": {
+        "version": 1,
+        "layoutMode": "stable",
+        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 120, "maxMs": 240, "fixedMs": 240},
+        "colors": {
+            "outlineColorMode": "style-active-word",
+            "shadowColorMode": "style-active-word",
+            "glowColorMode": "style-active-word",
+        },
+        "motion": {
+            "scale": track([(0, 1, "linear"), (0.16, 1.18, "ease-out-cubic"), (1, 1, "ease-out-cubic")]),
+            "translateXEm": track([(0, 0, None), (1, 0, None)]),
+            "translateYEm": track([(0, 0, "linear"), (0.16, 0.11, "ease-out-cubic"), (1, 0, "ease-out-cubic")]),
+            "extraOutlineWidth": track([(0, 1.1, None), (0.5, 0.5, "ease-out-cubic"), (1, 0, "ease-out-cubic")]),
+            "extraBlur": track([(0, 1.8, None), (0.5, 1.1, "ease-out-cubic"), (1, 0.6, "ease-out-cubic")]),
+            "glowStrength": track([(0, 0.14, None), (0.35, 0.24, "ease-out-cubic"), (1, 0.06, "ease-out-cubic")]),
+            "shadowOpacityMultiplier": track([(0, 0.95, None), (0.45, 1.12, "ease-out-cubic"), (1, 0.88, "ease-out-cubic")]),
+        },
+    },
+    "fluid-pop": {
+        "version": 1,
+        "layoutMode": "fluid",
+        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 120, "maxMs": 240, "fixedMs": 240},
+        "colors": {
+            "outlineColorMode": "style-active-word",
+            "shadowColorMode": "style-active-word",
+            "glowColorMode": "style-active-word",
+        },
+        "motion": {
+            "scale": track([(0, 1, "linear"), (0.16, 1.18, "ease-out-cubic"), (1, 1, "ease-out-cubic")]),
+            "translateXEm": track([(0, 0, None), (1, 0, None)]),
+            "translateYEm": track([(0, 0, "linear"), (0.16, 0.11, "ease-out-cubic"), (1, 0, "ease-out-cubic")]),
+            "extraOutlineWidth": track([(0, 1.1, None), (0.5, 0.5, "ease-out-cubic"), (1, 0, "ease-out-cubic")]),
+            "extraBlur": track([(0, 1.8, None), (0.5, 1.1, "ease-out-cubic"), (1, 0.6, "ease-out-cubic")]),
+            "glowStrength": track([(0, 0.14, None), (0.35, 0.24, "ease-out-cubic"), (1, 0.06, "ease-out-cubic")]),
+            "shadowOpacityMultiplier": track([(0, 0.95, None), (0.45, 1.12, "ease-out-cubic"), (1, 0.88, "ease-out-cubic")]),
+        },
+    },
+    "pulse": {
+        "version": 1,
+        "layoutMode": "stable",
+        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 180, "maxMs": 320, "fixedMs": 320},
+        "colors": {
+            "outlineColorMode": "style-outline",
+            "shadowColorMode": "style-shadow",
+            "glowColorMode": "style-active-word",
+        },
+        "motion": {
+            "scale": track([(0, 1.03, None), (0.25, 1.08, "ease-out-quad"), (0.5, 1.03, "ease-in-out-cubic"), (0.75, 0.98, "ease-in-out-cubic"), (1, 1.03, "ease-in-out-cubic")]),
+            "translateXEm": track([(0, 0, None), (1, 0, None)]),
+            "translateYEm": track([(0, 0.03, None), (1, 0.03, None)]),
+            "extraOutlineWidth": track([(0, 0, None), (1, 0, None)]),
+            "extraBlur": track([(0, 0.2, None), (0.5, 0.4, "ease-in-out-cubic"), (1, 0.2, "ease-in-out-cubic")]),
+            "glowStrength": track([(0, 0.18, None), (0.5, 0.36, "ease-in-out-cubic"), (1, 0.18, "ease-in-out-cubic")]),
+            "shadowOpacityMultiplier": track([(0, 1, None), (0.5, 1.16, "ease-in-out-cubic"), (1, 1, "ease-in-out-cubic")]),
+        },
+    },
+    "glow": {
+        "version": 1,
+        "layoutMode": "stable",
+        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 160, "maxMs": 300, "fixedMs": 300},
+        "colors": {
+            "outlineColorMode": "style-active-word",
+            "shadowColorMode": "style-active-word",
+            "glowColorMode": "style-active-word",
+        },
+        "motion": {
+            "scale": track([(0, 1.02, None), (0.5, 1.06, "ease-in-out-cubic"), (1, 1.02, "ease-in-out-cubic")]),
+            "translateXEm": track([(0, 0, None), (1, 0, None)]),
+            "translateYEm": track([(0, 0.015, None), (1, 0.015, None)]),
+            "extraOutlineWidth": track([(0, 0.5, None), (0.5, 0.85, "ease-in-out-cubic"), (1, 0.5, "ease-in-out-cubic")]),
+            "extraBlur": track([(0, 0.8, None), (0.5, 1.2, "ease-in-out-cubic"), (1, 0.8, "ease-in-out-cubic")]),
+            "glowStrength": track([(0, 0.55, None), (0.5, 0.9, "ease-in-out-cubic"), (1, 0.55, "ease-in-out-cubic")]),
+            "shadowOpacityMultiplier": track([(0, 1.15, None), (0.5, 1.35, "ease-in-out-cubic"), (1, 1.15, "ease-in-out-cubic")]),
+        },
+    },
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -49,13 +169,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--background-opacity", type=float, default=0.0)
     parser.add_argument("--background-padding", type=int, default=20)
     parser.add_argument("--background-radius", type=int, default=24)
-    parser.add_argument("--animation-preset", default="stable-pop")
+    parser.add_argument("--animation-preset", default=DEFAULT_ANIMATION_PRESET, choices=["none", "stable-pop", "fluid-pop", "pulse", "glow"])
     parser.add_argument("--animation-config-json")
     parser.add_argument("--fps", type=float, default=30.0)
     parser.add_argument("--width", type=int, default=CANVAS_WIDTH)
     parser.add_argument("--height", type=int, default=CANVAS_HEIGHT)
     parser.add_argument("--bottom-margin", type=int, default=DEFAULT_BOTTOM_MARGIN)
     return parser.parse_args()
+
+
+def clone_jsonable(value: Any) -> Any:
+    return json.loads(json.dumps(value))
 
 
 def normalize_hex(value: str, fallback: str) -> str:
@@ -85,271 +209,6 @@ def rgba(value: str, alpha: float = 1.0) -> tuple[int, int, int, int]:
     red, green, blue = ImageColor.getrgb(value)
     safe_alpha = max(0, min(255, int(round(alpha * 255))))
     return red, green, blue, safe_alpha
-
-BUILT_IN_ANIMATION_CONFIGS: dict[str, dict[str, Any]] = {
-    "none": {
-        "version": 1,
-        "layoutMode": "stable",
-        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 120, "maxMs": 1000, "fixedMs": 240},
-        "colors": {"outlineColorMode": "style-outline", "shadowColorMode": "style-shadow", "glowColorMode": "style-active-word"},
-        "motion": {
-            "scale": {"keyframes": [{"time": 0, "value": 1}, {"time": 1, "value": 1}]},
-            "translateXEm": {"keyframes": [{"time": 0, "value": 0}, {"time": 1, "value": 0}]},
-            "translateYEm": {"keyframes": [{"time": 0, "value": 0}, {"time": 1, "value": 0}]},
-            "extraOutlineWidth": {"keyframes": [{"time": 0, "value": 0}, {"time": 1, "value": 0}]},
-            "extraBlur": {"keyframes": [{"time": 0, "value": 0}, {"time": 1, "value": 0}]},
-            "glowStrength": {"keyframes": [{"time": 0, "value": 0}, {"time": 1, "value": 0}]},
-            "shadowOpacityMultiplier": {"keyframes": [{"time": 0, "value": 1}, {"time": 1, "value": 1}]},
-        },
-    },
-    "stable-pop": {
-        "version": 1,
-        "layoutMode": "stable",
-        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 120, "maxMs": 240, "fixedMs": 240},
-        "colors": {"outlineColorMode": "style-active-word", "shadowColorMode": "style-active-word", "glowColorMode": "style-active-word"},
-        "motion": {
-            "scale": {"keyframes": [{"time": 0, "value": 1, "easing": "linear"}, {"time": 0.16, "value": 1.18, "easing": "ease-out-cubic"}, {"time": 1, "value": 1, "easing": "ease-out-cubic"}]},
-            "translateXEm": {"keyframes": [{"time": 0, "value": 0}, {"time": 1, "value": 0}]},
-            "translateYEm": {"keyframes": [{"time": 0, "value": 0, "easing": "linear"}, {"time": 0.16, "value": -0.11, "easing": "ease-out-cubic"}, {"time": 1, "value": 0, "easing": "ease-out-cubic"}]},
-            "extraOutlineWidth": {"keyframes": [{"time": 0, "value": 1.1}, {"time": 0.5, "value": 0.5, "easing": "ease-out-cubic"}, {"time": 1, "value": 0, "easing": "ease-out-cubic"}]},
-            "extraBlur": {"keyframes": [{"time": 0, "value": 1.8}, {"time": 0.5, "value": 1.1, "easing": "ease-out-cubic"}, {"time": 1, "value": 0.6, "easing": "ease-out-cubic"}]},
-            "glowStrength": {"keyframes": [{"time": 0, "value": 0.14}, {"time": 0.35, "value": 0.24, "easing": "ease-out-cubic"}, {"time": 1, "value": 0.06, "easing": "ease-out-cubic"}]},
-            "shadowOpacityMultiplier": {"keyframes": [{"time": 0, "value": 0.95}, {"time": 0.45, "value": 1.12, "easing": "ease-out-cubic"}, {"time": 1, "value": 0.88, "easing": "ease-out-cubic"}]},
-        },
-    },
-    "fluid-pop": {
-        "version": 1,
-        "layoutMode": "fluid",
-        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 120, "maxMs": 240, "fixedMs": 240},
-        "colors": {"outlineColorMode": "style-active-word", "shadowColorMode": "style-active-word", "glowColorMode": "style-active-word"},
-        "motion": {
-            "scale": {"keyframes": [{"time": 0, "value": 1, "easing": "linear"}, {"time": 0.16, "value": 1.18, "easing": "ease-out-cubic"}, {"time": 1, "value": 1, "easing": "ease-out-cubic"}]},
-            "translateXEm": {"keyframes": [{"time": 0, "value": 0}, {"time": 1, "value": 0}]},
-            "translateYEm": {"keyframes": [{"time": 0, "value": 0, "easing": "linear"}, {"time": 0.16, "value": -0.11, "easing": "ease-out-cubic"}, {"time": 1, "value": 0, "easing": "ease-out-cubic"}]},
-            "extraOutlineWidth": {"keyframes": [{"time": 0, "value": 1.1}, {"time": 0.5, "value": 0.5, "easing": "ease-out-cubic"}, {"time": 1, "value": 0, "easing": "ease-out-cubic"}]},
-            "extraBlur": {"keyframes": [{"time": 0, "value": 1.8}, {"time": 0.5, "value": 1.1, "easing": "ease-out-cubic"}, {"time": 1, "value": 0.6, "easing": "ease-out-cubic"}]},
-            "glowStrength": {"keyframes": [{"time": 0, "value": 0.14}, {"time": 0.35, "value": 0.24, "easing": "ease-out-cubic"}, {"time": 1, "value": 0.06, "easing": "ease-out-cubic"}]},
-            "shadowOpacityMultiplier": {"keyframes": [{"time": 0, "value": 0.95}, {"time": 0.45, "value": 1.12, "easing": "ease-out-cubic"}, {"time": 1, "value": 0.88, "easing": "ease-out-cubic"}]},
-        },
-    },
-    "pulse": {
-        "version": 1,
-        "layoutMode": "stable",
-        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 180, "maxMs": 320, "fixedMs": 320},
-        "colors": {"outlineColorMode": "style-outline", "shadowColorMode": "style-shadow", "glowColorMode": "style-active-word"},
-        "motion": {
-            "scale": {"keyframes": [{"time": 0, "value": 1.03}, {"time": 0.25, "value": 1.08, "easing": "ease-out-quad"}, {"time": 0.5, "value": 1.03, "easing": "ease-in-out-cubic"}, {"time": 0.75, "value": 0.98, "easing": "ease-in-out-cubic"}, {"time": 1, "value": 1.03, "easing": "ease-in-out-cubic"}]},
-            "translateXEm": {"keyframes": [{"time": 0, "value": 0}, {"time": 1, "value": 0}]},
-            "translateYEm": {"keyframes": [{"time": 0, "value": -0.03}, {"time": 1, "value": -0.03}]},
-            "extraOutlineWidth": {"keyframes": [{"time": 0, "value": 0}, {"time": 1, "value": 0}]},
-            "extraBlur": {"keyframes": [{"time": 0, "value": 0.2}, {"time": 0.5, "value": 0.4, "easing": "ease-in-out-cubic"}, {"time": 1, "value": 0.2, "easing": "ease-in-out-cubic"}]},
-            "glowStrength": {"keyframes": [{"time": 0, "value": 0.18}, {"time": 0.5, "value": 0.36, "easing": "ease-in-out-cubic"}, {"time": 1, "value": 0.18, "easing": "ease-in-out-cubic"}]},
-            "shadowOpacityMultiplier": {"keyframes": [{"time": 0, "value": 1}, {"time": 0.5, "value": 1.16, "easing": "ease-in-out-cubic"}, {"time": 1, "value": 1, "easing": "ease-in-out-cubic"}]},
-        },
-    },
-    "glow": {
-        "version": 1,
-        "layoutMode": "stable",
-        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 160, "maxMs": 300, "fixedMs": 300},
-        "colors": {"outlineColorMode": "style-active-word", "shadowColorMode": "style-active-word", "glowColorMode": "style-active-word"},
-        "motion": {
-            "scale": {"keyframes": [{"time": 0, "value": 1.02}, {"time": 0.5, "value": 1.06, "easing": "ease-in-out-cubic"}, {"time": 1, "value": 1.02, "easing": "ease-in-out-cubic"}]},
-            "translateXEm": {"keyframes": [{"time": 0, "value": 0}, {"time": 1, "value": 0}]},
-            "translateYEm": {"keyframes": [{"time": 0, "value": -0.015}, {"time": 1, "value": -0.015}]},
-            "extraOutlineWidth": {"keyframes": [{"time": 0, "value": 0.5}, {"time": 0.5, "value": 0.85, "easing": "ease-in-out-cubic"}, {"time": 1, "value": 0.5, "easing": "ease-in-out-cubic"}]},
-            "extraBlur": {"keyframes": [{"time": 0, "value": 0.8}, {"time": 0.5, "value": 1.2, "easing": "ease-in-out-cubic"}, {"time": 1, "value": 0.8, "easing": "ease-in-out-cubic"}]},
-            "glowStrength": {"keyframes": [{"time": 0, "value": 0.55}, {"time": 0.5, "value": 0.9, "easing": "ease-in-out-cubic"}, {"time": 1, "value": 0.55, "easing": "ease-in-out-cubic"}]},
-            "shadowOpacityMultiplier": {"keyframes": [{"time": 0, "value": 1.15}, {"time": 0.5, "value": 1.35, "easing": "ease-in-out-cubic"}, {"time": 1, "value": 1.15, "easing": "ease-in-out-cubic"}]},
-        },
-    },
-}
-
-
-def clamp_number(value: Any, fallback: float, minimum: float, maximum: float) -> float:
-    try:
-        parsed = float(value)
-    except Exception:
-        return fallback
-    return max(minimum, min(maximum, parsed))
-
-
-def normalize_animation_easing(value: Any, fallback: str = "linear") -> str:
-    return value if value in {"linear", "ease-in-quad", "ease-out-quad", "ease-in-out-quad", "ease-out-cubic", "ease-in-out-cubic", "ease-out-back"} else fallback
-
-
-def normalize_animation_color_mode(value: Any, fallback: str) -> str:
-    return value if value in {"style-active-word", "style-outline", "style-shadow", "custom"} else fallback
-
-
-def normalize_animation_track(value: Any, fallback: dict[str, Any], minimum: float, maximum: float) -> dict[str, Any]:
-    frames = []
-    if isinstance(value, dict) and isinstance(value.get("keyframes"), list):
-        frames = value.get("keyframes") or []
-    elif isinstance(value, list):
-        frames = value
-    normalized = []
-    fallback_frames = fallback.get("keyframes") or [{"time": 0, "value": 0}, {"time": 1, "value": 0}]
-    for index, frame in enumerate(frames):
-        if not isinstance(frame, dict):
-            continue
-        fallback_frame = fallback_frames[min(index, len(fallback_frames) - 1)]
-        time_value = round(clamp_number(frame.get("time"), 0 if index == 0 else 1, 0, 1), 4)
-        normalized.append({
-            "time": time_value,
-            "value": round(clamp_number(frame.get("value"), fallback_frame.get("value", 0), minimum, maximum), 4),
-            "easing": normalize_animation_easing(frame.get("easing"), fallback_frame.get("easing", "linear")),
-        })
-    normalized.sort(key=lambda item: (item["time"], item["value"]))
-    if not normalized:
-        normalized = [dict(frame) for frame in fallback_frames]
-    if normalized[0]["time"] > 0:
-        normalized.insert(0, {**normalized[0], "time": 0})
-    if normalized[-1]["time"] < 1:
-        normalized.append({**normalized[-1], "time": 1})
-    return {"keyframes": normalized}
-
-
-def normalize_animation_config(value: Any, fallback: dict[str, Any]) -> dict[str, Any]:
-    obj = value if isinstance(value, dict) else {}
-    timing = obj.get("timing") if isinstance(obj.get("timing"), dict) else {}
-    colors = obj.get("colors") if isinstance(obj.get("colors"), dict) else {}
-    motion = obj.get("motion") if isinstance(obj.get("motion"), dict) else {}
-    return {
-        "version": 1,
-        "layoutMode": "fluid" if obj.get("layoutMode") == "fluid" else fallback.get("layoutMode", "stable"),
-        "timing": {
-            "mode": "fixed" if timing.get("mode") == "fixed" else fallback["timing"].get("mode", "word-relative"),
-            "multiplier": round(clamp_number(timing.get("multiplier"), fallback["timing"].get("multiplier", 1), 0.1, 4), 3),
-            "minMs": int(round(clamp_number(timing.get("minMs"), fallback["timing"].get("minMs", 120), 40, 2000))),
-            "maxMs": int(round(clamp_number(timing.get("maxMs"), fallback["timing"].get("maxMs", 240), 40, 2000))),
-            "fixedMs": int(round(clamp_number(timing.get("fixedMs"), fallback["timing"].get("fixedMs", 240), 40, 2000))),
-        },
-        "colors": {
-            "outlineColorMode": normalize_animation_color_mode(colors.get("outlineColorMode"), fallback["colors"].get("outlineColorMode", "style-outline")),
-            "outlineColor": normalize_hex(str(colors.get("outlineColor") or fallback["colors"].get("outlineColor") or "#FFFFFF"), str(fallback["colors"].get("outlineColor") or "#FFFFFF")),
-            "shadowColorMode": normalize_animation_color_mode(colors.get("shadowColorMode"), fallback["colors"].get("shadowColorMode", "style-shadow")),
-            "shadowColor": normalize_hex(str(colors.get("shadowColor") or fallback["colors"].get("shadowColor") or "#FFFFFF"), str(fallback["colors"].get("shadowColor") or "#FFFFFF")),
-            "glowColorMode": normalize_animation_color_mode(colors.get("glowColorMode"), fallback["colors"].get("glowColorMode", "style-active-word")),
-            "glowColor": normalize_hex(str(colors.get("glowColor") or fallback["colors"].get("glowColor") or "#FFFFFF"), str(fallback["colors"].get("glowColor") or "#FFFFFF")),
-        },
-        "motion": {
-            "scale": normalize_animation_track(motion.get("scale"), fallback["motion"]["scale"], 0.2, 4),
-            "translateXEm": normalize_animation_track(motion.get("translateXEm"), fallback["motion"]["translateXEm"], -4, 4),
-            "translateYEm": normalize_animation_track(motion.get("translateYEm"), fallback["motion"]["translateYEm"], -4, 4),
-            "extraOutlineWidth": normalize_animation_track(motion.get("extraOutlineWidth"), fallback["motion"]["extraOutlineWidth"], 0, 16),
-            "extraBlur": normalize_animation_track(motion.get("extraBlur"), fallback["motion"]["extraBlur"], 0, 20),
-            "glowStrength": normalize_animation_track(motion.get("glowStrength"), fallback["motion"]["glowStrength"], 0, 2.5),
-            "shadowOpacityMultiplier": normalize_animation_track(motion.get("shadowOpacityMultiplier"), fallback["motion"]["shadowOpacityMultiplier"], 0, 4),
-        },
-    }
-
-
-def get_builtin_animation_config(preset: str) -> dict[str, Any]:
-    name = str(preset or "stable-pop").strip()
-    if name == "word-highlight" or name == "pop":
-        name = "stable-pop"
-    fallback = BUILT_IN_ANIMATION_CONFIGS.get(name) or BUILT_IN_ANIMATION_CONFIGS["stable-pop"]
-    return normalize_animation_config(fallback, fallback)
-
-
-def apply_animation_easing(easing: str, value: float) -> float:
-    t = clamp01(value)
-    if easing == "ease-in-quad":
-        return t * t
-    if easing == "ease-out-quad":
-        return 1 - ((1 - t) * (1 - t))
-    if easing == "ease-in-out-quad":
-        return 2 * t * t if t < 0.5 else 1 - (((-2 * t + 2) ** 2) / 2)
-    if easing == "ease-out-cubic":
-        return 1 - ((1 - t) ** 3)
-    if easing == "ease-in-out-cubic":
-        return 4 * t * t * t if t < 0.5 else 1 - (((-2 * t + 2) ** 3) / 2)
-    if easing == "ease-out-back":
-        c1 = 1.70158
-        c3 = c1 + 1
-        return 1 + (c3 * ((t - 1) ** 3)) + (c1 * ((t - 1) ** 2))
-    return t
-
-
-def evaluate_animation_track(track: dict[str, Any], progress: float) -> float:
-    frames = track.get("keyframes") or [{"time": 0, "value": 0}, {"time": 1, "value": 0}]
-    t = clamp01(progress)
-    if t <= frames[0]["time"]:
-        return float(frames[0]["value"])
-    for index in range(1, len(frames)):
-        previous = frames[index - 1]
-        current = frames[index]
-        if t <= current["time"]:
-            span = max(0.0001, float(current["time"]) - float(previous["time"]))
-            local = apply_animation_easing(str(current.get("easing") or "linear"), (t - float(previous["time"])) / span)
-            return float(previous["value"]) + ((float(current["value"]) - float(previous["value"])) * local)
-    return float(frames[-1]["value"])
-
-
-def get_animation_track_peak_value(track: dict[str, Any]) -> float:
-    frames = track.get("keyframes") or []
-    return max([float(frame.get("value", 0)) for frame in frames] or [0.0])
-
-
-def get_animation_track_max_abs(track: dict[str, Any]) -> float:
-    frames = track.get("keyframes") or []
-    return max([abs(float(frame.get("value", 0))) for frame in frames] or [0.0])
-
-
-def get_max_active_scale(animation_config: dict[str, Any]) -> float:
-    return max(1.0, get_animation_track_peak_value(animation_config["motion"]["scale"]))
-
-
-def resolve_animation_duration_seconds(animation_config: dict[str, Any], word_duration_seconds: float) -> float:
-    safe_duration = max(0.04, word_duration_seconds or 0.04)
-    timing = animation_config["timing"]
-    if timing["mode"] == "fixed":
-        return max(0.04, min(safe_duration, float(timing["fixedMs"]) / 1000.0))
-    requested = safe_duration * float(timing["multiplier"])
-    return max(float(timing["minMs"]) / 1000.0, min(safe_duration, float(timing["maxMs"]) / 1000.0, requested))
-
-
-def resolve_animation_progress(animation_config: dict[str, Any], word_start: float, word_end: float, sample_time: float) -> float:
-    word_duration = max(0.04, word_end - word_start)
-    sample_seconds = clamp01((sample_time - word_start) / word_duration) * word_duration
-    animation_duration = resolve_animation_duration_seconds(animation_config, word_duration)
-    return clamp01(sample_seconds / max(0.04, animation_duration))
-
-
-def resolve_animation_frame(animation_config: dict[str, Any], word_progress: float, word_duration_seconds: float) -> dict[str, float]:
-    progress = clamp01(word_progress)
-    _ = word_duration_seconds
-    return {
-        "scale": evaluate_animation_track(animation_config["motion"]["scale"], progress),
-        "translateXEm": evaluate_animation_track(animation_config["motion"]["translateXEm"], progress),
-        "translateYEm": evaluate_animation_track(animation_config["motion"]["translateYEm"], progress),
-        "extraOutlineWidth": evaluate_animation_track(animation_config["motion"]["extraOutlineWidth"], progress),
-        "extraBlur": evaluate_animation_track(animation_config["motion"]["extraBlur"], progress),
-        "glowStrength": evaluate_animation_track(animation_config["motion"]["glowStrength"], progress),
-        "shadowOpacityMultiplier": evaluate_animation_track(animation_config["motion"]["shadowOpacityMultiplier"], progress),
-    }
-
-
-def resolve_animation_color(mode: str, palette: dict[str, str], custom_color: str | None) -> str:
-    if mode == "custom" and custom_color and re.match(r"^#[0-9A-Fa-f]{6}$", custom_color):
-        return custom_color.upper()
-    if mode == "style-outline":
-        return palette["outlineColor"]
-    if mode == "style-shadow":
-        return palette["shadowColor"]
-    return palette["activeWordColor"]
-
-
-def get_animation_config(args: argparse.Namespace) -> dict[str, Any]:
-    fallback = get_builtin_animation_config(getattr(args, "animation_preset", "stable-pop"))
-    raw_json = getattr(args, "animation_config_json", None)
-    if not raw_json:
-        return fallback
-    try:
-        parsed = json.loads(raw_json)
-    except Exception:
-        return fallback
-    return normalize_animation_config(parsed, fallback)
 
 
 def order_font_candidates(candidates: list[Path], font_weight: int) -> list[Path]:
@@ -381,7 +240,6 @@ def resolve_font_path(font_family: str, font_path: str | None, font_weight: int 
     for fallback in order_font_candidates(fallback_candidates, safe_weight):
         if fallback.exists():
             return fallback
-
     return None
 
 
@@ -394,13 +252,7 @@ def load_font_from_path(font_path: Path | None, font_size: int) -> ImageFont.Fre
     return ImageFont.load_default()
 
 
-def text_bbox(
-    draw: ImageDraw.ImageDraw,
-    text: str,
-    font: ImageFont.ImageFont,
-    stroke_width: int = 0,
-    anchor: str | None = None,
-) -> tuple[int, int, int, int]:
+def text_bbox(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, stroke_width: int = 0, anchor: str | None = None) -> tuple[int, int, int, int]:
     return draw.textbbox((0, 0), text, font=font, stroke_width=stroke_width, anchor=anchor)
 
 
@@ -416,12 +268,7 @@ def measure_text_advance(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.I
         return float(measure_text(draw, text, font)[0])
 
 
-def measure_baseline_text_metrics(
-    draw: ImageDraw.ImageDraw,
-    text: str,
-    font: ImageFont.ImageFont,
-    stroke_width: int = 0,
-) -> dict[str, Any]:
+def measure_baseline_text_metrics(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, stroke_width: int = 0) -> dict[str, Any]:
     bbox = text_bbox(draw, text, font, stroke_width, anchor="ls")
     return {
         "bbox": bbox,
@@ -436,29 +283,175 @@ def clamp01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
 
 
-def ease_out_cubic(value: float) -> float:
+def normalize_number(value: Any, fallback: float, minimum: float, maximum: float, decimals: int = 4) -> float:
+    try:
+        parsed = float(value)
+    except Exception:
+        parsed = fallback
+    return round(max(minimum, min(maximum, parsed)), decimals)
+
+
+def normalize_int(value: Any, fallback: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(round(float(value)))
+    except Exception:
+        parsed = fallback
+    return max(minimum, min(maximum, parsed))
+
+
+def normalize_easing(value: Any, fallback: str = DEFAULT_EASING) -> str:
+    return value if value in VALID_EASINGS else fallback
+
+
+def normalize_color_mode(value: Any, fallback: str) -> str:
+    return value if value in VALID_COLOR_MODES else fallback
+
+
+def normalize_layout_mode(value: Any, fallback: str) -> str:
+    return value if value in {"stable", "fluid"} else fallback
+
+
+def normalize_timing_mode(value: Any, fallback: str) -> str:
+    return value if value in {"word-relative", "fixed"} else fallback
+
+
+def normalize_track(value: Any, fallback: dict[str, Any], minimum: float, maximum: float, decimals: int = 4) -> dict[str, Any]:
+    frames = []
+    raw_frames = value.get("keyframes") if isinstance(value, dict) else value if isinstance(value, list) else []
+    if isinstance(raw_frames, list):
+        for index, frame in enumerate(raw_frames):
+            if not isinstance(frame, dict):
+                continue
+            fallback_frame = fallback["keyframes"][min(index, len(fallback["keyframes"]) - 1)]
+            frames.append({
+                "time": normalize_number(frame.get("time"), 0 if index == 0 else 1, 0, 1, 4),
+                "value": normalize_number(frame.get("value"), fallback_frame.get("value", 0), minimum, maximum, decimals),
+                "easing": normalize_easing(frame.get("easing"), fallback_frame.get("easing", DEFAULT_EASING)),
+            })
+    frames.sort(key=lambda frame: (frame["time"], frame["value"]))
+    if not frames:
+        return clone_jsonable(fallback)
+    if frames[0]["time"] > 0:
+        frames.insert(0, {**frames[0], "time": 0})
+    if frames[-1]["time"] < 1:
+        frames.append({**frames[-1], "time": 1})
+    return {"keyframes": frames}
+
+
+def normalize_animation_config(value: Any, fallback: dict[str, Any]) -> dict[str, Any]:
+    obj = value if isinstance(value, dict) else {}
+    timing = obj.get("timing") if isinstance(obj.get("timing"), dict) else {}
+    colors = obj.get("colors") if isinstance(obj.get("colors"), dict) else {}
+    motion = obj.get("motion") if isinstance(obj.get("motion"), dict) else {}
+    return {
+        "version": 1,
+        "layoutMode": normalize_layout_mode(obj.get("layoutMode"), fallback["layoutMode"]),
+        "timing": {
+            "mode": normalize_timing_mode(timing.get("mode"), fallback["timing"]["mode"]),
+            "multiplier": normalize_number(timing.get("multiplier"), fallback["timing"]["multiplier"], 0.1, 4, 3),
+            "minMs": normalize_int(timing.get("minMs"), fallback["timing"]["minMs"], 40, 2000),
+            "maxMs": normalize_int(timing.get("maxMs"), fallback["timing"]["maxMs"], 40, 2000),
+            "fixedMs": normalize_int(timing.get("fixedMs"), fallback["timing"]["fixedMs"], 40, 2000),
+        },
+        "colors": {
+            "outlineColorMode": normalize_color_mode(colors.get("outlineColorMode"), fallback["colors"]["outlineColorMode"]),
+            "outlineColor": normalize_hex(colors.get("outlineColor", fallback["colors"].get("outlineColor", "#FFFFFF")), fallback["colors"].get("outlineColor", "#FFFFFF")) if colors.get("outlineColor") or fallback["colors"].get("outlineColor") else None,
+            "shadowColorMode": normalize_color_mode(colors.get("shadowColorMode"), fallback["colors"]["shadowColorMode"]),
+            "shadowColor": normalize_hex(colors.get("shadowColor", fallback["colors"].get("shadowColor", "#FFFFFF")), fallback["colors"].get("shadowColor", "#FFFFFF")) if colors.get("shadowColor") or fallback["colors"].get("shadowColor") else None,
+            "glowColorMode": normalize_color_mode(colors.get("glowColorMode"), fallback["colors"]["glowColorMode"]),
+            "glowColor": normalize_hex(colors.get("glowColor", fallback["colors"].get("glowColor", "#FFFFFF")), fallback["colors"].get("glowColor", "#FFFFFF")) if colors.get("glowColor") or fallback["colors"].get("glowColor") else None,
+        },
+        "motion": {
+            "scale": normalize_track(motion.get("scale"), fallback["motion"]["scale"], 0.2, 4, 4),
+            "translateXEm": normalize_track(motion.get("translateXEm"), fallback["motion"]["translateXEm"], -4, 4, 4),
+            "translateYEm": normalize_track(motion.get("translateYEm"), fallback["motion"]["translateYEm"], -4, 4, 4),
+            "extraOutlineWidth": normalize_track(motion.get("extraOutlineWidth"), fallback["motion"]["extraOutlineWidth"], 0, 16, 4),
+            "extraBlur": normalize_track(motion.get("extraBlur"), fallback["motion"]["extraBlur"], 0, 20, 4),
+            "glowStrength": normalize_track(motion.get("glowStrength"), fallback["motion"]["glowStrength"], 0, 2.5, 4),
+            "shadowOpacityMultiplier": normalize_track(motion.get("shadowOpacityMultiplier"), fallback["motion"]["shadowOpacityMultiplier"], 0, 4, 4),
+        },
+    }
+
+
+def apply_easing(easing: str, value: float) -> float:
     t = clamp01(value)
-    return 1.0 - ((1.0 - t) ** 3)
+    if easing == "ease-in-quad":
+        return t * t
+    if easing == "ease-out-quad":
+        return 1 - ((1 - t) * (1 - t))
+    if easing == "ease-in-out-quad":
+        return 2 * t * t if t < 0.5 else 1 - (((-2 * t + 2) ** 2) / 2)
+    if easing == "ease-out-cubic":
+        return 1 - ((1 - t) ** 3)
+    if easing == "ease-in-out-cubic":
+        return 4 * t * t * t if t < 0.5 else 1 - (((-2 * t + 2) ** 3) / 2)
+    if easing == "ease-out-back":
+        c1 = 1.70158
+        c3 = c1 + 1
+        return 1 + (c3 * ((t - 1) ** 3)) + (c1 * ((t - 1) ** 2))
+    return t
 
 
-def pop_curve(progress: float) -> tuple[float, float]:
+def evaluate_animation_track(track_config: dict[str, Any], progress: float) -> float:
+    frames = track_config.get("keyframes") or [{"time": 0, "value": 0}, {"time": 1, "value": 0}]
     t = clamp01(progress)
-    pop_in_portion = 0.16
-    peak_scale = 1.18
-    peak_lift_em = 0.11
+    if t <= frames[0]["time"]:
+        return float(frames[0]["value"])
+    for index in range(1, len(frames)):
+        previous = frames[index - 1]
+        current = frames[index]
+        if t <= current["time"]:
+            span = max(0.0001, float(current["time"]) - float(previous["time"]))
+            local_progress = apply_easing(current.get("easing") or DEFAULT_EASING, (t - float(previous["time"])) / span)
+            return float(previous["value"]) + ((float(current["value"]) - float(previous["value"])) * local_progress)
+    return float(frames[-1]["value"])
 
-    if t <= pop_in_portion:
-        grow_t = ease_out_cubic(t / pop_in_portion)
-        return (
-            1.0 + ((peak_scale - 1.0) * grow_t),
-            peak_lift_em * grow_t,
-        )
 
-    settle_t = ease_out_cubic((t - pop_in_portion) / (1.0 - pop_in_portion))
-    return (
-        peak_scale + ((1.0 - peak_scale) * settle_t),
-        peak_lift_em + ((0.0 - peak_lift_em) * settle_t),
-    )
+def get_track_peak_value(track_config: dict[str, Any]) -> float:
+    return max((float(frame.get("value", 0)) for frame in track_config.get("keyframes") or []), default=0.0)
+
+
+def get_track_max_abs_value(track_config: dict[str, Any]) -> float:
+    return max((abs(float(frame.get("value", 0))) for frame in track_config.get("keyframes") or []), default=0.0)
+
+
+def resolve_animation_duration_seconds(config: dict[str, Any], word_duration_seconds: float) -> float:
+    safe_duration = max(0.04, float(word_duration_seconds or 0.04))
+    timing = config["timing"]
+    if timing["mode"] == "fixed":
+        return max(0.04, min(safe_duration, timing["fixedMs"] / 1000))
+    requested = safe_duration * timing["multiplier"]
+    return max(timing["minMs"] / 1000, min(safe_duration, timing["maxMs"] / 1000, requested))
+
+
+def resolve_animation_progress(config: dict[str, Any], word_progress: float, word_duration_seconds: float) -> float:
+    safe_word_duration = max(0.04, float(word_duration_seconds or 0.04))
+    sample_seconds = clamp01(word_progress) * safe_word_duration
+    animation_duration_seconds = resolve_animation_duration_seconds(config, safe_word_duration)
+    return clamp01(sample_seconds / max(0.04, animation_duration_seconds))
+
+
+def resolve_animation_frame_from_progress(config: dict[str, Any], progress: float) -> dict[str, float]:
+    motion = config["motion"]
+    return {
+        "scale": evaluate_animation_track(motion["scale"], progress),
+        "translateXEm": evaluate_animation_track(motion["translateXEm"], progress),
+        "translateYEm": evaluate_animation_track(motion["translateYEm"], progress),
+        "extraOutlineWidth": evaluate_animation_track(motion["extraOutlineWidth"], progress),
+        "extraBlur": evaluate_animation_track(motion["extraBlur"], progress),
+        "glowStrength": evaluate_animation_track(motion["glowStrength"], progress),
+        "shadowOpacityMultiplier": evaluate_animation_track(motion["shadowOpacityMultiplier"], progress),
+    }
+
+
+def resolve_animation_color(mode: str, palette: dict[str, str], custom_color: str | None = None) -> str:
+    if mode == "custom" and custom_color and re.match(r"^#[0-9A-F]{6}$", str(custom_color).upper()):
+        return str(custom_color).upper()
+    if mode == "style-outline":
+        return palette["outlineColor"]
+    if mode == "style-shadow":
+        return palette["shadowColor"]
+    return palette["activeWordColor"]
 
 
 def split_words(text: str) -> list[str]:
@@ -469,31 +462,17 @@ def resolve_space_width(base_space_width: float, word_spacing: float) -> float:
     return max(1.0, float(base_space_width) + float(word_spacing))
 
 
-def build_wrapped_lines(
-    draw: ImageDraw.ImageDraw,
-    words: list[str],
-    font: ImageFont.ImageFont,
-    max_width: int,
-    stroke_width: int,
-    args: argparse.Namespace,
-) -> list[list[dict[str, Any]]]:
+def build_wrapped_lines(draw: ImageDraw.ImageDraw, words: list[str], font: ImageFont.ImageFont, max_width: int, stroke_width: int, args: argparse.Namespace) -> list[list[dict[str, Any]]]:
     if not words:
         return []
-
     space_advance = resolve_space_width(measure_text_advance(draw, " ", font), args.word_spacing)
     lines: list[list[dict[str, Any]]] = []
     current: list[dict[str, Any]] = []
     current_width = 0.0
-
     for word in words:
         word_width, word_height = measure_text(draw, word, font, stroke_width)
         word_advance = measure_text_advance(draw, word, font)
-        item = {
-            "text": word,
-            "baseWidth": word_width,
-            "baseHeight": word_height,
-            "baseAdvance": word_advance,
-        }
+        item = {"text": word, "baseWidth": word_width, "baseHeight": word_height, "baseAdvance": word_advance}
         candidate_width = word_advance if not current else current_width + space_advance + word_advance
         if current and candidate_width > max_width:
             lines.append(current)
@@ -502,29 +481,16 @@ def build_wrapped_lines(
         else:
             current.append(item)
             current_width = candidate_width
-
     if current:
         lines.append(current)
-
     return lines
 
 
-def compute_line_metrics(
-    draw: ImageDraw.ImageDraw,
-    line: list[dict[str, Any]],
-    font: ImageFont.ImageFont,
-    scaled_font: ImageFont.ImageFont,
-    base_stroke_width: int,
-    scaled_stroke_width: int,
-    space_advance: float,
-    animation_config: dict[str, Any],
-) -> dict[str, Any]:
+def compute_line_metrics(draw: ImageDraw.ImageDraw, line: list[dict[str, Any]], font: ImageFont.ImageFont, scaled_font: ImageFont.ImageFont, base_stroke_width: int, scaled_stroke_width: int, space_advance: float, layout_mode: str) -> dict[str, Any]:
     base_line_advance = 0.0
-    max_line_advance = 0.0
     max_ascent = 0
     max_descent = 0
     max_word_growth = 0.0
-
     for index, item in enumerate(line):
         if index > 0:
             base_line_advance += space_advance
@@ -535,8 +501,7 @@ def compute_line_metrics(
         max_word_growth = max(max_word_growth, scaled_advance - item["baseAdvance"])
         max_ascent = max(max_ascent, base_metrics["ascent"], scaled_metrics["ascent"])
         max_descent = max(max_descent, base_metrics["descent"], scaled_metrics["descent"])
-
-    max_line_advance = base_line_advance + (max(0.0, max_word_growth) if animation_config.get("layoutMode") == "fluid" else 0.0)
+    max_line_advance = base_line_advance + (max(0.0, max_word_growth) if layout_mode == "fluid" else 0.0)
     return {
         "baseAdvance": base_line_advance,
         "maxAdvance": max_line_advance,
@@ -546,15 +511,21 @@ def compute_line_metrics(
     }
 
 
-def fit_layout(draw: ImageDraw.ImageDraw, words: list[str], args: argparse.Namespace) -> tuple[dict[str, Any], str | None]:
-    animation_config = getattr(args, "animation_config", None) or get_animation_config(args)
+def fit_layout(draw: ImageDraw.ImageDraw, words: list[str], args: argparse.Namespace, animation_config: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
     resolved_font_path = resolve_font_path(args.font_family, args.font_path, args.font_weight)
     base_stroke_width = max(0, int(round(args.outline_width)))
-    shadow_extra = int(round(max(abs(float(args.shadow_offset_x)), abs(float(args.shadow_offset_y))) + max(0.0, float(args.shadow_blur)) * 2.0))
-    box_extra = max(12, int(round(max(28, int(args.font_size)) * max(0.0, get_max_active_scale(animation_config) - 1.0))) + max(4, shadow_extra))
+    peak_scale = max(1.0, get_track_peak_value(animation_config["motion"]["scale"]))
+    max_translate_x = get_track_max_abs_value(animation_config["motion"]["translateXEm"])
+    max_translate_y = get_track_max_abs_value(animation_config["motion"]["translateYEm"])
+    max_extra_outline = max(0.0, get_track_peak_value(animation_config["motion"]["extraOutlineWidth"]))
+    max_extra_blur = max(0.0, get_track_peak_value(animation_config["motion"]["extraBlur"]))
+    shadow_extra = int(round(max(abs(float(args.shadow_offset_x)), abs(float(args.shadow_offset_y))) + (max(0.0, float(args.shadow_blur)) + max_extra_blur) * 2.0))
+    motion_extra = int(round(max(abs(max_translate_x), abs(max_translate_y)) * max(28.0, float(args.font_size))))
+    box_extra = max(12, int(round(max(28, int(args.font_size)) * max(0.0, peak_scale - 1.0))) + int(round(max_extra_outline * 3)) + max(4, shadow_extra) + motion_extra)
     safe_inset = max(0, int(args.horizontal_padding)) + (max(0, int(args.background_padding)) if args.background_enabled else 0) + box_extra
     max_text_width = max(120, args.width - (safe_inset * 2))
     chosen_layout: dict[str, Any] | None = None
+    layout_mode = animation_config["layoutMode"]
 
     size = max(28, int(args.font_size))
     while size >= 30:
@@ -565,17 +536,16 @@ def fit_layout(draw: ImageDraw.ImageDraw, words: list[str], args: argparse.Names
         line_heights: list[int] = []
         line_ascents: list[int] = []
         line_descents: list[int] = []
-        scaled_font = load_font_from_path(resolved_font_path, max(30, int(round(size * get_max_active_scale(animation_config)))))
-        scaled_stroke_width = max(base_stroke_width, int(round(base_stroke_width * get_max_active_scale(animation_config))))
+        scaled_font = load_font_from_path(resolved_font_path, max(30, int(round(size * peak_scale))))
+        scaled_stroke_width = max(base_stroke_width, int(round((base_stroke_width + max_extra_outline) * peak_scale)))
         space_advance = resolve_space_width(measure_text_advance(draw, " ", font), args.word_spacing)
         for line in lines:
-            metrics = compute_line_metrics(draw, line, font, scaled_font, base_stroke_width, scaled_stroke_width, space_advance, animation_config)
+            metrics = compute_line_metrics(draw, line, font, scaled_font, base_stroke_width, scaled_stroke_width, space_advance, layout_mode)
             line_base_advances.append(metrics["baseAdvance"])
             line_max_advances.append(metrics["maxAdvance"])
             line_ascents.append(metrics["ascent"])
             line_descents.append(metrics["descent"])
             line_heights.append(metrics["height"])
-
         if lines and len(lines) <= 4 and all(width <= max_text_width for width in line_max_advances):
             line_spacing = max(10, int(round(size * 0.18)))
             total_height = sum(line_heights) + (line_spacing * (len(lines) - 1 if len(lines) > 1 else 0))
@@ -592,6 +562,7 @@ def fit_layout(draw: ImageDraw.ImageDraw, words: list[str], args: argparse.Names
                 "lines": lines,
                 "baseStrokeWidth": base_stroke_width,
                 "spaceAdvance": space_advance,
+                "boxExtra": box_extra,
             }
             break
         size -= 4
@@ -606,11 +577,11 @@ def fit_layout(draw: ImageDraw.ImageDraw, words: list[str], args: argparse.Names
         line_heights: list[int] = []
         line_ascents: list[int] = []
         line_descents: list[int] = []
-        scaled_font = load_font_from_path(resolved_font_path, max(30, int(round(size * get_max_active_scale(animation_config)))))
-        scaled_stroke_width = max(base_stroke_width, int(round(base_stroke_width * get_max_active_scale(animation_config))))
+        scaled_font = load_font_from_path(resolved_font_path, max(30, int(round(size * peak_scale))))
+        scaled_stroke_width = max(base_stroke_width, int(round((base_stroke_width + max_extra_outline) * peak_scale)))
         space_advance = resolve_space_width(measure_text_advance(draw, " ", font), args.word_spacing)
         for line in lines:
-            metrics = compute_line_metrics(draw, line, font, scaled_font, base_stroke_width, scaled_stroke_width, space_advance, animation_config)
+            metrics = compute_line_metrics(draw, line, font, scaled_font, base_stroke_width, scaled_stroke_width, space_advance, layout_mode)
             line_base_advances.append(metrics["baseAdvance"])
             line_max_advances.append(metrics["maxAdvance"])
             line_ascents.append(metrics["ascent"])
@@ -629,6 +600,7 @@ def fit_layout(draw: ImageDraw.ImageDraw, words: list[str], args: argparse.Names
             "lines": lines,
             "baseStrokeWidth": base_stroke_width,
             "spaceAdvance": space_advance,
+            "boxExtra": box_extra,
         }
 
     return chosen_layout, str(resolved_font_path) if resolved_font_path else None
@@ -644,35 +616,30 @@ def resolve_word_state(word_index: int, active_index: int, word_count: int) -> s
     return "upcoming"
 
 
-def resolve_entry_state(caption: dict[str, Any], animation_config: dict[str, Any], sample_time: float) -> tuple[int, float, float] | None:
+def resolve_entry_state(caption: dict[str, Any], animation_config: dict[str, Any], sample_time: float) -> tuple[int, float] | None:
     words = caption.get("words") if isinstance(caption, dict) else None
     if not isinstance(words, list) or not words:
         return None
-
     safe_caption_start = max(0.0, float(caption.get("start", 0) or 0))
     safe_caption_end = max(safe_caption_start + 0.05, float(caption.get("end", safe_caption_start + 0.05) or (safe_caption_start + 0.05)))
     if sample_time < safe_caption_start or sample_time >= safe_caption_end:
         return None
-
     first_word_start = max(safe_caption_start, float(words[0].get("start", safe_caption_start) or safe_caption_start))
     if sample_time < first_word_start:
-        return -1, 0.0, 0.05
-
+        return -1, 0.0
     for index, word in enumerate(words):
         word_start = max(safe_caption_start, float(word.get("start", safe_caption_start) or safe_caption_start))
         word_end = max(word_start + 0.05, float(word.get("end", word_start + 0.05) or (word_start + 0.05)))
-        word_duration = max(0.05, word_end - word_start)
         if word_start <= sample_time < word_end:
-            return index, resolve_animation_progress(animation_config, word_start, word_end, sample_time), word_duration
-
+            word_duration = max(0.001, word_end - word_start)
+            word_progress = (sample_time - word_start) / word_duration
+            return index, resolve_animation_progress(animation_config, word_progress, word_duration)
         next_word = words[index + 1] if index + 1 < len(words) else None
         hold_end = float(next_word.get("start", safe_caption_end) or safe_caption_end) if next_word else safe_caption_end
         hold_end = min(safe_caption_end, max(word_end, hold_end))
         if word_end <= sample_time < hold_end:
-            next_duration = max(0.05, float(next_word.get("end", word_end + 0.05) or (word_end + 0.05)) - float(next_word.get("start", word_end) or word_end)) if next_word else word_duration
-            return index + 1, 0.0, next_duration
-
-    return len(words), 0.0, max(0.05, safe_caption_end - safe_caption_start)
+            return index + 1, 0.0
+    return len(words), 0.0
 
 
 def build_frame_entries(captions: list[dict[str, Any]], animation_config: dict[str, Any], fps: float) -> list[dict[str, Any]]:
@@ -682,12 +649,10 @@ def build_frame_entries(captions: list[dict[str, Any]], animation_config: dict[s
         words = caption.get("words") if isinstance(caption, dict) else None
         if not isinstance(words, list) or not words:
             continue
-
         safe_caption_start = max(0.0, float(caption.get("start", 0) or 0))
         safe_caption_end = max(safe_caption_start + 0.05, float(caption.get("end", safe_caption_start + 0.05) or (safe_caption_start + 0.05)))
         start_frame = max(0, int(math.floor(safe_caption_start * safe_fps)))
         end_frame = max(start_frame + 1, int(math.ceil(safe_caption_end * safe_fps)))
-
         for frame_index in range(start_frame, end_frame):
             frame_start = frame_index / safe_fps
             frame_end = (frame_index + 1) / safe_fps
@@ -695,7 +660,7 @@ def build_frame_entries(captions: list[dict[str, Any]], animation_config: dict[s
             state = resolve_entry_state(caption, animation_config, sample_time)
             if state is None:
                 continue
-            active_index, progress, word_duration_seconds = state
+            active_index, progress = state
             entry_start = max(safe_caption_start, frame_start)
             entry_end = min(safe_caption_end, frame_end)
             if entry_end <= entry_start + 0.0001:
@@ -709,13 +674,11 @@ def build_frame_entries(captions: list[dict[str, Any]], animation_config: dict[s
                 "activeIndex": active_index,
                 "progress": progress,
                 "frameIndex": frame_index,
-                "wordDurationSeconds": round(float(word_duration_seconds), 4),
             })
-
     return [entry for entry in entries if entry["end"] > entry["start"] + 0.0001]
 
 
-def render_entry(entry: dict[str, Any], caption_lookup: dict[str, dict[str, Any]], args: argparse.Namespace) -> Image.Image:
+def render_entry(entry: dict[str, Any], caption_lookup: dict[str, dict[str, Any]], args: argparse.Namespace, animation_config: dict[str, Any]) -> Image.Image:
     caption = caption_lookup[entry["captionId"]]
     words = [str(word.get("text") or "").strip() for word in caption.get("words") or []]
     words = [word for word in words if word]
@@ -730,9 +693,18 @@ def render_entry(entry: dict[str, Any], caption_lookup: dict[str, dict[str, Any]
     glow_draw = ImageDraw.Draw(glow_layer)
     base_draw = ImageDraw.Draw(image)
 
-    layout, resolved_font_path = fit_layout(measure_draw, words, args)
+    layout, resolved_font_path = fit_layout(measure_draw, words, args, animation_config)
     font_path_obj = Path(resolved_font_path) if resolved_font_path else None
     font_cache: dict[int, ImageFont.ImageFont] = {}
+    uses_stable_slots = animation_config["layoutMode"] != "fluid"
+    palette = {
+        "activeWordColor": args.active_word_color,
+        "outlineColor": args.outline_color,
+        "shadowColor": args.shadow_color,
+    }
+    active_outline_color = resolve_animation_color(animation_config["colors"]["outlineColorMode"], palette, animation_config["colors"].get("outlineColor"))
+    active_shadow_color = resolve_animation_color(animation_config["colors"]["shadowColorMode"], palette, animation_config["colors"].get("shadowColor"))
+    active_glow_color = resolve_animation_color(animation_config["colors"]["glowColorMode"], palette, animation_config["colors"].get("glowColor"))
 
     def get_font(size: int) -> ImageFont.ImageFont:
         safe_size = max(24, int(size))
@@ -740,19 +712,16 @@ def render_entry(entry: dict[str, Any], caption_lookup: dict[str, dict[str, Any]
             font_cache[safe_size] = load_font_from_path(font_path_obj, safe_size)
         return font_cache[safe_size]
 
-    shadow_extra = int(round(max(abs(float(args.shadow_offset_x)), abs(float(args.shadow_offset_y))) + max(0.0, float(args.shadow_blur)) * 2.0))
-    animation_config = getattr(args, "animation_config", None) or get_animation_config(args)
-    box_extra = max(12, int(round(layout["fontSize"] * max(0.0, get_max_active_scale(animation_config) - 1.0))) + max(4, shadow_extra))
     top_y = int(round(args.height - args.bottom_margin - layout["totalHeight"]))
-    safe_left = max(0, int(args.horizontal_padding)) + (max(0, int(args.background_padding)) if args.background_enabled else 0) + box_extra
+    safe_left = max(0, int(args.horizontal_padding)) + (max(0, int(args.background_padding)) if args.background_enabled else 0) + layout["boxExtra"]
     left_x = max(safe_left, int(round((args.width - layout["maxLineWidth"]) / 2)))
 
     if args.background_enabled:
         base_draw.rounded_rectangle(
             [
-                left_x - args.background_padding - box_extra,
+                left_x - args.background_padding - layout["boxExtra"],
                 top_y - args.background_padding,
-                left_x + layout["maxLineWidth"] + args.background_padding + box_extra,
+                left_x + layout["maxLineWidth"] + args.background_padding + layout["boxExtra"],
                 top_y + layout["totalHeight"] + args.background_padding,
             ],
             radius=max(0, int(args.background_radius)),
@@ -761,7 +730,6 @@ def render_entry(entry: dict[str, Any], caption_lookup: dict[str, dict[str, Any]
 
     word_counter = 0
     line_y = top_y
-    fluid_pop = animation_config.get("layoutMode") == "fluid"
     for line_index, line in enumerate(layout["lines"]):
         line_height = layout["lineHeights"][line_index]
         line_ascent = layout["lineAscents"][line_index]
@@ -774,80 +742,66 @@ def render_entry(entry: dict[str, Any], caption_lookup: dict[str, dict[str, Any]
             text = item["text"]
             global_word_index = word_counter + word_index_on_line
             state = resolve_word_state(global_word_index, int(entry.get("activeIndex", -1)), len(words))
-            animation_frame = resolve_animation_frame(animation_config, progress if state == "active" else 0.0, float(entry.get("wordDurationSeconds", 0.05) or 0.05))
-            scale = float(animation_frame["scale"]) if state == "active" else 1.0
+            animation_frame = resolve_animation_frame_from_progress(animation_config, progress) if state == "active" else {
+                "scale": 1.0,
+                "translateXEm": 0.0,
+                "translateYEm": 0.0,
+                "extraOutlineWidth": 0.0,
+                "extraBlur": 0.0,
+                "glowStrength": 0.0,
+                "shadowOpacityMultiplier": 1.0,
+            }
+            scale = animation_frame["scale"] if state == "active" else 1.0
             font_size = int(round(layout["fontSize"] * scale))
-            stroke_width = max(0, int(round((layout["baseStrokeWidth"] + (animation_frame["extraOutlineWidth"] if state == "active" else 0.0)) * max(1.0, scale))))
+            stroke_width = max(0, int(round(layout["baseStrokeWidth"] + (animation_frame["extraOutlineWidth"] if state == "active" else 0))))
             font = get_font(font_size)
             metrics = measure_baseline_text_metrics(measure_draw, text, font, stroke_width)
-            advance_width = measure_text_advance(measure_draw, text, font) if fluid_pop else item["baseAdvance"]
+            advance_width = measure_text_advance(measure_draw, text, font) if not uses_stable_slots else item["baseAdvance"]
             current_line_width += advance_width
             if word_index_on_line > 0:
                 current_line_width += layout["spaceAdvance"]
             line_words.append({
                 "text": text,
                 "state": state,
-                "scale": scale,
                 "font": font,
                 "strokeWidth": stroke_width,
                 "metrics": metrics,
                 "advanceWidth": advance_width,
+                "animationFrame": animation_frame,
             })
 
-        cursor_x = (args.width - (current_line_width if fluid_pop else layout["lineBaseAdvances"][line_index])) / 2
+        cursor_x = (args.width - (current_line_width if not uses_stable_slots else layout["lineBaseAdvances"][line_index])) / 2
         for word_index_on_line, line_word in enumerate(line_words):
             if word_index_on_line > 0:
                 cursor_x += layout["spaceAdvance"]
-
             state = line_word["state"]
-            fill_color = (
-                args.active_word_color if state == "active"
-                else args.spoken_word_color if state == "spoken"
-                else args.upcoming_word_color
-            )
-            palette = {
-                "activeWordColor": args.active_word_color,
-                "outlineColor": args.outline_color,
-                "shadowColor": args.shadow_color,
-            }
-            outline_color = resolve_animation_color(
-                animation_config["colors"]["outlineColorMode"],
-                palette,
-                animation_config["colors"].get("outlineColor"),
-            ) if state == "active" else args.outline_color
-            shadow_color = resolve_animation_color(
-                animation_config["colors"]["shadowColorMode"],
-                palette,
-                animation_config["colors"].get("shadowColor"),
-            ) if state == "active" else args.shadow_color
-            glow_color = resolve_animation_color(
-                animation_config["colors"]["glowColorMode"],
-                palette,
-                animation_config["colors"].get("glowColor"),
-            ) if state == "active" else args.active_word_color
-            glow_strength = float(animation_frame["glowStrength"]) if state == "active" else 0.0
-
-            slot_width = line_word["advanceWidth"] if fluid_pop else line[word_index_on_line]["baseAdvance"]
+            animation_frame = line_word["animationFrame"]
+            fill_color = args.active_word_color if state == "active" else args.spoken_word_color if state == "spoken" else args.upcoming_word_color
+            outline_color = active_outline_color if state == "active" else args.outline_color
+            shadow_color = active_shadow_color if state == "active" else args.shadow_color
+            glow_strength = max(0.0, animation_frame["glowStrength"] if state == "active" else 0.0)
+            slot_width = line_word["advanceWidth"] if not uses_stable_slots else line[word_index_on_line]["baseAdvance"]
             draw_left = cursor_x + max(0.0, (slot_width - line_word["metrics"]["width"]) / 2)
-            draw_x = draw_left - line_word["metrics"]["bbox"][0] + ((float(animation_frame["translateXEm"]) * layout["fontSize"]) if state == "active" else 0.0)
-            draw_baseline_y = baseline_y - ((float(animation_frame["translateYEm"]) * layout["fontSize"]) if state == "active" else 0.0)
+            translate_x_px = animation_frame["translateXEm"] * layout["fontSize"] if state == "active" else 0.0
+            draw_x = draw_left - line_word["metrics"]["bbox"][0] + translate_x_px
+            draw_baseline_y = baseline_y - ((animation_frame["translateYEm"] * layout["fontSize"]) if state == "active" else 0.0)
 
             if glow_strength > 0:
-                glow_alpha = min(0.9, glow_strength)
+                glow_alpha = min(0.9, 0.18 + glow_strength * 0.4)
                 glow_stroke = line_word["strokeWidth"] + 4
                 glow_draw.text(
                     (draw_x, draw_baseline_y),
                     line_word["text"],
                     font=line_word["font"],
-                    fill=rgba(glow_color, 0.22 * glow_alpha),
+                    fill=rgba(active_glow_color, 0.22 * glow_alpha),
                     stroke_width=glow_stroke,
-                    stroke_fill=rgba(glow_color, 0.48 * glow_alpha),
+                    stroke_fill=rgba(active_glow_color, 0.48 * glow_alpha),
                     anchor="ls",
                 )
 
             shadow_strength = max(0.0, float(args.shadow_strength))
             if shadow_strength > 0:
-                shadow_alpha = min(0.95, (0.18 + (shadow_strength * 0.06) + (glow_strength * 0.08)) * (float(animation_frame["shadowOpacityMultiplier"]) if state == "active" else 1.0))
+                shadow_alpha = min(0.95, (0.18 + (shadow_strength * 0.06) + (glow_strength * 0.08)) * max(0.0, animation_frame["shadowOpacityMultiplier"] if state == "active" else 1.0))
                 shadow_offset_x = float(args.shadow_offset_x)
                 shadow_offset_y = float(args.shadow_offset_y)
                 shadow_draw.text(
@@ -869,7 +823,6 @@ def render_entry(entry: dict[str, Any], caption_lookup: dict[str, dict[str, Any]
                 stroke_fill=rgba(outline_color, 1.0),
                 anchor="ls",
             )
-
             cursor_x += slot_width
 
         word_counter += len(line)
@@ -878,7 +831,7 @@ def render_entry(entry: dict[str, Any], caption_lookup: dict[str, dict[str, Any]
     if glow_layer.getbbox():
         image = Image.alpha_composite(image, glow_layer.filter(ImageFilter.GaussianBlur(radius=4)))
     if shadow_layer.getbbox():
-        shadow_blur = max(0.0, float(args.shadow_blur)) + max(0.0, float(getattr(args, "max_extra_shadow_blur", 0.0)))
+        shadow_blur = max(0.0, float(args.shadow_blur)) + max(0.0, get_track_peak_value(animation_config["motion"]["extraBlur"]) * 0.35)
         image = Image.alpha_composite(image, shadow_layer.filter(ImageFilter.GaussianBlur(radius=shadow_blur)))
     image = Image.alpha_composite(image, text_layer)
     return image
@@ -900,9 +853,16 @@ def main() -> None:
     args.background_color = normalize_hex(args.background_color, "#000000")
     args.font_weight = clamp_font_weight(args.font_weight)
     args.fps = max(12.0, min(60.0, float(args.fps or 30.0)))
-    args.animation_preset = str(args.animation_preset or "stable-pop").strip() or "stable-pop"
-    args.animation_config = get_animation_config(args)
-    args.max_extra_shadow_blur = max(0.0, get_animation_track_peak_value(args.animation_config["motion"]["extraBlur"]))
+
+    fallback_config = clone_jsonable(BUILT_IN_ANIMATION_CONFIGS.get(args.animation_preset, BUILT_IN_ANIMATION_CONFIGS[DEFAULT_ANIMATION_PRESET]))
+    if args.animation_config_json:
+        try:
+            parsed_config = json.loads(args.animation_config_json)
+        except Exception as exc:
+            raise SystemExit(f"Animation config JSON is invalid: {exc}")
+        animation_config = normalize_animation_config(parsed_config, fallback_config)
+    else:
+        animation_config = fallback_config
 
     normalized_captions: list[dict[str, Any]] = []
     caption_lookup: dict[str, dict[str, Any]] = {}
@@ -934,7 +894,7 @@ def main() -> None:
         normalized_captions.append(normalized)
         caption_lookup[caption_id] = normalized
 
-    entries = build_frame_entries(normalized_captions, args.animation_config, args.fps)
+    entries = build_frame_entries(normalized_captions, animation_config, args.fps)
     output_dir = Path(args.output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -942,14 +902,10 @@ def main() -> None:
     render_cache: dict[str, str] = {}
     for render_index, entry in enumerate(entries, start=1):
         progress = round(float(entry.get("progress", 0.0) or 0.0), 4)
-        render_key = json.dumps([
-            entry.get("captionId"),
-            int(entry.get("activeIndex", -1)),
-            progress,
-        ])
+        render_key = json.dumps([entry.get("captionId"), int(entry.get("activeIndex", -1)), progress])
         relative_path = render_cache.get(render_key)
         if relative_path is None:
-            image = render_entry(entry, caption_lookup, args)
+            image = render_entry(entry, caption_lookup, args, animation_config)
             output_path = output_dir / f"overlay-{len(render_cache) + 1:04d}.png"
             image.save(output_path)
             relative_path = output_path.name
@@ -966,12 +922,12 @@ def main() -> None:
         })
 
     manifest = {
-        "schemaVersion": "2026-04-animated-caption-overlays-v1",
+        "schemaVersion": "2026-04-animated-caption-overlays-v2",
         "width": args.width,
         "height": args.height,
         "bottomMargin": args.bottom_margin,
         "animationPreset": args.animation_preset,
-        "animationConfig": args.animation_config,
+        "animationConfig": animation_config,
         "fps": round(float(args.fps), 3),
         "fontWeight": int(args.font_weight),
         "wordSpacing": round(float(args.word_spacing), 3),

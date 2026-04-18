@@ -3121,17 +3121,38 @@ function runDirectVideo(job) {
   const selectedMusic = resolveMusicSelection(projectMeta.selectedMusicId);
   const videoRenderSettings = readVideoRenderSettings();
   const defaultCaptionStyles = createDefaultCaptionStyles();
+  const requestedAnimationPreset = config.animationPreset
+    ? normalizeAnimationPresetEntry(
+        config.animationPreset,
+        getAnimationPresetById(
+          videoRenderSettings.animationPresets,
+          normalizeString(
+            config.animationPreset.id,
+            config.captionStyle?.animationPresetId || DEFAULT_CAPTION_ANIMATION_PRESET_ID,
+          ),
+        ),
+        0,
+      )
+    : null;
+  const animationPresetsForRun = requestedAnimationPreset
+    ? ensureUniqueAnimationPresetIds([
+        requestedAnimationPreset,
+        ...videoRenderSettings.animationPresets.filter((preset) => preset.id !== requestedAnimationPreset.id),
+      ])
+    : videoRenderSettings.animationPresets;
   const configuredCaptionStyle = config.captionStyle
     ? normalizeCaptionStyleEntry(
         config.captionStyle,
         defaultCaptionStyles.find((style) => style.id === config.captionStyleId) || defaultCaptionStyles[0],
         0,
-        videoRenderSettings.animationPresets,
+        animationPresetsForRun,
       )
     : null;
   const captionStyleSelection = configuredCaptionStyle
     ? (() => {
-        const animationPreset = getAnimationPresetById(videoRenderSettings.animationPresets, configuredCaptionStyle.animationPresetId);
+        const animationPreset = requestedAnimationPreset && configuredCaptionStyle.animationPresetId === requestedAnimationPreset.id
+          ? requestedAnimationPreset
+          : getAnimationPresetById(animationPresetsForRun, configuredCaptionStyle.animationPresetId);
         return {
           style: { ...configuredCaptionStyle, animationPresetId: animationPreset.id, animationPreset: animationPreset.slug },
           animationPreset,
