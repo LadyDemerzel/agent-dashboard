@@ -11,8 +11,21 @@ import { Textarea } from '@/components/ui/textarea';
 import { OrbitLoader, Skeleton } from '@/components/ui/loading';
 import { SectionNavigator, useSectionScrollSpy } from '@/components/short-form-video/SectionNavigator';
 import { ValidationNotice, WorkflowSectionHeader } from '@/components/short-form-video/WorkflowShared';
-import { CaptionStylePreview, type CaptionAnimationPreset } from '@/components/short-form-video/CaptionStylePreview';
+import { CaptionStylePreview } from '@/components/short-form-video/CaptionStylePreview';
 import { usePageScrollRestoration } from '@/components/usePageScrollRestoration';
+import {
+  BUILT_IN_CAPTION_ANIMATION_PRESET_IDS,
+  cloneCaptionAnimationConfig,
+  DEFAULT_CAPTION_ANIMATION_PRESET_ID,
+  DEFAULT_SHORT_FORM_CAPTION_ANIMATION_PRESETS,
+  getCaptionAnimationPresetById,
+  normalizeCaptionAnimationPresetConfig,
+  type ShortFormCaptionAnimationColorMode,
+  type ShortFormCaptionAnimationEasing,
+  type ShortFormCaptionAnimationPresetConfig,
+  type ShortFormCaptionAnimationPresetEntry,
+  type ShortFormCaptionAnimationTrack,
+} from '@/lib/short-form-caption-animation';
 
 type PromptKey =
   | 'hooksGenerate'
@@ -149,8 +162,11 @@ interface CaptionStyleEntry {
   backgroundOpacity: number;
   backgroundPadding: number;
   backgroundRadius: number;
-  animationPreset: CaptionAnimationPreset;
+  animationPresetId: string;
+  animationPreset?: string;
 }
+
+type AnimationPresetEntry = ShortFormCaptionAnimationPresetEntry;
 
 interface VideoRenderSettings {
   defaultVoiceId: string;
@@ -159,6 +175,7 @@ interface VideoRenderSettings {
   musicVolume: number;
   musicTracks: MusicLibraryEntry[];
   defaultCaptionStyleId: string;
+  animationPresets: AnimationPresetEntry[];
   captionStyles: CaptionStyleEntry[];
   captionMaxWords: number;
   pauseRemoval: {
@@ -298,12 +315,31 @@ const STYLE_REFERENCE_USAGE_OPTIONS: { value: StyleReferenceUsageType; label: st
   { value: 'palette', label: 'Palette / color' },
 ];
 
-const CAPTION_ANIMATION_OPTIONS: { value: CaptionAnimationPreset; label: string; description: string }[] = [
-  { value: 'none', label: 'None', description: 'Keep the 3-state word colors without extra scale or glow animation.' },
-  { value: 'stable-pop', label: 'Stable Pop', description: 'Give the active word a snappier highlight and shadow lift while keeping each word in a fixed slot.' },
-  { value: 'fluid-pop', label: 'Fluid Pop', description: 'Restore the old reflowing pop feel by letting neighboring words shift within each locked line, without wrap jitter.' },
-  { value: 'pulse', label: 'Pulse', description: 'Animate the active word with a subtle pulse on top of the word-highlight timing.' },
-  { value: 'glow', label: 'Glow', description: 'Add a brighter glow and slightly stronger outline to the active word for a higher-contrast look.' },
+const CAPTION_ANIMATION_EASING_OPTIONS: Array<{ value: ShortFormCaptionAnimationEasing; label: string }> = [
+  { value: 'linear', label: 'Linear' },
+  { value: 'ease-in-quad', label: 'Ease in quad' },
+  { value: 'ease-out-quad', label: 'Ease out quad' },
+  { value: 'ease-in-out-quad', label: 'Ease in out quad' },
+  { value: 'ease-out-cubic', label: 'Ease out cubic' },
+  { value: 'ease-in-out-cubic', label: 'Ease in out cubic' },
+  { value: 'ease-out-back', label: 'Ease out back' },
+];
+
+const CAPTION_ANIMATION_COLOR_MODE_OPTIONS: Array<{ value: ShortFormCaptionAnimationColorMode; label: string }> = [
+  { value: 'style-active-word', label: 'Use active word color' },
+  { value: 'style-outline', label: 'Use caption outline color' },
+  { value: 'style-shadow', label: 'Use caption shadow color' },
+  { value: 'custom', label: 'Use custom color' },
+];
+
+const CAPTION_ANIMATION_TRACK_LABELS: Array<{ key: keyof ShortFormCaptionAnimationPresetConfig['motion']; label: string; helper: string }> = [
+  { key: 'scale', label: 'Scale', helper: 'Multiplicative scale over the active-word lifetime.' },
+  { key: 'translateXEm', label: 'Translate X (em)', helper: 'Horizontal motion in em units.' },
+  { key: 'translateYEm', label: 'Translate Y (em)', helper: 'Vertical motion in em units. Positive values lift upward in preview/render.' },
+  { key: 'extraOutlineWidth', label: 'Extra outline width', helper: 'Adds outline thickness on top of the caption style outline.' },
+  { key: 'extraBlur', label: 'Extra blur', helper: 'Adds glow / blur on top of the caption style shadow blur.' },
+  { key: 'glowStrength', label: 'Glow strength', helper: 'Controls the intensity of the active-word glow layer.' },
+  { key: 'shadowOpacityMultiplier', label: 'Shadow opacity multiplier', helper: 'Scales the shadow alpha during the animation.' },
 ];
 
 const CAPTION_FONT_WEIGHT_OPTIONS: Array<{ value: number; label: string }> = [
@@ -458,8 +494,56 @@ function createCaptionStyleDraft(index: number): CaptionStyleEntry {
     backgroundOpacity: 0.45,
     backgroundPadding: 20,
     backgroundRadius: 24,
+    animationPresetId: DEFAULT_CAPTION_ANIMATION_PRESET_ID,
     animationPreset: 'stable-pop',
   };
+}
+
+function createAnimationPresetDraft(index: number): AnimationPresetEntry {
+  const template = DEFAULT_SHORT_FORM_CAPTION_ANIMATION_PRESETS.find((preset) => preset.id === DEFAULT_CAPTION_ANIMATION_PRESET_ID)
+    || DEFAULT_SHORT_FORM_CAPTION_ANIMATION_PRESETS[0];
+  return {
+    id: `caption-animation-${Date.now()}-${index}`,
+    slug: `custom-${Date.now()}-${index}`,
+    name: `Custom animation ${index}`,
+    description: 'Editable caption animation preset.',
+    config: cloneCaptionAnimationConfig(template.config),
+  };
+}
+
+function buildUniqueAnimationPresetName(presets: AnimationPresetEntry[], baseName: string) {
+  let nextName = `${baseName} copy`;
+  let suffix = 2;
+  const existing = new Set(presets.map((preset) => preset.name.toLowerCase()));
+  while (existing.has(nextName.toLowerCase())) {
+    nextName = `${baseName} copy ${suffix}`;
+    suffix += 1;
+  }
+  return nextName;
+}
+
+function buildUniqueAnimationPresetId(presets: AnimationPresetEntry[], name: string) {
+  const base = slugify(name) || 'caption-animation';
+  let candidate = base;
+  let suffix = 2;
+  const existing = new Set(presets.map((preset) => preset.id));
+  while (existing.has(candidate)) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
+function parseAnimationPresetConfigJson(value: string, fallback: ShortFormCaptionAnimationPresetConfig) {
+  try {
+    return normalizeCaptionAnimationPresetConfig(JSON.parse(value), fallback);
+  } catch {
+    return null;
+  }
+}
+
+function formatAnimationPresetConfigJson(config: ShortFormCaptionAnimationPresetConfig) {
+  return JSON.stringify(config, null, 2);
 }
 
 function slugify(text: string) {
@@ -710,6 +794,103 @@ function CaptionStyleNumberField({
   );
 }
 
+function AnimationPresetTrackEditor({
+  label,
+  helper,
+  track,
+  min,
+  max,
+  step = 0.01,
+  onChange,
+}: {
+  label: string;
+  helper: string;
+  track: ShortFormCaptionAnimationTrack;
+  min: number;
+  max: number;
+  step?: number;
+  onChange: (track: ShortFormCaptionAnimationTrack) => void;
+}) {
+  const updateKeyframe = (index: number, patch: Partial<ShortFormCaptionAnimationTrack['keyframes'][number]>) => {
+    onChange({
+      keyframes: track.keyframes.map((frame, frameIndex) => (frameIndex === index ? { ...frame, ...patch } : frame)),
+    });
+  };
+
+  const removeKeyframe = (index: number) => {
+    if (track.keyframes.length <= 2) return;
+    onChange({
+      keyframes: track.keyframes.filter((_, frameIndex) => frameIndex !== index),
+    });
+  };
+
+  const addKeyframe = () => {
+    const lastFrame = track.keyframes[track.keyframes.length - 1] || { time: 1, value: 0, easing: 'linear' as const };
+    onChange({
+      keyframes: [...track.keyframes, { ...lastFrame, time: 1, easing: lastFrame.easing || 'linear' }],
+    });
+  };
+
+  return (
+    <div className="space-y-3 rounded-lg border border-border bg-background/40 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h5 className="text-sm font-medium text-foreground">{label}</h5>
+          <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
+        </div>
+        <Button type="button" size="sm" variant="outline" onClick={addKeyframe}>
+          Add keyframe
+        </Button>
+      </div>
+
+      <div className="space-y-3">
+        {track.keyframes.map((frame, index) => (
+          <div key={`${label}-${index}-${frame.time}-${frame.value}`} className="grid gap-3 rounded-lg border border-border/70 bg-background/70 p-3 md:grid-cols-[repeat(3,minmax(0,1fr))_auto]">
+            <div className="space-y-2">
+              <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Time</label>
+              <Input
+                type="number"
+                min={0}
+                max={1}
+                step={0.01}
+                value={frame.time}
+                onChange={(event) => updateKeyframe(index, { time: Number(event.target.value) })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Value</label>
+              <Input
+                type="number"
+                min={min}
+                max={max}
+                step={step}
+                value={frame.value}
+                onChange={(event) => updateKeyframe(index, { value: Number(event.target.value) })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Easing</label>
+              <Select
+                value={frame.easing || 'linear'}
+                onChange={(event) => updateKeyframe(index, { easing: event.target.value as ShortFormCaptionAnimationEasing })}
+              >
+                {CAPTION_ANIMATION_EASING_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </Select>
+            </div>
+            <div className="flex items-end justify-end">
+              <Button type="button" variant="outline" size="sm" onClick={() => removeKeyframe(index)} disabled={track.keyframes.length <= 2}>
+                Remove
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function ShortFormVideoSettingsPage() {
   const searchParams = useSearchParams();
   const requestedStyleId = searchParams.get('style');
@@ -729,6 +910,8 @@ export default function ShortFormVideoSettingsPage() {
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | null>(null);
   const [selectedMusicId, setSelectedMusicId] = useState<string | null>(null);
   const [selectedCaptionStyleId, setSelectedCaptionStyleId] = useState<string | null>(null);
+  const [selectedAnimationPresetId, setSelectedAnimationPresetId] = useState<string | null>(null);
+  const [animationPresetJsonDraft, setAnimationPresetJsonDraft] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [styleTestsById, setStyleTestsById] = useState<Record<string, StyleTestState>>({});
@@ -787,6 +970,13 @@ export default function ShortFormVideoSettingsPage() {
     }
   }, [selectedCaptionStyleId, videoRender]);
 
+  useEffect(() => {
+    if (!videoRender || videoRender.animationPresets.length === 0) return;
+    if (!selectedAnimationPresetId || !videoRender.animationPresets.some((preset) => preset.id === selectedAnimationPresetId)) {
+      setSelectedAnimationPresetId(videoRender.animationPresets[0]?.id || null);
+    }
+  }, [selectedAnimationPresetId, videoRender]);
+
   async function loadSettings() {
     setLoading(true);
     setError(null);
@@ -808,6 +998,7 @@ export default function ShortFormVideoSettingsPage() {
       setSelectedVoiceId((current) => current || data.videoRender.defaultVoiceId || data.videoRender.voices[0]?.id || null);
       setSelectedMusicId((current) => current || data.videoRender.defaultMusicTrackId || data.videoRender.musicTracks[0]?.id || null);
       setSelectedCaptionStyleId((current) => current || data.videoRender.defaultCaptionStyleId || data.videoRender.captionStyles[0]?.id || null);
+      setSelectedAnimationPresetId((current) => current || data.videoRender.animationPresets[0]?.id || null);
       setStyleTestsById(buildStyleTestsById(data.imageStyles.styles));
       setSectionFeedback(createEmptySectionFeedback());
     } catch (err) {
@@ -838,6 +1029,16 @@ export default function ShortFormVideoSettingsPage() {
     () => videoRender?.captionStyles.find((style) => style.id === selectedCaptionStyleId) || null,
     [selectedCaptionStyleId, videoRender]
   );
+  const selectedAnimationPreset = useMemo(
+    () => videoRender?.animationPresets.find((preset) => preset.id === selectedAnimationPresetId) || null,
+    [selectedAnimationPresetId, videoRender]
+  );
+  const selectedCaptionStyleAnimationPreset = useMemo(
+    () => videoRender && selectedCaptionStyle
+      ? getCaptionAnimationPresetById(videoRender.animationPresets, selectedCaptionStyle.animationPresetId)
+      : null,
+    [selectedCaptionStyle, videoRender]
+  );
   const savedVoiceAudioUrl = useMemo(() => {
     if (ttsPreview.audioUrl) return ttsPreview.audioUrl;
     if (!selectedVoice) return null;
@@ -861,6 +1062,11 @@ export default function ShortFormVideoSettingsPage() {
     () => Object.values(sectionFeedback).some((section) => section.saving),
     [sectionFeedback]
   );
+
+  useEffect(() => {
+    if (!selectedAnimationPreset) return;
+    setAnimationPresetJsonDraft(formatAnimationPresetConfigJson(selectedAnimationPreset.config));
+  }, [selectedAnimationPreset]);
 
   useEffect(() => {
     setTtsPreview({
@@ -910,9 +1116,11 @@ export default function ShortFormVideoSettingsPage() {
       : false;
     const captionStylesDirty = videoRender && initialVideoRender
       ? serializeForCompare({
+          animationPresets: videoRender.animationPresets,
           captionStyles: videoRender.captionStyles,
           defaultCaptionStyleId: videoRender.defaultCaptionStyleId,
         }) !== serializeForCompare({
+          animationPresets: initialVideoRender.animationPresets,
           captionStyles: initialVideoRender.captionStyles,
           defaultCaptionStyleId: initialVideoRender.defaultCaptionStyleId,
         })
@@ -1278,6 +1486,7 @@ export default function ShortFormVideoSettingsPage() {
         return videoRender
           ? {
               videoRender: {
+                animationPresets: videoRender.animationPresets,
                 captionStyles: videoRender.captionStyles,
                 defaultCaptionStyleId: videoRender.defaultCaptionStyleId,
               },
@@ -1375,10 +1584,12 @@ export default function ShortFormVideoSettingsPage() {
       if (sectionId === 'caption-styles') {
         setVideoRender({
           ...videoRender,
+          animationPresets: initialVideoRender.animationPresets,
           captionStyles: initialVideoRender.captionStyles,
           defaultCaptionStyleId: initialVideoRender.defaultCaptionStyleId,
         });
         setSelectedCaptionStyleId(initialVideoRender.defaultCaptionStyleId || initialVideoRender.captionStyles[0]?.id || null);
+        setSelectedAnimationPresetId(initialVideoRender.animationPresets[0]?.id || null);
         return;
       }
 
@@ -1667,6 +1878,67 @@ export default function ShortFormVideoSettingsPage() {
       ...videoRender,
       captionStyles: videoRender.captionStyles.map((style) => (style.id === selectedCaptionStyle.id ? updater(style) : style)),
     });
+  }
+
+  function updateSelectedAnimationPreset(updater: (preset: AnimationPresetEntry) => AnimationPresetEntry) {
+    if (!videoRender || !selectedAnimationPreset) return;
+    updateSectionFeedbackState('caption-styles', { error: null, message: null });
+    setVideoRender({
+      ...videoRender,
+      animationPresets: videoRender.animationPresets.map((preset) => (preset.id === selectedAnimationPreset.id ? updater(preset) : preset)),
+    });
+  }
+
+  function addAnimationPreset() {
+    if (!videoRender) return;
+    updateSectionFeedbackState('caption-styles', { error: null, message: null });
+    const nextPreset = createAnimationPresetDraft(videoRender.animationPresets.length + 1);
+    nextPreset.id = buildUniqueAnimationPresetId(videoRender.animationPresets, nextPreset.name);
+    setVideoRender({
+      ...videoRender,
+      animationPresets: [...videoRender.animationPresets, nextPreset],
+    });
+    setSelectedAnimationPresetId(nextPreset.id);
+  }
+
+  function duplicateAnimationPreset(presetId: string) {
+    if (!videoRender) return;
+    const source = videoRender.animationPresets.find((preset) => preset.id === presetId);
+    if (!source) return;
+    updateSectionFeedbackState('caption-styles', { error: null, message: null });
+    const name = buildUniqueAnimationPresetName(videoRender.animationPresets, source.name);
+    const duplicate: AnimationPresetEntry = {
+      ...source,
+      id: buildUniqueAnimationPresetId(videoRender.animationPresets, name),
+      slug: `${slugify(name) || 'caption-animation'}-${Date.now()}`,
+      name,
+      builtIn: false,
+      config: cloneCaptionAnimationConfig(source.config),
+    };
+    const sourceIndex = videoRender.animationPresets.findIndex((preset) => preset.id === presetId);
+    const nextPresets = [...videoRender.animationPresets];
+    nextPresets.splice(sourceIndex + 1, 0, duplicate);
+    setVideoRender({
+      ...videoRender,
+      animationPresets: nextPresets,
+    });
+    setSelectedAnimationPresetId(duplicate.id);
+  }
+
+  function deleteAnimationPreset(presetId: string) {
+    if (!videoRender || videoRender.animationPresets.length <= 1) return;
+    const presetIsInUse = videoRender.captionStyles.some((style) => style.animationPresetId === presetId);
+    if (presetIsInUse) {
+      window.alert('That animation preset is still used by one or more caption styles. Reassign those styles first.');
+      return;
+    }
+    updateSectionFeedbackState('caption-styles', { error: null, message: null });
+    const remaining = videoRender.animationPresets.filter((preset) => preset.id !== presetId);
+    setVideoRender({
+      ...videoRender,
+      animationPresets: remaining,
+    });
+    setSelectedAnimationPresetId(remaining[0]?.id || null);
   }
 
   function addCaptionStyle() {
@@ -2960,280 +3232,349 @@ export default function ShortFormVideoSettingsPage() {
                   </Button>
                 </div>
 
-                <div className="mt-4 grid gap-4 lg:grid-cols-[280px,1fr]">
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Caption style library</label>
-                    <Select
-                      value={selectedCaptionStyleId || ''}
-                      onChange={(event) => setSelectedCaptionStyleId(event.target.value)}
-                      disabled={videoRender.captionStyles.length === 0}
-                    >
-                      {videoRender.captionStyles.map((style) => (
-                        <option key={style.id} value={style.id}>
-                          {style.name}{style.id === videoRender.defaultCaptionStyleId ? ' (default)' : ''}
-                        </option>
-                      ))}
-                    </Select>
-                    <div className="rounded-lg border border-border bg-background/50 p-3 text-xs text-muted-foreground">
-                      <p>
-                        <span className="font-medium text-foreground">Default caption style:</span>{' '}
-                        {videoRender.captionStyles.find((style) => style.id === videoRender.defaultCaptionStyleId)?.name || 'Not set'}
-                      </p>
-                      <p className="mt-2">
-                        Projects can override the default from the Short-form Video detail page. If no override is set, final-video renders automatically use this dashboard-wide default style.
-                      </p>
+                <div className="mt-4 grid gap-4 lg:grid-cols-[320px,1fr]">
+                  <div className="space-y-4">
+                    <div className="space-y-2 rounded-lg border border-border bg-background/50 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Caption style library</label>
+                        <Button variant="outline" size="sm" onClick={addCaptionStyle} disabled={sectionFeedback['caption-styles'].saving}>
+                          Add
+                        </Button>
+                      </div>
+                      <Select
+                        value={selectedCaptionStyleId || ''}
+                        onChange={(event) => setSelectedCaptionStyleId(event.target.value)}
+                        disabled={videoRender.captionStyles.length === 0}
+                      >
+                        {videoRender.captionStyles.map((style) => (
+                          <option key={style.id} value={style.id}>
+                            {style.name}{style.id === videoRender.defaultCaptionStyleId ? ' (default)' : ''}
+                          </option>
+                        ))}
+                      </Select>
+                      <div className="text-xs text-muted-foreground">
+                        Default caption style:{' '}
+                        <span className="font-medium text-foreground">
+                          {videoRender.captionStyles.find((style) => style.id === videoRender.defaultCaptionStyleId)?.name || 'Not set'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 rounded-lg border border-border bg-background/50 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Animation preset library</label>
+                        <Button variant="outline" size="sm" onClick={addAnimationPreset} disabled={sectionFeedback['caption-styles'].saving}>
+                          Add
+                        </Button>
+                      </div>
+                      <Select
+                        value={selectedAnimationPresetId || ''}
+                        onChange={(event) => setSelectedAnimationPresetId(event.target.value)}
+                        disabled={videoRender.animationPresets.length === 0}
+                      >
+                        {videoRender.animationPresets.map((preset) => {
+                          const usageCount = videoRender.captionStyles.filter((style) => style.animationPresetId === preset.id).length;
+                          return (
+                            <option key={preset.id} value={preset.id}>
+                              {preset.name}{preset.builtIn ? ' (built-in)' : ''}{usageCount > 0 ? ` · ${usageCount} style${usageCount === 1 ? '' : 's'}` : ''}
+                            </option>
+                          );
+                        })}
+                      </Select>
+                      {selectedAnimationPreset ? (
+                        <div className="rounded-lg border border-border bg-background/40 p-3 text-xs text-muted-foreground">
+                          <p className="font-medium text-foreground">{selectedAnimationPreset.name}</p>
+                          <p className="mt-1">{selectedAnimationPreset.description || 'No description yet.'}</p>
+                          <p className="mt-2">Used by {videoRender.captionStyles.filter((style) => style.animationPresetId === selectedAnimationPreset.id).length} caption style(s).</p>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 
-                  {selectedCaptionStyle ? (
+                  {selectedCaptionStyle && selectedCaptionStyleAnimationPreset && selectedAnimationPreset ? (
                     <div className="space-y-4 rounded-lg border border-border bg-background/50 p-4">
-                      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
+                      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)]">
                         <div className="space-y-4">
-                          <div className="grid gap-4 md:grid-cols-2">
-                            <div className="space-y-2">
-                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Style name</label>
-                              <Input
-                                value={selectedCaptionStyle.name}
-                                onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, name: event.target.value }))}
-                                placeholder="Classic highlight"
-                              />
+                          <div className="rounded-lg border border-border bg-background/40 p-4">
+                            <div className="grid gap-4 md:grid-cols-2">
+                              <div className="space-y-2">
+                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Style name</label>
+                                <Input value={selectedCaptionStyle.name} onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, name: event.target.value }))} />
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Animation preset reference</label>
+                                <Select
+                                  value={selectedCaptionStyle.animationPresetId}
+                                  onChange={(event) => updateSelectedCaptionStyle((style) => {
+                                    const preset = getCaptionAnimationPresetById(videoRender.animationPresets, event.target.value);
+                                    return { ...style, animationPresetId: preset.id, animationPreset: preset.slug };
+                                  })}
+                                >
+                                  {videoRender.animationPresets.map((preset) => (
+                                    <option key={preset.id} value={preset.id}>{preset.name}</option>
+                                  ))}
+                                </Select>
+                                <p className="text-xs text-muted-foreground">Caption styles now reference a first-class preset entity by id. Edit the preset library below to change motion globally for any linked styles.</p>
+                              </div>
                             </div>
-                            <div className="space-y-2">
-                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Animation preset</label>
-                              <Select
-                                value={selectedCaptionStyle.animationPreset}
-                                onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, animationPreset: event.target.value as CaptionAnimationPreset }))}
-                              >
-                                {CAPTION_ANIMATION_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>{option.label}</option>
-                                ))}
-                              </Select>
-                              <p className="text-xs text-muted-foreground">
-                                {CAPTION_ANIMATION_OPTIONS.find((option) => option.value === selectedCaptionStyle.animationPreset)?.description}
-                              </p>
-                            </div>
-                          </div>
 
-                          <div className="grid gap-4 md:grid-cols-2">
-                            <div className="space-y-2">
-                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Font family</label>
-                              <Input
-                                value={selectedCaptionStyle.fontFamily}
-                                onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, fontFamily: event.target.value }))}
-                                placeholder="Arial"
-                              />
-                              <p className="text-xs text-muted-foreground">Use the installed font family name only. Weight/thickness is controlled separately below for preview and final render.</p>
+                            <div className="mt-4 grid gap-4 md:grid-cols-2">
+                              <div className="space-y-2">
+                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Font family</label>
+                                <Input value={selectedCaptionStyle.fontFamily} onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, fontFamily: event.target.value }))} />
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Font weight</label>
+                                <Select value={String(selectedCaptionStyle.fontWeight)} onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, fontWeight: Number(event.target.value) || 700 }))}>
+                                  {CAPTION_FONT_WEIGHT_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                  ))}
+                                </Select>
+                              </div>
                             </div>
-                            <div className="space-y-2">
-                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Font weight</label>
-                              <Select
-                                value={String(selectedCaptionStyle.fontWeight)}
-                                onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, fontWeight: Number(event.target.value) || 700 }))}
-                              >
-                                {CAPTION_FONT_WEIGHT_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>{option.label}</option>
-                                ))}
-                              </Select>
-                              <p className="text-xs text-muted-foreground">The preview uses CSS font-weight, and the final renderer maps this weight into overlay/ASS subtitle output.</p>
+
+                            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                              <CaptionStyleNumberField label="Font size" value={selectedCaptionStyle.fontSize} min={32} max={120} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, fontSize: value }))} />
+                              <CaptionStyleNumberField label="Word spacing" value={selectedCaptionStyle.wordSpacing} min={-20} max={32} step={0.1} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, wordSpacing: value }))} />
+                              <CaptionStyleNumberField label="Side padding" value={selectedCaptionStyle.horizontalPadding} min={0} max={320} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, horizontalPadding: value }))} />
+                              <CaptionStyleNumberField label="Bottom margin" value={selectedCaptionStyle.bottomMargin} min={0} max={900} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, bottomMargin: value }))} />
+                              <CaptionStyleNumberField label="Outline width" value={selectedCaptionStyle.outlineWidth} min={0} max={12} step={0.1} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, outlineWidth: value }))} />
+                              <CaptionStyleNumberField label="Shadow strength" value={selectedCaptionStyle.shadowStrength} min={0} max={12} step={0.1} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowStrength: value }))} />
+                              <CaptionStyleNumberField label="Shadow blur" value={selectedCaptionStyle.shadowBlur} min={0} max={16} step={0.1} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowBlur: value }))} />
+                              <CaptionStyleNumberField label="Shadow X" value={selectedCaptionStyle.shadowOffsetX} min={-32} max={32} step={0.1} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowOffsetX: value }))} />
+                              <CaptionStyleNumberField label="Shadow Y" value={selectedCaptionStyle.shadowOffsetY} min={-32} max={32} step={0.1} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowOffsetY: value }))} />
+                              <CaptionStyleNumberField label="Background padding" value={selectedCaptionStyle.backgroundPadding} min={0} max={96} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundPadding: value }))} />
+                              <CaptionStyleNumberField label="Background radius" value={selectedCaptionStyle.backgroundRadius} min={0} max={96} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundRadius: value }))} />
                             </div>
-                          </div>
 
-                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                            <CaptionStyleNumberField
-                              label="Font size"
-                              value={selectedCaptionStyle.fontSize}
-                              min={32}
-                              max={120}
-                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, fontSize: value }))}
-                            />
-                            <CaptionStyleNumberField
-                              label="Word spacing"
-                              value={selectedCaptionStyle.wordSpacing}
-                              min={-20}
-                              max={32}
-                              step={0.1}
-                              helper="Negative tightens gaps between words, positive loosens them. The final overlay renderer now uses the exact saved gap width, so -20 and -4 produce visibly different spacing."
-                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, wordSpacing: value }))}
-                            />
-                            <CaptionStyleNumberField
-                              label="Side padding"
-                              value={selectedCaptionStyle.horizontalPadding}
-                              min={0}
-                              max={320}
-                              helper="Left and right screen padding before captions wrap."
-                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, horizontalPadding: value }))}
-                            />
-                            <CaptionStyleNumberField
-                              label="Bottom margin"
-                              value={selectedCaptionStyle.bottomMargin}
-                              min={0}
-                              max={900}
-                              helper="Vertical position for preview and final burn-in."
-                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, bottomMargin: value }))}
-                            />
-                            <CaptionStyleNumberField
-                              label="Outline width"
-                              value={selectedCaptionStyle.outlineWidth}
-                              min={0}
-                              max={12}
-                              step={0.1}
-                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, outlineWidth: value }))}
-                            />
-                            <CaptionStyleNumberField
-                              label="Shadow strength"
-                              value={selectedCaptionStyle.shadowStrength}
-                              min={0}
-                              max={12}
-                              step={0.1}
-                              helper="Controls overall shadow intensity."
-                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowStrength: value }))}
-                            />
-                            <CaptionStyleNumberField
-                              label="Shadow blur"
-                              value={selectedCaptionStyle.shadowBlur}
-                              min={0}
-                              max={16}
-                              step={0.1}
-                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowBlur: value }))}
-                            />
-                            <CaptionStyleNumberField
-                              label="Shadow X"
-                              value={selectedCaptionStyle.shadowOffsetX}
-                              min={-32}
-                              max={32}
-                              step={0.1}
-                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowOffsetX: value }))}
-                            />
-                            <CaptionStyleNumberField
-                              label="Shadow Y"
-                              value={selectedCaptionStyle.shadowOffsetY}
-                              min={-32}
-                              max={32}
-                              step={0.1}
-                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowOffsetY: value }))}
-                            />
-                            <CaptionStyleNumberField
-                              label="Background padding"
-                              value={selectedCaptionStyle.backgroundPadding}
-                              min={0}
-                              max={96}
-                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundPadding: value }))}
-                            />
-                            <CaptionStyleNumberField
-                              label="Background radius"
-                              value={selectedCaptionStyle.backgroundRadius}
-                              min={0}
-                              max={96}
-                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundRadius: value }))}
-                            />
-                          </div>
+                            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                              {[
+                                ['Active word', 'activeWordColor'],
+                                ['Spoken words', 'spokenWordColor'],
+                                ['Upcoming words', 'upcomingWordColor'],
+                                ['Outline', 'outlineColor'],
+                                ['Shadow', 'shadowColor'],
+                                ['Background', 'backgroundColor'],
+                              ].map(([label, key]) => (
+                                <div key={key} className="space-y-2 rounded-lg border border-border bg-background/30 p-3">
+                                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label} color</label>
+                                  <div className="flex items-center gap-3">
+                                    <input
+                                      type="color"
+                                      value={selectedCaptionStyle[key as keyof CaptionStyleEntry] as string}
+                                      onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, [key]: event.target.value.toUpperCase() }))}
+                                      className="h-10 w-12 cursor-pointer rounded border border-border bg-transparent p-1"
+                                    />
+                                    <Input
+                                      value={selectedCaptionStyle[key as keyof CaptionStyleEntry] as string}
+                                      onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, [key]: event.target.value.toUpperCase() }))}
+                                      className="font-mono text-xs"
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
 
-                          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                            {[
-                              ['Active word', 'activeWordColor'],
-                              ['Spoken words', 'spokenWordColor'],
-                              ['Upcoming words', 'upcomingWordColor'],
-                              ['Outline', 'outlineColor'],
-                              ['Shadow', 'shadowColor'],
-                              ['Background', 'backgroundColor'],
-                            ].map(([label, key]) => (
-                              <div key={key} className="space-y-2 rounded-lg border border-border bg-background/40 p-3">
-                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label} color</label>
-                                <div className="flex items-center gap-3">
-                                  <input
-                                    type="color"
-                                    value={selectedCaptionStyle[key as keyof CaptionStyleEntry] as string}
-                                    onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, [key]: event.target.value.toUpperCase() }))}
-                                    className="h-10 w-12 cursor-pointer rounded border border-border bg-transparent p-1"
-                                  />
-                                  <Input
-                                    value={selectedCaptionStyle[key as keyof CaptionStyleEntry] as string}
-                                    onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, [key]: event.target.value.toUpperCase() }))}
-                                    className="font-mono text-xs"
-                                  />
+                            <div className="mt-4 rounded-lg border border-border bg-background/30 p-4">
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                  <h4 className="text-sm font-medium text-foreground">Background box</h4>
+                                  <p className="mt-1 text-xs text-muted-foreground">Preview and final render both use the saved background box intent.</p>
+                                </div>
+                                <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                                  <input type="checkbox" checked={selectedCaptionStyle.backgroundEnabled} onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundEnabled: event.target.checked }))} />
+                                  Enable box
+                                </label>
+                              </div>
+                              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Box opacity</label>
+                                  <div className="flex items-center gap-3">
+                                    <input type="range" min={0} max={1} step={0.01} value={selectedCaptionStyle.backgroundOpacity} onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundOpacity: Number(event.target.value) }))} className="w-full" />
+                                    <div className="w-14 text-right text-sm text-foreground">{Math.round(selectedCaptionStyle.backgroundOpacity * 100)}%</div>
+                                  </div>
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  Current linked animation preset: <span className="font-medium text-foreground">{selectedCaptionStyleAnimationPreset.name}</span><br />
+                                  Layout mode: <span className="font-medium text-foreground">{selectedCaptionStyleAnimationPreset.config.layoutMode}</span><br />
+                                  Timing mode: <span className="font-medium text-foreground">{selectedCaptionStyleAnimationPreset.config.timing.mode}</span>
                                 </div>
                               </div>
-                            ))}
+                            </div>
+
+                            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+                              <Button type="button" variant={selectedCaptionStyle.id === videoRender.defaultCaptionStyleId ? 'default' : 'outline'} onClick={() => {
+                                updateSectionFeedbackState('caption-styles', { error: null, message: null });
+                                setVideoRender({ ...videoRender, defaultCaptionStyleId: selectedCaptionStyle.id });
+                              }}>
+                                {selectedCaptionStyle.id === videoRender.defaultCaptionStyleId ? 'Default caption style' : 'Set as default'}
+                              </Button>
+                              <Button type="button" variant="outline" onClick={() => duplicateCaptionStyle(selectedCaptionStyle.id)}>Duplicate caption style</Button>
+                              <Button type="button" variant="outline" onClick={() => deleteCaptionStyle(selectedCaptionStyle.id)} disabled={videoRender.captionStyles.length <= 1}>Delete caption style</Button>
+                            </div>
                           </div>
 
                           <div className="rounded-lg border border-border bg-background/40 p-4">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               <div>
-                                <h4 className="text-sm font-medium text-foreground">Background box</h4>
-                                <p className="mt-1 text-xs text-muted-foreground">Optional preview box behind the caption text. The final ASS burn-in uses the same color/opacity intent, while padding and corner radius are preview-forward approximations for v1.</p>
+                                <h4 className="text-sm font-medium text-foreground">Animation preset editor</h4>
+                                <p className="mt-1 text-xs text-muted-foreground">Built-ins are now first-class presets. Edit them directly, or duplicate them into custom variants.</p>
                               </div>
-                              <label className="inline-flex items-center gap-2 text-sm text-foreground">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedCaptionStyle.backgroundEnabled}
-                                  onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundEnabled: event.target.checked }))}
-                                />
-                                Enable box
-                              </label>
+                              <div className="flex flex-wrap gap-2">
+                                <Button type="button" variant="outline" size="sm" onClick={() => duplicateAnimationPreset(selectedAnimationPreset.id)}>Duplicate preset</Button>
+                                <Button type="button" variant="outline" size="sm" onClick={() => deleteAnimationPreset(selectedAnimationPreset.id)} disabled={videoRender.animationPresets.length <= 1}>Delete preset</Button>
+                              </div>
                             </div>
+
                             <div className="mt-4 grid gap-4 md:grid-cols-2">
                               <div className="space-y-2">
-                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Box opacity</label>
-                                <div className="flex items-center gap-3">
-                                  <input
-                                    type="range"
-                                    min={0}
-                                    max={1}
-                                    step={0.01}
-                                    value={selectedCaptionStyle.backgroundOpacity}
-                                    onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundOpacity: Number(event.target.value) }))}
-                                    className="w-full"
-                                  />
-                                  <div className="w-14 text-right text-sm text-foreground">{Math.round(selectedCaptionStyle.backgroundOpacity * 100)}%</div>
-                                </div>
+                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Preset name</label>
+                                <Input value={selectedAnimationPreset.name} onChange={(event) => updateSelectedAnimationPreset((preset) => ({ ...preset, name: event.target.value }))} />
                               </div>
-                              <div className="text-xs text-muted-foreground">
-                                Side padding: <span className="font-medium text-foreground">{selectedCaptionStyle.horizontalPadding}px</span><br />
-                                Word spacing: <span className="font-medium text-foreground">{selectedCaptionStyle.wordSpacing}px</span><br />
-                                Bottom margin: <span className="font-medium text-foreground">{selectedCaptionStyle.bottomMargin}px</span><br />
-                                Shadow blur: <span className="font-medium text-foreground">{selectedCaptionStyle.shadowBlur}px</span><br />
-                                Shadow offset: <span className="font-medium text-foreground">{selectedCaptionStyle.shadowOffsetX}px, {selectedCaptionStyle.shadowOffsetY}px</span><br />
-                                Preview padding: <span className="font-medium text-foreground">{selectedCaptionStyle.backgroundPadding}px</span><br />
-                                Preview radius: <span className="font-medium text-foreground">{selectedCaptionStyle.backgroundRadius}px</span>
+                              <div className="space-y-2">
+                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Slug</label>
+                                <Input value={selectedAnimationPreset.slug} onChange={(event) => updateSelectedAnimationPreset((preset) => ({ ...preset, slug: event.target.value }))} className="font-mono text-xs" />
                               </div>
                             </div>
-                          </div>
 
-                          <div className="flex flex-wrap items-center gap-2 text-xs">
-                            <Button
-                              type="button"
-                              variant={selectedCaptionStyle.id === videoRender.defaultCaptionStyleId ? 'default' : 'outline'}
-                              onClick={() => {
-                                updateSectionFeedbackState('caption-styles', { error: null, message: null });
-                                setVideoRender({ ...videoRender, defaultCaptionStyleId: selectedCaptionStyle.id });
-                              }}
-                            >
-                              {selectedCaptionStyle.id === videoRender.defaultCaptionStyleId ? 'Default caption style' : 'Set as default'}
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={() => duplicateCaptionStyle(selectedCaptionStyle.id)}
-                            >
-                              Duplicate caption style
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={() => deleteCaptionStyle(selectedCaptionStyle.id)}
-                              disabled={videoRender.captionStyles.length <= 1}
-                            >
-                              Delete caption style
-                            </Button>
+                            <div className="mt-4 space-y-2">
+                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Description</label>
+                              <Textarea value={selectedAnimationPreset.description} onChange={(event) => updateSelectedAnimationPreset((preset) => ({ ...preset, description: event.target.value }))} className="min-h-[76px] text-xs" />
+                            </div>
+
+                            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                              <div className="space-y-2">
+                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Layout mode</label>
+                                <Select value={selectedAnimationPreset.config.layoutMode} onChange={(event) => updateSelectedAnimationPreset((preset) => ({ ...preset, config: { ...preset.config, layoutMode: event.target.value === 'fluid' ? 'fluid' : 'stable' } }))}>
+                                  <option value="stable">Stable slots</option>
+                                  <option value="fluid">Fluid reflow</option>
+                                </Select>
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Timing mode</label>
+                                <Select value={selectedAnimationPreset.config.timing.mode} onChange={(event) => updateSelectedAnimationPreset((preset) => ({ ...preset, config: { ...preset.config, timing: { ...preset.config.timing, mode: event.target.value === 'fixed' ? 'fixed' : 'word-relative' } } }))}>
+                                  <option value="word-relative">Word-relative</option>
+                                  <option value="fixed">Fixed duration</option>
+                                </Select>
+                              </div>
+                              <CaptionStyleNumberField label="Timing multiplier" value={selectedAnimationPreset.config.timing.multiplier} min={0.1} max={4} step={0.05} onChange={(value) => updateSelectedAnimationPreset((preset) => ({ ...preset, config: { ...preset.config, timing: { ...preset.config.timing, multiplier: value } } }))} />
+                              <CaptionStyleNumberField label="Fixed duration ms" value={selectedAnimationPreset.config.timing.fixedMs} min={40} max={2000} step={10} onChange={(value) => updateSelectedAnimationPreset((preset) => ({ ...preset, config: { ...preset.config, timing: { ...preset.config.timing, fixedMs: value } } }))} />
+                              <CaptionStyleNumberField label="Min duration ms" value={selectedAnimationPreset.config.timing.minMs} min={40} max={2000} step={10} onChange={(value) => updateSelectedAnimationPreset((preset) => ({ ...preset, config: { ...preset.config, timing: { ...preset.config.timing, minMs: value } } }))} />
+                              <CaptionStyleNumberField label="Max duration ms" value={selectedAnimationPreset.config.timing.maxMs} min={40} max={2000} step={10} onChange={(value) => updateSelectedAnimationPreset((preset) => ({ ...preset, config: { ...preset.config, timing: { ...preset.config.timing, maxMs: value } } }))} />
+                            </div>
+
+                            <div className="mt-4 grid gap-4 md:grid-cols-3">
+                              {([
+                                ['outlineColorMode', 'outlineColor', 'Outline source'],
+                                ['shadowColorMode', 'shadowColor', 'Shadow source'],
+                                ['glowColorMode', 'glowColor', 'Glow source'],
+                              ] as const).map(([modeKey, colorKey, label]) => {
+                                const modeValue = selectedAnimationPreset.config.colors[modeKey];
+                                const customValue = selectedAnimationPreset.config.colors[colorKey] || '#FFFFFF';
+                                return (
+                                  <div key={modeKey} className="space-y-2 rounded-lg border border-border bg-background/30 p-3">
+                                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</label>
+                                    <Select value={modeValue} onChange={(event) => updateSelectedAnimationPreset((preset) => ({
+                                      ...preset,
+                                      config: {
+                                        ...preset.config,
+                                        colors: {
+                                          ...preset.config.colors,
+                                          [modeKey]: event.target.value as ShortFormCaptionAnimationColorMode,
+                                        },
+                                      },
+                                    }))}>
+                                      {CAPTION_ANIMATION_COLOR_MODE_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                      ))}
+                                    </Select>
+                                    {modeValue === 'custom' ? (
+                                      <Input value={customValue} onChange={(event) => updateSelectedAnimationPreset((preset) => ({
+                                        ...preset,
+                                        config: {
+                                          ...preset.config,
+                                          colors: {
+                                            ...preset.config.colors,
+                                            [colorKey]: event.target.value.toUpperCase(),
+                                          },
+                                        },
+                                      }))} className="font-mono text-xs" />
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            <div className="mt-4 space-y-4 rounded-lg border border-border bg-background/30 p-4">
+                              <div>
+                                <h5 className="text-sm font-medium text-foreground">Motion tracks</h5>
+                                <p className="mt-1 text-xs text-muted-foreground">Edit the actual keyframe graph used by preview and final render for the active word.</p>
+                              </div>
+                              <div className="grid gap-4 xl:grid-cols-2">
+                                {CAPTION_ANIMATION_TRACK_LABELS.map((trackMeta) => (
+                                  <AnimationPresetTrackEditor
+                                    key={trackMeta.key}
+                                    label={trackMeta.label}
+                                    helper={trackMeta.helper}
+                                    track={selectedAnimationPreset.config.motion[trackMeta.key]}
+                                    min={trackMeta.key === 'scale' ? 0.2 : trackMeta.key === 'translateXEm' || trackMeta.key === 'translateYEm' ? -4 : 0}
+                                    max={trackMeta.key === 'scale' ? 4 : trackMeta.key === 'translateXEm' || trackMeta.key === 'translateYEm' ? 4 : trackMeta.key === 'glowStrength' ? 2.5 : trackMeta.key === 'shadowOpacityMultiplier' ? 4 : trackMeta.key === 'extraOutlineWidth' ? 16 : 20}
+                                    step={trackMeta.key === 'extraOutlineWidth' || trackMeta.key === 'extraBlur' || trackMeta.key === 'glowStrength' || trackMeta.key === 'shadowOpacityMultiplier' ? 0.05 : 0.01}
+                                    onChange={(track) => updateSelectedAnimationPreset((preset) => ({
+                                      ...preset,
+                                      config: {
+                                        ...preset.config,
+                                        motion: {
+                                          ...preset.config.motion,
+                                          [trackMeta.key]: track,
+                                        },
+                                      },
+                                    }))}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="mt-4 rounded-lg border border-border bg-background/30 p-4">
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <h5 className="text-sm font-medium text-foreground">Advanced preset JSON</h5>
+                                  <p className="mt-1 text-xs text-muted-foreground">Full control over timing, easing, start/end values, motion tracks, and future-compatible fields.</p>
+                                </div>
+                                <Button type="button" variant="outline" size="sm" onClick={() => setAnimationPresetJsonDraft(formatAnimationPresetConfigJson(selectedAnimationPreset.config))}>Reset editor</Button>
+                              </div>
+                              <Textarea value={animationPresetJsonDraft} onChange={(event) => setAnimationPresetJsonDraft(event.target.value)} className="mt-3 min-h-[320px] font-mono text-xs" />
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    const parsed = parseAnimationPresetConfigJson(animationPresetJsonDraft, selectedAnimationPreset.config);
+                                    if (!parsed) {
+                                      updateSectionFeedbackState('caption-styles', { error: 'Animation preset JSON is invalid.', message: null });
+                                      return;
+                                    }
+                                    updateSelectedAnimationPreset((preset) => ({ ...preset, config: parsed }));
+                                  }}
+                                >
+                                  Apply JSON to preset
+                                </Button>
+                                <div className="text-xs text-muted-foreground">Structured controls above cover the common workflow. The JSON editor exposes the full keyframe graph and easing model.</div>
+                              </div>
+                            </div>
                           </div>
                         </div>
 
                         <div className="space-y-3">
                           <div>
                             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Animated preview</p>
-                            <p className="mt-1 text-xs text-muted-foreground">This simulates spoken/current/upcoming word states with the selected colors and weight. Stable Pop keeps fixed word slots, while Fluid Pop allows intra-line shifting without changing line breaks. Final render uses real forced-alignment timings during subtitle burn-in.</p>
+                            <p className="mt-1 text-xs text-muted-foreground">Preview now uses the linked preset config directly, including stable vs fluid layout, timing, color-source selection, and keyframed motion/glow/outline behavior.</p>
                           </div>
-                          <CaptionStylePreview style={selectedCaptionStyle} />
+                          <CaptionStylePreview style={{ ...selectedCaptionStyle, animationPreset: selectedCaptionStyleAnimationPreset }} />
+                          <div className="rounded-lg border border-border bg-background/40 p-3 text-xs text-muted-foreground">
+                            Editing <span className="font-medium text-foreground">{selectedCaptionStyle.name}</span> currently previews with preset <span className="font-medium text-foreground">{selectedCaptionStyleAnimationPreset.name}</span>.
+                          </div>
                         </div>
                       </div>
                     </div>

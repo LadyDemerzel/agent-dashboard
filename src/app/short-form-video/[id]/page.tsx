@@ -65,7 +65,8 @@ interface MusicOption {
 interface CaptionStyleOption {
   id: string;
   name: string;
-  animationPreset?: 'none' | 'stable-pop' | 'fluid-pop' | 'pulse' | 'glow';
+  animationPresetId?: string;
+  animationPreset?: string;
 }
 
 interface BackgroundVideoOption {

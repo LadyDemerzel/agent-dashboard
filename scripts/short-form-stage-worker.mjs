@@ -220,6 +220,134 @@ function createDefaultMusic() {
   };
 }
 
+const BUILT_IN_CAPTION_ANIMATION_PRESET_IDS = {
+  none: "caption-animation-none",
+  stablePop: "caption-animation-stable-pop",
+  fluidPop: "caption-animation-fluid-pop",
+  pulse: "caption-animation-pulse",
+  glow: "caption-animation-glow",
+};
+
+const DEFAULT_CAPTION_ANIMATION_PRESET_ID = BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.stablePop;
+
+function track(keyframes) {
+  return {
+    keyframes: keyframes.map(([time, value, easing]) => ({ time, value, ...(easing ? { easing } : {}) })),
+  };
+}
+
+function cloneTrack(trackConfig) {
+  return {
+    keyframes: Array.isArray(trackConfig?.keyframes) ? trackConfig.keyframes.map((frame) => ({ ...frame })) : [],
+  };
+}
+
+function cloneAnimationConfig(config) {
+  return {
+    version: 1,
+    layoutMode: config.layoutMode,
+    timing: { ...config.timing },
+    colors: { ...config.colors },
+    motion: {
+      scale: cloneTrack(config.motion.scale),
+      translateXEm: cloneTrack(config.motion.translateXEm),
+      translateYEm: cloneTrack(config.motion.translateYEm),
+      extraOutlineWidth: cloneTrack(config.motion.extraOutlineWidth),
+      extraBlur: cloneTrack(config.motion.extraBlur),
+      glowStrength: cloneTrack(config.motion.glowStrength),
+      shadowOpacityMultiplier: cloneTrack(config.motion.shadowOpacityMultiplier),
+    },
+  };
+}
+
+const BUILT_IN_CAPTION_ANIMATION_PRESET_CONFIGS = {
+  [BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.none]: {
+    version: 1,
+    layoutMode: "stable",
+    timing: { mode: "word-relative", multiplier: 1, minMs: 120, maxMs: 1000, fixedMs: 240 },
+    colors: { outlineColorMode: "style-outline", shadowColorMode: "style-shadow", glowColorMode: "style-active-word" },
+    motion: {
+      scale: track([[0, 1], [1, 1]]),
+      translateXEm: track([[0, 0], [1, 0]]),
+      translateYEm: track([[0, 0], [1, 0]]),
+      extraOutlineWidth: track([[0, 0], [1, 0]]),
+      extraBlur: track([[0, 0], [1, 0]]),
+      glowStrength: track([[0, 0], [1, 0]]),
+      shadowOpacityMultiplier: track([[0, 1], [1, 1]]),
+    },
+  },
+  [BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.stablePop]: {
+    version: 1,
+    layoutMode: "stable",
+    timing: { mode: "word-relative", multiplier: 1, minMs: 120, maxMs: 240, fixedMs: 240 },
+    colors: { outlineColorMode: "style-active-word", shadowColorMode: "style-active-word", glowColorMode: "style-active-word" },
+    motion: {
+      scale: track([[0, 1, "linear"], [0.16, 1.18, "ease-out-cubic"], [1, 1, "ease-out-cubic"]]),
+      translateXEm: track([[0, 0], [1, 0]]),
+      translateYEm: track([[0, 0, "linear"], [0.16, -0.11, "ease-out-cubic"], [1, 0, "ease-out-cubic"]]),
+      extraOutlineWidth: track([[0, 1.1], [0.5, 0.5, "ease-out-cubic"], [1, 0, "ease-out-cubic"]]),
+      extraBlur: track([[0, 1.8], [0.5, 1.1, "ease-out-cubic"], [1, 0.6, "ease-out-cubic"]]),
+      glowStrength: track([[0, 0.14], [0.35, 0.24, "ease-out-cubic"], [1, 0.06, "ease-out-cubic"]]),
+      shadowOpacityMultiplier: track([[0, 0.95], [0.45, 1.12, "ease-out-cubic"], [1, 0.88, "ease-out-cubic"]]),
+    },
+  },
+  [BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.fluidPop]: {
+    version: 1,
+    layoutMode: "fluid",
+    timing: { mode: "word-relative", multiplier: 1, minMs: 120, maxMs: 240, fixedMs: 240 },
+    colors: { outlineColorMode: "style-active-word", shadowColorMode: "style-active-word", glowColorMode: "style-active-word" },
+    motion: {
+      scale: track([[0, 1, "linear"], [0.16, 1.18, "ease-out-cubic"], [1, 1, "ease-out-cubic"]]),
+      translateXEm: track([[0, 0], [1, 0]]),
+      translateYEm: track([[0, 0, "linear"], [0.16, -0.11, "ease-out-cubic"], [1, 0, "ease-out-cubic"]]),
+      extraOutlineWidth: track([[0, 1.1], [0.5, 0.5, "ease-out-cubic"], [1, 0, "ease-out-cubic"]]),
+      extraBlur: track([[0, 1.8], [0.5, 1.1, "ease-out-cubic"], [1, 0.6, "ease-out-cubic"]]),
+      glowStrength: track([[0, 0.14], [0.35, 0.24, "ease-out-cubic"], [1, 0.06, "ease-out-cubic"]]),
+      shadowOpacityMultiplier: track([[0, 0.95], [0.45, 1.12, "ease-out-cubic"], [1, 0.88, "ease-out-cubic"]]),
+    },
+  },
+  [BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.pulse]: {
+    version: 1,
+    layoutMode: "stable",
+    timing: { mode: "word-relative", multiplier: 1, minMs: 180, maxMs: 320, fixedMs: 320 },
+    colors: { outlineColorMode: "style-outline", shadowColorMode: "style-shadow", glowColorMode: "style-active-word" },
+    motion: {
+      scale: track([[0, 1.03], [0.25, 1.08, "ease-out-quad"], [0.5, 1.03, "ease-in-out-cubic"], [0.75, 0.98, "ease-in-out-cubic"], [1, 1.03, "ease-in-out-cubic"]]),
+      translateXEm: track([[0, 0], [1, 0]]),
+      translateYEm: track([[0, -0.03], [1, -0.03]]),
+      extraOutlineWidth: track([[0, 0], [1, 0]]),
+      extraBlur: track([[0, 0.2], [0.5, 0.4, "ease-in-out-cubic"], [1, 0.2, "ease-in-out-cubic"]]),
+      glowStrength: track([[0, 0.18], [0.5, 0.36, "ease-in-out-cubic"], [1, 0.18, "ease-in-out-cubic"]]),
+      shadowOpacityMultiplier: track([[0, 1], [0.5, 1.16, "ease-in-out-cubic"], [1, 1, "ease-in-out-cubic"]]),
+    },
+  },
+  [BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.glow]: {
+    version: 1,
+    layoutMode: "stable",
+    timing: { mode: "word-relative", multiplier: 1, minMs: 160, maxMs: 300, fixedMs: 300 },
+    colors: { outlineColorMode: "style-active-word", shadowColorMode: "style-active-word", glowColorMode: "style-active-word" },
+    motion: {
+      scale: track([[0, 1.02], [0.5, 1.06, "ease-in-out-cubic"], [1, 1.02, "ease-in-out-cubic"]]),
+      translateXEm: track([[0, 0], [1, 0]]),
+      translateYEm: track([[0, -0.015], [1, -0.015]]),
+      extraOutlineWidth: track([[0, 0.5], [0.5, 0.85, "ease-in-out-cubic"], [1, 0.5, "ease-in-out-cubic"]]),
+      extraBlur: track([[0, 0.8], [0.5, 1.2, "ease-in-out-cubic"], [1, 0.8, "ease-in-out-cubic"]]),
+      glowStrength: track([[0, 0.55], [0.5, 0.9, "ease-in-out-cubic"], [1, 0.55, "ease-in-out-cubic"]]),
+      shadowOpacityMultiplier: track([[0, 1.15], [0.5, 1.35, "ease-in-out-cubic"], [1, 1.15, "ease-in-out-cubic"]]),
+    },
+  },
+};
+
+function createDefaultAnimationPresets() {
+  return [
+    { id: BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.none, slug: "none", name: "None", description: "Keep the 3-state word colors without added motion.", builtIn: true, config: cloneAnimationConfig(BUILT_IN_CAPTION_ANIMATION_PRESET_CONFIGS[BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.none]) },
+    { id: BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.stablePop, slug: "stable-pop", name: "Stable Pop", description: "Snappy pop animation with locked word slots so neighbors do not shift.", builtIn: true, config: cloneAnimationConfig(BUILT_IN_CAPTION_ANIMATION_PRESET_CONFIGS[BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.stablePop]) },
+    { id: BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.fluidPop, slug: "fluid-pop", name: "Fluid Pop", description: "The active word pops while neighboring words reflow within the locked line.", builtIn: true, config: cloneAnimationConfig(BUILT_IN_CAPTION_ANIMATION_PRESET_CONFIGS[BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.fluidPop]) },
+    { id: BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.pulse, slug: "pulse", name: "Pulse", description: "A softer rhythmic emphasis with gentle scale breathing and glow.", builtIn: true, config: cloneAnimationConfig(BUILT_IN_CAPTION_ANIMATION_PRESET_CONFIGS[BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.pulse]) },
+    { id: BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.glow, slug: "glow", name: "Glow", description: "A brighter active-word glow with a slightly stronger outline and shadow.", builtIn: true, config: cloneAnimationConfig(BUILT_IN_CAPTION_ANIMATION_PRESET_CONFIGS[BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.glow]) },
+  ];
+}
+
 function createDefaultCaptionStyles() {
   return [
     {
@@ -246,6 +374,7 @@ function createDefaultCaptionStyles() {
       backgroundOpacity: 0.45,
       backgroundPadding: 20,
       backgroundRadius: 24,
+      animationPresetId: DEFAULT_CAPTION_ANIMATION_PRESET_ID,
       animationPreset: "stable-pop",
     },
     {
@@ -272,6 +401,7 @@ function createDefaultCaptionStyles() {
       backgroundOpacity: 0.62,
       backgroundPadding: 24,
       backgroundRadius: 28,
+      animationPresetId: BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.pulse,
       animationPreset: "pulse",
     },
     {
@@ -298,6 +428,7 @@ function createDefaultCaptionStyles() {
       backgroundOpacity: 0.4,
       backgroundPadding: 20,
       backgroundRadius: 24,
+      animationPresetId: BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.glow,
       animationPreset: "glow",
     },
   ];
@@ -418,11 +549,150 @@ function normalizeCaptionAnimationPreset(value, fallback = "stable-pop") {
   return value === "none" || value === "stable-pop" || value === "fluid-pop" || value === "pulse" || value === "glow" ? value : fallback;
 }
 
+function mapLegacyCaptionAnimationPresetToId(value, fallback = DEFAULT_CAPTION_ANIMATION_PRESET_ID) {
+  const preset = normalizeCaptionAnimationPreset(value, "stable-pop");
+  if (preset === "none") return BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.none;
+  if (preset === "fluid-pop") return BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.fluidPop;
+  if (preset === "pulse") return BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.pulse;
+  if (preset === "glow") return BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.glow;
+  return BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.stablePop || fallback;
+}
+
+function normalizeAnimationLayoutMode(value, fallback = "stable") {
+  return value === "fluid" || value === "stable" ? value : fallback;
+}
+
+function normalizeAnimationTimingMode(value, fallback = "word-relative") {
+  return value === "fixed" || value === "word-relative" ? value : fallback;
+}
+
+function normalizeAnimationColorMode(value, fallback = "style-active-word") {
+  return value === "style-active-word" || value === "style-outline" || value === "style-shadow" || value === "custom" ? value : fallback;
+}
+
+function normalizeAnimationEasing(value, fallback = "linear") {
+  return value === "linear" || value === "ease-in-quad" || value === "ease-out-quad" || value === "ease-in-out-quad" || value === "ease-out-cubic" || value === "ease-in-out-cubic" || value === "ease-out-back"
+    ? value
+    : fallback;
+}
+
+function normalizeAnimationNumber(value, fallback, min, max, decimals = 4) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Number(Math.min(max, Math.max(min, parsed)).toFixed(decimals));
+}
+
+function normalizeAnimationInteger(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(parsed)));
+}
+
+function normalizeAnimationTrack(value, fallback, min, max, decimals = 4) {
+  const frames = Array.isArray(value?.keyframes)
+    ? value.keyframes
+    : Array.isArray(value)
+      ? value
+      : [];
+  const normalized = frames
+    .flatMap((frame, index) => {
+      if (!frame || typeof frame !== "object" || Array.isArray(frame)) return [];
+      const fallbackFrame = fallback.keyframes[Math.min(index, fallback.keyframes.length - 1)] || fallback.keyframes[0];
+      return [{
+        time: normalizeAnimationNumber(frame.time, index === 0 ? 0 : 1, 0, 1, 4),
+        value: normalizeAnimationNumber(frame.value, fallbackFrame?.value ?? 0, min, max, decimals),
+        easing: normalizeAnimationEasing(frame.easing, fallbackFrame?.easing || "linear"),
+      }];
+    })
+    .sort((a, b) => a.time - b.time || a.value - b.value);
+
+  if (normalized.length === 0) return cloneTrack(fallback);
+  if (normalized[0].time > 0) normalized.unshift({ ...normalized[0], time: 0 });
+  if (normalized[normalized.length - 1].time < 1) normalized.push({ ...normalized[normalized.length - 1], time: 1 });
+  return { keyframes: normalized };
+}
+
+function normalizeAnimationConfig(value, fallback) {
+  const safeFallback = fallback || BUILT_IN_CAPTION_ANIMATION_PRESET_CONFIGS[DEFAULT_CAPTION_ANIMATION_PRESET_ID];
+  const obj = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const timing = obj.timing && typeof obj.timing === "object" && !Array.isArray(obj.timing) ? obj.timing : {};
+  const colors = obj.colors && typeof obj.colors === "object" && !Array.isArray(obj.colors) ? obj.colors : {};
+  const motion = obj.motion && typeof obj.motion === "object" && !Array.isArray(obj.motion) ? obj.motion : {};
+  return {
+    version: 1,
+    layoutMode: normalizeAnimationLayoutMode(obj.layoutMode, safeFallback.layoutMode),
+    timing: {
+      mode: normalizeAnimationTimingMode(timing.mode, safeFallback.timing.mode),
+      multiplier: normalizeAnimationNumber(timing.multiplier, safeFallback.timing.multiplier, 0.1, 4, 3),
+      minMs: normalizeAnimationInteger(timing.minMs, safeFallback.timing.minMs, 40, 2000),
+      maxMs: normalizeAnimationInteger(timing.maxMs, safeFallback.timing.maxMs, 40, 2000),
+      fixedMs: normalizeAnimationInteger(timing.fixedMs, safeFallback.timing.fixedMs, 40, 2000),
+    },
+    colors: {
+      outlineColorMode: normalizeAnimationColorMode(colors.outlineColorMode, safeFallback.colors.outlineColorMode),
+      ...(normalizeHexColor(colors.outlineColor, "") ? { outlineColor: normalizeHexColor(colors.outlineColor, "") } : normalizeHexColor(safeFallback.colors.outlineColor, "") ? { outlineColor: normalizeHexColor(safeFallback.colors.outlineColor, "") } : {}),
+      shadowColorMode: normalizeAnimationColorMode(colors.shadowColorMode, safeFallback.colors.shadowColorMode),
+      ...(normalizeHexColor(colors.shadowColor, "") ? { shadowColor: normalizeHexColor(colors.shadowColor, "") } : normalizeHexColor(safeFallback.colors.shadowColor, "") ? { shadowColor: normalizeHexColor(safeFallback.colors.shadowColor, "") } : {}),
+      glowColorMode: normalizeAnimationColorMode(colors.glowColorMode, safeFallback.colors.glowColorMode),
+      ...(normalizeHexColor(colors.glowColor, "") ? { glowColor: normalizeHexColor(colors.glowColor, "") } : normalizeHexColor(safeFallback.colors.glowColor, "") ? { glowColor: normalizeHexColor(safeFallback.colors.glowColor, "") } : {}),
+    },
+    motion: {
+      scale: normalizeAnimationTrack(motion.scale, safeFallback.motion.scale, 0.2, 4, 4),
+      translateXEm: normalizeAnimationTrack(motion.translateXEm, safeFallback.motion.translateXEm, -4, 4, 4),
+      translateYEm: normalizeAnimationTrack(motion.translateYEm, safeFallback.motion.translateYEm, -4, 4, 4),
+      extraOutlineWidth: normalizeAnimationTrack(motion.extraOutlineWidth, safeFallback.motion.extraOutlineWidth, 0, 16, 4),
+      extraBlur: normalizeAnimationTrack(motion.extraBlur, safeFallback.motion.extraBlur, 0, 20, 4),
+      glowStrength: normalizeAnimationTrack(motion.glowStrength, safeFallback.motion.glowStrength, 0, 2.5, 4),
+      shadowOpacityMultiplier: normalizeAnimationTrack(motion.shadowOpacityMultiplier, safeFallback.motion.shadowOpacityMultiplier, 0, 4, 4),
+    },
+  };
+}
+
+function normalizeAnimationPresetEntry(value, fallback, index) {
+  const obj = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    id: normalizeString(obj.id, fallback.id || `caption-animation-${index + 1}`),
+    slug: normalizeString(obj.slug, fallback.slug || "stable-pop"),
+    name: normalizeString(obj.name, fallback.name || `Caption animation ${index + 1}`),
+    description: normalizeString(obj.description, fallback.description || ""),
+    builtIn: typeof obj.builtIn === "boolean" ? obj.builtIn : Boolean(fallback.builtIn),
+    config: normalizeAnimationConfig(obj.config, fallback.config),
+  };
+}
+
+function ensureUniqueAnimationPresetIds(presets) {
+  const used = new Set();
+  return presets.map((preset, index) => {
+    let candidate = normalizeString(preset.id, `caption-animation-${index + 1}`);
+    if (!candidate) candidate = `caption-animation-${index + 1}`;
+    if (!used.has(candidate)) {
+      used.add(candidate);
+      return preset;
+    }
+    let suffix = 2;
+    while (used.has(`${candidate}-${suffix}`)) suffix += 1;
+    const nextId = `${candidate}-${suffix}`;
+    used.add(nextId);
+    return { ...preset, id: nextId };
+  });
+}
+
+function getAnimationPresetById(presets, id, fallbackId = DEFAULT_CAPTION_ANIMATION_PRESET_ID) {
+  if (id) {
+    const direct = presets.find((preset) => preset.id === id);
+    if (direct) return direct;
+  }
+  return presets.find((preset) => preset.id === fallbackId)
+    || presets.find((preset) => preset.slug === "stable-pop")
+    || presets[0]
+    || createDefaultAnimationPresets()[0];
+}
+
 function normalizeFontPath(value) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function normalizeCaptionStyleEntry(value, fallback, index) {
+function normalizeCaptionStyleEntry(value, fallback, index, animationPresets = createDefaultAnimationPresets()) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const fontPath = normalizeFontPath(value.fontPath);
   const backgroundEnabled = typeof value.backgroundEnabled === "boolean"
@@ -430,6 +700,11 @@ function normalizeCaptionStyleEntry(value, fallback, index) {
     : Boolean(value.backgroundBoxEnabled);
   const rawFontFamily = normalizeString(value.fontFamily, fallback.fontFamily || "Arial");
   const shadowStrength = clampShadowStrength(value.shadowStrength, fallback.shadowStrength);
+  const requestedAnimationPresetId = normalizeString(
+    value.animationPresetId,
+    mapLegacyCaptionAnimationPresetToId(value.animationPreset, fallback.animationPresetId || DEFAULT_CAPTION_ANIMATION_PRESET_ID),
+  );
+  const resolvedAnimationPreset = getAnimationPresetById(animationPresets, requestedAnimationPresetId, fallback.animationPresetId || DEFAULT_CAPTION_ANIMATION_PRESET_ID);
   const normalized = {
     id: normalizeString(value.id, fallback.id || `caption-style-${index + 1}`),
     name: normalizeString(value.name, fallback.name || `Caption style ${index + 1}`),
@@ -457,7 +732,8 @@ function normalizeCaptionStyleEntry(value, fallback, index) {
     backgroundOpacity: clampUnitInterval(value.backgroundOpacity, fallback.backgroundOpacity),
     backgroundPadding: clampCaptionBackgroundPadding(value.backgroundPadding, fallback.backgroundPadding ?? 20),
     backgroundRadius: clampCaptionBackgroundRadius(value.backgroundRadius, fallback.backgroundRadius ?? 24),
-    animationPreset: normalizeCaptionAnimationPreset(value.animationPreset, fallback.animationPreset),
+    animationPresetId: resolvedAnimationPreset.id,
+    animationPreset: resolvedAnimationPreset.slug,
     ...(fontPath ? { fontPath } : {}),
   };
   if (!normalized.id || !normalized.name || !normalized.fontFamily) return null;
@@ -543,6 +819,7 @@ function migrateLegacyQwenVoice(parsed) {
     musicVolume: Number(DEFAULT_MUSIC_VOLUME),
     musicTracks: [music],
     defaultCaptionStyleId: DEFAULT_CAPTION_STYLE_ID,
+    animationPresets: createDefaultAnimationPresets(),
     captionStyles: createDefaultCaptionStyles(),
   };
 }
@@ -550,6 +827,7 @@ function migrateLegacyQwenVoice(parsed) {
 function readVideoRenderSettings() {
   const defaultVoice = createDefaultVoice();
   const defaultMusic = createDefaultMusic();
+  const defaultAnimationPresets = createDefaultAnimationPresets();
   const defaultCaptionStyles = createDefaultCaptionStyles();
   const defaultSettings = {
     defaultVoiceId: defaultVoice.id,
@@ -558,6 +836,7 @@ function readVideoRenderSettings() {
     musicVolume: Number(DEFAULT_MUSIC_VOLUME),
     musicTracks: [defaultMusic],
     defaultCaptionStyleId: defaultCaptionStyles[0].id,
+    animationPresets: defaultAnimationPresets,
     captionStyles: defaultCaptionStyles,
   };
 
@@ -592,10 +871,18 @@ function readVideoRenderSettings() {
       ? Math.min(1, Math.max(0, Number(parsed.musicVolume)))
       : Number(DEFAULT_MUSIC_VOLUME);
 
+    const rawAnimationPresets = Array.isArray(parsed?.animationPresets) ? parsed.animationPresets : [];
+    const animationPresets = ensureUniqueAnimationPresetIds(
+      rawAnimationPresets
+        .map((preset, index) => normalizeAnimationPresetEntry(preset, defaultAnimationPresets[index] || defaultAnimationPresets[0], index))
+        .filter(Boolean)
+    );
+    const normalizedAnimationPresets = animationPresets.length > 0 ? animationPresets : defaultAnimationPresets;
+
     const rawCaptionStyles = Array.isArray(parsed?.captionStyles) ? parsed.captionStyles : [];
     const normalizedCaptionStyles = ensureUniqueCaptionStyleIds(
       rawCaptionStyles
-        .map((style, index) => normalizeCaptionStyleEntry(style, defaultCaptionStyles[index] || defaultCaptionStyles[0], index))
+        .map((style, index) => normalizeCaptionStyleEntry(style, defaultCaptionStyles[index] || defaultCaptionStyles[0], index, normalizedAnimationPresets))
         .filter(Boolean)
     );
     const captionStyles = normalizedCaptionStyles.length > 0 ? normalizedCaptionStyles : defaultCaptionStyles;
@@ -612,6 +899,7 @@ function readVideoRenderSettings() {
       defaultCaptionStyleId: captionStyles.some((style) => style.id === defaultCaptionStyleId)
         ? defaultCaptionStyleId
         : captionStyles[0].id,
+      animationPresets: normalizedAnimationPresets,
       captionStyles,
     };
   } catch {
@@ -654,14 +942,35 @@ function resolveCaptionStyleSelection(preferredCaptionStyleId) {
   const settings = readVideoRenderSettings();
   const projectStyle = preferredCaptionStyleId ? settings.captionStyles.find((style) => style.id === preferredCaptionStyleId) : undefined;
   if (projectStyle) {
-    return { style: projectStyle, resolvedCaptionStyleId: projectStyle.id, source: "project" };
+    const animationPreset = getAnimationPresetById(settings.animationPresets, projectStyle.animationPresetId);
+    return {
+      style: { ...projectStyle, animationPresetId: animationPreset.id, animationPreset: animationPreset.slug },
+      animationPreset,
+      resolvedAnimationPresetId: animationPreset.id,
+      resolvedCaptionStyleId: projectStyle.id,
+      source: "project",
+    };
   }
   const defaultStyle = settings.captionStyles.find((style) => style.id === settings.defaultCaptionStyleId);
   if (defaultStyle) {
-    return { style: defaultStyle, resolvedCaptionStyleId: defaultStyle.id, source: "default" };
+    const animationPreset = getAnimationPresetById(settings.animationPresets, defaultStyle.animationPresetId);
+    return {
+      style: { ...defaultStyle, animationPresetId: animationPreset.id, animationPreset: animationPreset.slug },
+      animationPreset,
+      resolvedAnimationPresetId: animationPreset.id,
+      resolvedCaptionStyleId: defaultStyle.id,
+      source: "default",
+    };
   }
   const fallbackStyle = settings.captionStyles[0] || createDefaultCaptionStyles()[0];
-  return { style: fallbackStyle, resolvedCaptionStyleId: fallbackStyle.id, source: "fallback" };
+  const animationPreset = getAnimationPresetById(settings.animationPresets, fallbackStyle.animationPresetId);
+  return {
+    style: { ...fallbackStyle, animationPresetId: animationPreset.id, animationPreset: animationPreset.slug },
+    animationPreset,
+    resolvedAnimationPresetId: animationPreset.id,
+    resolvedCaptionStyleId: fallbackStyle.id,
+    source: "fallback",
+  };
 }
 
 function writeJson(filePath, value) {
@@ -2134,6 +2443,9 @@ function renderAnimatedCaptionOverlays({ captionTimeline, videoWorkDir, captionS
   const outputDir = path.join(videoWorkDir, "caption-overlays-animated");
   ensureDir(outputDir);
   const style = captionStyleSelection.style;
+  const animationPreset = captionStyleSelection.animationPreset && captionStyleSelection.animationPreset.config
+    ? captionStyleSelection.animationPreset
+    : null;
   const timelinePath = path.join(outputDir, "timeline.json");
   fs.writeFileSync(timelinePath, JSON.stringify({ captions: captionTimeline }, null, 2), "utf-8");
 
@@ -2189,7 +2501,8 @@ function renderAnimatedCaptionOverlays({ captionTimeline, videoWorkDir, captionS
     "--background-radius",
     String(style.backgroundRadius),
     "--animation-preset",
-    String(style.animationPreset || "stable-pop"),
+    String(animationPreset?.slug || style.animationPreset || "stable-pop"),
+    ...(animationPreset ? ["--animation-config-json", JSON.stringify(animationPreset.config)] : []),
     "--fps",
     String(fps || 30),
     ...(style.backgroundEnabled ? ["--background-enabled"] : []),
@@ -2419,14 +2732,11 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
   fs.writeFileSync(assPath, buildAnimatedCaptionAssContent(timeline, captionStyleSelection.style), "utf-8");
 
   const overlayFps = getMediaFrameRate(baseVideoPath);
-  const overlayOnlyPreset = captionStyleSelection.style.animationPreset === "stable-pop"
-    ? "stable-pop"
-    : captionStyleSelection.style.animationPreset === "fluid-pop"
-      ? "fluid-pop"
-      : null;
+  const overlayPresetSlug = captionStyleSelection.animationPreset?.slug || captionStyleSelection.style.animationPreset || "stable-pop";
+  const usesConfigDrivenPreset = Boolean(captionStyleSelection.animationPreset?.config);
   const requiresStableWordSpacingOverlay = Math.abs(Number(captionStyleSelection.style.wordSpacing) || 0) > 0.01;
 
-  if (overlayOnlyPreset || requiresStableWordSpacingOverlay) {
+  if (usesConfigDrivenPreset || requiresStableWordSpacingOverlay) {
     const overlayManifest = renderAnimatedCaptionOverlays({
       captionTimeline: timeline,
       videoWorkDir,
@@ -2438,12 +2748,12 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
       baseVideoPath,
       finalVideoPath,
       overlayManifest,
-      outputPrefix: overlayOnlyPreset ? `final-with-${overlayOnlyPreset}-overlay-captions` : "final-with-word-spacing-overlay-captions",
+      outputPrefix: usesConfigDrivenPreset ? `final-with-${overlayPresetSlug}-config-overlay-captions` : "final-with-word-spacing-overlay-captions",
     });
 
     return {
       mode: "animated-image-overlay-v1",
-      requestedMode: overlayOnlyPreset ? `${overlayOnlyPreset}-overlay-v1` : "word-spacing-overlay-v1",
+      requestedMode: usesConfigDrivenPreset ? `${overlayPresetSlug}-config-overlay-v1` : "word-spacing-overlay-v1",
       assPath,
       timeline,
       baseVideoPath,
@@ -2452,11 +2762,9 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
       overlayVideoPath: overlayTrack.overlayTrackPath,
       overlayConcatPath: overlayTrack.concatPath,
       renderer: "pillow-word-highlight-v1",
-      fallbackReason: overlayOnlyPreset === "stable-pop"
-        ? "Stable Pop captions now intentionally use the animated overlay renderer because ASS/libass cannot deliver a true per-word grow effect without shifting neighboring glyph layout; the overlay path preserves fixed word slots while visibly scaling the active word."
-        : overlayOnlyPreset === "fluid-pop"
-          ? "Fluid Pop captions now intentionally use the animated overlay renderer because ASS/libass cannot keep line breaks locked while letting neighboring words shift with the active word. The overlay path fixes line membership first, then reflows word positions only within each locked line."
-          : "Non-zero caption word spacing now uses the animated overlay renderer because ASS/libass cannot tighten or widen inter-word gaps independently without compromising glyph spacing; the overlay path applies the exact saved word spacing while preserving fixed word slots.",
+      fallbackReason: usesConfigDrivenPreset
+        ? `Caption preset ${captionStyleSelection.animationPreset?.name || overlayPresetSlug} now renders through the animated overlay renderer so the saved config-driven timing, easing, motion tracks, layout mode, and color-source settings are applied during final render.`
+        : "Non-zero caption word spacing now uses the animated overlay renderer because ASS/libass cannot tighten or widen inter-word gaps independently without compromising glyph spacing; the overlay path applies the exact saved word spacing while preserving fixed word slots.",
     };
   }
 
@@ -2560,6 +2868,8 @@ function updateVideoManifestCaptionRendering(projectId, config, captionStyleSele
     captionStyleName: captionStyleSelection.style.name,
     captionStyleSource: captionStyleSelection.source,
     animationPreset: captionStyleSelection.style.animationPreset,
+    animationPresetId: captionStyleSelection.resolvedAnimationPresetId || captionStyleSelection.style.animationPresetId,
+    ...(captionStyleSelection.animationPreset?.name ? { animationPresetName: captionStyleSelection.animationPreset.name } : {}),
     fontWeight: captionStyleSelection.style.fontWeight,
     wordSpacing: captionStyleSelection.style.wordSpacing,
     assRelativePath: toProjectRelativePath(projectId, captionRender.assPath),
@@ -2629,7 +2939,7 @@ function buildVideoReviewDoc(projectId, config, selectedVoice = createDefaultVoi
         : `legacy custom voice \`${selectedVoice.name}\` / speaker \`${selectedVoice.speaker || DEFAULT_VOICE_SPEAKER}\``}`,
     `- Voice prompt: ${selectedVoice.sourceType === "uploaded-reference" ? "Uses the saved uploaded reference clip for voice-clone narration." : selectedVoice.voiceDesignPrompt}`,
     `- Looping background video: ${config.backgroundVideoName ? `\`${config.backgroundVideoName}\`` : "Not configured"}`,
-    `- Caption style: ${captionStyleSelection?.style?.name ? `\`${captionStyleSelection.style.name}\` (${captionStyleSelection.style.animationPreset})` : config.captionStyleName ? `\`${config.captionStyleName}\`` : "Default/fallback"}`,
+    `- Caption style: ${captionStyleSelection?.style?.name ? `\`${captionStyleSelection.style.name}\` (${captionStyleSelection.animationPreset?.name || captionStyleSelection.style.animationPreset || captionStyleSelection.style.animationPresetId || "animation preset"})` : config.captionStyleName ? `\`${config.captionStyleName}\`` : "Default/fallback"}`,
     `- Music path: ${selectedMusic?.generatedAudioRelativePath ? `\`${selectedMusic.generatedAudioRelativePath}\`` : "Not configured"}`,
   ].join("\n");
 }
@@ -2809,22 +3119,29 @@ function runDirectVideo(job) {
 
   const projectMeta = readProjectMeta(job.projectId) || {};
   const selectedMusic = resolveMusicSelection(projectMeta.selectedMusicId);
+  const videoRenderSettings = readVideoRenderSettings();
   const defaultCaptionStyles = createDefaultCaptionStyles();
   const configuredCaptionStyle = config.captionStyle
     ? normalizeCaptionStyleEntry(
         config.captionStyle,
         defaultCaptionStyles.find((style) => style.id === config.captionStyleId) || defaultCaptionStyles[0],
         0,
+        videoRenderSettings.animationPresets,
       )
     : null;
   const captionStyleSelection = configuredCaptionStyle
-    ? {
-        style: configuredCaptionStyle,
-        resolvedCaptionStyleId: normalizeString(config.captionStyleId, configuredCaptionStyle.id),
-        source: config.captionStyleSource === "project" || config.captionStyleSource === "default" || config.captionStyleSource === "fallback"
-          ? config.captionStyleSource
-          : "fallback",
-      }
+    ? (() => {
+        const animationPreset = getAnimationPresetById(videoRenderSettings.animationPresets, configuredCaptionStyle.animationPresetId);
+        return {
+          style: { ...configuredCaptionStyle, animationPresetId: animationPreset.id, animationPreset: animationPreset.slug },
+          animationPreset,
+          resolvedAnimationPresetId: animationPreset.id,
+          resolvedCaptionStyleId: normalizeString(config.captionStyleId, configuredCaptionStyle.id),
+          source: config.captionStyleSource === "project" || config.captionStyleSource === "default" || config.captionStyleSource === "fallback"
+            ? config.captionStyleSource
+            : "fallback",
+        };
+      })()
     : resolveCaptionStyleSelection(projectMeta.selectedCaptionStyleId);
   if (!config.backgroundVideoPath) {
     throw new Error("Missing background video selection for final-video generation. Configure a background video in short-form settings and select one on the project before rendering.");

@@ -1,5 +1,15 @@
 import fs from "fs";
 import path from "path";
+import {
+  BUILT_IN_CAPTION_ANIMATION_PRESET_IDS,
+  DEFAULT_CAPTION_ANIMATION_PRESET_ID,
+  DEFAULT_SHORT_FORM_CAPTION_ANIMATION_PRESETS,
+  ensureUniqueCaptionAnimationPresetIds,
+  getCaptionAnimationPresetById,
+  mapLegacyCaptionAnimationPresetToId,
+  normalizeCaptionAnimationPresetEntry,
+  type ShortFormCaptionAnimationPresetEntry,
+} from "@/lib/short-form-caption-animation";
 
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
 const SHORT_FORM_VIDEOS_DIR = path.join(
@@ -13,7 +23,6 @@ const SHORT_FORM_VIDEOS_DIR = path.join(
 
 export type ShortFormQwenVoiceMode = "voice-design" | "custom-voice";
 export type ShortFormVoiceSourceType = "generated" | "uploaded-reference";
-export type ShortFormCaptionAnimationPreset = "none" | "stable-pop" | "fluid-pop" | "pulse" | "glow";
 
 export interface ShortFormVoiceLibraryEntry {
   id: string;
@@ -73,7 +82,8 @@ export interface ShortFormCaptionStyleEntry {
   backgroundOpacity: number;
   backgroundPadding: number;
   backgroundRadius: number;
-  animationPreset: ShortFormCaptionAnimationPreset;
+  animationPresetId: string;
+  animationPreset?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -92,6 +102,8 @@ export interface ShortFormResolvedMusicSelection {
 
 export interface ShortFormResolvedCaptionStyleSelection {
   captionStyle: ShortFormCaptionStyleEntry;
+  animationPreset: ShortFormCaptionAnimationPresetEntry;
+  resolvedAnimationPresetId: string;
   resolvedCaptionStyleId: string;
   source: "project" | "default" | "fallback";
 }
@@ -108,6 +120,7 @@ export interface ShortFormVideoRenderSettings {
   musicVolume: number;
   musicTracks: ShortFormMusicLibraryEntry[];
   defaultCaptionStyleId: string;
+  animationPresets: ShortFormCaptionAnimationPresetEntry[];
   captionStyles: ShortFormCaptionStyleEntry[];
   captionMaxWords: number;
   pauseRemoval: ShortFormPauseRemovalSettings;
@@ -192,7 +205,7 @@ export const DEFAULT_SHORT_FORM_CAPTION_STYLES: ShortFormCaptionStyleEntry[] = [
     backgroundOpacity: 0.45,
     backgroundPadding: 20,
     backgroundRadius: 24,
-    animationPreset: "stable-pop",
+    animationPresetId: DEFAULT_CAPTION_ANIMATION_PRESET_ID,
     createdAt: "2026-04-16T00:00:00.000Z",
     updatedAt: "2026-04-16T00:00:00.000Z",
   },
@@ -220,7 +233,7 @@ export const DEFAULT_SHORT_FORM_CAPTION_STYLES: ShortFormCaptionStyleEntry[] = [
     backgroundOpacity: 0.62,
     backgroundPadding: 24,
     backgroundRadius: 28,
-    animationPreset: "pulse",
+    animationPresetId: BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.pulse,
     createdAt: "2026-04-16T00:00:00.000Z",
     updatedAt: "2026-04-16T00:00:00.000Z",
   },
@@ -248,7 +261,7 @@ export const DEFAULT_SHORT_FORM_CAPTION_STYLES: ShortFormCaptionStyleEntry[] = [
     backgroundOpacity: 0.4,
     backgroundPadding: 20,
     backgroundRadius: 24,
-    animationPreset: "glow",
+    animationPresetId: BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.glow,
     createdAt: "2026-04-16T00:00:00.000Z",
     updatedAt: "2026-04-16T00:00:00.000Z",
   },
@@ -263,6 +276,7 @@ const DEFAULT_SETTINGS: ShortFormVideoRenderSettings = {
   musicVolume: DEFAULT_MUSIC_VOLUME,
   musicTracks: [DEFAULT_SHORT_FORM_MUSIC],
   defaultCaptionStyleId: DEFAULT_SHORT_FORM_CAPTION_STYLE.id,
+  animationPresets: DEFAULT_SHORT_FORM_CAPTION_ANIMATION_PRESETS,
   captionStyles: DEFAULT_SHORT_FORM_CAPTION_STYLES,
   captionMaxWords: DEFAULT_CAPTION_MAX_WORDS,
   pauseRemoval: DEFAULT_SHORT_FORM_PAUSE_REMOVAL_SETTINGS,
@@ -289,12 +303,23 @@ function buildUploadedReferenceFallbackPrompt(name: string) {
   return `Use the uploaded reference clip for the saved voice \"${normalizedName}\" when cloning narration.`;
 }
 
-function normalizeCaptionAnimationPreset(
-  value: unknown,
-  fallback: ShortFormCaptionAnimationPreset = DEFAULT_SHORT_FORM_CAPTION_STYLE.animationPreset
-): ShortFormCaptionAnimationPreset {
-  if (value === "word-highlight" || value === "pop") return "stable-pop";
-  return value === "none" || value === "stable-pop" || value === "fluid-pop" || value === "pulse" || value === "glow" ? value : fallback;
+function normalizeCaptionAnimationPresetId(value: unknown, fallback: string = DEFAULT_CAPTION_ANIMATION_PRESET_ID) {
+  const normalized = normalizeString(value, fallback);
+  return normalized || fallback;
+}
+
+function normalizeCaptionAnimationPresets(value: unknown) {
+  const rawPresets = Array.isArray(value) ? value : [];
+  const normalized = rawPresets
+    .map((preset, index) => normalizeCaptionAnimationPresetEntry(
+      preset,
+      DEFAULT_SHORT_FORM_CAPTION_ANIMATION_PRESETS[index] || DEFAULT_SHORT_FORM_CAPTION_ANIMATION_PRESETS[0],
+      index,
+    ))
+    .filter((preset): preset is ShortFormCaptionAnimationPresetEntry => Boolean(preset));
+  return ensureUniqueCaptionAnimationPresetIds(
+    normalized.length > 0 ? normalized : DEFAULT_SHORT_FORM_CAPTION_ANIMATION_PRESETS,
+  );
 }
 
 function normalizeHexColor(value: unknown, fallback: string) {
@@ -702,7 +727,8 @@ function normalizeMusicEntry(value: unknown, fallback: ShortFormMusicLibraryEntr
 function normalizeCaptionStyleEntry(
   value: unknown,
   fallback: ShortFormCaptionStyleEntry,
-  index: number
+  index: number,
+  animationPresets: ShortFormCaptionAnimationPresetEntry[]
 ): ShortFormCaptionStyleEntry | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -747,10 +773,22 @@ function normalizeCaptionStyleEntry(
     backgroundOpacity: clampCaptionBackgroundOpacity(obj.backgroundOpacity, fallback.backgroundOpacity),
     backgroundPadding: clampCaptionBackgroundPadding(obj.backgroundPadding, fallback.backgroundPadding),
     backgroundRadius: clampCaptionBackgroundRadius(obj.backgroundRadius, fallback.backgroundRadius),
-    animationPreset: normalizeCaptionAnimationPreset(obj.animationPreset, fallback.animationPreset),
+    animationPresetId: normalizeCaptionAnimationPresetId(
+      obj.animationPresetId,
+      mapLegacyCaptionAnimationPresetToId(obj.animationPreset, fallback.animationPresetId || DEFAULT_CAPTION_ANIMATION_PRESET_ID),
+    ),
+    ...(normalizeString(obj.animationPreset) ? { animationPreset: normalizeString(obj.animationPreset) } : {}),
     ...(normalizeString(obj.createdAt) ? { createdAt: normalizeString(obj.createdAt) } : {}),
     ...(normalizeString(obj.updatedAt) ? { updatedAt: normalizeString(obj.updatedAt) } : {}),
   };
+
+  const resolvedAnimationPreset = getCaptionAnimationPresetById(
+    animationPresets,
+    normalized.animationPresetId,
+    fallback.animationPresetId || DEFAULT_CAPTION_ANIMATION_PRESET_ID,
+  );
+  normalized.animationPresetId = resolvedAnimationPreset.id;
+  normalized.animationPreset = resolvedAnimationPreset.slug;
 
   if (!normalized.id || !normalized.name || !normalized.fontFamily) {
     return null;
@@ -791,6 +829,7 @@ function migrateLegacyQwenVoice(value: unknown): ShortFormVideoRenderSettings | 
     musicVolume: DEFAULT_MUSIC_VOLUME,
     musicTracks: [DEFAULT_SHORT_FORM_MUSIC],
     defaultCaptionStyleId: DEFAULT_SHORT_FORM_CAPTION_STYLE.id,
+    animationPresets: DEFAULT_SHORT_FORM_CAPTION_ANIMATION_PRESETS,
     captionStyles: DEFAULT_SHORT_FORM_CAPTION_STYLES,
     captionMaxWords: DEFAULT_CAPTION_MAX_WORDS,
     pauseRemoval: DEFAULT_SHORT_FORM_PAUSE_REMOVAL_SETTINGS,
@@ -824,9 +863,11 @@ function normalizeSettings(value: unknown): ShortFormVideoRenderSettings {
     ? defaultMusicTrackId
     : musicTracks[0]?.id;
 
+  const animationPresets = normalizeCaptionAnimationPresets(obj.animationPresets);
+
   const rawCaptionStyles = Array.isArray(obj.captionStyles) ? obj.captionStyles : [];
   const normalizedCaptionStyles = rawCaptionStyles
-    .map((style, index) => normalizeCaptionStyleEntry(style, DEFAULT_SHORT_FORM_CAPTION_STYLES[index] || DEFAULT_SHORT_FORM_CAPTION_STYLE, index))
+    .map((style, index) => normalizeCaptionStyleEntry(style, DEFAULT_SHORT_FORM_CAPTION_STYLES[index] || DEFAULT_SHORT_FORM_CAPTION_STYLE, index, animationPresets))
     .filter((style): style is ShortFormCaptionStyleEntry => Boolean(style));
   const captionStyles = ensureUniqueCaptionStyleIds(normalizedCaptionStyles.length > 0 ? normalizedCaptionStyles : DEFAULT_SHORT_FORM_CAPTION_STYLES);
   const defaultCaptionStyleId = normalizeString(obj.defaultCaptionStyleId, captionStyles[0]?.id || DEFAULT_SHORT_FORM_CAPTION_STYLE.id);
@@ -841,6 +882,7 @@ function normalizeSettings(value: unknown): ShortFormVideoRenderSettings {
     musicVolume: clampMusicVolume(obj.musicVolume, DEFAULT_MUSIC_VOLUME),
     musicTracks,
     defaultCaptionStyleId: resolvedDefaultCaptionStyleId,
+    animationPresets,
     captionStyles,
     captionMaxWords: clampCaptionMaxWords(obj.captionMaxWords, DEFAULT_CAPTION_MAX_WORDS),
     pauseRemoval: normalizePauseRemovalSettings(obj.pauseRemoval),
@@ -901,16 +943,37 @@ export function resolveShortFormCaptionStyleSelection(preferredCaptionStyleId?: 
     ? settings.captionStyles.find((style) => style.id === preferredCaptionStyleId)
     : undefined;
   if (projectCaptionStyle) {
-    return { captionStyle: projectCaptionStyle, resolvedCaptionStyleId: projectCaptionStyle.id, source: "project" };
+    const animationPreset = getCaptionAnimationPresetById(settings.animationPresets, projectCaptionStyle.animationPresetId);
+    return {
+      captionStyle: { ...projectCaptionStyle, animationPresetId: animationPreset.id, animationPreset: animationPreset.slug },
+      animationPreset,
+      resolvedAnimationPresetId: animationPreset.id,
+      resolvedCaptionStyleId: projectCaptionStyle.id,
+      source: "project",
+    };
   }
 
   const defaultCaptionStyle = settings.captionStyles.find((style) => style.id === settings.defaultCaptionStyleId);
   if (defaultCaptionStyle) {
-    return { captionStyle: defaultCaptionStyle, resolvedCaptionStyleId: defaultCaptionStyle.id, source: "default" };
+    const animationPreset = getCaptionAnimationPresetById(settings.animationPresets, defaultCaptionStyle.animationPresetId);
+    return {
+      captionStyle: { ...defaultCaptionStyle, animationPresetId: animationPreset.id, animationPreset: animationPreset.slug },
+      animationPreset,
+      resolvedAnimationPresetId: animationPreset.id,
+      resolvedCaptionStyleId: defaultCaptionStyle.id,
+      source: "default",
+    };
   }
 
   const fallbackCaptionStyle = settings.captionStyles[0] || DEFAULT_SHORT_FORM_CAPTION_STYLE;
-  return { captionStyle: fallbackCaptionStyle, resolvedCaptionStyleId: fallbackCaptionStyle.id, source: "fallback" };
+  const animationPreset = getCaptionAnimationPresetById(settings.animationPresets, fallbackCaptionStyle.animationPresetId);
+  return {
+    captionStyle: { ...fallbackCaptionStyle, animationPresetId: animationPreset.id, animationPreset: animationPreset.slug },
+    animationPreset,
+    resolvedAnimationPresetId: animationPreset.id,
+    resolvedCaptionStyleId: fallbackCaptionStyle.id,
+    source: "fallback",
+  };
 }
 
 export function resolveShortFormPauseRemovalSettings(overrides?: Partial<ShortFormPauseRemovalSettings>) {
@@ -929,6 +992,7 @@ export function saveShortFormVideoRenderSettings(nextSettings: Partial<ShortForm
     ...nextSettings,
     voices: nextSettings.voices || current.voices,
     musicTracks: nextSettings.musicTracks || current.musicTracks,
+    animationPresets: nextSettings.animationPresets || current.animationPresets,
     captionStyles: nextSettings.captionStyles || current.captionStyles,
   });
 

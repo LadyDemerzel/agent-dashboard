@@ -1,8 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-
-export type CaptionAnimationPreset = 'none' | 'stable-pop' | 'fluid-pop' | 'pulse' | 'glow';
+import {
+  getCaptionAnimationPreviewMetadata,
+  resolveCaptionAnimationColor,
+  resolveCaptionAnimationFrame,
+  type ShortFormCaptionAnimationPresetEntry,
+} from '@/lib/short-form-caption-animation';
 
 export interface CaptionStylePreviewValue {
   fontFamily: string;
@@ -26,7 +30,8 @@ export interface CaptionStylePreviewValue {
   backgroundOpacity: number;
   backgroundPadding: number;
   backgroundRadius: number;
-  animationPreset: CaptionAnimationPreset;
+  animationPresetId: string;
+  animationPreset: ShortFormCaptionAnimationPresetEntry;
 }
 
 const SAMPLE_LINES = [
@@ -55,13 +60,32 @@ function sanitizePreviewFontFamily(fontFamily: string) {
   return family || 'Arial';
 }
 
-function buildOutlineShadow(style: CaptionStylePreviewValue) {
-  const outlineColor = `rgba(${hexToRgb(style.outlineColor)}, 0.94)`;
-  const shadowColor = `rgba(${hexToRgb(style.shadowColor)}, ${Math.min(1, 0.16 + style.shadowStrength * 0.1)})`;
-  const outline = Math.max(0, style.outlineWidth);
-  const shadowBlur = Math.max(0, style.shadowBlur);
-  const shadowOffsetX = style.shadowOffsetX;
-  const shadowOffsetY = style.shadowOffsetY;
+function buildTextShadows({
+  style,
+  active,
+  activeOutlineColor,
+  activeGlowColor,
+  shadowColor,
+  extraOutlineWidth,
+  extraBlur,
+  shadowOpacityMultiplier,
+  glowStrength,
+}: {
+  style: CaptionStylePreviewValue;
+  active: boolean;
+  activeOutlineColor: string;
+  activeGlowColor: string;
+  shadowColor: string;
+  extraOutlineWidth: number;
+  extraBlur: number;
+  shadowOpacityMultiplier: number;
+  glowStrength: number;
+}) {
+  const outlineColor = `rgba(${hexToRgb(active ? activeOutlineColor : style.outlineColor)}, 0.94)`;
+  const shadowAlpha = Math.min(1, (0.16 + style.shadowStrength * 0.1) * Math.max(0, shadowOpacityMultiplier));
+  const shadow = `rgba(${hexToRgb(active ? shadowColor : style.shadowColor)}, ${shadowAlpha})`;
+  const outline = Math.max(0, style.outlineWidth + (active ? extraOutlineWidth : 0));
+  const shadowBlur = Math.max(0, (style.shadowBlur * 4) + (active ? extraBlur * 4 : 0));
   const pieces = outline > 0
     ? [
         `${outline}px 0 0 ${outlineColor}`,
@@ -71,58 +95,12 @@ function buildOutlineShadow(style: CaptionStylePreviewValue) {
       ]
     : [];
   if (style.shadowStrength > 0) {
-    pieces.push(`${shadowOffsetX}px ${shadowOffsetY}px ${Math.max(0, shadowBlur * 4)}px ${shadowColor}`);
+    pieces.push(`${style.shadowOffsetX}px ${style.shadowOffsetY}px ${shadowBlur}px ${shadow}`);
+  }
+  if (active && glowStrength > 0.001) {
+    pieces.push(`0 0 ${Math.max(12, 26 * glowStrength)}px rgba(${hexToRgb(activeGlowColor)}, ${Math.min(0.92, 0.2 + glowStrength * 0.5)})`);
   }
   return pieces.join(', ');
-}
-
-function clamp01(value: number) {
-  return Math.max(0, Math.min(1, value));
-}
-
-function easeOutCubic(value: number) {
-  const t = clamp01(value);
-  return 1 - ((1 - t) ** 3);
-}
-
-function resolvePreviewPhase(animationPreset: CaptionAnimationPreset, wordProgress: number) {
-  if (animationPreset === 'none') return 1;
-  if (animationPreset === 'stable-pop' || animationPreset === 'fluid-pop') return Math.min(1, wordProgress / 0.42);
-  return wordProgress;
-}
-
-function resolvePopTransform(phase: number) {
-  const t = clamp01(phase);
-  const popInPortion = 0.16;
-  if (t <= popInPortion) {
-    const grow = easeOutCubic(t / popInPortion);
-    return {
-      scale: 1 + ((1.18 - 1) * grow),
-      liftEm: 0.11 * grow,
-    };
-  }
-  const settle = easeOutCubic((t - popInPortion) / (1 - popInPortion));
-  return {
-    scale: 1.18 + ((1 - 1.18) * settle),
-    liftEm: 0.11 + ((0 - 0.11) * settle),
-  };
-}
-
-function resolveActiveWordMotion(animationPreset: CaptionAnimationPreset, phase: number) {
-  if (animationPreset === 'none') return { scale: 1, liftEm: 0 };
-  if (animationPreset === 'stable-pop' || animationPreset === 'fluid-pop') {
-    return resolvePopTransform(phase);
-  }
-  if (animationPreset === 'pulse') {
-    return {
-      scale: 1.03 + Math.sin(phase * Math.PI * 2) * 0.05,
-      liftEm: 0.03,
-    };
-  }
-  return {
-    scale: 1.04 + Math.sin(phase * Math.PI * 2) * 0.02,
-    liftEm: 0.015,
-  };
 }
 
 function measurePreviewAdvance(text: string, fontFamily: string, fontWeight: number, fontSize: number) {
@@ -167,15 +145,15 @@ export function CaptionStylePreview({
     return () => window.cancelAnimationFrame(frame);
   }, [animated]);
 
-  const activeIndex = animated
-    ? Math.floor(elapsedMs / WORD_SWITCH_MS) % SAMPLE_WORDS.length
-    : 3;
-  const wordProgress = animated
-    ? (elapsedMs % WORD_SWITCH_MS) / WORD_SWITCH_MS
-    : 0.82;
-  const phase = useMemo(
-    () => resolvePreviewPhase(style.animationPreset, wordProgress),
+  const activeIndex = animated ? Math.floor(elapsedMs / WORD_SWITCH_MS) % SAMPLE_WORDS.length : 3;
+  const wordProgress = animated ? (elapsedMs % WORD_SWITCH_MS) / WORD_SWITCH_MS : 0.82;
+  const animationFrame = useMemo(
+    () => resolveCaptionAnimationFrame(style.animationPreset.config, wordProgress, WORD_SWITCH_MS / 1000),
     [style.animationPreset, wordProgress],
+  );
+  const animationMetadata = useMemo(
+    () => getCaptionAnimationPreviewMetadata(style.animationPreset),
+    [style.animationPreset],
   );
   const boxBackground = `rgba(${hexToRgb(style.backgroundColor)}, ${style.backgroundOpacity})`;
   const fontSize = Math.max(26, Math.min(52, Math.round(style.fontSize * 0.58)));
@@ -187,11 +165,32 @@ export function CaptionStylePreview({
     return Math.max(1, Math.round((baseSpace + style.wordSpacing) * 10) / 10);
   }, [fontSize, previewFontFamily, style.fontWeight, style.wordSpacing]);
   const stableSlotWidths = useMemo(
-    () => SAMPLE_LINES.map((line) => line.map((word) => Math.max(fontSize * 0.55, measurePreviewAdvance(word, previewFontFamily, style.fontWeight, fontSize)))),
-    [fontSize, previewFontFamily, style.fontWeight],
+    () => SAMPLE_LINES.map((line) => line.map((word) => Math.max(fontSize * 0.55, measurePreviewAdvance(word, previewFontFamily, style.fontWeight, fontSize) * animationMetadata.peakScale))),
+    [animationMetadata.peakScale, fontSize, previewFontFamily, style.fontWeight],
   );
-  const lineMinHeight = Math.ceil(fontSize * 1.38);
-  const usesStableWordSlots = style.animationPreset !== 'fluid-pop';
+  const lineMinHeight = Math.ceil(fontSize * Math.max(1.38, animationMetadata.peakScale * 1.32));
+  const usesStableWordSlots = animationMetadata.usesStableWordSlots;
+
+  const palette = {
+    activeWordColor: style.activeWordColor,
+    outlineColor: style.outlineColor,
+    shadowColor: style.shadowColor,
+  };
+  const activeOutlineColor = resolveCaptionAnimationColor(
+    style.animationPreset.config.colors.outlineColorMode,
+    palette,
+    style.animationPreset.config.colors.outlineColor,
+  );
+  const activeShadowColor = resolveCaptionAnimationColor(
+    style.animationPreset.config.colors.shadowColorMode,
+    palette,
+    style.animationPreset.config.colors.shadowColor,
+  );
+  const activeGlowColor = resolveCaptionAnimationColor(
+    style.animationPreset.config.colors.glowColorMode,
+    palette,
+    style.animationPreset.config.colors.glowColor,
+  );
 
   return (
     <div className={className}>
@@ -229,21 +228,26 @@ export function CaptionStylePreview({
                         const globalIndex = lineOffset + wordIndex;
                         const isSpoken = globalIndex < activeIndex;
                         const isActive = globalIndex === activeIndex;
-                        const color = isActive
-                          ? style.activeWordColor
-                          : isSpoken
-                            ? style.spokenWordColor
-                            : style.upcomingWordColor;
-                        const motion = isActive ? resolveActiveWordMotion(style.animationPreset, phase) : { scale: 1, liftEm: 0 };
-                        const activeGlow = style.animationPreset === 'glow'
-                          ? `0 0 ${Math.max(16, style.shadowBlur * 8)}px rgba(${hexToRgb(style.activeWordColor)}, 0.35)`
-                          : undefined;
-                        const sharedWordStyle = {
+                        const color = isActive ? style.activeWordColor : isSpoken ? style.spokenWordColor : style.upcomingWordColor;
+                        const wordStyle = {
                           color,
-                          textShadow: [buildOutlineShadow(style), isActive && activeGlow ? activeGlow : null].filter(Boolean).join(', '),
+                          textShadow: buildTextShadows({
+                            style,
+                            active: isActive,
+                            activeOutlineColor,
+                            activeGlowColor,
+                            shadowColor: activeShadowColor,
+                            extraOutlineWidth: isActive ? animationFrame.extraOutlineWidth : 0,
+                            extraBlur: isActive ? animationFrame.extraBlur : 0,
+                            shadowOpacityMultiplier: isActive ? animationFrame.shadowOpacityMultiplier : 1,
+                            glowStrength: isActive ? animationFrame.glowStrength : 0,
+                          }),
                           opacity: isActive ? 1 : isSpoken ? 0.96 : 0.92,
-                          letterSpacing: style.animationPreset === 'glow' && isActive ? '0.015em' : undefined,
-                          willChange: isActive ? 'transform, font-size, text-shadow' : undefined,
+                          willChange: isActive ? 'transform, text-shadow' : undefined,
+                          transform: isActive
+                            ? `translate(${animationFrame.translateXEm}em, ${-animationFrame.translateYEm}em) scale(${animationFrame.scale})`
+                            : 'translate(0, 0) scale(1)',
+                          transformOrigin: '50% 100%',
                         } as const;
 
                         if (usesStableWordSlots) {
@@ -256,11 +260,7 @@ export function CaptionStylePreview({
                               <span aria-hidden className="invisible select-none">{word}</span>
                               <span
                                 className="pointer-events-none absolute bottom-0 left-1/2 whitespace-nowrap"
-                                style={{
-                                  ...sharedWordStyle,
-                                  transform: `translateX(-50%) translateY(-${motion.liftEm.toFixed(3)}em) scale(${motion.scale.toFixed(3)})`,
-                                  transformOrigin: 'center bottom',
-                                }}
+                                style={{ ...wordStyle, transform: `translate(-50%, 0) ${wordStyle.transform}` }}
                               >
                                 {word}
                               </span>
@@ -269,18 +269,7 @@ export function CaptionStylePreview({
                         }
 
                         return (
-                          <span
-                            key={`${word}-${globalIndex}`}
-                            className="inline-flex items-end justify-center whitespace-nowrap"
-                            style={{
-                              ...sharedWordStyle,
-                              minHeight: `${lineMinHeight}px`,
-                              fontSize: `${(fontSize * motion.scale).toFixed(2)}px`,
-                              lineHeight: 1,
-                              transform: `translateY(-${motion.liftEm.toFixed(3)}em)`,
-                              transformOrigin: 'center bottom',
-                            }}
-                          >
+                          <span key={`${word}-${globalIndex}`} className="inline-flex items-end justify-center whitespace-nowrap" style={wordStyle}>
                             {word}
                           </span>
                         );
@@ -292,11 +281,6 @@ export function CaptionStylePreview({
             </div>
           </div>
         </div>
-      </div>
-      <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
-        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: style.activeWordColor }} /> Active</span>
-        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: style.spokenWordColor }} /> Spoken</span>
-        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: style.upcomingWordColor }} /> Upcoming</span>
       </div>
     </div>
   );

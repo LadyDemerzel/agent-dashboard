@@ -485,6 +485,7 @@ export async function POST(
                   captionStyleName: resolvedCaptionStyle.captionStyle.name,
                   captionStyleSource: resolvedCaptionStyle.source,
                   captionStyle: resolvedCaptionStyle.captionStyle,
+                  animationPreset: resolvedCaptionStyle.animationPreset,
                   ...(requestNotes ? { notes: requestNotes } : {}),
                 },
               }

@@ -60,6 +60,7 @@ function mergeVideoRenderPatch(patch: Partial<ShortFormVideoRenderSettings>) {
     ...patch,
     voices: patch.voices || current.voices,
     musicTracks: patch.musicTracks || current.musicTracks,
+    animationPresets: patch.animationPresets || current.animationPresets,
     captionStyles: patch.captionStyles || current.captionStyles,
     pauseRemoval: patch.pauseRemoval
       ? {
@@ -160,6 +161,9 @@ export async function PATCH(request: NextRequest) {
     if (!candidate.musicTracks.some((track) => track.id === candidate.defaultMusicTrackId)) {
       return NextResponse.json({ success: false, error: "Default music preset must reference an existing saved preset" }, { status: 400 });
     }
+    if (!Array.isArray(candidate.animationPresets) || candidate.animationPresets.length === 0) {
+      return NextResponse.json({ success: false, error: "At least one saved animation preset is required" }, { status: 400 });
+    }
     if (!Array.isArray(candidate.captionStyles) || candidate.captionStyles.length === 0) {
       return NextResponse.json({ success: false, error: "At least one saved caption style is required" }, { status: 400 });
     }
@@ -244,6 +248,36 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    for (const preset of candidate.animationPresets) {
+      if (typeof preset.id !== "string" || !preset.id.trim()) {
+        return NextResponse.json({ success: false, error: "Each animation preset must have an id" }, { status: 400 });
+      }
+      if (typeof preset.name !== "string" || !preset.name.trim()) {
+        return NextResponse.json({ success: false, error: "Each animation preset must have a name" }, { status: 400 });
+      }
+      if (!preset.config || typeof preset.config !== "object" || Array.isArray(preset.config)) {
+        return NextResponse.json({ success: false, error: `Animation preset ${preset.name} must include a config object` }, { status: 400 });
+      }
+      const presetConfig = preset.config as unknown as Record<string, unknown>;
+      if (!["stable", "fluid"].includes(typeof presetConfig.layoutMode === "string" ? presetConfig.layoutMode : "")) {
+        return NextResponse.json({ success: false, error: `Animation preset ${preset.name} must use a supported layout mode` }, { status: 400 });
+      }
+      const timing = presetConfig.timing;
+      if (!timing || typeof timing !== "object" || Array.isArray(timing)) {
+        return NextResponse.json({ success: false, error: `Animation preset ${preset.name} must include timing settings` }, { status: 400 });
+      }
+      const motion = presetConfig.motion;
+      if (!motion || typeof motion !== "object" || Array.isArray(motion)) {
+        return NextResponse.json({ success: false, error: `Animation preset ${preset.name} must include motion tracks` }, { status: 400 });
+      }
+      for (const key of ["scale", "translateXEm", "translateYEm", "extraOutlineWidth", "extraBlur", "glowStrength", "shadowOpacityMultiplier"] as const) {
+        const track = motion[key as keyof typeof motion] as { keyframes?: unknown } | undefined;
+        if (!track || !Array.isArray(track.keyframes) || track.keyframes.length < 2) {
+          return NextResponse.json({ success: false, error: `Animation preset ${preset.name} must include at least 2 keyframes for ${key}` }, { status: 400 });
+        }
+      }
+    }
+
     for (const style of candidate.captionStyles) {
       if (typeof style.id !== "string" || !style.id.trim()) {
         return NextResponse.json({ success: false, error: "Each caption style must have an id" }, { status: 400 });
@@ -302,8 +336,11 @@ export async function PATCH(request: NextRequest) {
       if (typeof style.backgroundOpacity !== "number" || Number.isNaN(style.backgroundOpacity) || style.backgroundOpacity < 0 || style.backgroundOpacity > 1) {
         return NextResponse.json({ success: false, error: `Caption style ${style.name} must use a background opacity between 0 and 1` }, { status: 400 });
       }
-      if (!["none", "stable-pop", "fluid-pop", "pulse", "glow", "pop", "word-highlight"].includes(style.animationPreset)) {
-        return NextResponse.json({ success: false, error: `Caption style ${style.name} has an unsupported animation preset` }, { status: 400 });
+      if (typeof style.animationPresetId !== "string" || !style.animationPresetId.trim()) {
+        return NextResponse.json({ success: false, error: `Caption style ${style.name} must reference an animation preset` }, { status: 400 });
+      }
+      if (!candidate.animationPresets.some((preset) => preset.id === style.animationPresetId)) {
+        return NextResponse.json({ success: false, error: `Caption style ${style.name} references a missing animation preset` }, { status: 400 });
       }
     }
 

@@ -4,6 +4,7 @@ import { spawn } from "child_process";
 import { randomUUID } from "crypto";
 import type { ShortFormStageKey } from "@/lib/short-form-videos";
 import type { ShortFormNanoBananaPromptTemplates, ShortFormStyleReferenceImage } from "@/lib/short-form-image-styles";
+import type { ShortFormCaptionAnimationPresetEntry } from "@/lib/short-form-caption-animation";
 import type { ShortFormCaptionStyleEntry } from "@/lib/short-form-video-render-settings";
 
 export interface DirectSceneImagesConfig {
@@ -36,6 +37,7 @@ export interface DirectVideoConfig {
   captionStyleName?: string;
   captionStyleSource?: "project" | "default" | "fallback";
   captionStyle?: ShortFormCaptionStyleEntry;
+  animationPreset?: ShortFormCaptionAnimationPresetEntry;
   backgroundVideoId?: string;
   backgroundVideoName?: string;
   backgroundVideoPath?: string;
