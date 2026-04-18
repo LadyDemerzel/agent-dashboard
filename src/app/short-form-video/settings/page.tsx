@@ -1927,18 +1927,21 @@ export default function ShortFormVideoSettingsPage() {
 
   function deleteAnimationPreset(presetId: string) {
     if (!videoRender || videoRender.animationPresets.length <= 1) return;
-    const presetIsInUse = videoRender.captionStyles.some((style) => style.animationPresetId === presetId);
-    if (presetIsInUse) {
-      window.alert('That animation preset is still used by one or more caption styles. Reassign those styles first.');
-      return;
-    }
     updateSectionFeedbackState('caption-styles', { error: null, message: null });
     const remaining = videoRender.animationPresets.filter((preset) => preset.id !== presetId);
+    const fallbackPreset = getCaptionAnimationPresetById(
+      remaining,
+      selectedCaptionStyle?.animationPresetId && selectedCaptionStyle.animationPresetId !== presetId ? selectedCaptionStyle.animationPresetId : undefined,
+      DEFAULT_CAPTION_ANIMATION_PRESET_ID,
+    );
     setVideoRender({
       ...videoRender,
       animationPresets: remaining,
+      captionStyles: videoRender.captionStyles.map((style) => style.animationPresetId === presetId
+        ? { ...style, animationPresetId: fallbackPreset.id, animationPreset: fallbackPreset.slug }
+        : style),
     });
-    setSelectedAnimationPresetId(remaining[0]?.id || null);
+    setSelectedAnimationPresetId(fallbackPreset.id);
   }
 
   function addCaptionStyle() {
@@ -3535,6 +3538,50 @@ export default function ShortFormVideoSettingsPage() {
                               </div>
                             </div>
 
+                            <div className="mt-4 space-y-4">
+                              <div>
+                                <h5 className="text-sm font-medium text-foreground">Motion tracks</h5>
+                                <p className="mt-1 text-xs text-muted-foreground">Edit the keyframes that drive scale, lift, blur, glow, outline, and shadow response during the active-word window.</p>
+                              </div>
+                              <div className="grid gap-4 xl:grid-cols-2">
+                                {CAPTION_ANIMATION_TRACK_LABELS.map((trackDefinition) => {
+                                  const track = selectedAnimationPreset.config.motion[trackDefinition.key];
+                                  const trackRange = trackDefinition.key === 'scale'
+                                    ? { min: 0.2, max: 4, step: 0.01 }
+                                    : trackDefinition.key === 'translateXEm' || trackDefinition.key === 'translateYEm'
+                                      ? { min: -4, max: 4, step: 0.01 }
+                                      : trackDefinition.key === 'shadowOpacityMultiplier'
+                                        ? { min: 0, max: 4, step: 0.01 }
+                                        : trackDefinition.key === 'glowStrength'
+                                          ? { min: 0, max: 2.5, step: 0.01 }
+                                          : trackDefinition.key === 'extraBlur'
+                                            ? { min: 0, max: 20, step: 0.05 }
+                                            : { min: 0, max: 16, step: 0.05 };
+                                  return (
+                                    <AnimationPresetTrackEditor
+                                      key={trackDefinition.key}
+                                      label={trackDefinition.label}
+                                      helper={trackDefinition.helper}
+                                      track={track}
+                                      min={trackRange.min}
+                                      max={trackRange.max}
+                                      step={trackRange.step}
+                                      onChange={(nextTrack) => updateSelectedAnimationPreset((preset) => ({
+                                        ...preset,
+                                        config: {
+                                          ...preset.config,
+                                          motion: {
+                                            ...preset.config.motion,
+                                            [trackDefinition.key]: nextTrack,
+                                          },
+                                        },
+                                      }))}
+                                    />
+                                  );
+                                })}
+                              </div>
+                            </div>
+
                             <div className="mt-4 rounded-lg border border-border bg-background/30 p-4">
                               <div className="flex items-center justify-between gap-3">
                                 <div>
@@ -3560,7 +3607,7 @@ export default function ShortFormVideoSettingsPage() {
                                 >
                                   Apply JSON to preset
                                 </Button>
-                                <div className="text-xs text-muted-foreground">Structured controls above cover the common workflow. The JSON editor exposes the full keyframe graph and easing model.</div>
+                                <div className="text-xs text-muted-foreground">Structured controls now cover timing, color routing, and per-track keyframes. The JSON editor remains the escape hatch for full config control.</div>
                               </div>
                             </div>
                           </div>
