@@ -3508,36 +3508,6 @@ export default function ShortFormVideoSettingsPage() {
                               })}
                             </div>
 
-                            <div className="mt-4 space-y-4 rounded-lg border border-border bg-background/30 p-4">
-                              <div>
-                                <h5 className="text-sm font-medium text-foreground">Motion tracks</h5>
-                                <p className="mt-1 text-xs text-muted-foreground">Edit the actual keyframe graph used by preview and final render for the active word.</p>
-                              </div>
-                              <div className="grid gap-4 xl:grid-cols-2">
-                                {CAPTION_ANIMATION_TRACK_LABELS.map((trackMeta) => (
-                                  <AnimationPresetTrackEditor
-                                    key={trackMeta.key}
-                                    label={trackMeta.label}
-                                    helper={trackMeta.helper}
-                                    track={selectedAnimationPreset.config.motion[trackMeta.key]}
-                                    min={trackMeta.key === 'scale' ? 0.2 : trackMeta.key === 'translateXEm' || trackMeta.key === 'translateYEm' ? -4 : 0}
-                                    max={trackMeta.key === 'scale' ? 4 : trackMeta.key === 'translateXEm' || trackMeta.key === 'translateYEm' ? 4 : trackMeta.key === 'glowStrength' ? 2.5 : trackMeta.key === 'shadowOpacityMultiplier' ? 4 : trackMeta.key === 'extraOutlineWidth' ? 16 : 20}
-                                    step={trackMeta.key === 'extraOutlineWidth' || trackMeta.key === 'extraBlur' || trackMeta.key === 'glowStrength' || trackMeta.key === 'shadowOpacityMultiplier' ? 0.05 : 0.01}
-                                    onChange={(track) => updateSelectedAnimationPreset((preset) => ({
-                                      ...preset,
-                                      config: {
-                                        ...preset.config,
-                                        motion: {
-                                          ...preset.config.motion,
-                                          [trackMeta.key]: track,
-                                        },
-                                      },
-                                    }))}
-                                  />
-                                ))}
-                              </div>
-                            </div>
-
                             <div className="mt-4 space-y-4">
                               <div>
                                 <h5 className="text-sm font-medium text-foreground">Motion tracks</h5>
