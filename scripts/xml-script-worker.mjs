@@ -39,18 +39,61 @@ const CAPTION_SPACY_VENV = path.join(AGENT_DASHBOARD_ROOT, ".venv-caption-spacy"
 const CAPTION_SPACY_PYTHON = path.join(CAPTION_SPACY_VENV, "bin", "python");
 const CAPTION_SPACY_MODEL = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl";
 const OPENCLAW_CONFIG = path.join(HOME_DIR, ".openclaw", "openclaw.json");
+const SHORT_FORM_VOICES_ROOT = path.join(HOME_DIR, "tenxsolo", "business", "content", "deliverables", "short-form-videos");
+const VOICE_LIBRARY_DIR = path.join(SHORT_FORM_VOICES_ROOT, "_voice-library");
+const VIDEO_RENDER_SETTINGS_PATH = path.join(SHORT_FORM_VOICES_ROOT, "_video-render-settings.json");
+const DEFAULT_VOICE_REFERENCE_TEXT = "Most people think their face shape is fixed, but posture, breathing, and muscular balance change more than you expect. In this lesson, I will walk through the habits that matter most, the mistakes that waste effort, and the small adjustments that create visible changes over time. Keep your shoulders relaxed, your neck long, and your breathing steady as we go step by step.";
+// Keep the saved reference long enough to give voice-clone a stronger identity anchor,
+// while still staying under the one-chunk ceiling used for voice-design generation.
+const MIN_VOICE_REFERENCE_CHARS = 320;
+const MAX_VOICE_REFERENCE_CHARS = 650;
+const VOICE_REFERENCE_EXTENSION_TEXT = " Keep your shoulders relaxed, breathe through the nose, and imagine you are explaining a useful idea to one smart friend in a calm, confident, trustworthy tone.";
 const DEFAULT_VOICE_SELECTION = {
   id: "voice-calm-authority",
   name: "Female Calm Authority",
   mode: "voice-design",
   voiceDesignPrompt: "Adult female voice. Pitch: lower-register, smooth, and resonant. Tone: warm, grounded, confident, and highly articulate. Pacing: conversational, engaging, very fast-paced, but with natural pauses for emphasis. Emotion: friendly, encouraging, and knowledgeable, sounding like a trusted expert speaking one-on-one with a close friend. Volume: moderate, with an intimate, close-mic feel. Pronunciation is crisp and clear without sounding robotic.",
+  previewText: DEFAULT_VOICE_REFERENCE_TEXT,
 };
 const DEFAULT_QWEN_VOICE_DESIGN_WARMUP_TEXT = "Hi there. Ready when you are.";
 const DEFAULT_QWEN_VOICE_DESIGN_MAX_CHARS = 1200;
 const DEFAULT_XML_TASK = "full";
+const DEFAULT_PAUSE_REMOVAL_MIN_SILENCE_DURATION_SECONDS = 0.35;
+const DEFAULT_PAUSE_REMOVAL_SILENCE_THRESHOLD_DB = -40;
+const DEFAULT_PAUSE_REMOVAL_RETAIN_SILENCE_SECONDS = 0.08;
 
 function normalizeTask(value) {
-  return value === "narration" || value === "captions" || value === "visuals" ? value : DEFAULT_XML_TASK;
+  return value === "narration" || value === "silence" || value === "captions" || value === "visuals" ? value : DEFAULT_XML_TASK;
+}
+
+function normalizeString(value, fallback = "") {
+  return typeof value === "string" ? value.trim() : fallback;
+}
+
+function normalizeStoredRelativePath(value) {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const normalized = value.trim().split(path.sep).join("/").replace(/^\/+/, "");
+  if (!normalized || normalized.includes("..") || path.isAbsolute(normalized)) return undefined;
+  return normalized;
+}
+
+function resolveVoiceLibraryAbsolutePath(relativePath) {
+  return path.resolve(VOICE_LIBRARY_DIR, relativePath);
+}
+
+function sanitizePathSegment(value) {
+  return String(value || "voice").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "voice";
+}
+
+function normalizeVoiceReferenceText(value) {
+  let text = normalizeString(value, DEFAULT_VOICE_REFERENCE_TEXT);
+  while (text.length < MIN_VOICE_REFERENCE_CHARS) {
+    text = `${text}${VOICE_REFERENCE_EXTENSION_TEXT}`.trim();
+  }
+  if (text.length > MAX_VOICE_REFERENCE_CHARS) {
+    text = text.slice(0, MAX_VOICE_REFERENCE_CHARS).trim();
+  }
+  return text;
 }
 
 function ensureDir(dirPath) {
@@ -64,6 +107,75 @@ function readJson(filePath) {
 function writeJson(filePath, value) {
   ensureDir(path.dirname(filePath));
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2), "utf-8");
+}
+
+function writeTextIfChanged(filePath, content) {
+  ensureDir(path.dirname(filePath));
+  try {
+    if (fs.existsSync(filePath) && fs.readFileSync(filePath, "utf-8") === content) {
+      return false;
+    }
+  } catch {}
+  fs.writeFileSync(filePath, content, "utf-8");
+  return true;
+}
+
+function persistVoiceReferenceToLibrary(voice, referenceText, sourceAudioPath) {
+  const targetVoiceId = sanitizePathSegment(voice.resolvedVoiceId || voice.id);
+  const relativePath = `${targetVoiceId}/reference.wav`;
+  const absolutePath = resolveVoiceLibraryAbsolutePath(relativePath);
+  const workDir = path.dirname(absolutePath);
+  const generatedAt = new Date().toISOString();
+
+  ensureDir(workDir);
+  if (path.resolve(sourceAudioPath) !== path.resolve(absolutePath)) {
+    fs.copyFileSync(sourceAudioPath, absolutePath);
+  }
+
+  writeJson(path.join(workDir, "meta.json"), {
+    voiceId: voice.resolvedVoiceId || voice.id,
+    voiceName: voice.name,
+    referenceGeneratedAt: generatedAt,
+    referenceMode: voice.mode,
+    referencePrompt: voice.voiceDesignPrompt,
+    referenceText,
+    ...(voice.speaker ? { referenceSpeaker: voice.speaker } : {}),
+    referenceAudioRelativePath: relativePath,
+    source: "xml-script-worker",
+  });
+
+  if (fs.existsSync(VIDEO_RENDER_SETTINGS_PATH)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(VIDEO_RENDER_SETTINGS_PATH, "utf-8"));
+      if (parsed && typeof parsed === "object" && Array.isArray(parsed.voices)) {
+        const targetIds = new Set([voice.id, voice.resolvedVoiceId].filter(Boolean));
+        let updated = false;
+        parsed.voices = parsed.voices.map((entry) => {
+          if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
+          const entryId = typeof entry.id === "string" ? entry.id.trim() : "";
+          if (!targetIds.has(entryId)) return entry;
+          updated = true;
+          return {
+            ...entry,
+            referenceAudioRelativePath: relativePath,
+            referenceText,
+            referencePrompt: voice.voiceDesignPrompt,
+            referenceMode: voice.mode,
+            ...(voice.speaker ? { referenceSpeaker: voice.speaker } : {}),
+            referenceGeneratedAt: generatedAt,
+            updatedAt: generatedAt,
+          };
+        });
+        if (updated) {
+          fs.writeFileSync(VIDEO_RENDER_SETTINGS_PATH, JSON.stringify(parsed, null, 2), "utf-8");
+        }
+      }
+    } catch {
+      // Keep narration generation running even if persisting the library metadata fails.
+    }
+  }
+
+  return { absolutePath, relativePath, generatedAt };
 }
 
 function stripFrontMatter(content) {
@@ -88,6 +200,104 @@ function run(command, args, options = {}) {
     throw new Error([`${command} exited with status ${result.status ?? "unknown"}`, result.stdout?.trim(), result.stderr?.trim()].filter(Boolean).join("\n\n"));
   }
   return result;
+}
+
+function removeFileIfExists(filePath) {
+  try {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch {}
+}
+
+function clampPauseRemovalMinSilenceDurationSeconds(value) {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  if (!Number.isFinite(parsed)) return DEFAULT_PAUSE_REMOVAL_MIN_SILENCE_DURATION_SECONDS;
+  return Math.min(2.5, Math.max(0.1, Math.round(parsed * 100) / 100));
+}
+
+function clampPauseRemovalSilenceThresholdDb(value) {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  if (!Number.isFinite(parsed)) return DEFAULT_PAUSE_REMOVAL_SILENCE_THRESHOLD_DB;
+  return Math.min(-5, Math.max(-80, Math.round(parsed * 10) / 10));
+}
+
+function normalizePauseRemovalSettings(value) {
+  const obj = value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : {};
+
+  return {
+    minSilenceDurationSeconds: clampPauseRemovalMinSilenceDurationSeconds(obj.minSilenceDurationSeconds),
+    silenceThresholdDb: clampPauseRemovalSilenceThresholdDb(obj.silenceThresholdDb),
+  };
+}
+
+function getAudioDurationSeconds(filePath) {
+  if (!fs.existsSync(filePath)) return undefined;
+  try {
+    const result = run("ffprobe", [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      filePath,
+    ]);
+    const parsed = Number(result.stdout.trim());
+    return Number.isFinite(parsed) ? Math.round(parsed * 1000) / 1000 : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function buildSilenceRemovalFilter(settings) {
+  const threshold = `${settings.silenceThresholdDb.toFixed(1)}dB`;
+  const minDuration = settings.minSilenceDurationSeconds.toFixed(2);
+  const retainSilence = DEFAULT_PAUSE_REMOVAL_RETAIN_SILENCE_SECONDS.toFixed(2);
+  return [
+    `silenceremove=start_periods=1`,
+    `start_duration=0`,
+    `start_threshold=${threshold}`,
+    `stop_periods=-1`,
+    `stop_duration=${minDuration}`,
+    `stop_threshold=${threshold}`,
+    `stop_silence=${retainSilence}`,
+  ].join(":");
+}
+
+function runSilenceRemoval({ inputPath, outputPath, settings }) {
+  const filter = buildSilenceRemovalFilter(settings);
+  const args = [
+    "-y",
+    "-i",
+    inputPath,
+    "-af",
+    filter,
+    "-ar",
+    "24000",
+    "-ac",
+    "1",
+    "-c:a",
+    "pcm_s16le",
+    outputPath,
+  ];
+
+  removeFileIfExists(outputPath);
+  run("ffmpeg", args);
+
+  if (!fs.existsSync(outputPath)) {
+    throw new Error("ffmpeg pause-removal pass did not produce narration-full.wav");
+  }
+
+  return {
+    inputPath,
+    outputPath,
+    filter,
+    command: ["ffmpeg", ...args],
+    inputDurationSeconds: getAudioDurationSeconds(inputPath),
+    outputDurationSeconds: getAudioDurationSeconds(outputPath),
+    processedAt: new Date().toISOString(),
+  };
 }
 
 function runStreaming(command, args, options = {}) {
@@ -482,8 +692,11 @@ async function main() {
   const captionsDir = path.join(job.workDir, "captions");
   const authoringDir = path.join(job.workDir, "authoring");
   const transcriptPath = path.join(voiceDir, "text-script.txt");
+  const originalAudioPath = path.join(voiceDir, "narration-original.wav");
   const audioPath = path.join(voiceDir, "narration-full.wav");
   const voiceSelectionPath = path.join(voiceDir, "voice-selection.json");
+  const pauseRemovalSettingsPath = path.join(voiceDir, "pause-removal-settings.json");
+  const pauseRemovalReportPath = path.join(voiceDir, "pause-removal-result.json");
   const alignmentInputPath = path.join(alignmentDir, "alignment-input.json");
   const alignmentOutputPath = path.join(alignmentDir, "word-timestamps.json");
   const captionPlanPath = path.join(captionsDir, "caption-sections.json");
@@ -516,7 +729,7 @@ async function main() {
       throw new Error("Text script file was empty after stripping front matter.");
     }
 
-    fs.writeFileSync(transcriptPath, `${scriptText}\n`, "utf-8");
+    writeTextIfChanged(transcriptPath, `${scriptText}\n`);
 
     const selectedVoice = job.selectedVoice && typeof job.selectedVoice === "object"
       ? {
@@ -527,6 +740,10 @@ async function main() {
             typeof job.selectedVoice.voiceDesignPrompt === "string" && job.selectedVoice.voiceDesignPrompt.trim()
               ? job.selectedVoice.voiceDesignPrompt.trim()
               : DEFAULT_VOICE_SELECTION.voiceDesignPrompt,
+          previewText:
+            typeof job.selectedVoice.previewText === "string" && job.selectedVoice.previewText.trim()
+              ? job.selectedVoice.previewText.trim()
+              : DEFAULT_VOICE_SELECTION.previewText,
           speaker:
             typeof job.selectedVoice.speaker === "string" && job.selectedVoice.speaker.trim()
               ? job.selectedVoice.speaker.trim()
@@ -535,48 +752,148 @@ async function main() {
             typeof job.selectedVoice.legacyInstruct === "string" && job.selectedVoice.legacyInstruct.trim()
               ? job.selectedVoice.legacyInstruct.trim()
               : undefined,
+          referenceAudioRelativePath:
+            typeof job.selectedVoice.referenceAudioRelativePath === "string" && job.selectedVoice.referenceAudioRelativePath.trim()
+              ? job.selectedVoice.referenceAudioRelativePath.trim()
+              : undefined,
+          referenceText:
+            typeof job.selectedVoice.referenceText === "string" && job.selectedVoice.referenceText.trim()
+              ? job.selectedVoice.referenceText.trim()
+              : undefined,
+          referencePrompt:
+            typeof job.selectedVoice.referencePrompt === "string" && job.selectedVoice.referencePrompt.trim()
+              ? job.selectedVoice.referencePrompt.trim()
+              : undefined,
+          referenceMode: job.selectedVoice.referenceMode === "custom-voice" ? "custom-voice" : (job.selectedVoice.referenceMode === "voice-design" ? "voice-design" : undefined),
+          referenceSpeaker:
+            typeof job.selectedVoice.referenceSpeaker === "string" && job.selectedVoice.referenceSpeaker.trim()
+              ? job.selectedVoice.referenceSpeaker.trim()
+              : undefined,
+          referenceGeneratedAt:
+            typeof job.selectedVoice.referenceGeneratedAt === "string" && job.selectedVoice.referenceGeneratedAt.trim()
+              ? job.selectedVoice.referenceGeneratedAt.trim()
+              : undefined,
           source: typeof job.selectedVoice.source === "string" ? job.selectedVoice.source : undefined,
           resolvedVoiceId: typeof job.selectedVoice.resolvedVoiceId === "string" ? job.selectedVoice.resolvedVoiceId : undefined,
         }
       : DEFAULT_VOICE_SELECTION;
+    const pauseRemovalSettings = normalizePauseRemovalSettings(job.pauseRemoval);
 
     if (task === "full" || task === "narration") {
-      writeJson(voiceSelectionPath, selectedVoice);
-      attempts.push({ step: "narration", startedAt: new Date().toISOString(), voice: selectedVoice });
-      liveProgress = { step: "narration", label: "Preparing narration audio", percent: 0 };
+      const normalizedReferenceText = normalizeVoiceReferenceText(selectedVoice.referenceText || selectedVoice.previewText || DEFAULT_VOICE_SELECTION.previewText);
+      const savedReferenceAudioPath = selectedVoice.referenceAudioRelativePath
+        ? resolveVoiceLibraryAbsolutePath(normalizeStoredRelativePath(selectedVoice.referenceAudioRelativePath) || "")
+        : null;
+      const canReuseSavedReference = Boolean(
+        savedReferenceAudioPath
+        && fs.existsSync(savedReferenceAudioPath)
+        && selectedVoice.referencePrompt === selectedVoice.voiceDesignPrompt
+        && selectedVoice.referenceMode === selectedVoice.mode
+        && selectedVoice.referenceText === normalizedReferenceText
+        && (selectedVoice.mode !== "custom-voice" || selectedVoice.referenceSpeaker === (selectedVoice.speaker || undefined))
+      );
+      const referenceDir = path.join(voiceDir, "reference");
+      let referenceAudioPath = canReuseSavedReference
+        ? savedReferenceAudioPath
+        : path.join(referenceDir, `${sanitizePathSegment(selectedVoice.id)}-reference.wav`);
+      const referenceTextPath = path.join(referenceDir, "reference.txt");
+      ensureDir(referenceDir);
+      fs.writeFileSync(referenceTextPath, `${normalizedReferenceText}\n`, "utf-8");
+      let persistedReference = null;
+
+      if (!canReuseSavedReference) {
+        attempts.push({ step: "voice-reference", startedAt: new Date().toISOString(), voice: selectedVoice, referenceText: normalizedReferenceText });
+        liveProgress = { step: "voice-reference", label: "Generating reusable voice reference", percent: 0 };
+        updateStatus();
+        await runStreaming("bash", [
+          QWEN_RUNNER,
+          "--mode",
+          selectedVoice.mode,
+          ...(selectedVoice.mode === "custom-voice" && selectedVoice.speaker ? ["--speaker", selectedVoice.speaker] : []),
+          "--language",
+          "English",
+          "--instruct",
+          selectedVoice.mode === "custom-voice"
+            ? (selectedVoice.legacyInstruct || selectedVoice.voiceDesignPrompt || DEFAULT_VOICE_SELECTION.voiceDesignPrompt)
+            : selectedVoice.voiceDesignPrompt,
+          ...(selectedVoice.mode === "voice-design"
+            ? [
+                "--warmup-text",
+                DEFAULT_QWEN_VOICE_DESIGN_WARMUP_TEXT,
+                "--max-chars",
+                String(MAX_VOICE_REFERENCE_CHARS),
+              ]
+            : []),
+          "--text-file",
+          referenceTextPath,
+          "--output",
+          referenceAudioPath,
+        ], {
+          onStdoutLine: (line) => {
+            attempts[attempts.length - 1].lastOutput = line;
+            const warmupMatch = line.match(/Generating warmup utterance/i);
+            if (warmupMatch) {
+              liveProgress = { step: "voice-reference", label: "Stabilizing reference voice", percent: 10 };
+              updateStatus();
+              return;
+            }
+            const chunkMatch = line.match(/Generating chunk (\d+)\/(\d+)/i);
+            if (chunkMatch) {
+              const current = Number(chunkMatch[1]);
+              const total = Number(chunkMatch[2]);
+              const percent = total > 0 ? Math.max(15, Math.min(95, Math.round((current / total) * 95))) : 0;
+              liveProgress = { step: "voice-reference", label: `Generating voice reference ${current}/${total}`, current, total, percent };
+              attempts[attempts.length - 1].progress = { current, total, percent };
+              updateStatus();
+            }
+          },
+        });
+        attempts[attempts.length - 1].finishedAt = new Date().toISOString();
+        attempts[attempts.length - 1].output = referenceAudioPath;
+
+        try {
+          persistedReference = persistVoiceReferenceToLibrary(selectedVoice, normalizedReferenceText, referenceAudioPath);
+          referenceAudioPath = persistedReference.absolutePath;
+        } catch {
+          persistedReference = null;
+        }
+      }
+
+      const voiceSelectionForRun = {
+        ...selectedVoice,
+        previewText: normalizedReferenceText,
+        referenceAudioPath,
+        ...(persistedReference?.relativePath ? { referenceAudioRelativePath: persistedReference.relativePath } : {}),
+        referenceText: normalizedReferenceText,
+        referencePrompt: selectedVoice.voiceDesignPrompt,
+        referenceMode: selectedVoice.mode,
+        ...(selectedVoice.speaker ? { referenceSpeaker: selectedVoice.speaker } : {}),
+        ...(persistedReference?.generatedAt ? { referenceGeneratedAt: persistedReference.generatedAt } : {}),
+        narrationMode: "voice-clone",
+        referenceSource: (canReuseSavedReference || persistedReference) ? "saved-library" : "generated-for-run",
+      };
+      writeJson(voiceSelectionPath, voiceSelectionForRun);
+      attempts.push({ step: "narration", startedAt: new Date().toISOString(), voice: voiceSelectionForRun });
+      liveProgress = { step: "narration", label: "Preparing original narration audio", percent: 0 };
       updateStatus();
+      removeFileIfExists(originalAudioPath);
       await runStreaming("bash", [
         QWEN_RUNNER,
         "--mode",
-        selectedVoice.mode,
-        ...(selectedVoice.mode === "custom-voice" && selectedVoice.speaker ? ["--speaker", selectedVoice.speaker] : []),
+        "voice-clone",
         "--language",
         "English",
-        "--instruct",
-        selectedVoice.mode === "custom-voice"
-          ? (selectedVoice.legacyInstruct || selectedVoice.voiceDesignPrompt || DEFAULT_VOICE_SELECTION.voiceDesignPrompt)
-          : selectedVoice.voiceDesignPrompt,
-        ...(selectedVoice.mode === "voice-design"
-          ? [
-              "--warmup-text",
-              DEFAULT_QWEN_VOICE_DESIGN_WARMUP_TEXT,
-              "--max-chars",
-              String(DEFAULT_QWEN_VOICE_DESIGN_MAX_CHARS),
-            ]
-          : []),
+        "--ref-audio",
+        referenceAudioPath,
+        "--ref-text",
+        normalizedReferenceText,
         "--text-file",
         transcriptPath,
         "--output",
-        audioPath,
+        originalAudioPath,
       ], {
         onStdoutLine: (line) => {
           attempts[attempts.length - 1].lastOutput = line;
-          const warmupMatch = line.match(/Generating warmup utterance/i);
-          if (warmupMatch) {
-            liveProgress = { step: "narration", label: "Generating warmup utterance", percent: 5 };
-            updateStatus();
-            return;
-          }
           const chunkMatch = line.match(/Generating chunk (\d+)\/(\d+)/i);
           if (chunkMatch) {
             const current = Number(chunkMatch[1]);
@@ -589,17 +906,46 @@ async function main() {
         },
       });
       attempts[attempts.length - 1].finishedAt = new Date().toISOString();
+      attempts[attempts.length - 1].output = originalAudioPath;
+      liveProgress = { step: "narration", label: "Original narration audio ready", percent: 100 };
+      updateStatus();
+    }
+
+    if (task === "full" || task === "narration" || task === "silence") {
+      if (!fs.existsSync(originalAudioPath)) {
+        throw new Error("Missing original narration WAV. Run Narration Audio first so pause removal has source audio to process.");
+      }
+
+      removeFileIfExists(audioPath);
+      removeFileIfExists(alignmentInputPath);
+      removeFileIfExists(alignmentOutputPath);
+      removeFileIfExists(captionPlanPath);
+      removeFileIfExists(promptPath);
+
+      writeJson(pauseRemovalSettingsPath, pauseRemovalSettings);
+      attempts.push({ step: "silence-removal", startedAt: new Date().toISOString(), settings: pauseRemovalSettings });
+      liveProgress = { step: "silence-removal", label: "Removing pauses from narration audio", percent: 10 };
+      updateStatus();
+      const pauseRemovalResult = runSilenceRemoval({
+        inputPath: originalAudioPath,
+        outputPath: audioPath,
+        settings: pauseRemovalSettings,
+      });
+      writeJson(pauseRemovalReportPath, pauseRemovalResult);
+      attempts[attempts.length - 1].finishedAt = new Date().toISOString();
       attempts[attempts.length - 1].output = audioPath;
-      liveProgress = { step: "narration", label: "Narration audio ready", percent: 100 };
+      attempts[attempts.length - 1].result = pauseRemovalResult;
+      liveProgress = { step: "silence-removal", label: "Silence-removed narration audio ready", percent: 100 };
       updateStatus();
 
       writeJson(alignmentInputPath, { audio: audioPath, transcript: transcriptPath, text: scriptText, language: "English" });
-      attempts.push({ step: "alignment", startedAt: new Date().toISOString() });
-      liveProgress = undefined;
+      attempts.push({ step: "alignment", startedAt: new Date().toISOString(), audio: audioPath });
+      liveProgress = { step: "alignment", label: "Running forced alignment on silence-removed narration", percent: 10 };
       updateStatus();
       run("bash", [FORCED_ALIGN_RUNNER, "--audio", audioPath, "--output", alignmentOutputPath, "--language", "English", "--text-file", transcriptPath]);
       attempts[attempts.length - 1].finishedAt = new Date().toISOString();
       attempts[attempts.length - 1].output = alignmentOutputPath;
+      liveProgress = { step: "alignment", label: "Forced alignment ready", percent: 100 };
       updateStatus();
     }
 
@@ -635,7 +981,7 @@ async function main() {
       if (!fs.existsSync(captionPlanPath)) {
         throw new Error("Missing deterministic caption JSON. Run Plan Captions first so visual planning can reuse the existing caption timing artifact.");
       }
-      fs.writeFileSync(promptPath, job.prompt, "utf-8");
+      writeTextIfChanged(promptPath, job.prompt);
       updateStatus();
       const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0 ? job.preferredModels : ["codex/gpt-5.4"];
       let verified = false;

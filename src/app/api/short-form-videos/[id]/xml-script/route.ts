@@ -15,7 +15,11 @@ import {
   writeXmlScriptDocument,
 } from "@/lib/short-form-xml-script";
 import { updateProjectMeta } from "@/lib/short-form-videos";
-import { getShortFormVideoRenderSettings, resolveShortFormVoiceSelection } from "@/lib/short-form-video-render-settings";
+import {
+  getShortFormVideoRenderSettings,
+  resolveShortFormPauseRemovalSettings,
+  resolveShortFormVoiceSelection,
+} from "@/lib/short-form-video-render-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -25,10 +29,10 @@ const WORKER_PATH = path.join(REPO_ROOT, "scripts", "xml-script-worker.mjs");
 const DEFAULT_RELIABLE_MODEL = process.env.SHORT_FORM_RELIABLE_MODEL || "codex/gpt-5.4";
 const DEFAULT_RETRY_MODEL = process.env.SHORT_FORM_RETRY_MODEL || "openrouter/anthropic/claude-3-haiku";
 
-type XmlWorkflowTask = "full" | "narration" | "captions" | "visuals";
+type XmlWorkflowTask = "full" | "narration" | "silence" | "captions" | "visuals";
 
 function normalizeXmlWorkflowTask(value: unknown): XmlWorkflowTask {
-  return value === "narration" || value === "captions" || value === "visuals" ? value : "full";
+  return value === "narration" || value === "silence" || value === "captions" || value === "visuals" ? value : "full";
 }
 
 function ensureDir(dirPath: string) {
@@ -138,7 +142,21 @@ export async function GET(
     return NextResponse.json({ success: false, error: "Project not found" }, { status: 404 });
   }
   ensureXmlScriptDocument(id, project.topic);
-  return NextResponse.json({ success: true, data: getXmlScriptDocument(id, { expectedVoiceId: project.selectedVoiceId }) });
+  const expectedPauseRemoval = resolveShortFormPauseRemovalSettings({
+    ...(typeof project.pauseRemovalMinSilenceDurationSecondsOverride === "number"
+      ? { minSilenceDurationSeconds: project.pauseRemovalMinSilenceDurationSecondsOverride }
+      : {}),
+    ...(typeof project.pauseRemovalSilenceThresholdDbOverride === "number"
+      ? { silenceThresholdDb: project.pauseRemovalSilenceThresholdDbOverride }
+      : {}),
+  });
+  return NextResponse.json({
+    success: true,
+    data: getXmlScriptDocument(id, {
+      expectedVoiceId: project.selectedVoiceId,
+      expectedPauseRemoval,
+    }),
+  });
 }
 
 export async function POST(
@@ -175,7 +193,18 @@ export async function POST(
   }
 
   ensureXmlScriptDocument(id, project.topic);
-  const currentDoc = getXmlScriptDocument(id, { expectedVoiceId: project.selectedVoiceId });
+  const expectedPauseRemoval = resolveShortFormPauseRemovalSettings({
+    ...(typeof project.pauseRemovalMinSilenceDurationSecondsOverride === "number"
+      ? { minSilenceDurationSeconds: project.pauseRemovalMinSilenceDurationSecondsOverride }
+      : {}),
+    ...(typeof project.pauseRemovalSilenceThresholdDbOverride === "number"
+      ? { silenceThresholdDb: project.pauseRemovalSilenceThresholdDbOverride }
+      : {}),
+  });
+  const currentDoc = getXmlScriptDocument(id, {
+    expectedVoiceId: project.selectedVoiceId,
+    expectedPauseRemoval,
+  });
   if (currentDoc.pending) {
     return NextResponse.json({ success: false, error: "XML script pipeline is already running" }, { status: 409 });
   }
@@ -188,6 +217,7 @@ export async function POST(
   const selectedVoice = resolveShortFormVoiceSelection(project.selectedVoiceId);
   const renderSettings = getShortFormVideoRenderSettings();
   const captionMaxWords = project.captionMaxWordsOverride ?? renderSettings.captionMaxWords;
+  const pauseRemoval = expectedPauseRemoval;
   const requestedAt = new Date().toISOString();
   const jobPath = path.join(runsDir, `${runId}.job.json`);
   const statusPath = path.join(runsDir, `${runId}.status.json`);
@@ -206,13 +236,21 @@ export async function POST(
       name: selectedVoice.voice.name,
       mode: selectedVoice.voice.mode,
       voiceDesignPrompt: selectedVoice.voice.voiceDesignPrompt,
+      previewText: selectedVoice.voice.previewText,
       ...(selectedVoice.voice.speaker ? { speaker: selectedVoice.voice.speaker } : {}),
       ...(selectedVoice.voice.legacyInstruct ? { legacyInstruct: selectedVoice.voice.legacyInstruct } : {}),
+      ...(selectedVoice.voice.referenceAudioRelativePath ? { referenceAudioRelativePath: selectedVoice.voice.referenceAudioRelativePath } : {}),
+      ...(selectedVoice.voice.referenceText ? { referenceText: selectedVoice.voice.referenceText } : {}),
+      ...(selectedVoice.voice.referencePrompt ? { referencePrompt: selectedVoice.voice.referencePrompt } : {}),
+      ...(selectedVoice.voice.referenceMode ? { referenceMode: selectedVoice.voice.referenceMode } : {}),
+      ...(selectedVoice.voice.referenceSpeaker ? { referenceSpeaker: selectedVoice.voice.referenceSpeaker } : {}),
+      ...(selectedVoice.voice.referenceGeneratedAt ? { referenceGeneratedAt: selectedVoice.voice.referenceGeneratedAt } : {}),
       source: selectedVoice.source,
       resolvedVoiceId: selectedVoice.resolvedVoiceId,
     },
     preferredModels: [DEFAULT_RELIABLE_MODEL, DEFAULT_RETRY_MODEL].filter(Boolean),
     captionMaxWords,
+    pauseRemoval,
     requestedAt,
   }, null, 2), "utf-8");
   writeJson(statusPath, { status: "running", runId, projectId: id, task, startedAt: requestedAt, attempts: [] });
@@ -231,13 +269,23 @@ export async function POST(
 
   const taskLabel = task === "narration"
     ? "Narration Audio"
-    : task === "captions"
-      ? "Plan Captions"
-      : task === "visuals"
-        ? "Plan Visuals"
-        : "XML workflow";
+    : task === "silence"
+      ? "Pause removal + alignment"
+      : task === "captions"
+        ? "Plan Captions"
+        : task === "visuals"
+          ? "Plan Visuals"
+          : "XML workflow";
 
-  return NextResponse.json({ success: true, runId, message: `${taskLabel} started`, data: getXmlScriptDocument(id, { expectedVoiceId: project.selectedVoiceId }) });
+  return NextResponse.json({
+    success: true,
+    runId,
+    message: `${taskLabel} started`,
+    data: getXmlScriptDocument(id, {
+      expectedVoiceId: project.selectedVoiceId,
+      expectedPauseRemoval,
+    }),
+  });
 }
 
 export async function PATCH(
@@ -261,5 +309,20 @@ export async function PATCH(
     updateXmlScriptFrontMatterStatus(id, status);
   }
 
-  return NextResponse.json({ success: true, data: getXmlScriptDocument(id, { expectedVoiceId: project.selectedVoiceId }) });
+  const expectedPauseRemoval = resolveShortFormPauseRemovalSettings({
+    ...(typeof project.pauseRemovalMinSilenceDurationSecondsOverride === "number"
+      ? { minSilenceDurationSeconds: project.pauseRemovalMinSilenceDurationSecondsOverride }
+      : {}),
+    ...(typeof project.pauseRemovalSilenceThresholdDbOverride === "number"
+      ? { silenceThresholdDb: project.pauseRemovalSilenceThresholdDbOverride }
+      : {}),
+  });
+
+  return NextResponse.json({
+    success: true,
+    data: getXmlScriptDocument(id, {
+      expectedVoiceId: project.selectedVoiceId,
+      expectedPauseRemoval,
+    }),
+  });
 }

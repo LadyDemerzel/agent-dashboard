@@ -4,7 +4,12 @@ import { parseFrontMatter, generateFrontMatter, extractBody } from "@/lib/frontm
 import { readStatusLog } from "@/lib/status";
 import { readFeedback, type FeedbackThread } from "@/lib/feedback";
 import { resolveShortFormImageStyle } from "@/lib/short-form-image-styles";
-import { resolveShortFormMusicSelection, resolveShortFormVoiceSelection } from "@/lib/short-form-video-render-settings";
+import {
+  resolveShortFormCaptionStyleSelection,
+  resolveShortFormMusicSelection,
+  resolveShortFormPauseRemovalSettings,
+  resolveShortFormVoiceSelection,
+} from "@/lib/short-form-video-render-settings";
 import { resolveShortFormBackgroundVideoSelection } from "@/lib/short-form-background-videos";
 import {
   getXmlScriptDocument,
@@ -166,8 +171,11 @@ export interface ShortFormProjectMeta {
   selectedVoiceId?: string;
   selectedMusicId?: string;
   selectedBackgroundVideoId?: string;
+  selectedCaptionStyleId?: string;
   textScriptMaxIterationsOverride?: number;
   captionMaxWordsOverride?: number;
+  pauseRemovalMinSilenceDurationSecondsOverride?: number;
+  pauseRemovalSilenceThresholdDbOverride?: number;
   latestHookRequest?: HookRequestContext;
   latestStageRequests?: Partial<Record<ShortFormStageKey, StageRequestContext>>;
 }
@@ -183,6 +191,8 @@ export interface StageAgentRunSummary {
   lastEventAt?: string;
   errorMessage?: string;
   completionReason?: string;
+  activeStep?: string;
+  activeStatusText?: string;
 }
 
 export interface StageRevisionState {
@@ -286,7 +296,12 @@ export interface ShortFormProject {
   selectedMusicName?: string;
   selectedBackgroundVideoId?: string;
   selectedBackgroundVideoName?: string;
+  selectedCaptionStyleId?: string;
+  selectedCaptionStyleName?: string;
+  captionStyleOverrideId?: string;
   captionMaxWordsOverride?: number;
+  pauseRemovalMinSilenceDurationSecondsOverride?: number;
+  pauseRemovalSilenceThresholdDbOverride?: number;
   currentStage: string;
   pendingStages: PendingStageKey[];
   hooks: {
@@ -1754,6 +1769,8 @@ function findRelevantWorkflowRun(
         startedAt?: string;
         verifiedAt?: string;
         failedAt?: string;
+        activeStep?: string;
+        activeStatusText?: string;
         attempts?: Array<{
           startedAt?: string;
           finishedAt?: string;
@@ -1787,6 +1804,8 @@ function findRelevantWorkflowRun(
         lastEventAt,
         errorMessage: errorAttempt?.error,
         completionReason: parsed.status,
+        activeStep: parsed.activeStep,
+        activeStatusText: parsed.activeStatusText,
       };
     } catch {
       continue;
@@ -2127,27 +2146,34 @@ function buildVideoPipelineSummary(
   agentRun?: StageAgentRunSummary,
 ): VideoPipelineSummary | undefined {
   const workDir = getVideoWorkDir(projectId);
+  const xmlWorkDir = path.join(getProjectDir(projectId), "output", "xml-script-work");
   const manifestPath = path.join(workDir, "manifest.json");
   const transcriptPath = path.join(workDir, "voice", "voiceover-script.txt");
   const sceneTranscriptPath = path.join(workDir, "voice", "scene-transcript.json");
-  const combinedVoicePath = path.join(workDir, "voice", "voiceover-full.wav");
   const alignmentInputPath = path.join(workDir, "alignment", "alignment-input.json");
   const alignmentOutputPath = path.join(workDir, "alignment", "word-timestamps.json");
-  const motionScenesDir = path.join(workDir, "motion-scenes");
-  const captionedScenesDir = path.join(workDir, "captioned-scenes");
-  const visualOnlyPath = path.join(motionScenesDir, "visual-with-captions.mp4");
+  const baseVideoPath = path.join(workDir, "final-base-video.mp4");
+  const captionAssPath = path.join(workDir, "captions-word-highlight.ass");
   const generatedMusicPath = path.join(workDir, "music", "background-music-ace-step.wav");
+  const videoDocPath = getStageFilePath(projectId, "video");
+  const xmlVoicePath = path.join(xmlWorkDir, "voice", "narration-full.wav");
+  const xmlAlignmentPath = path.join(xmlWorkDir, "alignment", "word-timestamps.json");
+  const xmlCaptionsPath = path.join(xmlWorkDir, "captions", "caption-sections.json");
 
   const hasAnyArtifacts = [
     manifestPath,
     transcriptPath,
     sceneTranscriptPath,
-    combinedVoicePath,
     alignmentInputPath,
     alignmentOutputPath,
-    visualOnlyPath,
+    baseVideoPath,
+    captionAssPath,
     generatedMusicPath,
+    xmlVoicePath,
+    xmlAlignmentPath,
+    xmlCaptionsPath,
     videoArtifactPath,
+    videoDocPath,
   ].some((filePath) => Boolean(filePath && fs.existsSync(filePath)));
 
   if (!hasAnyArtifacts && !doc.pending && !agentRun) {
@@ -2155,13 +2181,17 @@ function buildVideoPipelineSummary(
   }
 
   const manifest = readJsonFileIfExists(manifestPath);
-  const manifestAlignment = manifest && typeof manifest.alignment === "object" && manifest.alignment && !Array.isArray(manifest.alignment)
-    ? manifest.alignment as Record<string, unknown>
-    : undefined;
   const transcript = readTextFileIfExists(transcriptPath);
   const sceneTranscript = readJsonFileIfExists(sceneTranscriptPath);
   const alignmentInput = readJsonFileIfExists(alignmentInputPath);
   const alignmentOutput = readJsonFileIfExists(alignmentOutputPath);
+  const manifestAlignment = manifest && typeof manifest.alignment === "object" && manifest.alignment && !Array.isArray(manifest.alignment)
+    ? manifest.alignment as Record<string, unknown>
+    : undefined;
+  const manifestCaptionRendering = manifest && typeof manifest.caption_rendering === "object" && manifest.caption_rendering && !Array.isArray(manifest.caption_rendering)
+    ? manifest.caption_rendering as Record<string, unknown>
+    : undefined;
+
   const runFailed = agentRun?.status === "failed" || doc.revision?.isFailed;
   const runActive = Boolean(doc.pending || doc.revision?.isPending || agentRun?.status === "running");
   const requestedAtMs = doc.revision?.requestedAt ? Date.parse(doc.revision.requestedAt) : Number.NaN;
@@ -2172,168 +2202,166 @@ function buildVideoPipelineSummary(
     if (!shouldRequireFreshArtifacts) return true;
     return hasFreshFileAtPath(filePath, requestedAtMs);
   };
-  const stepStatus = (done: boolean, isCurrent: boolean) => {
-    if (runFailed && !done && isCurrent) return "failed" as const;
-    if (done) return "completed" as const;
-    if (runActive && isCurrent) return "active" as const;
+
+  const inputArtifactsReady = [xmlVoicePath, xmlAlignmentPath, xmlCaptionsPath].every((filePath) => fs.existsSync(filePath));
+  const backgroundReady = typeof manifest?.background_video === "string" ? fs.existsSync(manifest.background_video) : false;
+  const musicReady = typeof manifest?.music === "string" ? stepDone(manifest.music) : stepDone(generatedMusicPath);
+  const baseVideoDone = stepDone(baseVideoPath) || (!shouldRequireFreshArtifacts && Boolean(videoArtifactPath && fs.existsSync(videoArtifactPath)));
+  const captionsDone = Boolean(
+    (videoArtifactPath && stepDone(videoArtifactPath))
+    && (manifestCaptionRendering || stepDone(captionAssPath) || !shouldRequireFreshArtifacts)
+  );
+  const finalizeDone = Boolean(
+    (videoArtifactPath && stepDone(videoArtifactPath))
+    && (stepDone(videoDocPath) || (!shouldRequireFreshArtifacts && doc.exists))
+  );
+
+  const fallbackActiveStep = !inputArtifactsReady
+    ? "prepare-inputs"
+    : !baseVideoDone
+      ? "render-base-video"
+      : !captionsDone
+        ? "burn-captions"
+        : !finalizeDone
+          ? "finalize-output"
+          : undefined;
+
+  const stepDoneById = {
+    "prepare-inputs": inputArtifactsReady,
+    "render-base-video": baseVideoDone,
+    "burn-captions": captionsDone,
+    "finalize-output": finalizeDone,
+  } as const;
+
+  const persistedActiveStep = typeof agentRun?.activeStep === "string" && agentRun.activeStep
+    ? agentRun.activeStep
+    : undefined;
+
+  const activeStep = runActive
+    ? (persistedActiveStep && !stepDoneById[persistedActiveStep as keyof typeof stepDoneById]
+        ? persistedActiveStep
+        : fallbackActiveStep || persistedActiveStep)
+    : undefined;
+
+  const stepStatus = (stepId: keyof typeof stepDoneById) => {
+    if (runFailed && activeStep === stepId) return "failed" as const;
+    if (runActive && activeStep === stepId) return "active" as const;
+    if (stepDoneById[stepId]) return "completed" as const;
     return "pending" as const;
   };
 
-  const transcriptDone = stepDone(transcriptPath);
-  const voiceDone = stepDone(combinedVoicePath);
-  const alignmentDone = stepDone(alignmentOutputPath);
-  const voiceSource = typeof manifest?.voice_source === "string" ? manifest.voice_source : undefined;
-  const alignmentSource = typeof manifest?.alignment_source === "string" ? manifest.alignment_source : undefined;
-  const timingSource = typeof manifest?.timing_source === "string" ? manifest.timing_source : undefined;
-  const reusesXmlVoice = voiceSource === "existing-artifact";
-  const reusesXmlAlignment = alignmentSource === "existing-artifact";
-  const usesXmlTimeline = timingSource === "xml-timeline" || manifestAlignment?.alignment_strategy === "xml-timeline";
-  const timingFromManifestDone = Boolean(manifestAlignment) && (!shouldRequireFreshArtifacts || hasFreshFileAtPath(manifestPath, requestedAtMs));
-  const timingFromRenderedScenesDone = shouldRequireFreshArtifacts
-    ? hasFreshMatchingFileAtPath(motionScenesDir, requestedAtMs, (entry) => /^scene-\d+\.mp4$/i.test(entry)) ||
-      hasFreshMatchingFileAtPath(captionedScenesDir, requestedAtMs, (entry) => /^scene-\d+\.mp4$/i.test(entry))
-    : Boolean(
-        getLatestMatchingFileUpdatedAt(motionScenesDir, (entry) => /^scene-\d+\.mp4$/i.test(entry)) ||
-        getLatestMatchingFileUpdatedAt(captionedScenesDir, (entry) => /^scene-\d+\.mp4$/i.test(entry))
-      );
-  const timingDone = timingFromManifestDone || timingFromRenderedScenesDone || stepDone(visualOnlyPath) || stepDone(videoArtifactPath);
-  const timingSummary = timingFromManifestDone
-    ? (usesXmlTimeline
-        ? summarizeAlignmentDebug(manifestAlignment) || "Scene timing came directly from the XML timeline produced during the XML Script step."
-        : summarizeAlignmentDebug(manifestAlignment) || "Scene timing was derived from the alignment step.")
-    : timingFromRenderedScenesDone || stepDone(visualOnlyPath) || stepDone(videoArtifactPath)
-      ? "Scene timing was inferred from downstream render artifacts."
-      : (usesXmlTimeline ? "Waiting for XML timeline timing artifacts." : "Waiting for scene boundary and duration calculations.");
-  const timingUpdatedAt = getFileUpdatedAt(manifestPath)
-    || getLatestMatchingFileUpdatedAt(motionScenesDir, (entry) => /^scene-\d+\.mp4$/i.test(entry))
-    || getLatestMatchingFileUpdatedAt(captionedScenesDir, (entry) => /^scene-\d+\.mp4$/i.test(entry))
-    || getFileUpdatedAt(visualOnlyPath)
-    || (videoArtifactPath ? getFileUpdatedAt(videoArtifactPath) : undefined);
-  const visualDone = stepDone(visualOnlyPath);
-  const musicDone = Boolean(
-    (typeof manifest?.music === "string" && stepDone(manifest.music)) || stepDone(generatedMusicPath)
-  );
-  const finalDone = stepDone(videoArtifactPath);
+  const prepareInputsStatus = stepStatus("prepare-inputs");
+  const renderBaseVideoStatus = stepStatus("render-base-video");
+  const burnCaptionsStatus = stepStatus("burn-captions");
+  const finalizeOutputStatus = stepStatus("finalize-output");
+  const activeStatusText = activeStep && persistedActiveStep === activeStep ? agentRun?.activeStatusText : undefined;
+  const failedStepSummary = agentRun?.errorMessage || activeStatusText || "This final-video workflow step failed before it could finish.";
 
-  const currentStep = !transcriptDone
-    ? "transcript"
-    : !voiceDone
-      ? "voice"
-      : !alignmentDone
-        ? "alignment"
-        : !timingDone
-          ? "timing"
-          : !visualDone
-            ? "visual"
-            : !musicDone
-              ? "music"
-              : !finalDone
-                ? "final"
-                : undefined;
+  const warningParts = [
+    typeof manifestAlignment?.alignment_warning === "string" ? manifestAlignment.alignment_warning : undefined,
+    typeof manifestCaptionRendering?.fallbackReason === "string" ? manifestCaptionRendering.fallbackReason : undefined,
+    doc.revision?.warning,
+  ].filter((value): value is string => Boolean(value));
+
+  const captionMode = typeof manifestCaptionRendering?.mode === "string" ? manifestCaptionRendering.mode : undefined;
+  const captionRequestedMode = typeof manifestCaptionRendering?.requestedMode === "string" ? manifestCaptionRendering.requestedMode : undefined;
+  const captionUpdatedAt = typeof manifestCaptionRendering?.updatedAt === "string"
+    ? manifestCaptionRendering.updatedAt
+    : (videoArtifactPath ? getFileUpdatedAt(videoArtifactPath) : undefined);
 
   const steps: VideoPipelineStep[] = [
     {
-      id: "transcript",
-      label: reusesXmlVoice ? "Load XML narration transcript" : "Prepare narration transcript",
-      status: stepStatus(transcriptDone, currentStep === "transcript"),
-      summary: transcriptDone
-        ? (reusesXmlVoice ? "Transcript copied from the XML Script pipeline for final-video reuse." : "Transcript written for the full-video narration.")
-        : (reusesXmlVoice ? "Waiting for the XML-script transcript artifact to be available." : "Waiting for the narration transcript to be written."),
-      updatedAt: getFileUpdatedAt(transcriptPath),
+      id: "prepare-inputs",
+      label: "Load reused XML narration inputs",
+      status: prepareInputsStatus,
+      summary: prepareInputsStatus === "failed"
+        ? failedStepSummary
+        : prepareInputsStatus === "active"
+          ? (activeStatusText || "Loading the XML narration, alignment, and caption artifacts required for final-video rendering.")
+          : prepareInputsStatus === "completed"
+            ? "Reused the XML narration WAV, forced-alignment JSON, and deterministic caption sections from the XML Script stage."
+            : "Waiting for the XML narration, alignment, and caption artifacts required for final-video rendering.",
+      updatedAt: getFileUpdatedAt(xmlCaptionsPath) || getFileUpdatedAt(xmlAlignmentPath) || getFileUpdatedAt(xmlVoicePath),
       details: [
-        transcript ? { id: "transcript", label: "Transcript passed to Qwen3-TTS", format: "text", content: transcript } : undefined,
+        transcript ? { id: "transcript", label: "Transcript passed into the video render", format: "text", content: transcript } : undefined,
         sceneTranscript ? { id: "scene-transcript", label: "Scene transcript breakdown", format: "json", content: stringifyDebugContent(sceneTranscript) } : undefined,
+        alignmentInput ? { id: "alignment-input", label: "Alignment input payload", format: "json", content: stringifyDebugContent(alignmentInput) } : undefined,
+        alignmentOutput ? { id: "alignment-output", label: "Forced-alignment output", format: "json", content: stringifyDebugContent(alignmentOutput) } : undefined,
       ].filter((detail): detail is VideoPipelineDetail => Boolean(detail)),
     },
     {
-      id: "voice",
-      label: reusesXmlVoice ? "Reuse XML narration audio" : "Generate narration audio",
-      status: stepStatus(voiceDone, currentStep === "voice"),
-      summary: voiceDone
-        ? `${reusesXmlVoice ? "Reused" : "Generated"} narration audio${typeof manifest?.voice_duration === "number" ? ` (${manifest.voice_duration.toFixed(2)}s)` : ""}.`
-        : (reusesXmlVoice ? "Waiting for the XML narration WAV to be available." : "Waiting for the combined narration WAV."),
-      updatedAt: getFileUpdatedAt(combinedVoicePath),
-      details: [
-        manifest && (manifest.tts_engine || manifest.tts_voice || manifest.voice_instruct)
-          ? {
-              id: "tts-config",
-              label: "Narration settings",
-              format: "json",
-              content: stringifyDebugContent({
-                tts_engine: manifest.tts_engine,
-                tts_voice: manifest.tts_voice,
-                voice_instruct: manifest.voice_instruct,
-                combined_voice: manifest.combined_voice,
-                voice_duration: manifest.voice_duration,
-              }),
-            }
-          : undefined,
-      ].filter((detail): detail is VideoPipelineDetail => Boolean(detail)),
-    },
-    {
-      id: "alignment",
-      label: reusesXmlAlignment ? "Reuse XML forced alignment" : "Run force alignment",
-      status: stepStatus(alignmentDone, currentStep === "alignment"),
-      summary: alignmentDone
-        ? (summarizeAlignmentDebug(manifestAlignment) || `${reusesXmlAlignment ? "Reused" : "Generated"} force-alignment output is available.`)
-        : (reusesXmlAlignment ? "Waiting for the XML forced-alignment JSON to be available." : "Waiting for the alignment model input/output."),
-      updatedAt: getFileUpdatedAt(alignmentOutputPath),
-      details: [
-        alignmentInput ? { id: "alignment-input", label: "Data passed to force alignment", format: "json", content: stringifyDebugContent(alignmentInput) } : undefined,
-        alignmentOutput ? { id: "alignment-output", label: "Force-alignment output", format: "json", content: stringifyDebugContent(alignmentOutput) } : undefined,
-        manifestAlignment ? { id: "alignment-debug", label: "Alignment diagnostics", format: "json", content: stringifyDebugContent(manifestAlignment) } : undefined,
-      ].filter((detail): detail is VideoPipelineDetail => Boolean(detail)),
-    },
-    {
-      id: "timing",
-      label: usesXmlTimeline ? "Apply XML caption + visual timing" : "Derive scene timing",
-      status: stepStatus(timingDone, currentStep === "timing"),
-      summary: timingSummary,
-      updatedAt: timingUpdatedAt,
+      id: "render-base-video",
+      label: "Render base video mix",
+      status: renderBaseVideoStatus,
+      summary: renderBaseVideoStatus === "failed"
+        ? failedStepSummary
+        : renderBaseVideoStatus === "active"
+          ? (activeStatusText || "Rendering the base video from the XML scene pipeline.")
+          : renderBaseVideoStatus === "completed"
+            ? "Rendered the motion scenes, looping background, narration, and soundtrack into a base video before caption burn-in."
+            : "Waiting for the base video render to start.",
+      updatedAt: getFileUpdatedAt(baseVideoPath) || (videoArtifactPath ? getFileUpdatedAt(videoArtifactPath) : undefined) || getFileUpdatedAt(manifestPath),
       details: manifest
-        ? [{ id: "manifest-timing", label: "Manifest timing snapshot", format: "json", content: stringifyDebugContent({ alignment: manifest.alignment, scene_durations: manifest.scene_durations, scenes: manifest.scenes }) }]
+        ? [{
+            id: "base-render-manifest",
+            label: "Base render manifest snapshot",
+            format: "json",
+            content: stringifyDebugContent({
+              voice_source: manifest.voice_source,
+              alignment_source: manifest.alignment_source,
+              timing_source: manifest.timing_source,
+              background_video: manifest.background_video,
+              music: manifest.music,
+              scene_count: manifest.scene_count,
+              scenes: manifest.scenes,
+            }),
+          }]
         : [],
     },
     {
-      id: "visual",
-      label: "Render scene videos",
-      status: stepStatus(visualDone, currentStep === "visual"),
-      summary: visualDone ? "Captioned scene videos were concatenated into a visual-only pass." : "Waiting for motion scenes and caption overlays.",
-      updatedAt: getFileUpdatedAt(visualOnlyPath),
-      details: manifest
-        ? [{ id: "scene-videos", label: "Scene render outputs", format: "json", content: stringifyDebugContent(manifest.scenes) }]
+      id: "burn-captions",
+      label: "Burn final captions",
+      status: burnCaptionsStatus,
+      summary: burnCaptionsStatus === "failed"
+        ? failedStepSummary
+        : burnCaptionsStatus === "active"
+          ? (activeStatusText || "Burning captions into the rendered base video.")
+          : burnCaptionsStatus === "completed"
+            ? (captionMode
+                ? `Final captions were burned using ${captionMode}${captionRequestedMode && captionRequestedMode !== captionMode ? ` (requested ${captionRequestedMode})` : ""}.`
+                : "Final captions were burned into the rendered video.")
+            : "Waiting for caption burn-in to begin.",
+      updatedAt: captionUpdatedAt,
+      details: manifestCaptionRendering
+        ? [{ id: "caption-rendering", label: "Caption rendering metadata", format: "json", content: stringifyDebugContent(manifestCaptionRendering) }]
         : [],
     },
     {
-      id: "music",
-      label: "Add background music",
-      status: stepStatus(musicDone, currentStep === "music"),
-      summary: musicDone ? "Background music is available for the final mix." : "Waiting for the music track or ACE-Step generation.",
-      updatedAt: typeof manifest?.music === "string" ? getFileUpdatedAt(manifest.music) : getFileUpdatedAt(generatedMusicPath),
+      id: "finalize-output",
+      label: "Publish final output",
+      status: finalizeOutputStatus,
+      summary: finalizeOutputStatus === "failed"
+        ? failedStepSummary
+        : finalizeOutputStatus === "active"
+          ? (activeStatusText || "Saving final-video metadata and review artifacts.")
+          : finalizeOutputStatus === "completed"
+            ? `Final MP4${backgroundReady ? " with background video" : ""}${musicReady ? " and soundtrack" : ""} is ready, and the review document was refreshed.`
+            : "Waiting for the final video and review document to be published.",
+      updatedAt: (videoArtifactPath ? getFileUpdatedAt(videoArtifactPath) : undefined) || getFileUpdatedAt(videoDocPath),
       details: manifest
-        ? [{ id: "music", label: "Music settings", format: "json", content: stringifyDebugContent({ music: manifest.music, music_prompt: manifest.music_prompt, music_volume: manifest.music_volume, ace_step_log: manifest.ace_step_log }) }]
-        : [],
-    },
-    {
-      id: "final",
-      label: "Assemble final video",
-      status: stepStatus(finalDone, currentStep === "final"),
-      summary: finalDone ? "Final MP4 written successfully." : "Waiting for the final muxed MP4 artifact.",
-      updatedAt: videoArtifactPath ? getFileUpdatedAt(videoArtifactPath) : undefined,
-      details: manifest
-        ? [{ id: "manifest", label: "Full video manifest", format: "json", content: stringifyDebugContent(manifest) }]
+        ? [{ id: "manifest", label: "Full final-video manifest", format: "json", content: stringifyDebugContent(manifest) }]
         : [],
     },
   ];
 
   return {
-    status: runFailed ? "failed" : finalDone ? "completed" : runActive ? "running" : "idle",
+    status: runFailed ? "failed" : finalizeDone ? "completed" : runActive ? "running" : "idle",
     workDir,
     manifestPath: fs.existsSync(manifestPath) ? manifestPath : undefined,
     transcriptPath: fs.existsSync(transcriptPath) ? transcriptPath : undefined,
     alignmentInputPath: fs.existsSync(alignmentInputPath) ? alignmentInputPath : undefined,
     alignmentOutputPath: fs.existsSync(alignmentOutputPath) ? alignmentOutputPath : undefined,
-    warning: typeof manifestAlignment?.alignment_warning === "string" ? manifestAlignment.alignment_warning : doc.revision?.warning,
+    warning: warningParts.length > 0 ? warningParts.join(" · ") : undefined,
     steps,
   };
 }
@@ -2348,7 +2376,7 @@ function getVideoStage(projectId: string, options?: { pending?: boolean }) {
   return {
     ...doc,
     videoPath,
-    videoUrl: videoPath ? toMediaUrl(projectId, videoPath) : undefined,
+    videoUrl: videoPath ? toMediaUrl(projectId, videoPath, getProjectMediaVersion(projectId, videoPath)) : undefined,
     pipeline: buildVideoPipelineSummary(projectId, doc, videoArtifactPath, doc.revision?.agentRun),
   };
 }
@@ -2505,10 +2533,22 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
   const resolvedVoice = resolveShortFormVoiceSelection(nextMeta.selectedVoiceId);
   const resolvedMusic = resolveShortFormMusicSelection(nextMeta.selectedMusicId);
   const resolvedBackground = resolveShortFormBackgroundVideoSelection(nextMeta.selectedBackgroundVideoId);
+  const resolvedCaptionStyle = resolveShortFormCaptionStyleSelection(nextMeta.selectedCaptionStyleId);
+  const resolvedPauseRemoval = resolveShortFormPauseRemovalSettings({
+    ...(typeof nextMeta.pauseRemovalMinSilenceDurationSecondsOverride === "number"
+      ? { minSilenceDurationSeconds: nextMeta.pauseRemovalMinSilenceDurationSecondsOverride }
+      : {}),
+    ...(typeof nextMeta.pauseRemovalSilenceThresholdDbOverride === "number"
+      ? { silenceThresholdDb: nextMeta.pauseRemovalSilenceThresholdDbOverride }
+      : {}),
+  });
 
   const resolvedResearch = { ...research, pending: Boolean(nextMeta.pendingResearch || research.revision?.isPending) };
   const resolvedScript = { ...script, pending: Boolean(nextMeta.pendingScript || script.revision?.isPending) };
-  const resolvedXmlScript = getXmlScriptDocument(projectId, { expectedVoiceId: nextMeta.selectedVoiceId });
+  const resolvedXmlScript = getXmlScriptDocument(projectId, {
+    expectedVoiceId: nextMeta.selectedVoiceId,
+    expectedPauseRemoval: resolvedPauseRemoval,
+  });
   const resolvedSceneImages = {
     ...sceneImages,
     scenes: attachScenePreviewVideoUrls(projectId, sceneImages.scenes, resolvedBackground.resolvedBackgroundVideoId),
@@ -2532,7 +2572,12 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
     selectedMusicName: resolvedMusic.music?.name,
     selectedBackgroundVideoId: resolvedBackground.resolvedBackgroundVideoId,
     selectedBackgroundVideoName: resolvedBackground.background?.name,
+    selectedCaptionStyleId: resolvedCaptionStyle.resolvedCaptionStyleId,
+    selectedCaptionStyleName: resolvedCaptionStyle.captionStyle.name,
+    captionStyleOverrideId: nextMeta.selectedCaptionStyleId,
     captionMaxWordsOverride: nextMeta.captionMaxWordsOverride,
+    pauseRemovalMinSilenceDurationSecondsOverride: nextMeta.pauseRemovalMinSilenceDurationSecondsOverride,
+    pauseRemovalSilenceThresholdDbOverride: nextMeta.pauseRemovalSilenceThresholdDbOverride,
     currentStage: "topic",
     pendingStages: getPendingStages(nextMeta, {
       research: resolvedResearch,
@@ -2568,6 +2613,13 @@ export function listShortFormProjectRows(): ShortFormProjectRow[] {
     .map((dir): ShortFormProjectRow | null => {
       const project = getShortFormProject(dir);
       if (!project) return null;
+      const videoRowStatus = project.video.pipeline?.status === "failed" || project.video.revision?.isFailed
+        ? "failed"
+        : project.video.pipeline?.status === "completed"
+          ? "completed"
+          : project.video.pipeline?.status === "running"
+            ? "running"
+            : project.video.status;
 
       return {
         id: project.id,
@@ -2600,7 +2652,7 @@ export function listShortFormProjectRows(): ShortFormProjectRow[] {
           pending: project.sceneImages.pending,
         },
         video: {
-          status: project.video.status,
+          status: videoRowStatus,
           videoUrl: project.video.videoUrl,
           pending: project.video.pending,
         },

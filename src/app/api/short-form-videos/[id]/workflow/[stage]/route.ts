@@ -33,6 +33,7 @@ import {
   resolveShortFormBackgroundVideoAbsolutePath,
   resolveShortFormBackgroundVideoSelection,
 } from "@/lib/short-form-background-videos";
+import { resolveShortFormCaptionStyleSelection } from "@/lib/short-form-video-render-settings";
 import {
   getShortFormTextScriptSettings,
   SHORT_FORM_TEXT_SCRIPT_PASSING_SCORE,
@@ -355,6 +356,7 @@ export async function POST(
     : undefined;
   const resolvedImageStyle = resolveShortFormImageStyle(project.selectedImageStyleId);
   const resolvedBackgroundVideo = resolveShortFormBackgroundVideoSelection(project.selectedBackgroundVideoId);
+  const resolvedCaptionStyle = resolveShortFormCaptionStyleSelection(project.selectedCaptionStyleId);
 
   const textScriptWorkflow = stage === "script" && textScriptRunId
     ? buildTextScriptWorkflowConfig(project, { mode, notes: requestNotes, textScriptRunId })
@@ -377,6 +379,9 @@ export async function POST(
           : stage === "video"
             ? ["No looping background video is configured. The direct video render should fail clearly until one is chosen in settings/project selection."]
             : []),
+        ...(stage === "video"
+          ? [`Selected caption style: ${resolvedCaptionStyle.captionStyle.name} (${resolvedCaptionStyle.source === "project" ? "project override" : resolvedCaptionStyle.source === "default" ? "global default" : "fallback"})`]
+          : []),
         directWorkflowRequestLine,
       ].join("\n")
     : buildStageTask(project, "research", { mode, notes: requestNotes });
@@ -476,6 +481,10 @@ export async function POST(
                         ),
                       }
                     : {}),
+                  captionStyleId: resolvedCaptionStyle.resolvedCaptionStyleId,
+                  captionStyleName: resolvedCaptionStyle.captionStyle.name,
+                  captionStyleSource: resolvedCaptionStyle.source,
+                  captionStyle: resolvedCaptionStyle.captionStyle,
                   ...(requestNotes ? { notes: requestNotes } : {}),
                 },
               }

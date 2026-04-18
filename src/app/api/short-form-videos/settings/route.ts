@@ -60,6 +60,13 @@ function mergeVideoRenderPatch(patch: Partial<ShortFormVideoRenderSettings>) {
     ...patch,
     voices: patch.voices || current.voices,
     musicTracks: patch.musicTracks || current.musicTracks,
+    captionStyles: patch.captionStyles || current.captionStyles,
+    pauseRemoval: patch.pauseRemoval
+      ? {
+          ...current.pauseRemoval,
+          ...patch.pauseRemoval,
+        }
+      : current.pauseRemoval,
   } satisfies ShortFormVideoRenderSettings;
 }
 
@@ -153,12 +160,40 @@ export async function PATCH(request: NextRequest) {
     if (!candidate.musicTracks.some((track) => track.id === candidate.defaultMusicTrackId)) {
       return NextResponse.json({ success: false, error: "Default music preset must reference an existing saved preset" }, { status: 400 });
     }
+    if (!Array.isArray(candidate.captionStyles) || candidate.captionStyles.length === 0) {
+      return NextResponse.json({ success: false, error: "At least one saved caption style is required" }, { status: 400 });
+    }
+    if (typeof candidate.defaultCaptionStyleId !== "string" || !candidate.defaultCaptionStyleId.trim()) {
+      return NextResponse.json({ success: false, error: "Default caption style must be selected" }, { status: 400 });
+    }
+    if (!candidate.captionStyles.some((style) => style.id === candidate.defaultCaptionStyleId)) {
+      return NextResponse.json({ success: false, error: "Default caption style must reference an existing saved style" }, { status: 400 });
+    }
     if (typeof candidate.musicVolume !== "number" || Number.isNaN(candidate.musicVolume) || candidate.musicVolume < 0 || candidate.musicVolume > 1) {
       return NextResponse.json({ success: false, error: "Music volume must be a number between 0 and 1" }, { status: 400 });
     }
 
     if (typeof candidate.captionMaxWords !== "number" || Number.isNaN(candidate.captionMaxWords) || candidate.captionMaxWords < 2 || candidate.captionMaxWords > 12) {
       return NextResponse.json({ success: false, error: "Caption max words must be a number between 2 and 12" }, { status: 400 });
+    }
+    if (!candidate.pauseRemoval || typeof candidate.pauseRemoval !== "object") {
+      return NextResponse.json({ success: false, error: "Pause removal settings are required" }, { status: 400 });
+    }
+    if (
+      typeof candidate.pauseRemoval.minSilenceDurationSeconds !== "number"
+      || Number.isNaN(candidate.pauseRemoval.minSilenceDurationSeconds)
+      || candidate.pauseRemoval.minSilenceDurationSeconds < 0.1
+      || candidate.pauseRemoval.minSilenceDurationSeconds > 2.5
+    ) {
+      return NextResponse.json({ success: false, error: "Pause removal minimum silence duration must be a number between 0.1 and 2.5 seconds" }, { status: 400 });
+    }
+    if (
+      typeof candidate.pauseRemoval.silenceThresholdDb !== "number"
+      || Number.isNaN(candidate.pauseRemoval.silenceThresholdDb)
+      || candidate.pauseRemoval.silenceThresholdDb < -80
+      || candidate.pauseRemoval.silenceThresholdDb > -5
+    ) {
+      return NextResponse.json({ success: false, error: "Pause removal silence threshold must be a number between -80 and -5 dB" }, { status: 400 });
     }
 
     for (const voice of candidate.voices) {
@@ -197,6 +232,69 @@ export async function PATCH(request: NextRequest) {
         && (typeof track.previewDurationSeconds !== "number" || Number.isNaN(track.previewDurationSeconds) || track.previewDurationSeconds < 6 || track.previewDurationSeconds > 30)
       ) {
         return NextResponse.json({ success: false, error: `Music preset ${track.name} must use a preview duration between 6 and 30 seconds` }, { status: 400 });
+      }
+    }
+
+    for (const style of candidate.captionStyles) {
+      if (typeof style.id !== "string" || !style.id.trim()) {
+        return NextResponse.json({ success: false, error: "Each caption style must have an id" }, { status: 400 });
+      }
+      if (typeof style.name !== "string" || !style.name.trim()) {
+        return NextResponse.json({ success: false, error: "Each caption style must have a name" }, { status: 400 });
+      }
+      if (typeof style.fontFamily !== "string" || !style.fontFamily.trim()) {
+        return NextResponse.json({ success: false, error: `Caption style ${style.name} must include a font family` }, { status: 400 });
+      }
+      if (typeof style.fontWeight !== "number" || Number.isNaN(style.fontWeight) || style.fontWeight < 100 || style.fontWeight > 900) {
+        return NextResponse.json({ success: false, error: `Caption style ${style.name} must use a font weight between 100 and 900` }, { status: 400 });
+      }
+      if (typeof style.fontSize !== "number" || Number.isNaN(style.fontSize) || style.fontSize < 24 || style.fontSize > 160) {
+        return NextResponse.json({ success: false, error: `Caption style ${style.name} must use a font size between 24 and 160` }, { status: 400 });
+      }
+      if (typeof style.wordSpacing !== "number" || Number.isNaN(style.wordSpacing) || style.wordSpacing < -20 || style.wordSpacing > 32) {
+        return NextResponse.json({ success: false, error: `Caption style ${style.name} must use word spacing between -20 and 32 pixels` }, { status: 400 });
+      }
+      if (typeof style.horizontalPadding !== "number" || Number.isNaN(style.horizontalPadding) || style.horizontalPadding < 0 || style.horizontalPadding > 320) {
+        return NextResponse.json({ success: false, error: `Caption style ${style.name} must use side padding between 0 and 320 pixels` }, { status: 400 });
+      }
+      if (typeof style.bottomMargin !== "number" || Number.isNaN(style.bottomMargin) || style.bottomMargin < 0 || style.bottomMargin > 900) {
+        return NextResponse.json({ success: false, error: `Caption style ${style.name} must use a bottom margin between 0 and 900 pixels` }, { status: 400 });
+      }
+      for (const [label, color] of [
+        ["active word color", style.activeWordColor],
+        ["spoken word color", style.spokenWordColor],
+        ["upcoming word color", style.upcomingWordColor],
+        ["outline color", style.outlineColor],
+        ["shadow color", style.shadowColor],
+        ["background color", style.backgroundColor],
+      ] as const) {
+        if (typeof color !== "string" || !/^#[0-9A-Fa-f]{6}$/.test(color)) {
+          return NextResponse.json({ success: false, error: `Caption style ${style.name} has an invalid ${label}` }, { status: 400 });
+        }
+      }
+      if (typeof style.outlineWidth !== "number" || Number.isNaN(style.outlineWidth) || style.outlineWidth < 0 || style.outlineWidth > 12) {
+        return NextResponse.json({ success: false, error: `Caption style ${style.name} must use an outline width between 0 and 12` }, { status: 400 });
+      }
+      if (typeof style.shadowStrength !== "number" || Number.isNaN(style.shadowStrength) || style.shadowStrength < 0 || style.shadowStrength > 12) {
+        return NextResponse.json({ success: false, error: `Caption style ${style.name} must use a shadow strength between 0 and 12` }, { status: 400 });
+      }
+      if (typeof style.shadowBlur !== "number" || Number.isNaN(style.shadowBlur) || style.shadowBlur < 0 || style.shadowBlur > 16) {
+        return NextResponse.json({ success: false, error: `Caption style ${style.name} must use a shadow blur between 0 and 16` }, { status: 400 });
+      }
+      if (typeof style.shadowOffsetX !== "number" || Number.isNaN(style.shadowOffsetX) || style.shadowOffsetX < -32 || style.shadowOffsetX > 32) {
+        return NextResponse.json({ success: false, error: `Caption style ${style.name} must use a shadow X offset between -32 and 32` }, { status: 400 });
+      }
+      if (typeof style.shadowOffsetY !== "number" || Number.isNaN(style.shadowOffsetY) || style.shadowOffsetY < -32 || style.shadowOffsetY > 32) {
+        return NextResponse.json({ success: false, error: `Caption style ${style.name} must use a shadow Y offset between -32 and 32` }, { status: 400 });
+      }
+      if (typeof style.backgroundEnabled !== "boolean") {
+        return NextResponse.json({ success: false, error: `Caption style ${style.name} must declare whether the background box is enabled` }, { status: 400 });
+      }
+      if (typeof style.backgroundOpacity !== "number" || Number.isNaN(style.backgroundOpacity) || style.backgroundOpacity < 0 || style.backgroundOpacity > 1) {
+        return NextResponse.json({ success: false, error: `Caption style ${style.name} must use a background opacity between 0 and 1` }, { status: 400 });
+      }
+      if (!["none", "stable-pop", "fluid-pop", "pulse", "glow", "pop", "word-highlight"].includes(style.animationPreset)) {
+        return NextResponse.json({ success: false, error: `Caption style ${style.name} has an unsupported animation preset` }, { status: 400 });
       }
     }
 

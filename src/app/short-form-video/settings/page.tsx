@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { OrbitLoader, Skeleton } from '@/components/ui/loading';
 import { SectionNavigator, useSectionScrollSpy } from '@/components/short-form-video/SectionNavigator';
 import { ValidationNotice, WorkflowSectionHeader } from '@/components/short-form-video/WorkflowShared';
+import { CaptionStylePreview, type CaptionAnimationPreset } from '@/components/short-form-video/CaptionStylePreview';
 
 type PromptKey =
   | 'hooksGenerate'
@@ -24,7 +25,9 @@ type PromptKey =
 
 type SettingsSectionId =
   | 'tts-voice'
+  | 'pause-removal'
   | 'music-library'
+  | 'caption-styles'
   | 'background-videos'
   | 'image-templates'
   | 'image-shared-constraints'
@@ -99,6 +102,12 @@ interface VoiceLibraryEntry {
   previewText: string;
   speaker?: string;
   legacyInstruct?: string;
+  referenceAudioRelativePath?: string;
+  referenceText?: string;
+  referencePrompt?: string;
+  referenceMode?: VoiceMode;
+  referenceSpeaker?: string;
+  referenceGeneratedAt?: string;
 }
 
 interface MusicLibraryEntry {
@@ -107,6 +116,37 @@ interface MusicLibraryEntry {
   prompt: string;
   notes: string;
   previewDurationSeconds?: number;
+  generatedAudioRelativePath?: string;
+  generatedDurationSeconds?: number;
+  generatedPrompt?: string;
+  generatedAt?: string;
+}
+
+interface CaptionStyleEntry {
+  id: string;
+  name: string;
+  fontFamily: string;
+  fontWeight: number;
+  fontSize: number;
+  wordSpacing: number;
+  horizontalPadding: number;
+  bottomMargin: number;
+  activeWordColor: string;
+  spokenWordColor: string;
+  upcomingWordColor: string;
+  outlineColor: string;
+  outlineWidth: number;
+  shadowColor: string;
+  shadowStrength: number;
+  shadowBlur: number;
+  shadowOffsetX: number;
+  shadowOffsetY: number;
+  backgroundEnabled: boolean;
+  backgroundColor: string;
+  backgroundOpacity: number;
+  backgroundPadding: number;
+  backgroundRadius: number;
+  animationPreset: CaptionAnimationPreset;
 }
 
 interface VideoRenderSettings {
@@ -115,7 +155,13 @@ interface VideoRenderSettings {
   defaultMusicTrackId?: string;
   musicVolume: number;
   musicTracks: MusicLibraryEntry[];
+  defaultCaptionStyleId: string;
+  captionStyles: CaptionStyleEntry[];
   captionMaxWords: number;
+  pauseRemoval: {
+    minSilenceDurationSeconds: number;
+    silenceThresholdDb: number;
+  };
 }
 
 interface BackgroundVideoEntry {
@@ -169,16 +215,10 @@ interface StyleTestResponse {
 interface TtsPreviewResponse {
   success: boolean;
   data?: {
-    runId: string;
-    sampleText: string;
-    audioRelativePath: string;
     audioUrl: string;
-    voice: {
-      name: string;
-      mode: VoiceMode;
-      voiceDesignPrompt: string;
-      speaker?: string;
-    };
+    reusedExisting: boolean;
+    voice: VoiceLibraryEntry;
+    videoRender: VideoRenderSettings;
   };
   error?: string;
 }
@@ -186,15 +226,10 @@ interface TtsPreviewResponse {
 interface MusicPreviewResponse {
   success: boolean;
   data?: {
-    runId: string;
-    audioRelativePath: string;
     audioUrl: string;
-    durationSeconds: number;
-    musicVolume: number;
-    track: {
-      name: string;
-      prompt: string;
-    };
+    reusedExisting: boolean;
+    track: MusicLibraryEntry;
+    videoRender: VideoRenderSettings;
   };
   error?: string;
 }
@@ -220,21 +255,14 @@ interface TtsPreviewState {
   isLoading: boolean;
   error: string | null;
   audioUrl: string | null;
-  sampleText: string | null;
-  voiceName: string | null;
-  mode: VoiceMode | null;
-  speaker: string | null;
-  voiceDesignPrompt: string | null;
+  reusedExisting: boolean | null;
 }
 
 interface MusicPreviewState {
   isLoading: boolean;
   error: string | null;
   audioUrl: string | null;
-  trackName: string | null;
-  prompt: string | null;
-  durationSeconds: number | null;
-  musicVolume: number | null;
+  reusedExisting: boolean | null;
 }
 
 interface SectionFeedback {
@@ -250,6 +278,24 @@ const STYLE_REFERENCE_USAGE_OPTIONS: { value: StyleReferenceUsageType; label: st
   { value: 'lighting', label: 'Lighting' },
   { value: 'composition', label: 'Composition' },
   { value: 'palette', label: 'Palette / color' },
+];
+
+const CAPTION_ANIMATION_OPTIONS: { value: CaptionAnimationPreset; label: string; description: string }[] = [
+  { value: 'none', label: 'None', description: 'Keep the 3-state word colors without extra scale or glow animation.' },
+  { value: 'stable-pop', label: 'Stable Pop', description: 'Give the active word a snappier highlight and shadow lift while keeping each word in a fixed slot.' },
+  { value: 'fluid-pop', label: 'Fluid Pop', description: 'Restore the old reflowing pop feel by letting neighboring words shift within each locked line, without wrap jitter.' },
+  { value: 'pulse', label: 'Pulse', description: 'Animate the active word with a subtle pulse on top of the word-highlight timing.' },
+  { value: 'glow', label: 'Glow', description: 'Add a brighter glow and slightly stronger outline to the active word for a higher-contrast look.' },
+];
+
+const CAPTION_FONT_WEIGHT_OPTIONS: Array<{ value: number; label: string }> = [
+  { value: 300, label: 'Light (300)' },
+  { value: 400, label: 'Regular (400)' },
+  { value: 500, label: 'Medium (500)' },
+  { value: 600, label: 'Semibold (600)' },
+  { value: 700, label: 'Bold (700)' },
+  { value: 800, label: 'Extra Bold (800)' },
+  { value: 900, label: 'Black (900)' },
 ];
 
 const PROMPT_GROUPS: Array<{
@@ -289,7 +335,9 @@ function buildStyleTestsById(styles: ImageStyle[]): Record<string, StyleTestStat
 function createEmptySectionFeedback(): Record<SettingsSectionId, SectionFeedback> {
   return {
     'tts-voice': { saving: false, error: null, message: null },
+    'pause-removal': { saving: false, error: null, message: null },
     'music-library': { saving: false, error: null, message: null },
+    'caption-styles': { saving: false, error: null, message: null },
     'background-videos': { saving: false, error: null, message: null },
     'image-templates': { saving: false, error: null, message: null },
     'image-shared-constraints': { saving: false, error: null, message: null },
@@ -336,7 +384,8 @@ function createVoiceDraft(index: number): VoiceLibraryEntry {
     voiceDesignPrompt:
       'Educated American English narrator with calm authority, polished pacing, natural warmth, and crisp short-form delivery. Speak only English and avoid non-speech sounds.',
     notes: '',
-    previewText: 'Your jawline changes when your posture changes first.',
+    previewText:
+      'Most people think their face shape is fixed, but posture, breathing, and muscular balance change more than you expect. In this lesson, I will walk through the habits that matter most, the mistakes that waste effort, and the small adjustments that create visible changes over time. Keep your shoulders relaxed, your neck long, and your breathing steady as we go step by step.',
   };
 }
 
@@ -348,6 +397,35 @@ function createMusicDraft(index: number): MusicLibraryEntry {
       'instrumental modern short-form social-video underscore, polished and cinematic, no vocals, no spoken voice, no choir',
     notes: '',
     previewDurationSeconds: 12,
+  };
+}
+
+function createCaptionStyleDraft(index: number): CaptionStyleEntry {
+  return {
+    id: `caption-style-${Date.now()}-${index}`,
+    name: `New caption style ${index}`,
+    fontFamily: 'Arial',
+    fontWeight: 700,
+    fontSize: 72,
+    wordSpacing: 0,
+    horizontalPadding: 80,
+    bottomMargin: 220,
+    activeWordColor: '#FFFFFF',
+    spokenWordColor: '#D0D0D0',
+    upcomingWordColor: '#5E5E5E',
+    outlineColor: '#000000',
+    outlineWidth: 3.5,
+    shadowColor: '#000000',
+    shadowStrength: 1.2,
+    shadowBlur: 2.2,
+    shadowOffsetX: 0,
+    shadowOffsetY: 3.4,
+    backgroundEnabled: false,
+    backgroundColor: '#000000',
+    backgroundOpacity: 0.45,
+    backgroundPadding: 20,
+    backgroundRadius: 24,
+    animationPreset: 'stable-pop',
   };
 }
 
@@ -378,17 +456,52 @@ async function parseStyleTestResponse(response: Response) {
 async function parseTtsPreviewResponse(response: Response) {
   const payload = (await response.json().catch(() => ({}))) as TtsPreviewResponse;
   if (!response.ok || payload.success === false || !payload.data) {
-    throw new Error(payload.error || 'Failed to generate TTS preview');
+    throw new Error(payload.error || 'Failed to generate saved voice sample');
   }
   return payload.data;
+}
+
+function hasSavedVoiceSample(voice: VoiceLibraryEntry | null | undefined) {
+  if (!voice?.referenceAudioRelativePath || !voice.referenceText || !voice.referencePrompt || !voice.referenceMode) return false;
+  if (voice.referencePrompt !== voice.voiceDesignPrompt || voice.referenceMode !== voice.mode) return false;
+  if (voice.mode === 'custom-voice' && voice.referenceSpeaker !== voice.speaker) return false;
+  return true;
+}
+
+function buildSavedVoiceAudioUrl(voice: VoiceLibraryEntry | null | undefined, cacheBust?: number) {
+  if (!voice?.referenceAudioRelativePath) return null;
+  const encodedPath = voice.referenceAudioRelativePath
+    .split('/')
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join('/');
+  const query = cacheBust ? `?v=${cacheBust}` : '';
+  return `/api/short-form-videos/settings/voice-library-files/${encodedPath}${query}`;
 }
 
 async function parseMusicPreviewResponse(response: Response) {
   const payload = (await response.json().catch(() => ({}))) as MusicPreviewResponse;
   if (!response.ok || payload.success === false || !payload.data) {
-    throw new Error(payload.error || 'Failed to generate music preview');
+    throw new Error(payload.error || 'Failed to generate saved soundtrack file');
   }
   return payload.data;
+}
+
+function hasGeneratedSoundtrack(track: MusicLibraryEntry | null | undefined) {
+  if (!track?.generatedAudioRelativePath) return false;
+  const expectedDuration = track.previewDurationSeconds || 12;
+  return track.generatedPrompt === track.prompt && track.generatedDurationSeconds === expectedDuration;
+}
+
+function buildSavedMusicAudioUrl(track: MusicLibraryEntry | null | undefined, cacheBust?: number) {
+  if (!track?.generatedAudioRelativePath) return null;
+  const encodedPath = track.generatedAudioRelativePath
+    .split('/')
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join('/');
+  const query = cacheBust ? `?v=${cacheBust}` : '';
+  return `/api/short-form-videos/settings/music-library-files/${encodedPath}${query}`;
 }
 
 function SectionActions({
@@ -439,6 +552,125 @@ function SectionFeedbackNotice({ feedback }: { feedback: SectionFeedback }) {
   return null;
 }
 
+function roundToStep(value: number, step: number) {
+  if (!Number.isFinite(value)) return value;
+  if (!Number.isFinite(step) || step <= 0) return value;
+  const decimals = String(step).includes('.') ? String(step).split('.')[1]!.length : 0;
+  const rounded = Math.round(value / step) * step;
+  return Number(rounded.toFixed(decimals));
+}
+
+function formatNumericDraft(value: number, step: number) {
+  if (!Number.isFinite(value)) return '';
+  const decimals = String(step).includes('.') ? String(step).split('.')[1]!.length : 0;
+  if (decimals === 0) return String(Math.round(value));
+  return value.toFixed(decimals).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+}
+
+function buildUniqueCaptionStyleName(styles: CaptionStyleEntry[], sourceName: string) {
+  const normalized = new Set(styles.map((style) => style.name.trim().toLowerCase()));
+  const base = `${sourceName.trim() || 'Caption style'} copy`;
+  let candidate = base;
+  let suffix = 2;
+  while (normalized.has(candidate.toLowerCase())) {
+    candidate = `${base} ${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
+function buildUniqueCaptionStyleId(styles: CaptionStyleEntry[], name: string) {
+  const used = new Set(styles.map((style) => style.id));
+  const base = slugify(name) || 'caption-style';
+  let candidate = `${base}-${Date.now()}`;
+  let suffix = 2;
+  while (used.has(candidate)) {
+    candidate = `${base}-${Date.now()}-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
+function CaptionStyleNumberField({
+  label,
+  value,
+  min,
+  max,
+  step = 1,
+  helper,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  helper?: string;
+  onChange: (value: number) => void;
+}) {
+  const [draft, setDraft] = useState(() => formatNumericDraft(value, step));
+
+  useEffect(() => {
+    setDraft(formatNumericDraft(value, step));
+  }, [step, value]);
+
+  const commit = (raw: string) => {
+    const nextRaw = raw.trim();
+    if (!nextRaw || nextRaw === '-' || nextRaw === '.' || nextRaw === '-.') {
+      setDraft(formatNumericDraft(value, step));
+      return;
+    }
+    const parsed = Number(nextRaw.replace(',', '.'));
+    if (!Number.isFinite(parsed)) {
+      setDraft(formatNumericDraft(value, step));
+      return;
+    }
+    const nextValue = Math.max(min, Math.min(max, roundToStep(parsed, step)));
+    onChange(nextValue);
+    setDraft(formatNumericDraft(nextValue, step));
+  };
+
+  const nudge = (direction: -1 | 1) => {
+    const nextValue = Math.max(min, Math.min(max, roundToStep(value + (direction * step), step)));
+    onChange(nextValue);
+    setDraft(formatNumericDraft(nextValue, step));
+  };
+
+  return (
+    <div className="space-y-2 rounded-lg border border-border bg-background/40 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</label>
+        <span className="text-xs font-medium text-foreground">{formatNumericDraft(value, step)}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button type="button" variant="outline" className="h-12 w-12 shrink-0 px-0 text-lg" onClick={() => nudge(-1)}>
+          −
+        </Button>
+        <Input
+          type="text"
+          inputMode={step < 1 || min < 0 ? 'decimal' : 'numeric'}
+          enterKeyHint="done"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={(event) => commit(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              commit(draft);
+            }
+          }}
+          className="h-12 text-center text-base"
+          aria-label={label}
+        />
+        <Button type="button" variant="outline" className="h-12 w-12 shrink-0 px-0 text-lg" onClick={() => nudge(1)}>
+          +
+        </Button>
+      </div>
+      {helper ? <p className="text-xs text-muted-foreground">{helper}</p> : null}
+    </div>
+  );
+}
+
 export default function ShortFormVideoSettingsPage() {
   const searchParams = useSearchParams();
   const requestedStyleId = searchParams.get('style');
@@ -457,6 +689,7 @@ export default function ShortFormVideoSettingsPage() {
   const [selectedStyleId, setSelectedStyleId] = useState<string | null>(null);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | null>(null);
   const [selectedMusicId, setSelectedMusicId] = useState<string | null>(null);
+  const [selectedCaptionStyleId, setSelectedCaptionStyleId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [styleTestsById, setStyleTestsById] = useState<Record<string, StyleTestState>>({});
@@ -467,20 +700,13 @@ export default function ShortFormVideoSettingsPage() {
     isLoading: false,
     error: null,
     audioUrl: null,
-    sampleText: null,
-    voiceName: null,
-    mode: null,
-    speaker: null,
-    voiceDesignPrompt: null,
+    reusedExisting: null,
   });
   const [musicPreview, setMusicPreview] = useState<MusicPreviewState>({
     isLoading: false,
     error: null,
     audioUrl: null,
-    trackName: null,
-    prompt: null,
-    durationSeconds: null,
-    musicVolume: null,
+    reusedExisting: null,
   });
 
   useEffect(() => {
@@ -512,6 +738,13 @@ export default function ShortFormVideoSettingsPage() {
     }
   }, [selectedMusicId, videoRender]);
 
+  useEffect(() => {
+    if (!videoRender || videoRender.captionStyles.length === 0) return;
+    if (!selectedCaptionStyleId || !videoRender.captionStyles.some((style) => style.id === selectedCaptionStyleId)) {
+      setSelectedCaptionStyleId(videoRender.defaultCaptionStyleId || videoRender.captionStyles[0]?.id || null);
+    }
+  }, [selectedCaptionStyleId, videoRender]);
+
   async function loadSettings() {
     setLoading(true);
     setError(null);
@@ -532,6 +765,7 @@ export default function ShortFormVideoSettingsPage() {
       setSelectedStyleId((current) => current || data.imageStyles.defaultStyleId || data.imageStyles.styles[0]?.id || null);
       setSelectedVoiceId((current) => current || data.videoRender.defaultVoiceId || data.videoRender.voices[0]?.id || null);
       setSelectedMusicId((current) => current || data.videoRender.defaultMusicTrackId || data.videoRender.musicTracks[0]?.id || null);
+      setSelectedCaptionStyleId((current) => current || data.videoRender.defaultCaptionStyleId || data.videoRender.captionStyles[0]?.id || null);
       setStyleTestsById(buildStyleTestsById(data.imageStyles.styles));
       setSectionFeedback(createEmptySectionFeedback());
     } catch (err) {
@@ -558,6 +792,22 @@ export default function ShortFormVideoSettingsPage() {
     () => videoRender?.musicTracks.find((track) => track.id === selectedMusicId) || null,
     [selectedMusicId, videoRender]
   );
+  const selectedCaptionStyle = useMemo(
+    () => videoRender?.captionStyles.find((style) => style.id === selectedCaptionStyleId) || null,
+    [selectedCaptionStyleId, videoRender]
+  );
+  const savedVoiceAudioUrl = useMemo(() => {
+    if (ttsPreview.audioUrl) return ttsPreview.audioUrl;
+    if (!selectedVoice) return null;
+    const cacheBust = selectedVoice.referenceGeneratedAt ? Date.parse(selectedVoice.referenceGeneratedAt) : undefined;
+    return buildSavedVoiceAudioUrl(selectedVoice, typeof cacheBust === 'number' && Number.isFinite(cacheBust) ? cacheBust : undefined);
+  }, [selectedVoice, ttsPreview.audioUrl]);
+  const savedMusicAudioUrl = useMemo(() => {
+    if (musicPreview.audioUrl) return musicPreview.audioUrl;
+    if (!selectedMusic) return null;
+    const cacheBust = selectedMusic.generatedAt ? Date.parse(selectedMusic.generatedAt) : undefined;
+    return buildSavedMusicAudioUrl(selectedMusic, typeof cacheBust === 'number' && Number.isFinite(cacheBust) ? cacheBust : undefined);
+  }, [musicPreview.audioUrl, selectedMusic]);
   const selectedStyleTest = selectedStyle ? styleTestsById[selectedStyle.id] : undefined;
   const selectedStyleUpload = selectedStyle ? styleReferenceUploadsById[selectedStyle.id] : undefined;
   const anyStyleTesting = useMemo(
@@ -568,6 +818,24 @@ export default function ShortFormVideoSettingsPage() {
     () => Object.values(sectionFeedback).some((section) => section.saving),
     [sectionFeedback]
   );
+
+  useEffect(() => {
+    setTtsPreview({
+      isLoading: false,
+      error: null,
+      audioUrl: null,
+      reusedExisting: null,
+    });
+  }, [selectedVoiceId]);
+
+  useEffect(() => {
+    setMusicPreview({
+      isLoading: false,
+      error: null,
+      audioUrl: null,
+      reusedExisting: null,
+    });
+  }, [selectedMusicId]);
 
   const dirtyBySection = useMemo<Record<SettingsSectionId, boolean>>(() => {
     const imageTemplateDirty = imageStyles && initialImageStyles
@@ -589,11 +857,25 @@ export default function ShortFormVideoSettingsPage() {
           musicTracks: videoRender.musicTracks,
           defaultMusicTrackId: videoRender.defaultMusicTrackId,
           musicVolume: videoRender.musicVolume,
+          captionMaxWords: videoRender.captionMaxWords,
         }) !== serializeForCompare({
           musicTracks: initialVideoRender.musicTracks,
           defaultMusicTrackId: initialVideoRender.defaultMusicTrackId,
           musicVolume: initialVideoRender.musicVolume,
+          captionMaxWords: initialVideoRender.captionMaxWords,
         })
+      : false;
+    const captionStylesDirty = videoRender && initialVideoRender
+      ? serializeForCompare({
+          captionStyles: videoRender.captionStyles,
+          defaultCaptionStyleId: videoRender.defaultCaptionStyleId,
+        }) !== serializeForCompare({
+          captionStyles: initialVideoRender.captionStyles,
+          defaultCaptionStyleId: initialVideoRender.defaultCaptionStyleId,
+        })
+      : false;
+    const pauseRemovalDirty = videoRender && initialVideoRender
+      ? serializeForCompare(videoRender.pauseRemoval) !== serializeForCompare(initialVideoRender.pauseRemoval)
       : false;
     const backgroundVideosDirty = backgroundVideos && initialBackgroundVideos
       ? serializeForCompare(backgroundVideos) !== serializeForCompare(initialBackgroundVideos)
@@ -611,7 +893,9 @@ export default function ShortFormVideoSettingsPage() {
 
     return {
       'tts-voice': ttsDirty,
+      'pause-removal': pauseRemovalDirty,
       'music-library': musicDirty,
+      'caption-styles': captionStylesDirty,
       'background-videos': backgroundVideosDirty,
       'image-templates': imageTemplateDirty,
       'image-shared-constraints': imageSharedDirty,
@@ -628,6 +912,8 @@ export default function ShortFormVideoSettingsPage() {
       { id: 'prompt-research' as const, label: 'Research prompts', dirty: dirtyBySection['prompt-research'] },
       { id: 'text-script-prompts' as const, label: 'Text-script prompts', dirty: dirtyBySection['text-script-prompts'] },
       { id: 'tts-voice' as const, label: 'Voice library', dirty: dirtyBySection['tts-voice'] },
+      { id: 'pause-removal' as const, label: 'Pause removal', dirty: dirtyBySection['pause-removal'] },
+      { id: 'caption-styles' as const, label: 'Caption styles', dirty: dirtyBySection['caption-styles'] },
       { id: 'image-templates' as const, label: 'Nano Banana templates', dirty: dirtyBySection['image-templates'] },
       { id: 'image-shared-constraints' as const, label: 'Shared image constraints', dirty: dirtyBySection['image-shared-constraints'] },
       { id: 'image-styles' as const, label: 'Image style library', dirty: dirtyBySection['image-styles'] },
@@ -837,7 +1123,7 @@ export default function ShortFormVideoSettingsPage() {
   function mergeSavedSection(sectionId: SettingsSectionId, data: NonNullable<SettingsResponse['data']>) {
     setDefinitions(data.definitions);
 
-    if (sectionId === 'tts-voice' || sectionId === 'music-library') {
+    if (sectionId === 'tts-voice' || sectionId === 'music-library' || sectionId === 'pause-removal' || sectionId === 'caption-styles') {
       setVideoRender(data.videoRender);
       setInitialVideoRender(data.videoRender);
       setSelectedVoiceId((current) => {
@@ -847,6 +1133,10 @@ export default function ShortFormVideoSettingsPage() {
       setSelectedMusicId((current) => {
         if (current && data.videoRender.musicTracks.some((track) => track.id === current)) return current;
         return data.videoRender.defaultMusicTrackId || data.videoRender.musicTracks[0]?.id || null;
+      });
+      setSelectedCaptionStyleId((current) => {
+        if (current && data.videoRender.captionStyles.some((style) => style.id === current)) return current;
+        return data.videoRender.defaultCaptionStyleId || data.videoRender.captionStyles[0]?.id || null;
       });
       return;
     }
@@ -914,8 +1204,42 @@ export default function ShortFormVideoSettingsPage() {
   function buildSectionSavePayload(sectionId: SettingsSectionId) {
     switch (sectionId) {
       case 'tts-voice':
+        return videoRender
+          ? {
+              videoRender: {
+                voices: videoRender.voices,
+                defaultVoiceId: videoRender.defaultVoiceId,
+              },
+            }
+          : null;
+      case 'pause-removal':
+        return videoRender
+          ? {
+              videoRender: {
+                pauseRemoval: videoRender.pauseRemoval,
+              },
+            }
+          : null;
       case 'music-library':
-        return videoRender ? { videoRender } : null;
+        return videoRender
+          ? {
+              videoRender: {
+                musicTracks: videoRender.musicTracks,
+                defaultMusicTrackId: videoRender.defaultMusicTrackId,
+                musicVolume: videoRender.musicVolume,
+                captionMaxWords: videoRender.captionMaxWords,
+              },
+            }
+          : null;
+      case 'caption-styles':
+        return videoRender
+          ? {
+              videoRender: {
+                captionStyles: videoRender.captionStyles,
+                defaultCaptionStyleId: videoRender.defaultCaptionStyleId,
+              },
+            }
+          : null;
       case 'background-videos':
         return backgroundVideos ? { backgroundVideos } : null;
       case 'text-script-prompts':
@@ -935,7 +1259,7 @@ export default function ShortFormVideoSettingsPage() {
 
   async function saveSection(sectionId: SettingsSectionId) {
     const payload = buildSectionSavePayload(sectionId);
-    if (!payload) return;
+    if (!payload) return null;
 
     updateSectionFeedbackState(sectionId, { saving: true, error: null, message: null });
 
@@ -953,23 +1277,29 @@ export default function ShortFormVideoSettingsPage() {
         error: null,
         message:
           sectionId === 'tts-voice'
-            ? 'Saved. New final-video runs will use this voice library and default voice immediately.'
-            : sectionId === 'music-library'
-              ? 'Saved. New final-video runs will use this music library/default and saved mix volume immediately.'
-              : sectionId === 'background-videos'
-                ? 'Saved. Projects now use this background-video library/default immediately.'
-                : sectionId === 'image-templates' || sectionId === 'image-shared-constraints' || sectionId === 'image-styles'
-                  ? 'Saved. New scene-image runs and tests will use this section immediately.'
-                  : sectionId === 'text-script-prompts'
-                    ? 'Saved. New text-script runs will use these full Scribe prompt templates and the default max-iteration limit immediately.'
-                    : 'Saved. New workflow runs will use this prompt section immediately.',
+            ? 'Saved. New XML narration runs will now reuse this voice library, including any saved voice samples.'
+            : sectionId === 'pause-removal'
+              ? 'Saved. New narration timing runs now use these global pause-removal defaults unless a project override is set.'
+              : sectionId === 'music-library'
+                ? 'Saved. New final-video runs will now reuse this soundtrack library, including any generated soundtrack files.'
+                : sectionId === 'caption-styles'
+                  ? 'Saved. New final-video runs will use this caption-style library/default immediately.'
+                  : sectionId === 'background-videos'
+                    ? 'Saved. Projects now use this background-video library/default immediately.'
+                    : sectionId === 'image-templates' || sectionId === 'image-shared-constraints' || sectionId === 'image-styles'
+                      ? 'Saved. New scene-image runs and tests will use this section immediately.'
+                      : sectionId === 'text-script-prompts'
+                        ? 'Saved. New text-script runs will use these full Scribe prompt templates and the default max-iteration limit immediately.'
+                        : 'Saved. New workflow runs will use this prompt section immediately.',
       });
+      return data;
     } catch (err) {
       updateSectionFeedbackState(sectionId, {
         saving: false,
         error: err instanceof Error ? err.message : 'Failed to save section',
         message: null,
       });
+      throw err;
     }
   }
 
@@ -980,9 +1310,42 @@ export default function ShortFormVideoSettingsPage() {
 
     updateSectionFeedbackState(sectionId, { error: null, message: null });
 
-    if ((sectionId === 'tts-voice' || sectionId === 'music-library') && initialVideoRender) {
-      setVideoRender(initialVideoRender);
-      setSelectedVoiceId(initialVideoRender.defaultVoiceId || initialVideoRender.voices[0]?.id || null);
+    if ((sectionId === 'tts-voice' || sectionId === 'music-library' || sectionId === 'pause-removal' || sectionId === 'caption-styles') && initialVideoRender && videoRender) {
+      if (sectionId === 'tts-voice') {
+        setVideoRender({
+          ...videoRender,
+          voices: initialVideoRender.voices,
+          defaultVoiceId: initialVideoRender.defaultVoiceId,
+        });
+        setSelectedVoiceId(initialVideoRender.defaultVoiceId || initialVideoRender.voices[0]?.id || null);
+        return;
+      }
+
+      if (sectionId === 'pause-removal') {
+        setVideoRender({
+          ...videoRender,
+          pauseRemoval: initialVideoRender.pauseRemoval,
+        });
+        return;
+      }
+
+      if (sectionId === 'caption-styles') {
+        setVideoRender({
+          ...videoRender,
+          captionStyles: initialVideoRender.captionStyles,
+          defaultCaptionStyleId: initialVideoRender.defaultCaptionStyleId,
+        });
+        setSelectedCaptionStyleId(initialVideoRender.defaultCaptionStyleId || initialVideoRender.captionStyles[0]?.id || null);
+        return;
+      }
+
+      setVideoRender({
+        ...videoRender,
+        musicTracks: initialVideoRender.musicTracks,
+        defaultMusicTrackId: initialVideoRender.defaultMusicTrackId,
+        musicVolume: initialVideoRender.musicVolume,
+        captionMaxWords: initialVideoRender.captionMaxWords,
+      });
       setSelectedMusicId(initialVideoRender.defaultMusicTrackId || initialVideoRender.musicTracks[0]?.id || null);
       return;
     }
@@ -1163,6 +1526,63 @@ export default function ShortFormVideoSettingsPage() {
     });
   }
 
+  function updateSelectedCaptionStyle(updater: (style: CaptionStyleEntry) => CaptionStyleEntry) {
+    if (!videoRender || !selectedCaptionStyle) return;
+    updateSectionFeedbackState('caption-styles', { error: null, message: null });
+    setVideoRender({
+      ...videoRender,
+      captionStyles: videoRender.captionStyles.map((style) => (style.id === selectedCaptionStyle.id ? updater(style) : style)),
+    });
+  }
+
+  function addCaptionStyle() {
+    if (!videoRender) return;
+    updateSectionFeedbackState('caption-styles', { error: null, message: null });
+    const nextStyle = createCaptionStyleDraft(videoRender.captionStyles.length + 1);
+    const dedupedId = `${slugify(nextStyle.name) || 'caption-style'}-${Date.now()}`;
+    nextStyle.id = dedupedId;
+    setVideoRender({
+      ...videoRender,
+      defaultCaptionStyleId: videoRender.defaultCaptionStyleId || dedupedId,
+      captionStyles: [...videoRender.captionStyles, nextStyle],
+    });
+    setSelectedCaptionStyleId(dedupedId);
+  }
+
+  function duplicateCaptionStyle(styleId: string) {
+    if (!videoRender) return;
+    const source = videoRender.captionStyles.find((style) => style.id === styleId);
+    if (!source) return;
+    updateSectionFeedbackState('caption-styles', { error: null, message: null });
+    const name = buildUniqueCaptionStyleName(videoRender.captionStyles, source.name);
+    const duplicated: CaptionStyleEntry = {
+      ...source,
+      id: buildUniqueCaptionStyleId(videoRender.captionStyles, name),
+      name,
+    };
+    const sourceIndex = videoRender.captionStyles.findIndex((style) => style.id === styleId);
+    const nextStyles = [...videoRender.captionStyles];
+    nextStyles.splice(sourceIndex + 1, 0, duplicated);
+    setVideoRender({
+      ...videoRender,
+      captionStyles: nextStyles,
+    });
+    setSelectedCaptionStyleId(duplicated.id);
+  }
+
+  function deleteCaptionStyle(styleId: string) {
+    if (!videoRender || videoRender.captionStyles.length <= 1) return;
+    updateSectionFeedbackState('caption-styles', { error: null, message: null });
+    const remaining = videoRender.captionStyles.filter((style) => style.id !== styleId);
+    const nextDefault = videoRender.defaultCaptionStyleId === styleId ? remaining[0].id : videoRender.defaultCaptionStyleId;
+    setVideoRender({
+      ...videoRender,
+      defaultCaptionStyleId: nextDefault,
+      captionStyles: remaining,
+    });
+    setSelectedCaptionStyleId(remaining[0]?.id || null);
+  }
+
   function addMusic() {
     if (!videoRender) return;
     updateSectionFeedbackState('music-library', { error: null, message: null });
@@ -1339,44 +1759,45 @@ export default function ShortFormVideoSettingsPage() {
     }));
 
     try {
+      if (dirtyBySection['tts-voice']) {
+        await saveSection('tts-voice');
+      }
+
       const data = await parseTtsPreviewResponse(
-        await fetch('/api/short-form-videos/settings/tts-preview', {
+        await fetch('/api/short-form-videos/settings/voice-library/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            voice: {
-              id: selectedVoice.id,
-              name: selectedVoice.name,
-              mode: selectedVoice.mode,
-              voiceDesignPrompt: selectedVoice.voiceDesignPrompt,
-              speaker: selectedVoice.speaker,
-            },
-            sampleText: selectedVoice.previewText,
-          }),
+          body: JSON.stringify({ voiceId: selectedVoice.id }),
         })
       );
 
+      setVideoRender(data.videoRender);
+      setInitialVideoRender(data.videoRender);
+      setSelectedVoiceId(data.voice.id);
       setTtsPreview({
         isLoading: false,
         error: null,
         audioUrl: data.audioUrl,
-        sampleText: data.sampleText,
-        voiceName: data.voice.name,
-        mode: data.voice.mode,
-        speaker: data.voice.speaker || null,
-        voiceDesignPrompt: data.voice.voiceDesignPrompt,
+        reusedExisting: data.reusedExisting,
+      });
+      updateSectionFeedbackState('tts-voice', {
+        saving: false,
+        error: null,
+        message: data.reusedExisting
+          ? 'Saved voice sample already existed, so the dashboard will now reuse that same reference clip for future narration runs.'
+          : 'Saved a reusable voice sample. Future XML narration runs will clone from this exact reference clip for more stable long-form output.',
       });
     } catch (err) {
       setTtsPreview((current) => ({
         ...current,
         isLoading: false,
-        error: err instanceof Error ? err.message : 'Failed to generate TTS preview',
+        error: err instanceof Error ? err.message : 'Failed to generate saved voice sample',
       }));
     }
   }
 
   async function generateMusicPreview() {
-    if (!selectedMusic || !videoRender) return;
+    if (!selectedMusic) return;
 
     setMusicPreview((current) => ({
       ...current,
@@ -1385,36 +1806,39 @@ export default function ShortFormVideoSettingsPage() {
     }));
 
     try {
+      if (dirtyBySection['music-library']) {
+        await saveSection('music-library');
+      }
+
       const data = await parseMusicPreviewResponse(
-        await fetch('/api/short-form-videos/settings/music-preview', {
+        await fetch('/api/short-form-videos/settings/music-library/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            track: {
-              id: selectedMusic.id,
-              name: selectedMusic.name,
-              prompt: selectedMusic.prompt,
-            },
-            durationSeconds: selectedMusic.previewDurationSeconds,
-            musicVolume: videoRender.musicVolume,
-          }),
+          body: JSON.stringify({ trackId: selectedMusic.id }),
         })
       );
 
+      setVideoRender(data.videoRender);
+      setInitialVideoRender(data.videoRender);
+      setSelectedMusicId(data.track.id);
       setMusicPreview({
         isLoading: false,
         error: null,
         audioUrl: data.audioUrl,
-        trackName: data.track.name,
-        prompt: data.track.prompt,
-        durationSeconds: data.durationSeconds,
-        musicVolume: data.musicVolume,
+        reusedExisting: data.reusedExisting,
+      });
+      updateSectionFeedbackState('music-library', {
+        saving: false,
+        error: null,
+        message: data.reusedExisting
+          ? 'Saved soundtrack already existed, so final-video runs will reuse the exact same file.'
+          : 'Saved a reusable soundtrack file. Final-video runs will now reuse this exact audio instead of regenerating it.',
       });
     } catch (err) {
       setMusicPreview((current) => ({
         ...current,
         isLoading: false,
-        error: err instanceof Error ? err.message : 'Failed to generate music preview',
+        error: err instanceof Error ? err.message : 'Failed to generate saved soundtrack file',
       }));
     }
   }
@@ -1440,8 +1864,9 @@ export default function ShortFormVideoSettingsPage() {
           <h1 className="mt-3 text-2xl font-bold text-foreground">Short-form workflow settings</h1>
           <p className="mt-1 max-w-4xl text-sm text-muted-foreground">
             Edit the real settings the dashboard actually uses: Qwen narration voice controls for final-video generation,
-            reusable looping background videos, Nano Banana scene-image templates and style rules, and the remaining hooks / research / script prompt templates.
-            For text scripts, these settings feed the dashboard-owned workflow wrappers that then call Scribe. Each section now saves independently so you can iterate without committing unrelated draft changes.
+            pause-removal defaults for the narration timing pass, reusable looping background videos, Nano Banana scene-image templates and style rules,
+            and the remaining hooks / research / script prompt templates. For text scripts, these settings feed the dashboard-owned workflow wrappers
+            that then call Scribe. Each section now saves independently so you can iterate without committing unrelated draft changes.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1458,6 +1883,82 @@ export default function ShortFormVideoSettingsPage() {
       {promptSections}
 
       {textScriptPromptSection}
+
+      <section id="pause-removal" className="scroll-mt-24">
+        <Card className="space-y-5 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <WorkflowSectionHeader
+              title="Pause-removal defaults"
+              description="Set the global silence-trimming defaults for the narration pipeline. This ffmpeg pass runs after original narration generation and before forced alignment. Individual projects can override these values from their Narration Audio section."
+              status={dirtyBySection['pause-removal'] ? 'needs review' : 'approved'}
+            />
+            <SectionActions
+              dirty={dirtyBySection['pause-removal']}
+              saving={sectionFeedback['pause-removal'].saving}
+              saveLabel="Save pause-removal defaults"
+              onSave={() => void saveSection('pause-removal')}
+              onReset={() => resetSection('pause-removal')}
+            />
+          </div>
+
+          {videoRender ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Remove pauses longer than (seconds)</label>
+                <Input
+                  type="number"
+                  min={0.1}
+                  max={2.5}
+                  step={0.01}
+                  value={videoRender.pauseRemoval.minSilenceDurationSeconds}
+                  onChange={(event) => {
+                    updateSectionFeedbackState('pause-removal', { error: null, message: null });
+                    setVideoRender({
+                      ...videoRender,
+                      pauseRemoval: {
+                        ...videoRender.pauseRemoval,
+                        minSilenceDurationSeconds: Math.min(2.5, Math.max(0.1, Math.round((Number(event.target.value) || 0.35) * 100) / 100)),
+                      },
+                    });
+                  }}
+                  className="max-w-[180px]"
+                />
+                <p className="text-xs text-muted-foreground">Silent spans longer than this are trimmed from the processed narration audio before alignment.</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Silence threshold (dB)</label>
+                <Input
+                  type="number"
+                  min={-80}
+                  max={-5}
+                  step={0.1}
+                  value={videoRender.pauseRemoval.silenceThresholdDb}
+                  onChange={(event) => {
+                    updateSectionFeedbackState('pause-removal', { error: null, message: null });
+                    setVideoRender({
+                      ...videoRender,
+                      pauseRemoval: {
+                        ...videoRender.pauseRemoval,
+                        silenceThresholdDb: Math.min(-5, Math.max(-80, Math.round((Number(event.target.value) || -40) * 10) / 10)),
+                      },
+                    });
+                  }}
+                  className="max-w-[180px]"
+                />
+                <p className="text-xs text-muted-foreground">Anything quieter than this is treated as silence during the trimming pass.</p>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="rounded-lg border border-border bg-background/50 p-3 text-xs text-muted-foreground">
+            These are the dashboard-wide defaults. On a specific short-form project, you can override them and then use the dedicated <span className="font-medium text-foreground">Re-run pause removal + alignment</span> action without regenerating the original narration.
+          </div>
+
+          <SectionFeedbackNotice feedback={sectionFeedback['pause-removal']} />
+        </Card>
+      </section>
+
 
       <section id="tts-voice" className="scroll-mt-24">
         <Card className="space-y-5 p-5">
@@ -1589,7 +2090,7 @@ export default function ShortFormVideoSettingsPage() {
                         />
                         <p className="text-xs text-muted-foreground">
                           {selectedVoice.mode === 'voice-design'
-                            ? 'This prompt is passed directly to Qwen in voice-design mode. That means it shapes the generated voice, but the exact result is still model-generated rather than a locked reusable speaker ID.'
+                            ? 'This prompt shapes the reusable reference clip in Qwen voice-design mode. Qwen still does not expose a locked speaker ID here, so the practical stabilization path is generating and then reusing the saved sample below.'
                             : 'This legacy/custom entry still passes speaker + instruction text into Qwen custom-voice mode so older behavior remains runnable.'}
                         </p>
                       </div>
@@ -1625,18 +2126,18 @@ export default function ShortFormVideoSettingsPage() {
                       <div className="space-y-4 rounded-lg border border-border bg-background/60 p-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div>
-                            <h3 className="text-sm font-medium text-foreground">Voice preview loop</h3>
+                            <h3 className="text-sm font-medium text-foreground">Saved voice sample</h3>
                             <p className="mt-1 text-xs text-muted-foreground">
-                              Generates a lightweight preview for the currently selected voice entry — saved or unsaved — so you can test VoiceDesign prompts without running a full final video.
+                              Generate one reusable reference clip for this voice entry. XML narration runs then switch to voice-clone mode and reuse this exact sample instead of asking Qwen to redesign the voice on every narration chunk. If a project reaches XML narration before you click this, the worker now auto-saves the first generated reference clip back into the voice library too.
                             </p>
                           </div>
                           <Button onClick={() => void generateTtsPreview()} disabled={ttsPreview.isLoading || sectionFeedback['tts-voice'].saving}>
-                            {ttsPreview.isLoading ? 'Generating…' : 'Preview voice'}
+                            {ttsPreview.isLoading ? 'Generating…' : hasSavedVoiceSample(selectedVoice) ? 'Regenerate saved sample' : 'Generate saved sample'}
                           </Button>
                         </div>
 
                         <div className="space-y-2">
-                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Preview sample text</label>
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Reference/sample text</label>
                           <Textarea
                             value={selectedVoice.previewText}
                             onChange={(event) => {
@@ -1645,47 +2146,53 @@ export default function ShortFormVideoSettingsPage() {
                             className="min-h-[110px] font-mono text-xs"
                           />
                           <p className="text-xs text-muted-foreground">
-                            Used only for testing this voice. Final-video generation still reads the real narration from the XML <code>&lt;script&gt;</code>.
+                            This text becomes the saved cloning reference. Keep it reasonably representative. The generator will automatically extend very short text into a longer one-chunk reference clip so the saved sample stays more stable across longer narrations.
                           </p>
                         </div>
 
-                        {ttsPreview.error ? <ValidationNotice title="Voice preview failed" message={ttsPreview.error} /> : null}
+                        {ttsPreview.error ? <ValidationNotice title="Saved voice sample failed" message={ttsPreview.error} /> : null}
 
                         {ttsPreview.isLoading ? (
                           <div className="rounded-lg border border-border p-4">
-                            <OrbitLoader label="Generating Qwen voice preview" />
+                            <OrbitLoader label="Generating reusable Qwen voice sample" />
                           </div>
                         ) : null}
 
-                        {ttsPreview.audioUrl ? (
+                        {savedVoiceAudioUrl ? (
                           <div className="space-y-3 rounded-lg border border-border bg-background/70 p-4">
                             <div className="grid gap-3 md:grid-cols-2">
                               <div>
-                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Previewing voice</p>
-                                <p className="mt-1 text-sm text-foreground">{ttsPreview.voiceName}</p>
+                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Saved voice</p>
+                                <p className="mt-1 text-sm text-foreground">{selectedVoice.name}</p>
                               </div>
                               <div>
-                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Preview sample</p>
-                                <p className="mt-1 text-sm text-foreground">{ttsPreview.sampleText}</p>
+                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Reference text</p>
+                                <p className="mt-1 text-sm text-foreground">{selectedVoice.referenceText || selectedVoice.previewText}</p>
                               </div>
                             </div>
-                            <audio controls className="w-full" src={ttsPreview.audioUrl} />
+                            <audio controls className="w-full" src={savedVoiceAudioUrl} />
                             <div className="grid gap-3 md:grid-cols-2">
                               <div>
                                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Mode used</p>
-                                <p className="mt-1 text-sm text-foreground">{ttsPreview.mode === 'custom-voice' ? 'Legacy custom voice' : 'VoiceDesign'}</p>
+                                <p className="mt-1 text-sm text-foreground">{(selectedVoice.referenceMode || selectedVoice.mode) === 'custom-voice' ? 'Legacy custom voice' : 'VoiceDesign'}</p>
                               </div>
-                              {ttsPreview.speaker ? (
+                              {(selectedVoice.referenceSpeaker || selectedVoice.speaker) ? (
                                 <div>
                                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Speaker used</p>
-                                  <p className="mt-1 text-sm text-foreground">{ttsPreview.speaker}</p>
+                                  <p className="mt-1 text-sm text-foreground">{selectedVoice.referenceSpeaker || selectedVoice.speaker}</p>
                                 </div>
                               ) : null}
                             </div>
                             <div>
                               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Prompt snapshot used</p>
-                              <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{ttsPreview.voiceDesignPrompt}</p>
+                              <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{selectedVoice.referencePrompt || selectedVoice.voiceDesignPrompt}</p>
                             </div>
+                            {selectedVoice.referenceGeneratedAt ? (
+                              <p className="text-xs text-muted-foreground">
+                                Saved {new Date(selectedVoice.referenceGeneratedAt).toLocaleString()}.
+                                {ttsPreview.reusedExisting === true ? ' Reused the existing reference clip on the latest request.' : ttsPreview.reusedExisting === false ? ' Regenerated the saved reference clip on the latest request.' : ''}
+                              </p>
+                            ) : null}
                           </div>
                         ) : null}
                       </div>
@@ -2178,6 +2685,326 @@ export default function ShortFormVideoSettingsPage() {
           <SectionFeedbackNotice feedback={sectionFeedback['image-styles']} />
         </Card>
       </section>
+
+      <section id="caption-styles" className="scroll-mt-24">
+        <Card className="space-y-5 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <WorkflowSectionHeader
+              title="Caption style library"
+              description="Manage reusable animated subtitle styles for short-form final renders. Each project can inherit the global default or override it with a specific saved style."
+              status={dirtyBySection['caption-styles'] ? 'needs review' : 'approved'}
+            />
+            <SectionActions
+              dirty={dirtyBySection['caption-styles']}
+              saving={sectionFeedback['caption-styles'].saving}
+              saveLabel="Save caption styles"
+              onSave={() => void saveSection('caption-styles')}
+              onReset={() => resetSection('caption-styles')}
+            />
+          </div>
+
+          {videoRender ? (
+            <div className="space-y-5">
+              <div className="rounded-lg border border-border bg-background/60 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground">Saved caption styles</h3>
+                    <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
+                      Final-video renders keep the current deterministic caption segmentation and forced-alignment timing pipeline, then burn animated subtitles with word-level highlighting. The active word stays white, already-spoken words shift lighter, and upcoming words stay darker unless a style overrides those colors.
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={addCaptionStyle} disabled={sectionFeedback['caption-styles'].saving}>
+                    Add caption style
+                  </Button>
+                </div>
+
+                <div className="mt-4 grid gap-4 lg:grid-cols-[280px,1fr]">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Caption style library</label>
+                    <Select
+                      value={selectedCaptionStyleId || ''}
+                      onChange={(event) => setSelectedCaptionStyleId(event.target.value)}
+                      disabled={videoRender.captionStyles.length === 0}
+                    >
+                      {videoRender.captionStyles.map((style) => (
+                        <option key={style.id} value={style.id}>
+                          {style.name}{style.id === videoRender.defaultCaptionStyleId ? ' (default)' : ''}
+                        </option>
+                      ))}
+                    </Select>
+                    <div className="rounded-lg border border-border bg-background/50 p-3 text-xs text-muted-foreground">
+                      <p>
+                        <span className="font-medium text-foreground">Default caption style:</span>{' '}
+                        {videoRender.captionStyles.find((style) => style.id === videoRender.defaultCaptionStyleId)?.name || 'Not set'}
+                      </p>
+                      <p className="mt-2">
+                        Projects can override the default from the Short-form Video detail page. If no override is set, final-video renders automatically use this dashboard-wide default style.
+                      </p>
+                    </div>
+                  </div>
+
+                  {selectedCaptionStyle ? (
+                    <div className="space-y-4 rounded-lg border border-border bg-background/50 p-4">
+                      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
+                        <div className="space-y-4">
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Style name</label>
+                              <Input
+                                value={selectedCaptionStyle.name}
+                                onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, name: event.target.value }))}
+                                placeholder="Classic highlight"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Animation preset</label>
+                              <Select
+                                value={selectedCaptionStyle.animationPreset}
+                                onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, animationPreset: event.target.value as CaptionAnimationPreset }))}
+                              >
+                                {CAPTION_ANIMATION_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                              </Select>
+                              <p className="text-xs text-muted-foreground">
+                                {CAPTION_ANIMATION_OPTIONS.find((option) => option.value === selectedCaptionStyle.animationPreset)?.description}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Font family</label>
+                              <Input
+                                value={selectedCaptionStyle.fontFamily}
+                                onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, fontFamily: event.target.value }))}
+                                placeholder="Arial"
+                              />
+                              <p className="text-xs text-muted-foreground">Use the installed font family name only. Weight/thickness is controlled separately below for preview and final render.</p>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Font weight</label>
+                              <Select
+                                value={String(selectedCaptionStyle.fontWeight)}
+                                onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, fontWeight: Number(event.target.value) || 700 }))}
+                              >
+                                {CAPTION_FONT_WEIGHT_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                              </Select>
+                              <p className="text-xs text-muted-foreground">The preview uses CSS font-weight, and the final renderer maps this weight into overlay/ASS subtitle output.</p>
+                            </div>
+                          </div>
+
+                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                            <CaptionStyleNumberField
+                              label="Font size"
+                              value={selectedCaptionStyle.fontSize}
+                              min={32}
+                              max={120}
+                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, fontSize: value }))}
+                            />
+                            <CaptionStyleNumberField
+                              label="Word spacing"
+                              value={selectedCaptionStyle.wordSpacing}
+                              min={-20}
+                              max={32}
+                              step={0.1}
+                              helper="Negative tightens gaps between words, positive loosens them. The final overlay renderer now uses the exact saved gap width, so -20 and -4 produce visibly different spacing."
+                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, wordSpacing: value }))}
+                            />
+                            <CaptionStyleNumberField
+                              label="Side padding"
+                              value={selectedCaptionStyle.horizontalPadding}
+                              min={0}
+                              max={320}
+                              helper="Left and right screen padding before captions wrap."
+                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, horizontalPadding: value }))}
+                            />
+                            <CaptionStyleNumberField
+                              label="Bottom margin"
+                              value={selectedCaptionStyle.bottomMargin}
+                              min={0}
+                              max={900}
+                              helper="Vertical position for preview and final burn-in."
+                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, bottomMargin: value }))}
+                            />
+                            <CaptionStyleNumberField
+                              label="Outline width"
+                              value={selectedCaptionStyle.outlineWidth}
+                              min={0}
+                              max={12}
+                              step={0.1}
+                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, outlineWidth: value }))}
+                            />
+                            <CaptionStyleNumberField
+                              label="Shadow strength"
+                              value={selectedCaptionStyle.shadowStrength}
+                              min={0}
+                              max={12}
+                              step={0.1}
+                              helper="Controls overall shadow intensity."
+                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowStrength: value }))}
+                            />
+                            <CaptionStyleNumberField
+                              label="Shadow blur"
+                              value={selectedCaptionStyle.shadowBlur}
+                              min={0}
+                              max={16}
+                              step={0.1}
+                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowBlur: value }))}
+                            />
+                            <CaptionStyleNumberField
+                              label="Shadow X"
+                              value={selectedCaptionStyle.shadowOffsetX}
+                              min={-32}
+                              max={32}
+                              step={0.1}
+                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowOffsetX: value }))}
+                            />
+                            <CaptionStyleNumberField
+                              label="Shadow Y"
+                              value={selectedCaptionStyle.shadowOffsetY}
+                              min={-32}
+                              max={32}
+                              step={0.1}
+                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowOffsetY: value }))}
+                            />
+                            <CaptionStyleNumberField
+                              label="Background padding"
+                              value={selectedCaptionStyle.backgroundPadding}
+                              min={0}
+                              max={96}
+                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundPadding: value }))}
+                            />
+                            <CaptionStyleNumberField
+                              label="Background radius"
+                              value={selectedCaptionStyle.backgroundRadius}
+                              min={0}
+                              max={96}
+                              onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundRadius: value }))}
+                            />
+                          </div>
+
+                          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                            {[
+                              ['Active word', 'activeWordColor'],
+                              ['Spoken words', 'spokenWordColor'],
+                              ['Upcoming words', 'upcomingWordColor'],
+                              ['Outline', 'outlineColor'],
+                              ['Shadow', 'shadowColor'],
+                              ['Background', 'backgroundColor'],
+                            ].map(([label, key]) => (
+                              <div key={key} className="space-y-2 rounded-lg border border-border bg-background/40 p-3">
+                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label} color</label>
+                                <div className="flex items-center gap-3">
+                                  <input
+                                    type="color"
+                                    value={selectedCaptionStyle[key as keyof CaptionStyleEntry] as string}
+                                    onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, [key]: event.target.value.toUpperCase() }))}
+                                    className="h-10 w-12 cursor-pointer rounded border border-border bg-transparent p-1"
+                                  />
+                                  <Input
+                                    value={selectedCaptionStyle[key as keyof CaptionStyleEntry] as string}
+                                    onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, [key]: event.target.value.toUpperCase() }))}
+                                    className="font-mono text-xs"
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="rounded-lg border border-border bg-background/40 p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <h4 className="text-sm font-medium text-foreground">Background box</h4>
+                                <p className="mt-1 text-xs text-muted-foreground">Optional preview box behind the caption text. The final ASS burn-in uses the same color/opacity intent, while padding and corner radius are preview-forward approximations for v1.</p>
+                              </div>
+                              <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedCaptionStyle.backgroundEnabled}
+                                  onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundEnabled: event.target.checked }))}
+                                />
+                                Enable box
+                              </label>
+                            </div>
+                            <div className="mt-4 grid gap-4 md:grid-cols-2">
+                              <div className="space-y-2">
+                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Box opacity</label>
+                                <div className="flex items-center gap-3">
+                                  <input
+                                    type="range"
+                                    min={0}
+                                    max={1}
+                                    step={0.01}
+                                    value={selectedCaptionStyle.backgroundOpacity}
+                                    onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundOpacity: Number(event.target.value) }))}
+                                    className="w-full"
+                                  />
+                                  <div className="w-14 text-right text-sm text-foreground">{Math.round(selectedCaptionStyle.backgroundOpacity * 100)}%</div>
+                                </div>
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Side padding: <span className="font-medium text-foreground">{selectedCaptionStyle.horizontalPadding}px</span><br />
+                                Word spacing: <span className="font-medium text-foreground">{selectedCaptionStyle.wordSpacing}px</span><br />
+                                Bottom margin: <span className="font-medium text-foreground">{selectedCaptionStyle.bottomMargin}px</span><br />
+                                Shadow blur: <span className="font-medium text-foreground">{selectedCaptionStyle.shadowBlur}px</span><br />
+                                Shadow offset: <span className="font-medium text-foreground">{selectedCaptionStyle.shadowOffsetX}px, {selectedCaptionStyle.shadowOffsetY}px</span><br />
+                                Preview padding: <span className="font-medium text-foreground">{selectedCaptionStyle.backgroundPadding}px</span><br />
+                                Preview radius: <span className="font-medium text-foreground">{selectedCaptionStyle.backgroundRadius}px</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <Button
+                              type="button"
+                              variant={selectedCaptionStyle.id === videoRender.defaultCaptionStyleId ? 'default' : 'outline'}
+                              onClick={() => {
+                                updateSectionFeedbackState('caption-styles', { error: null, message: null });
+                                setVideoRender({ ...videoRender, defaultCaptionStyleId: selectedCaptionStyle.id });
+                              }}
+                            >
+                              {selectedCaptionStyle.id === videoRender.defaultCaptionStyleId ? 'Default caption style' : 'Set as default'}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => duplicateCaptionStyle(selectedCaptionStyle.id)}
+                            >
+                              Duplicate caption style
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => deleteCaptionStyle(selectedCaptionStyle.id)}
+                              disabled={videoRender.captionStyles.length <= 1}
+                            >
+                              Delete caption style
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div>
+                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Animated preview</p>
+                            <p className="mt-1 text-xs text-muted-foreground">This simulates spoken/current/upcoming word states with the selected colors and weight. Stable Pop keeps fixed word slots, while Fluid Pop allows intra-line shifting without changing line breaks. Final render uses real forced-alignment timings during subtitle burn-in.</p>
+                          </div>
+                          <CaptionStylePreview style={selectedCaptionStyle} />
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <SectionFeedbackNotice feedback={sectionFeedback['caption-styles']} />
+        </Card>
+      </section>
+
       <section id="background-videos" className="scroll-mt-24">
         <Card className="space-y-5 p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -2332,7 +3159,7 @@ export default function ShortFormVideoSettingsPage() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <WorkflowSectionHeader
               title="Music soundtrack library"
-              description="Manage reusable ACE-Step soundtrack presets that the dashboard really uses for final-video generation. Each preset stores the music prompt design; ACE-Step still generates a fresh instrumental render each time, so this is a reusable prompt library rather than a locked deterministic song library."
+              description="Manage reusable ACE-Step soundtrack presets and their saved generated files. Each preset stores the prompt design, and once you generate its soundtrack here, final-video renders reuse that exact WAV until you regenerate it."
               status={dirtyBySection['music-library'] ? 'needs review' : 'approved'}
             />
             <SectionActions
@@ -2351,7 +3178,7 @@ export default function ShortFormVideoSettingsPage() {
                   <div>
                     <h3 className="text-sm font-medium text-foreground">Saved soundtrack presets</h3>
                     <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
-                      Each preset stores the ACE-Step prompt that describes the instrumental vibe. Because ACE-Step is prompt-driven, previews and final renders are new generations guided by that prompt — not the exact same waveform every time.
+                      Each preset stores the ACE-Step prompt that describes the instrumental vibe. Generate the soundtrack once here, and final-video renders reuse that saved file instead of asking ACE-Step for a fresh song every time.
                     </p>
                   </div>
                   <Button variant="outline" onClick={addMusic} disabled={sectionFeedback['music-library'].saving}>
@@ -2446,7 +3273,7 @@ export default function ShortFormVideoSettingsPage() {
                           className="min-h-[150px] font-mono text-xs"
                         />
                         <p className="text-xs text-muted-foreground">
-                          This prompt is passed to ACE-Step for preview generation and real final-video renders. Keep it honest about what the generator supports: it can shape the instrumental vibe, but it does not give you a deterministic reusable song ID here.
+                          This prompt is passed to ACE-Step only when you generate or regenerate the saved soundtrack file here. After that, final-video renders reuse the saved WAV directly.
                         </p>
                       </div>
 
@@ -2501,45 +3328,51 @@ export default function ShortFormVideoSettingsPage() {
                       <div className="space-y-4 rounded-lg border border-border bg-background/60 p-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div>
-                            <h3 className="text-sm font-medium text-foreground">Music preview loop</h3>
+                            <h3 className="text-sm font-medium text-foreground">Saved soundtrack file</h3>
                             <p className="mt-1 text-xs text-muted-foreground">
-                              Generates a short ACE-Step instrumental preview for the currently selected soundtrack prompt using the saved preview duration and current saved mix volume.
+                              Generate one reusable ACE-Step instrumental for this soundtrack entry. Final-video renders then reuse this exact file with the saved mix volume until you regenerate it.
                             </p>
                           </div>
                           <Button onClick={() => void generateMusicPreview()} disabled={musicPreview.isLoading || sectionFeedback['music-library'].saving}>
-                            {musicPreview.isLoading ? 'Generating…' : 'Preview soundtrack'}
+                            {musicPreview.isLoading ? 'Generating…' : hasGeneratedSoundtrack(selectedMusic) ? 'Regenerate saved soundtrack' : 'Generate saved soundtrack'}
                           </Button>
                         </div>
 
-                        {musicPreview.error ? <ValidationNotice title="Music preview failed" message={musicPreview.error} /> : null}
+                        {musicPreview.error ? <ValidationNotice title="Saved soundtrack failed" message={musicPreview.error} /> : null}
 
                         {musicPreview.isLoading ? (
                           <div className="rounded-lg border border-border p-4">
-                            <OrbitLoader label="Generating ACE-Step music preview" />
+                            <OrbitLoader label="Generating reusable ACE-Step soundtrack" />
                           </div>
                         ) : null}
 
-                        {musicPreview.audioUrl ? (
+                        {savedMusicAudioUrl ? (
                           <div className="space-y-3 rounded-lg border border-border bg-background/70 p-4">
                             <div className="grid gap-3 md:grid-cols-3">
                               <div>
-                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Previewing soundtrack</p>
-                                <p className="mt-1 text-sm text-foreground">{musicPreview.trackName}</p>
+                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Saved soundtrack</p>
+                                <p className="mt-1 text-sm text-foreground">{selectedMusic.name}</p>
                               </div>
                               <div>
                                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Duration</p>
-                                <p className="mt-1 text-sm text-foreground">{musicPreview.durationSeconds}s</p>
+                                <p className="mt-1 text-sm text-foreground">{selectedMusic.generatedDurationSeconds || selectedMusic.previewDurationSeconds || 12}s</p>
                               </div>
                               <div>
                                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Applied volume</p>
-                                <p className="mt-1 text-sm text-foreground">{Math.round((musicPreview.musicVolume || 0) * 100)}%</p>
+                                <p className="mt-1 text-sm text-foreground">{Math.round((videoRender.musicVolume || 0) * 100)}%</p>
                               </div>
                             </div>
-                            <audio controls className="w-full" src={musicPreview.audioUrl} />
+                            <audio controls className="w-full" src={savedMusicAudioUrl} />
                             <div>
                               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Prompt snapshot used</p>
-                              <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{musicPreview.prompt}</p>
+                              <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{selectedMusic.generatedPrompt || selectedMusic.prompt}</p>
                             </div>
+                            {selectedMusic.generatedAt ? (
+                              <p className="text-xs text-muted-foreground">
+                                Saved {new Date(selectedMusic.generatedAt).toLocaleString()}.
+                                {musicPreview.reusedExisting === true ? ' Reused the existing soundtrack file on the latest request.' : musicPreview.reusedExisting === false ? ' Regenerated the soundtrack file on the latest request.' : ''}
+                              </p>
+                            ) : null}
                           </div>
                         ) : null}
                       </div>

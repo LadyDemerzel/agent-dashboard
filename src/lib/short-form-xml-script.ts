@@ -1,7 +1,10 @@
 import fs from "fs";
 import path from "path";
 import { extractBody, generateFrontMatter, parseFrontMatter } from "@/lib/frontmatter";
-import { resolveShortFormVoiceSelection } from "@/lib/short-form-video-render-settings";
+import {
+  resolveShortFormVoiceSelection,
+  type ShortFormPauseRemovalSettings,
+} from "@/lib/short-form-video-render-settings";
 
 export interface XmlScriptPipelineDetail {
   id: string;
@@ -34,10 +37,12 @@ export interface XmlScriptPipelineSummary {
   status: "running" | "completed" | "failed" | "idle";
   workDir?: string;
   audioPath?: string;
+  originalAudioPath?: string;
   transcriptPath?: string;
   alignmentInputPath?: string;
   alignmentOutputPath?: string;
   captionPlanPath?: string;
+  pauseRemovalSettingsPath?: string;
   warning?: string;
   steps: XmlScriptPipelineStep[];
 }
@@ -50,13 +55,15 @@ export interface XmlScriptDocumentSummary {
   pending?: boolean;
   audioUrl?: string;
   audioPath?: string;
+  originalAudioUrl?: string;
+  originalAudioPath?: string;
   captions?: XmlCaptionSection[];
   pipeline?: XmlScriptPipelineSummary;
 }
 
 interface XmlScriptRunStatus {
   runId?: string;
-  task?: "full" | "narration" | "captions" | "visuals";
+  task?: "full" | "narration" | "silence" | "captions" | "visuals";
   status?: "running" | "verified" | "failed";
   startedAt?: string;
   verifiedAt?: string;
@@ -87,6 +94,19 @@ function readJson<T>(filePath: string): T | undefined {
   } catch {
     return undefined;
   }
+}
+
+function readText(filePath: string) {
+  if (!fs.existsSync(filePath)) return undefined;
+  try {
+    return fs.readFileSync(filePath, "utf-8");
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeComparableText(value: unknown) {
+  return typeof value === "string" ? value.replace(/\r\n/g, "\n").trim() : undefined;
 }
 
 function stringify(value: unknown) {
@@ -289,12 +309,40 @@ function getFreshArtifactTimestamp(filePath: string, freshnessFloorMs?: number) 
   }
 }
 
-export function getXmlScriptDocument(projectId: string, options?: { expectedVoiceId?: string }): XmlScriptDocumentSummary {
+function roundPauseSetting(value: number, digits: number) {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function pauseRemovalSettingsMatch(
+  actual: unknown,
+  expected?: ShortFormPauseRemovalSettings
+) {
+  if (!expected) return true;
+  if (!actual || typeof actual !== "object" || Array.isArray(actual)) return false;
+
+  const obj = actual as Record<string, unknown>;
+  const actualMin = typeof obj.minSilenceDurationSeconds === "number" ? obj.minSilenceDurationSeconds : Number.NaN;
+  const actualThreshold = typeof obj.silenceThresholdDb === "number" ? obj.silenceThresholdDb : Number.NaN;
+
+  if (!Number.isFinite(actualMin) || !Number.isFinite(actualThreshold)) return false;
+
+  return roundPauseSetting(actualMin, 2) === roundPauseSetting(expected.minSilenceDurationSeconds, 2)
+    && roundPauseSetting(actualThreshold, 1) === roundPauseSetting(expected.silenceThresholdDb, 1);
+}
+
+export function getXmlScriptDocument(
+  projectId: string,
+  options?: { expectedVoiceId?: string; expectedPauseRemoval?: ShortFormPauseRemovalSettings }
+): XmlScriptDocumentSummary {
   const filePath = getXmlScriptPath(projectId);
   const workDir = getXmlScriptWorkDir(projectId);
   const audioRelative = path.join("output", "xml-script-work", "voice", "narration-full.wav");
+  const originalAudioRelative = path.join("output", "xml-script-work", "voice", "narration-original.wav");
   const transcriptPath = path.join(workDir, "voice", "text-script.txt");
   const voiceSelectionPath = path.join(workDir, "voice", "voice-selection.json");
+  const pauseRemovalSettingsPath = path.join(workDir, "voice", "pause-removal-settings.json");
+  const pauseRemovalReportPath = path.join(workDir, "voice", "pause-removal-result.json");
   const alignmentInputPath = path.join(workDir, "alignment", "alignment-input.json");
   const alignmentOutputPath = path.join(workDir, "alignment", "word-timestamps.json");
   const captionPlanPath = path.join(workDir, "captions", "caption-sections.json");
@@ -302,6 +350,7 @@ export function getXmlScriptDocument(projectId: string, options?: { expectedVoic
   const latestRun = readLatestRunStatus(projectId, [
     filePath,
     path.join(getProjectDir(projectId), audioRelative),
+    path.join(getProjectDir(projectId), originalAudioRelative),
     alignmentOutputPath,
     captionPlanPath,
   ]);
@@ -310,41 +359,83 @@ export function getXmlScriptDocument(projectId: string, options?: { expectedVoic
   const exists = Boolean(content);
   const status = normalizeStatus(content);
   const audioPath = path.join(getProjectDir(projectId), audioRelative);
+  const originalAudioPath = path.join(getProjectDir(projectId), originalAudioRelative);
   const latestRunStartedAtMs = toTimestamp(latestRun?.startedAt);
   const activeTask = latestRun?.task || "full";
   const voiceSelectionFreshAt = fs.existsSync(voiceSelectionPath) ? fs.statSync(voiceSelectionPath).mtimeMs : undefined;
   const maxFreshnessFloor = (...values: Array<number | undefined>) => values
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
     .reduce<number | undefined>((max, value) => (typeof max === "number" ? Math.max(max, value) : value), undefined);
-  const narrationArtifactFreshnessFloorMs = maxFreshnessFloor(
+  const audioRunFreshnessFloorMs = maxFreshnessFloor(
     voiceSelectionFreshAt,
-    activeTask === "full" || activeTask === "narration" ? latestRunStartedAtMs : undefined,
+    activeTask === "full" || activeTask === "narration" || activeTask === "silence" ? latestRunStartedAtMs : undefined,
   );
-  const captionsArtifactFreshnessFloorMs = maxFreshnessFloor(
-    voiceSelectionFreshAt,
-    activeTask === "full" || activeTask === "captions" ? latestRunStartedAtMs : undefined,
+  const originalAudioFreshAt = getFreshArtifactTimestamp(
+    originalAudioPath,
+    maxFreshnessFloor(
+      voiceSelectionFreshAt,
+      activeTask === "full" || activeTask === "narration" ? latestRunStartedAtMs : undefined,
+    )
   );
-  const xmlArtifactFreshnessFloorMs = activeTask === "full" || activeTask === "visuals" ? latestRunStartedAtMs : undefined;
+  const pauseRemovalSettingsFreshAt = getFreshArtifactTimestamp(pauseRemovalSettingsPath, audioRunFreshnessFloorMs);
   const xmlBody = extractBody(content);
-  const audioFreshAt = getFreshArtifactTimestamp(audioPath, narrationArtifactFreshnessFloorMs);
-  const alignmentFreshAt = getFreshArtifactTimestamp(alignmentOutputPath, narrationArtifactFreshnessFloorMs);
-  const captionsFreshAt = getFreshArtifactTimestamp(captionPlanPath, captionsArtifactFreshnessFloorMs);
-  const xmlFreshAt = getFreshArtifactTimestamp(filePath, xmlArtifactFreshnessFloorMs);
-  const transcriptFreshAt = getFreshArtifactTimestamp(transcriptPath, activeTask === "full" || activeTask === "narration" ? latestRunStartedAtMs : undefined);
-  const alignmentInputFreshAt = getFreshArtifactTimestamp(alignmentInputPath, narrationArtifactFreshnessFloorMs);
-  const promptFreshAt = getFreshArtifactTimestamp(promptPath, xmlArtifactFreshnessFloorMs);
+  const processedAudioFreshAt = getFreshArtifactTimestamp(
+    audioPath,
+    maxFreshnessFloor(originalAudioFreshAt, pauseRemovalSettingsFreshAt, audioRunFreshnessFloorMs)
+  );
+  const transcriptFreshAt = getFreshArtifactTimestamp(
+    transcriptPath,
+    activeTask === "full" || activeTask === "narration" || activeTask === "silence" ? latestRunStartedAtMs : undefined
+  );
+  const alignmentInputFreshAt = getFreshArtifactTimestamp(
+    alignmentInputPath,
+    maxFreshnessFloor(processedAudioFreshAt, audioRunFreshnessFloorMs)
+  );
+  const transcriptContent = readText(transcriptPath);
+  const alignmentInput = readJson<Record<string, unknown>>(alignmentInputPath);
+  const normalizedTranscriptText = normalizeComparableText(transcriptContent);
+  const normalizedAlignmentInputText = normalizeComparableText(alignmentInput?.text);
+  const transcriptChangedSinceAlignment = Boolean(
+    normalizedTranscriptText
+    && normalizedAlignmentInputText
+    && normalizedTranscriptText !== normalizedAlignmentInputText
+  ) || Boolean(normalizedTranscriptText && !normalizedAlignmentInputText && transcriptFreshAt);
+  const alignmentTranscriptDependencyFreshAt = transcriptChangedSinceAlignment
+    ? transcriptFreshAt
+    : alignmentInputFreshAt;
+  const alignmentFreshAt = getFreshArtifactTimestamp(
+    alignmentOutputPath,
+    maxFreshnessFloor(processedAudioFreshAt, alignmentTranscriptDependencyFreshAt, audioRunFreshnessFloorMs)
+  );
+  const captionsFreshAt = getFreshArtifactTimestamp(
+    captionPlanPath,
+    maxFreshnessFloor(
+      alignmentFreshAt,
+      transcriptChangedSinceAlignment ? transcriptFreshAt : undefined,
+      activeTask === "full" || activeTask === "captions" ? latestRunStartedAtMs : undefined,
+    )
+  );
+  const promptFreshAt = getFreshArtifactTimestamp(promptPath, activeTask === "full" || activeTask === "visuals" ? latestRunStartedAtMs : undefined);
+  const xmlFreshAt = getFreshArtifactTimestamp(
+    filePath,
+    maxFreshnessFloor(captionsFreshAt, activeTask === "full" || activeTask === "visuals" ? latestRunStartedAtMs : undefined)
+  );
   const selectedVoice = readJson<{ id?: string; name?: string; resolvedVoiceId?: string }>(voiceSelectionPath);
   const expectedVoice = resolveShortFormVoiceSelection(options?.expectedVoiceId);
   const actualVoiceId = selectedVoice?.resolvedVoiceId || selectedVoice?.id;
   const voiceMatchesExpected = !actualVoiceId || actualVoiceId === expectedVoice.resolvedVoiceId;
+  const pauseRemovalSettings = readJson<ShortFormPauseRemovalSettings>(pauseRemovalSettingsPath);
+  const pauseRemovalReport = readJson<Record<string, unknown>>(pauseRemovalReportPath);
+  const pauseRemovalMatchesExpected = pauseRemovalSettingsMatch(pauseRemovalSettings, options?.expectedPauseRemoval);
 
-  const narrationDone = Boolean(audioFreshAt) && voiceMatchesExpected;
-  const alignmentDone = Boolean(alignmentFreshAt) && voiceMatchesExpected;
-  const captionsDone = Boolean(captionsFreshAt) && voiceMatchesExpected;
+  const narrationDone = Boolean(originalAudioFreshAt) && voiceMatchesExpected;
+  const silenceRemovalDone = Boolean(processedAudioFreshAt) && narrationDone && pauseRemovalMatchesExpected;
+  const alignmentDone = Boolean(alignmentFreshAt) && silenceRemovalDone;
+  const captionsDone = Boolean(captionsFreshAt) && alignmentDone;
   const xmlDone = Boolean(xmlFreshAt)
     && xmlBody.trim().length > 0
     && !xmlBody.includes("Waiting for the XML script pipeline")
-    && (!latestRunStartedAtMs || captionsDone);
+    && captionsDone;
   const transcriptFresh = Boolean(transcriptFreshAt);
   const alignmentInputFresh = Boolean(alignmentInputFreshAt);
   const promptFresh = Boolean(promptFreshAt);
@@ -354,15 +445,44 @@ export function getXmlScriptDocument(projectId: string, options?: { expectedVoic
   const activeProgressPercent = typeof latestRun?.progress?.percent === "number" ? Math.max(0, Math.min(100, latestRun.progress.percent)) : undefined;
   const activeProgressLabel = typeof latestRun?.progress?.label === "string" ? latestRun.progress.label : undefined;
   const voiceMismatchWarning = actualVoiceId && !voiceMatchesExpected
-    ? `Narration artifacts were last generated with ${selectedVoice?.name || actualVoiceId}, but this project is now set to ${expectedVoice.voice.name}. Re-run Narration Audio so the narration preview, alignment, and caption plan match the selected voice.`
+    ? `Narration artifacts were last generated with ${selectedVoice?.name || actualVoiceId}, but this project is now set to ${expectedVoice.voice.name}. Re-run Narration Audio so the original narration, silence-removed narration, alignment, and caption plan match the selected voice.`
+    : undefined;
+  const pauseRemovalMismatchWarning = options?.expectedPauseRemoval && !pauseRemovalMatchesExpected
+    ? "Pause-removal artifacts were generated with older silence settings. Re-run pause removal + alignment so downstream captions and final video use the latest narration timing."
     : undefined;
 
-  const doneMap: Record<string, boolean> = { narration: narrationDone, alignment: alignmentDone, captions: captionsDone, xml: xmlDone };
-  const stepFailed = (stepId: string, done: boolean) => runFailed && !done && (activeTask === "full" || activeTask === stepId || (activeTask === "narration" && (stepId === "narration" || stepId === "alignment")));
+  const doneMap: Record<string, boolean> = {
+    narration: narrationDone,
+    "silence-removal": silenceRemovalDone,
+    alignment: alignmentDone,
+    captions: captionsDone,
+    xml: xmlDone,
+  };
+  const stepFailed = (stepId: string, done: boolean) => {
+    if (!runFailed || done) return false;
+    if (activeTask === "full") return true;
+    if (activeTask === "narration") return stepId === "narration" || stepId === "silence-removal" || stepId === "alignment";
+    if (activeTask === "silence") return stepId === "silence-removal" || stepId === "alignment";
+    if (activeTask === "captions") return stepId === "captions";
+    if (activeTask === "visuals") return stepId === "xml";
+    return false;
+  };
   const stepActive = (stepId: string, prerequisitesMet = true) => {
     if (!runActive || !prerequisitesMet) return false;
     if (activeTask === "full") return activeProgressStep ? activeProgressStep === stepId : !doneMap[stepId];
-    if (activeTask === "narration") return stepId === "narration" || (stepId === "alignment" && (narrationDone || activeProgressStep === "alignment"));
+    if (activeTask === "narration") {
+      if (activeProgressStep) return activeProgressStep === stepId;
+      if (stepId === "narration") return true;
+      if (stepId === "silence-removal") return narrationDone;
+      if (stepId === "alignment") return silenceRemovalDone;
+      return false;
+    }
+    if (activeTask === "silence") {
+      if (activeProgressStep) return activeProgressStep === stepId;
+      if (stepId === "silence-removal") return true;
+      if (stepId === "alignment") return silenceRemovalDone;
+      return false;
+    }
     if (activeTask === "captions") return stepId === "captions";
     if (activeTask === "visuals") return stepId === "xml";
     return false;
@@ -378,10 +498,10 @@ export function getXmlScriptDocument(projectId: string, options?: { expectedVoic
   const steps: XmlScriptPipelineStep[] = [
     {
       id: "narration",
-      label: "Generate narration audio",
+      label: "Generate original narration audio",
       status: resolveStepStatus("narration", narrationDone),
-      summary: narrationDone ? "AI narration audio is ready." : "Waiting for Qwen narration output.",
-      updatedAt: narrationDone ? timestampToIso(audioFreshAt) : undefined,
+      summary: narrationDone ? "Original AI narration audio is ready for comparison and downstream processing." : "Waiting for Qwen narration output.",
+      updatedAt: narrationDone ? timestampToIso(originalAudioFreshAt) : undefined,
       progressPercent: activeProgressStep === "narration" ? activeProgressPercent : undefined,
       progressLabel: activeProgressStep === "narration" ? activeProgressLabel : undefined,
       details: [
@@ -394,11 +514,42 @@ export function getXmlScriptDocument(projectId: string, options?: { expectedVoic
       ].filter((item): item is XmlScriptPipelineDetail => Boolean(item)),
     },
     {
+      id: "silence-removal",
+      label: "Remove pauses / silences",
+      status: resolveStepStatus("silence-removal", silenceRemovalDone, narrationDone || fs.existsSync(originalAudioPath) || fs.existsSync(audioPath)),
+      summary: silenceRemovalDone
+        ? "Silence-removed narration audio is ready and becomes the downstream source of truth."
+        : "Waiting for the pause-removal pass to create the silence-removed narration WAV.",
+      updatedAt: silenceRemovalDone ? timestampToIso(processedAudioFreshAt) : undefined,
+      progressPercent: activeProgressStep === "silence-removal" ? activeProgressPercent : undefined,
+      progressLabel: activeProgressStep === "silence-removal" ? activeProgressLabel : undefined,
+      details: [
+        pauseRemovalSettingsFreshAt
+          ? { id: "pause-removal-settings", label: "Pause-removal settings", format: "json", content: stringify(pauseRemovalSettings) }
+          : undefined,
+        silenceRemovalDone
+          ? {
+              id: "pause-removal-artifacts",
+              label: "Pause-removal artifacts",
+              format: "json",
+              content: stringify({
+                originalAudioPath,
+                processedAudioPath: audioPath,
+                reportPath: pauseRemovalReportPath,
+                ...(pauseRemovalReport || {}),
+              }),
+            }
+          : undefined,
+      ].filter((item): item is XmlScriptPipelineDetail => Boolean(item)),
+    },
+    {
       id: "alignment",
       label: "Run forced alignment",
-      status: resolveStepStatus("alignment", alignmentDone, narrationDone || fs.existsSync(audioPath)),
-      summary: alignmentDone ? "Forced-alignment output is available." : "Waiting for alignment input/output.",
+      status: resolveStepStatus("alignment", alignmentDone, silenceRemovalDone || fs.existsSync(audioPath)),
+      summary: alignmentDone ? "Forced-alignment output is available for the silence-removed narration." : "Waiting for alignment input/output.",
       updatedAt: alignmentDone ? timestampToIso(alignmentFreshAt) : undefined,
+      progressPercent: activeProgressStep === "alignment" ? activeProgressPercent : undefined,
+      progressLabel: activeProgressStep === "alignment" ? activeProgressLabel : undefined,
       details: [
         alignmentInputFresh
           ? { id: "alignment-input", label: "Alignment input", format: "json", content: stringify(readJson(alignmentInputPath)) }
@@ -412,7 +563,7 @@ export function getXmlScriptDocument(projectId: string, options?: { expectedVoic
       id: "captions",
       label: "Generate deterministic captions",
       status: resolveStepStatus("captions", captionsDone, alignmentDone),
-      summary: captionsDone ? "Deterministic caption JSON was derived from the alignment." : "Waiting for deterministic caption output.",
+      summary: captionsDone ? "Deterministic caption JSON was derived from the latest alignment." : "Waiting for deterministic caption output.",
       updatedAt: captionsDone ? timestampToIso(captionsFreshAt) : undefined,
       details: [
         captionsDone
@@ -454,18 +605,22 @@ export function getXmlScriptDocument(projectId: string, options?: { expectedVoic
     content,
     updatedAt: exists ? timestampToIso(xmlFreshAt) || fileUpdatedAt(filePath) : undefined,
     pending: runActive,
-    audioUrl: narrationDone ? toMediaUrl(projectId, audioRelative) : undefined,
-    audioPath: narrationDone ? audioRelative.split(path.sep).join("/") : undefined,
+    audioUrl: processedAudioFreshAt ? toMediaUrl(projectId, audioRelative) : undefined,
+    audioPath: processedAudioFreshAt ? audioRelative.split(path.sep).join("/") : undefined,
+    originalAudioUrl: originalAudioFreshAt ? toMediaUrl(projectId, originalAudioRelative) : undefined,
+    originalAudioPath: originalAudioFreshAt ? originalAudioRelative.split(path.sep).join("/") : undefined,
     captions,
     pipeline: {
       status: runFailed ? "failed" : xmlDone ? "completed" : runActive ? "running" : "idle",
       workDir,
-      audioPath: narrationDone ? audioPath : undefined,
+      audioPath: processedAudioFreshAt ? audioPath : undefined,
+      originalAudioPath: originalAudioFreshAt ? originalAudioPath : undefined,
       transcriptPath: transcriptFresh ? transcriptPath : undefined,
       alignmentInputPath: alignmentInputFresh ? alignmentInputPath : undefined,
       alignmentOutputPath: alignmentDone ? alignmentOutputPath : undefined,
       captionPlanPath: captionsDone ? captionPlanPath : undefined,
-      warning: [voiceMismatchWarning, latestRun?.errorMessage].filter(Boolean).join(" ") || undefined,
+      pauseRemovalSettingsPath: pauseRemovalSettingsFreshAt ? pauseRemovalSettingsPath : undefined,
+      warning: [voiceMismatchWarning, pauseRemovalMismatchWarning, latestRun?.errorMessage].filter(Boolean).join(" ") || undefined,
       steps,
     },
   };

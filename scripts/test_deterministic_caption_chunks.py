@@ -135,6 +135,115 @@ class DeterministicCaptionChunkTests(unittest.TestCase):
         self.assertLess(captions[0].end - captions[0].start, 1.0)
         self.assertAlmostEqual(captions[0].end, 0.32, places=3)
 
+    def test_regression_keeps_hyphenated_and_contracted_alignment_in_sync(self) -> None:
+        script_text = (
+            "Put one fingertip near each corner of your mouth, then make a small closed-mouth smile at about thirty to forty percent effort. "
+            "Keep it small. That’s the trick. The second you force it, the dominant side steals the rep. "
+            "Watch for the first little jump, then slow that side down and guide the weaker side until both corners rise together. "
+            "That’s what makes your face look calmer, more even, and better controlled on camera."
+        )
+        alignment_items = [
+            {"text": "Put", "start_time": 0.0, "end_time": 0.16},
+            {"text": "one", "start_time": 0.16, "end_time": 0.28},
+            {"text": "fingertip", "start_time": 0.28, "end_time": 0.72},
+            {"text": "near", "start_time": 0.72, "end_time": 0.88},
+            {"text": "each", "start_time": 0.88, "end_time": 1.04},
+            {"text": "corner", "start_time": 1.04, "end_time": 1.32},
+            {"text": "of", "start_time": 1.32, "end_time": 1.40},
+            {"text": "your", "start_time": 1.40, "end_time": 1.52},
+            {"text": "mouth", "start_time": 1.52, "end_time": 1.80},
+            {"text": "then", "start_time": 1.92, "end_time": 2.08},
+            {"text": "make", "start_time": 2.08, "end_time": 2.28},
+            {"text": "a", "start_time": 2.28, "end_time": 2.36},
+            {"text": "small", "start_time": 2.36, "end_time": 2.64},
+            {"text": "closedmouth", "start_time": 2.64, "end_time": 3.28},
+            {"text": "smile", "start_time": 3.28, "end_time": 3.60},
+            {"text": "at", "start_time": 3.60, "end_time": 3.72},
+            {"text": "about", "start_time": 3.72, "end_time": 4.00},
+            {"text": "thirty", "start_time": 4.00, "end_time": 4.28},
+            {"text": "to", "start_time": 4.28, "end_time": 4.36},
+            {"text": "forty", "start_time": 4.36, "end_time": 4.64},
+            {"text": "percent", "start_time": 4.64, "end_time": 5.08},
+            {"text": "effort", "start_time": 5.08, "end_time": 5.36},
+            {"text": "Keep", "start_time": 5.52, "end_time": 5.76},
+            {"text": "it", "start_time": 5.76, "end_time": 5.90},
+            {"text": "small", "start_time": 5.90, "end_time": 6.24},
+            {"text": "That's", "start_time": 6.40, "end_time": 6.84},
+            {"text": "the", "start_time": 6.84, "end_time": 6.96},
+            {"text": "trick", "start_time": 6.96, "end_time": 7.28},
+            {"text": "The", "start_time": 7.44, "end_time": 7.64},
+            {"text": "second", "start_time": 7.64, "end_time": 7.96},
+            {"text": "you", "start_time": 7.96, "end_time": 8.12},
+            {"text": "force", "start_time": 8.12, "end_time": 8.44},
+            {"text": "it", "start_time": 8.44, "end_time": 8.60},
+            {"text": "the", "start_time": 8.76, "end_time": 8.92},
+            {"text": "dominant", "start_time": 8.92, "end_time": 9.36},
+            {"text": "side", "start_time": 9.36, "end_time": 9.64},
+            {"text": "steals", "start_time": 9.64, "end_time": 10.04},
+            {"text": "the", "start_time": 10.04, "end_time": 10.16},
+            {"text": "rep", "start_time": 10.16, "end_time": 10.44},
+            {"text": "Watch", "start_time": 10.60, "end_time": 10.88},
+            {"text": "for", "start_time": 10.88, "end_time": 11.00},
+            {"text": "the", "start_time": 11.00, "end_time": 11.12},
+            {"text": "first", "start_time": 11.12, "end_time": 11.44},
+            {"text": "little", "start_time": 11.44, "end_time": 11.68},
+            {"text": "jump", "start_time": 11.68, "end_time": 12.00},
+            {"text": "then", "start_time": 12.16, "end_time": 12.36},
+            {"text": "slow", "start_time": 12.36, "end_time": 12.56},
+            {"text": "that", "start_time": 12.56, "end_time": 12.72},
+            {"text": "side", "start_time": 12.72, "end_time": 12.96},
+            {"text": "down", "start_time": 12.96, "end_time": 13.20},
+            {"text": "and", "start_time": 13.20, "end_time": 13.32},
+            {"text": "guide", "start_time": 13.32, "end_time": 13.64},
+            {"text": "the", "start_time": 13.64, "end_time": 13.76},
+            {"text": "weaker", "start_time": 13.76, "end_time": 14.08},
+            {"text": "side", "start_time": 14.08, "end_time": 14.32},
+            {"text": "until", "start_time": 14.32, "end_time": 14.64},
+            {"text": "both", "start_time": 14.64, "end_time": 14.88},
+            {"text": "corners", "start_time": 14.88, "end_time": 15.24},
+            {"text": "rise", "start_time": 15.24, "end_time": 15.44},
+            {"text": "together", "start_time": 15.44, "end_time": 15.92},
+            {"text": "That's", "start_time": 16.08, "end_time": 16.52},
+            {"text": "what", "start_time": 16.52, "end_time": 16.72},
+            {"text": "makes", "start_time": 16.72, "end_time": 17.00},
+            {"text": "your", "start_time": 17.00, "end_time": 17.16},
+            {"text": "face", "start_time": 17.16, "end_time": 17.40},
+            {"text": "look", "start_time": 17.40, "end_time": 17.64},
+            {"text": "calmer", "start_time": 17.64, "end_time": 18.04},
+            {"text": "more", "start_time": 18.16, "end_time": 18.36},
+            {"text": "even", "start_time": 18.36, "end_time": 18.72},
+            {"text": "and", "start_time": 18.88, "end_time": 19.00},
+            {"text": "better", "start_time": 19.00, "end_time": 19.28},
+            {"text": "controlled", "start_time": 19.28, "end_time": 19.72},
+            {"text": "on", "start_time": 19.72, "end_time": 19.84},
+            {"text": "camera", "start_time": 19.84, "end_time": 20.24},
+        ]
+
+        captions, _ = MODULE.build_captions(script_text, {"items": alignment_items}, 6)
+        self.assertEqual(
+            [(caption.text, round(caption.start, 2), round(caption.end, 2)) for caption in captions],
+            [
+                ("Put one fingertip", 0.00, 0.72),
+                ("near each corner of your mouth", 0.72, 1.80),
+                ("then make a small", 1.92, 2.64),
+                ("closed-mouth smile", 2.64, 3.60),
+                ("at about thirty to forty percent", 3.60, 5.08),
+                ("effort", 5.08, 5.36),
+                ("Keep it small", 5.52, 6.24),
+                ("That’s the trick", 6.40, 7.28),
+                ("The second you force it", 7.44, 8.60),
+                ("the dominant side steals the rep", 8.76, 10.44),
+                ("Watch for the first little jump", 10.60, 12.00),
+                ("then slow that side down", 12.16, 13.20),
+                ("and guide the weaker side", 13.20, 14.32),
+                ("until both corners rise together", 14.32, 15.92),
+                ("That’s what makes your face look", 16.08, 17.64),
+                ("calmer, more even", 17.64, 18.72),
+                ("and better controlled on camera", 18.88, 20.24),
+            ],
+        )
+        self.assertTrue(all(captions[index].start >= captions[index - 1].end for index in range(1, len(captions))))
+
 
 if __name__ == "__main__":
     unittest.main()

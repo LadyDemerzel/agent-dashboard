@@ -30,7 +30,7 @@ NUMERIC_FOLLOWERS = {
 }
 SPACY_MODEL_CANDIDATES = ["en_core_web_sm", "en_core_web_md", "en_core_web_lg"]
 NAMED_SPAN_CONNECTORS = {"of", "the", "and", "&"}
-WORD_RE = re.compile(r"[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*")
+WORD_RE = re.compile(r"[A-Za-z0-9]+(?:[’'\-][A-Za-z0-9]+)*")
 WEAK_LEADING_POS = {"ADP", "PART", "SCONJ", "CCONJ"}
 WEAK_TRAILING_POS = {"ADP", "PART", "SCONJ", "CCONJ", "DET"}
 PREFERRED_BOUNDARY_REASONS = {
@@ -50,7 +50,8 @@ class ScriptWord:
     norm: str
     start: int
     end: int
-    token_i: int
+    token_start_i: int
+    token_end_i: int
 
 
 @dataclass
@@ -86,16 +87,57 @@ def load_nlp() -> tuple[Language, str]:
 
 def iter_script_words(doc: Doc) -> list[ScriptWord]:
     words: list[ScriptWord] = []
-    idx = 0
-    for token in doc:
-        if not token.text.strip() or token.is_space or token.is_punct:
-            continue
-        norm = normalize_token(token.text)
+    non_space_tokens = [token for token in doc if not token.is_space]
+    token_cursor = 0
+
+    for idx, match in enumerate(WORD_RE.finditer(doc.text)):
+        text = match.group(0)
+        norm = normalize_token(text)
         if not norm:
             continue
-        words.append(ScriptWord(index=idx, text=token.text, norm=norm, start=token.idx, end=token.idx + len(token.text), token_i=token.i))
-        idx += 1
+        start = match.start()
+        end = match.end()
+
+        while token_cursor < len(non_space_tokens) and non_space_tokens[token_cursor].idx + len(non_space_tokens[token_cursor].text) <= start:
+            token_cursor += 1
+
+        overlapping: list[Token] = []
+        scan = token_cursor
+        while scan < len(non_space_tokens) and non_space_tokens[scan].idx < end:
+            overlapping.append(non_space_tokens[scan])
+            scan += 1
+
+        if not overlapping:
+            continue
+
+        words.append(
+            ScriptWord(
+                index=idx,
+                text=text,
+                norm=norm,
+                start=start,
+                end=end,
+                token_start_i=overlapping[0].i,
+                token_end_i=overlapping[-1].i + 1,
+            )
+        )
     return words
+
+
+def token_i_to_word_index(words: list[ScriptWord]) -> dict[int, int]:
+    mapping: dict[int, int] = {}
+    for word in words:
+        for token_i in range(word.token_start_i, word.token_end_i):
+            mapping[token_i] = word.index
+    return mapping
+
+
+def first_token_for_word(doc: Doc, word: ScriptWord) -> Token:
+    return doc[word.token_start_i]
+
+
+def last_token_for_word(doc: Doc, word: ScriptWord) -> Token:
+    return doc[word.token_end_i - 1]
 
 
 def has_parser(doc: Doc) -> bool:
@@ -133,16 +175,16 @@ def splits_numeric_phrase(prev_token: Token, next_token: Token) -> bool:
 
 
 def protected_ranges(doc: Doc, words: list[ScriptWord]) -> list[tuple[int, int]]:
-    token_i_to_word_index = {word.token_i: word.index for word in words}
+    token_to_word = token_i_to_word_index(words)
     ranges: list[tuple[int, int]] = []
 
     def add_token_range(start_token_i: int, end_token_i_exclusive: int):
-        indices = [token_i_to_word_index[i] for i in range(start_token_i, end_token_i_exclusive) if i in token_i_to_word_index]
+        indices = [token_to_word[i] for i in range(start_token_i, end_token_i_exclusive) if i in token_to_word]
         if len(indices) >= 2:
             ranges.append((min(indices), max(indices) + 1))
 
     def add_compact_subtree(token: Token, *, max_words: int = 5):
-        indices = sorted({token_i_to_word_index[t.i] for t in token.subtree if t.i in token_i_to_word_index})
+        indices = sorted({token_to_word[t.i] for t in token.subtree if t.i in token_to_word})
         if 2 <= len(indices) <= max_words:
             ranges.append((indices[0], indices[-1] + 1))
 
@@ -213,13 +255,13 @@ def inside_protected_boundary(boundary_word_index: int, protected: list[tuple[in
 
 
 def attached_phrase_starts(doc: Doc, words: list[ScriptWord]) -> set[int]:
-    token_i_to_word_index = {word.token_i: word.index for word in words}
+    token_to_word = token_i_to_word_index(words)
     starts: set[int] = set()
 
     for token in doc:
         if token.dep_ not in {"prep", "xcomp"}:
             continue
-        indices = sorted({token_i_to_word_index[t.i] for t in token.subtree if t.i in token_i_to_word_index})
+        indices = sorted({token_to_word[t.i] for t in token.subtree if t.i in token_to_word})
         if 2 <= len(indices) <= 5:
             starts.add(indices[0])
 
@@ -228,7 +270,7 @@ def attached_phrase_starts(doc: Doc, words: list[ScriptWord]) -> set[int]:
 
 def candidate_breakpoints(doc: Doc, words: list[ScriptWord]) -> dict[int, list[str]]:
     reasons: dict[int, list[str]] = {}
-    token_i_to_word_index = {word.token_i: word.index for word in words}
+    token_to_word = token_i_to_word_index(words)
 
     def add(boundary_word_index: int, reason: str):
         if boundary_word_index <= 0 or boundary_word_index >= len(words):
@@ -236,33 +278,33 @@ def candidate_breakpoints(doc: Doc, words: list[ScriptWord]) -> dict[int, list[s
         reasons.setdefault(boundary_word_index, []).append(reason)
 
     def add_before_token(token: Token, reason: str):
-        boundary_word_index = token_i_to_word_index.get(token.i)
+        boundary_word_index = token_to_word.get(token.i)
         if boundary_word_index is not None:
             add(boundary_word_index, reason)
 
     def add_after_token(token: Token, reason: str):
         for next_token_i in range(token.i + 1, len(doc)):
-            boundary_word_index = token_i_to_word_index.get(next_token_i)
+            boundary_word_index = token_to_word.get(next_token_i)
             if boundary_word_index is not None:
                 add(boundary_word_index, reason)
                 return
 
     def subtree_word_indices(token: Token) -> list[int]:
-        return sorted({token_i_to_word_index[t.i] for t in token.subtree if t.i in token_i_to_word_index})
+        return sorted({token_to_word[t.i] for t in token.subtree if t.i in token_to_word})
 
     for token in doc:
         if token.text in PUNCT_BREAKS:
             add_after_token(token, "punctuation")
 
     for word in words:
-        token = doc[word.token_i]
+        token = first_token_for_word(doc, word)
         lower = token.text.lower()
         if lower in COORD_CONJ:
             add(word.index, "coordinating-conjunction")
         if lower in SUBORD_CONJ:
             add(word.index, "subordinating-conjunction")
         if word.index > 0 and token_has_digits(token):
-            previous = doc[words[word.index - 1].token_i]
+            previous = last_token_for_word(doc, words[word.index - 1])
             if not token_is_numericish(previous):
                 add(word.index, "numeric-start")
 
@@ -307,8 +349,8 @@ def boundary_meta(
     chunk_len = boundary - start
     remaining = end - boundary
     boundary_reasons = sorted(set(reasons.get(boundary, [])))
-    prev_token = doc[words[boundary - 1].token_i]
-    next_token = doc[words[boundary].token_i] if boundary < len(words) else None
+    prev_token = last_token_for_word(doc, words[boundary - 1])
+    next_token = first_token_for_word(doc, words[boundary]) if boundary < len(words) else None
     next_lower = next_token.text.lower() if next_token is not None else ""
     prev_lower = prev_token.text.lower()
     is_subordinating_break = "subordinating-conjunction" in boundary_reasons
@@ -560,7 +602,7 @@ def build_captions(script_text: str, alignment_payload: dict[str, Any], max_word
 
     sentence_ranges: list[tuple[int, int]] = []
     for sent in doc.sents:
-        sent_word_indices = [word.index for word in words if sent.start <= word.token_i < sent.end]
+        sent_word_indices = [word.index for word in words if sent.start < word.token_end_i and word.token_start_i < sent.end]
         if not sent_word_indices:
             continue
         sentence_ranges.append((sent_word_indices[0], sent_word_indices[-1] + 1))

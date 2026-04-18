@@ -4,6 +4,7 @@ import { spawn } from "child_process";
 import { randomUUID } from "crypto";
 import type { ShortFormStageKey } from "@/lib/short-form-videos";
 import type { ShortFormNanoBananaPromptTemplates, ShortFormStyleReferenceImage } from "@/lib/short-form-image-styles";
+import type { ShortFormCaptionStyleEntry } from "@/lib/short-form-video-render-settings";
 
 export interface DirectSceneImagesConfig {
   scriptPath: string;
@@ -31,6 +32,13 @@ export interface DirectVideoConfig {
   videoDocPath: string;
   videoWorkDir: string;
   mode: "generate" | "revise";
+  captionStyleId?: string;
+  captionStyleName?: string;
+  captionStyleSource?: "project" | "default" | "fallback";
+  captionStyle?: ShortFormCaptionStyleEntry;
+  backgroundVideoId?: string;
+  backgroundVideoName?: string;
+  backgroundVideoPath?: string;
   notes?: string;
 }
 
@@ -150,6 +158,7 @@ export function enqueueShortFormStageRun(job: Omit<ShortFormStageRunJob, "runId"
 
   const child = spawn(process.execPath, [WORKER_PATH, jobPath], {
     cwd: REPO_ROOT,
+    env: { ...process.env },
     detached: true,
     stdio: "ignore",
   });

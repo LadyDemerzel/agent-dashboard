@@ -111,6 +111,7 @@ export interface XmlPipelineClient {
   status: 'running' | 'completed' | 'failed' | 'idle';
   workDir?: string;
   audioPath?: string;
+  originalAudioPath?: string;
   transcriptPath?: string;
   alignmentInputPath?: string;
   alignmentOutputPath?: string;
@@ -183,7 +184,12 @@ export interface ShortFormProjectClient {
   selectedMusicName?: string;
   selectedBackgroundVideoId?: string;
   selectedBackgroundVideoName?: string;
+  selectedCaptionStyleId?: string;
+  selectedCaptionStyleName?: string;
+  captionStyleOverrideId?: string;
   captionMaxWordsOverride?: number;
+  pauseRemovalMinSilenceDurationSecondsOverride?: number;
+  pauseRemovalSilenceThresholdDbOverride?: number;
   hooks: {
     pending: boolean;
     generations: HookGeneration[];
@@ -193,7 +199,14 @@ export interface ShortFormProjectClient {
   };
   research: StageDoc;
   script: StageDoc & { textScriptRuns?: TextScriptRunClient[]; textScriptLatestRunId?: string; textScriptMaxIterationsOverride?: number };
-  xmlScript: StageDoc & { audioUrl?: string; audioPath?: string; captions?: CaptionSection[]; pipeline?: XmlPipelineClient };
+  xmlScript: StageDoc & {
+    audioUrl?: string;
+    audioPath?: string;
+    originalAudioUrl?: string;
+    originalAudioPath?: string;
+    captions?: CaptionSection[];
+    pipeline?: XmlPipelineClient;
+  };
   sceneImages: StageDoc & { scenes: Scene[]; sceneProgress?: SceneImageProgressSummaryClient };
   video: StageDoc & { videoUrl?: string; videoPath?: string; pipeline?: VideoPipelineClient };
 }
@@ -324,6 +337,7 @@ function normalizeXmlPipeline(value: unknown): XmlPipelineClient | undefined {
     status: obj.status === 'completed' ? 'completed' : obj.status === 'failed' ? 'failed' : obj.status === 'running' ? 'running' : 'idle',
     workDir: asOptionalString(obj.workDir),
     audioPath: asOptionalString(obj.audioPath),
+    originalAudioPath: asOptionalString(obj.originalAudioPath),
     transcriptPath: asOptionalString(obj.transcriptPath),
     alignmentInputPath: asOptionalString(obj.alignmentInputPath),
     alignmentOutputPath: asOptionalString(obj.alignmentOutputPath),
@@ -607,7 +621,16 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
     selectedMusicName: asOptionalString(obj.selectedMusicName),
     selectedBackgroundVideoId: asOptionalString(obj.selectedBackgroundVideoId),
     selectedBackgroundVideoName: asOptionalString(obj.selectedBackgroundVideoName),
+    selectedCaptionStyleId: asOptionalString(obj.selectedCaptionStyleId),
+    selectedCaptionStyleName: asOptionalString(obj.selectedCaptionStyleName),
+    captionStyleOverrideId: asOptionalString(obj.captionStyleOverrideId),
     captionMaxWordsOverride: typeof obj.captionMaxWordsOverride === 'number' ? obj.captionMaxWordsOverride : undefined,
+    pauseRemovalMinSilenceDurationSecondsOverride: typeof obj.pauseRemovalMinSilenceDurationSecondsOverride === 'number'
+      ? obj.pauseRemovalMinSilenceDurationSecondsOverride
+      : undefined,
+    pauseRemovalSilenceThresholdDbOverride: typeof obj.pauseRemovalSilenceThresholdDbOverride === 'number'
+      ? obj.pauseRemovalSilenceThresholdDbOverride
+      : undefined,
     hooks: {
       pending: asBoolean(hooks.pending),
       generations,
@@ -632,6 +655,8 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
       ...xmlScript,
       audioUrl: asOptionalString(xmlScriptObj.audioUrl),
       audioPath: asOptionalString(xmlScriptObj.audioPath),
+      originalAudioUrl: asOptionalString(xmlScriptObj.originalAudioUrl),
+      originalAudioPath: asOptionalString(xmlScriptObj.originalAudioPath),
       captions: xmlScriptCaptions,
       pipeline: normalizeXmlPipeline(xmlScriptObj.pipeline),
     },

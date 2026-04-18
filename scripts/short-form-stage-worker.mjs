@@ -13,6 +13,8 @@ if (!jobPath) {
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
 const XML_SCENE_IMAGES_SCRIPT = path.join(HOME_DIR, ".openclaw", "skills", "xml-scene-images", "scripts", "generate_from_xml.py");
 const XML_SCENE_VIDEO_SCRIPT = path.join(HOME_DIR, ".openclaw", "skills", "xml-scene-video", "scripts", "generate_video.py");
+const STATIC_CAPTION_OVERLAY_SCRIPT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard", "scripts", "render_static_caption_overlays.py");
+const ANIMATED_CAPTION_OVERLAY_SCRIPT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard", "scripts", "render_animated_caption_overlays.py");
 const DEFAULT_IMAGE_MODEL = "google/gemini-3-pro-image-preview";
 const DEFAULT_IMAGE_RESOLUTION = "1K";
 const DEFAULT_IMAGE_ASPECT_RATIO = "9:16";
@@ -30,13 +32,18 @@ const GREEN_SCREEN_SCENE_CONSTRAINTS = [
 ].join(" ");
 const DEFAULT_VOICE_SPEAKER = "Aiden";
 const DEFAULT_VOICE_INSTRUCT = "Educated American male narrator, slightly deeper and lower-pitched, polished and confident, calm authority, crisp social-video pacing, speak only English, no other languages or non-speech sounds.";
-const DEFAULT_VOICE_PREVIEW_TEXT = "Your jawline doesn't start at your jaw. It starts with how your whole neck and face are stacking.";
+const DEFAULT_VOICE_PREVIEW_TEXT = "Most people think their face shape is fixed, but posture, breathing, and muscular balance change more than you expect. In this lesson, I will walk through the habits that matter most, the mistakes that waste effort, and the small adjustments that create visible changes over time. Keep your shoulders relaxed, your neck long, and your breathing steady as we go step by step.";
 const DEFAULT_VOICE_MODE = "voice-design";
 const DEFAULT_VOICE_ID = "voice-calm-authority";
 const DEFAULT_MUSIC_PROMPT = "instrumental cinematic curiosity underscore, mysterious but pleasant, warm synth pulse, light percussion, airy textures, subtle piano and marimba accents, sense of discovery, modern and polished, no horror, no dread, no dark drones, no jump scares, no vocals, no singing, no choir, no spoken voice";
 const DEFAULT_MUSIC_VOLUME = "0.38";
 const DEFAULT_MUSIC_ID = "music-curiosity-underscore";
 const DEFAULT_MUSIC_PREVIEW_DURATION_SECONDS = 12;
+const DEFAULT_CAPTION_STYLE_ID = "caption-classic-highlight";
+const DEFAULT_CAPTION_HORIZONTAL_PADDING = 80;
+const DEFAULT_CAPTION_BOTTOM_MARGIN = 220;
+const DEFAULT_CAPTION_FONT_WEIGHT = 700;
+const CAPTION_FONT_WEIGHT_SUFFIX_RE = /\s+(thin|hairline|extra\s*light|ultra\s*light|light|book|regular|normal|medium|semi\s*bold|semibold|demi\s*bold|bold|extra\s*bold|ultra\s*bold|black|heavy)\s*$/i;
 const DEFAULT_ACE_STEP_URL = "http://127.0.0.1:8011";
 const STYLE_REFERENCE_IMAGES_DIR = path.join(
   HOME_DIR,
@@ -56,6 +63,15 @@ const VIDEO_RENDER_SETTINGS_PATH = path.join(
   "short-form-videos",
   "_video-render-settings.json",
 );
+const MUSIC_LIBRARY_DIR = path.join(
+  HOME_DIR,
+  "tenxsolo",
+  "business",
+  "content",
+  "deliverables",
+  "short-form-videos",
+  "_music-library",
+);
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -71,6 +87,46 @@ function readJson(filePath) {
 
 function normalizeString(value, fallback) {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function normalizeStoredRelativePath(value) {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const normalized = value.trim().split(path.sep).join("/").replace(/^\/+/, "");
+  if (!normalized || normalized.includes("..") || path.isAbsolute(normalized)) return undefined;
+  return normalized;
+}
+
+function resolveMusicLibraryAbsolutePath(relativePath) {
+  return path.resolve(MUSIC_LIBRARY_DIR, relativePath);
+}
+
+function readReusableMusicArtifact(track, value) {
+  const generatedAudioRelativePath = normalizeStoredRelativePath(value.generatedAudioRelativePath);
+  const generatedPrompt = normalizeString(value.generatedPrompt, "");
+  const generatedDurationSeconds = Number.isFinite(Number(value.generatedDurationSeconds))
+    ? Math.min(30, Math.max(6, Math.round(Number(value.generatedDurationSeconds))))
+    : (track.previewDurationSeconds || DEFAULT_MUSIC_PREVIEW_DURATION_SECONDS);
+  const musicLibraryDir = path.resolve(MUSIC_LIBRARY_DIR);
+
+  if (!generatedAudioRelativePath || !generatedPrompt) return null;
+  if (generatedPrompt !== track.prompt) return null;
+  if (generatedDurationSeconds !== (track.previewDurationSeconds || DEFAULT_MUSIC_PREVIEW_DURATION_SECONDS)) return null;
+
+  const absolutePath = resolveMusicLibraryAbsolutePath(generatedAudioRelativePath);
+  if (
+    (absolutePath !== musicLibraryDir && !absolutePath.startsWith(`${musicLibraryDir}${path.sep}`))
+    || !fs.existsSync(absolutePath)
+    || !fs.statSync(absolutePath).isFile()
+  ) {
+    return null;
+  }
+
+  return {
+    generatedAudioRelativePath,
+    generatedPrompt,
+    generatedDurationSeconds,
+    generatedAt: normalizeString(value.generatedAt, "") || undefined,
+  };
 }
 
 function createDefaultVoice() {
@@ -142,11 +198,272 @@ function createDefaultMusic() {
   };
 }
 
+function createDefaultCaptionStyles() {
+  return [
+    {
+      id: DEFAULT_CAPTION_STYLE_ID,
+      name: "Classic highlight",
+      fontFamily: "Arial",
+      fontWeight: DEFAULT_CAPTION_FONT_WEIGHT,
+      fontSize: 72,
+      wordSpacing: -4,
+      horizontalPadding: DEFAULT_CAPTION_HORIZONTAL_PADDING,
+      bottomMargin: DEFAULT_CAPTION_BOTTOM_MARGIN,
+      activeWordColor: "#FFFFFF",
+      spokenWordColor: "#D0D0D0",
+      upcomingWordColor: "#5E5E5E",
+      outlineColor: "#000000",
+      outlineWidth: 3.5,
+      shadowColor: "#000000",
+      shadowStrength: 1.2,
+      shadowBlur: 2.2,
+      shadowOffsetX: 0,
+      shadowOffsetY: 3.4,
+      backgroundEnabled: false,
+      backgroundColor: "#000000",
+      backgroundOpacity: 0.45,
+      backgroundPadding: 20,
+      backgroundRadius: 24,
+      animationPreset: "stable-pop",
+    },
+    {
+      id: "caption-soft-box",
+      name: "Soft box",
+      fontFamily: "Arial",
+      fontWeight: DEFAULT_CAPTION_FONT_WEIGHT,
+      fontSize: 68,
+      wordSpacing: 0,
+      horizontalPadding: DEFAULT_CAPTION_HORIZONTAL_PADDING,
+      bottomMargin: DEFAULT_CAPTION_BOTTOM_MARGIN,
+      activeWordColor: "#FFF7D6",
+      spokenWordColor: "#D9D4C7",
+      upcomingWordColor: "#6E6A61",
+      outlineColor: "#000000",
+      outlineWidth: 2.8,
+      shadowColor: "#000000",
+      shadowStrength: 0.8,
+      shadowBlur: 1.8,
+      shadowOffsetX: 0,
+      shadowOffsetY: 2.6,
+      backgroundEnabled: true,
+      backgroundColor: "#111111",
+      backgroundOpacity: 0.62,
+      backgroundPadding: 24,
+      backgroundRadius: 28,
+      animationPreset: "pulse",
+    },
+    {
+      id: "caption-high-contrast-glow",
+      name: "High-contrast glow",
+      fontFamily: "Arial",
+      fontWeight: DEFAULT_CAPTION_FONT_WEIGHT,
+      fontSize: 74,
+      wordSpacing: 0,
+      horizontalPadding: DEFAULT_CAPTION_HORIZONTAL_PADDING,
+      bottomMargin: DEFAULT_CAPTION_BOTTOM_MARGIN,
+      activeWordColor: "#FFFFFF",
+      spokenWordColor: "#C7CCFF",
+      upcomingWordColor: "#4F5570",
+      outlineColor: "#06070A",
+      outlineWidth: 4.2,
+      shadowColor: "#0C122B",
+      shadowStrength: 1.8,
+      shadowBlur: 3,
+      shadowOffsetX: 0,
+      shadowOffsetY: 4.6,
+      backgroundEnabled: false,
+      backgroundColor: "#0A0C14",
+      backgroundOpacity: 0.4,
+      backgroundPadding: 20,
+      backgroundRadius: 24,
+      animationPreset: "glow",
+    },
+  ];
+}
+
+function clampCaptionFontSize(value, fallback = 72) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(160, Math.max(24, Math.round(parsed)));
+}
+
+function clampCaptionFontWeight(value, fallback = DEFAULT_CAPTION_FONT_WEIGHT) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(900, Math.max(100, Math.round(parsed / 100) * 100));
+}
+
+function clampCaptionWordSpacing(value, fallback = 0) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(32, Math.max(-20, Math.round(parsed * 10) / 10));
+}
+
+function clampOutlineWidth(value, fallback = 3.5) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(12, Math.max(0, Math.round(parsed * 10) / 10));
+}
+
+function clampShadowStrength(value, fallback = 1.2) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(12, Math.max(0, Math.round(parsed * 10) / 10));
+}
+
+function defaultShadowBlur(shadowStrength) {
+  return Math.min(16, Math.max(0, Math.round((0.8 + shadowStrength * 1.2) * 10) / 10));
+}
+
+function defaultShadowOffsetY(shadowStrength) {
+  return Math.min(32, Math.max(0, Math.round((1 + shadowStrength * 2) * 10) / 10));
+}
+
+function clampShadowBlur(value, fallback = defaultShadowBlur(1.2)) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(16, Math.max(0, Math.round(parsed * 10) / 10));
+}
+
+function clampShadowOffset(value, fallback = 0) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(32, Math.max(-32, Math.round(parsed * 10) / 10));
+}
+
+function clampUnitInterval(value, fallback = 0.45) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(1, Math.max(0, Math.round(parsed * 100) / 100));
+}
+
+function clampCaptionBackgroundPadding(value, fallback = 20) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(96, Math.max(0, Math.round(parsed)));
+}
+
+function clampCaptionBackgroundRadius(value, fallback = 24) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(96, Math.max(0, Math.round(parsed)));
+}
+
+function clampCaptionHorizontalPadding(value, fallback = DEFAULT_CAPTION_HORIZONTAL_PADDING) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(320, Math.max(0, Math.round(parsed)));
+}
+
+function clampCaptionBottomMargin(value, fallback = DEFAULT_CAPTION_BOTTOM_MARGIN) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(900, Math.max(0, Math.round(parsed)));
+}
+
+function inferCaptionFontWeightFromFamily(value) {
+  const normalized = String(value || "").trim().replace(/\s+/g, " ");
+  if (!normalized) return undefined;
+  if (/\b(thin|hairline)\b/i.test(normalized)) return 100;
+  if (/\b(extra\s*light|ultra\s*light)\b/i.test(normalized)) return 200;
+  if (/\blight\b/i.test(normalized)) return 300;
+  if (/\b(book|regular|normal)\b/i.test(normalized)) return 400;
+  if (/\bmedium\b/i.test(normalized)) return 500;
+  if (/\b(demi\s*bold|semi\s*bold|semibold)\b/i.test(normalized)) return 600;
+  if (/\b(extra\s*bold|ultra\s*bold)\b/i.test(normalized)) return 800;
+  if (/\b(black|heavy)\b/i.test(normalized)) return 900;
+  if (/\bbold\b/i.test(normalized)) return 700;
+  return undefined;
+}
+
+function sanitizeCaptionFontFamily(value, fallback = "Arial") {
+  let next = String(value || "").trim().replace(/\s+/g, " ");
+  while (CAPTION_FONT_WEIGHT_SUFFIX_RE.test(next)) {
+    next = next.replace(CAPTION_FONT_WEIGHT_SUFFIX_RE, "").trim();
+  }
+  return next || fallback;
+}
+
+function normalizeHexColor(value, fallback) {
+  if (typeof value !== "string") return fallback;
+  const normalized = value.trim().replace(/^#/, "");
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return fallback;
+  return `#${normalized.toUpperCase()}`;
+}
+
+function normalizeCaptionAnimationPreset(value, fallback = "stable-pop") {
+  if (value === "word-highlight" || value === "pop") return "stable-pop";
+  return value === "none" || value === "stable-pop" || value === "fluid-pop" || value === "pulse" || value === "glow" ? value : fallback;
+}
+
+function normalizeFontPath(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function normalizeCaptionStyleEntry(value, fallback, index) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const fontPath = normalizeFontPath(value.fontPath);
+  const backgroundEnabled = typeof value.backgroundEnabled === "boolean"
+    ? value.backgroundEnabled
+    : Boolean(value.backgroundBoxEnabled);
+  const rawFontFamily = normalizeString(value.fontFamily, fallback.fontFamily || "Arial");
+  const shadowStrength = clampShadowStrength(value.shadowStrength, fallback.shadowStrength);
+  const normalized = {
+    id: normalizeString(value.id, fallback.id || `caption-style-${index + 1}`),
+    name: normalizeString(value.name, fallback.name || `Caption style ${index + 1}`),
+    fontFamily: sanitizeCaptionFontFamily(rawFontFamily, fallback.fontFamily || "Arial"),
+    fontWeight: clampCaptionFontWeight(
+      value.fontWeight,
+      inferCaptionFontWeightFromFamily(rawFontFamily) ?? fallback.fontWeight ?? DEFAULT_CAPTION_FONT_WEIGHT,
+    ),
+    fontSize: clampCaptionFontSize(value.fontSize, fallback.fontSize),
+    wordSpacing: clampCaptionWordSpacing(value.wordSpacing, fallback.wordSpacing ?? 0),
+    horizontalPadding: clampCaptionHorizontalPadding(value.horizontalPadding, fallback.horizontalPadding ?? DEFAULT_CAPTION_HORIZONTAL_PADDING),
+    bottomMargin: clampCaptionBottomMargin(value.bottomMargin, fallback.bottomMargin ?? DEFAULT_CAPTION_BOTTOM_MARGIN),
+    activeWordColor: normalizeHexColor(value.activeWordColor, fallback.activeWordColor),
+    spokenWordColor: normalizeHexColor(value.spokenWordColor, fallback.spokenWordColor),
+    upcomingWordColor: normalizeHexColor(value.upcomingWordColor, fallback.upcomingWordColor),
+    outlineColor: normalizeHexColor(value.outlineColor, fallback.outlineColor),
+    outlineWidth: clampOutlineWidth(value.outlineWidth, fallback.outlineWidth),
+    shadowColor: normalizeHexColor(value.shadowColor, fallback.shadowColor),
+    shadowStrength,
+    shadowBlur: clampShadowBlur(value.shadowBlur, fallback.shadowBlur ?? defaultShadowBlur(shadowStrength)),
+    shadowOffsetX: clampShadowOffset(value.shadowOffsetX, fallback.shadowOffsetX ?? 0),
+    shadowOffsetY: clampShadowOffset(value.shadowOffsetY, fallback.shadowOffsetY ?? defaultShadowOffsetY(shadowStrength)),
+    backgroundEnabled,
+    backgroundColor: normalizeHexColor(value.backgroundColor, fallback.backgroundColor),
+    backgroundOpacity: clampUnitInterval(value.backgroundOpacity, fallback.backgroundOpacity),
+    backgroundPadding: clampCaptionBackgroundPadding(value.backgroundPadding, fallback.backgroundPadding ?? 20),
+    backgroundRadius: clampCaptionBackgroundRadius(value.backgroundRadius, fallback.backgroundRadius ?? 24),
+    animationPreset: normalizeCaptionAnimationPreset(value.animationPreset, fallback.animationPreset),
+    ...(fontPath ? { fontPath } : {}),
+  };
+  if (!normalized.id || !normalized.name || !normalized.fontFamily) return null;
+  return normalized;
+}
+
+function ensureUniqueCaptionStyleIds(styles) {
+  const used = new Set();
+  return styles.map((style, index) => {
+    let candidate = normalizeString(style.id, `caption-style-${index + 1}`);
+    if (!candidate) candidate = `caption-style-${index + 1}`;
+    if (!used.has(candidate)) {
+      used.add(candidate);
+      return style;
+    }
+    let suffix = 2;
+    while (used.has(`${candidate}-${suffix}`)) suffix += 1;
+    const nextId = `${candidate}-${suffix}`;
+    used.add(nextId);
+    return { ...style, id: nextId };
+  });
+}
+
 function normalizeMusicEntry(value, fallback, index) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const prompt = normalizeString(value.prompt, fallback.prompt);
   const parsedDuration = Number(value.previewDurationSeconds);
-  return {
+  const normalized = {
     id: normalizeString(value.id, fallback.id || `music-${index + 1}`),
     name: normalizeString(value.name, fallback.name || `Music ${index + 1}`),
     prompt,
@@ -155,6 +472,14 @@ function normalizeMusicEntry(value, fallback, index) {
       ? Math.min(30, Math.max(6, Math.round(parsedDuration)))
       : fallback.previewDurationSeconds,
   };
+  const artifact = readReusableMusicArtifact(normalized, value);
+  if (artifact) {
+    normalized.generatedAudioRelativePath = artifact.generatedAudioRelativePath;
+    normalized.generatedPrompt = artifact.generatedPrompt;
+    normalized.generatedDurationSeconds = artifact.generatedDurationSeconds;
+    if (artifact.generatedAt) normalized.generatedAt = artifact.generatedAt;
+  }
+  return normalized;
 }
 
 function ensureUniqueMusicIds(tracks) {
@@ -195,18 +520,23 @@ function migrateLegacyQwenVoice(parsed) {
     defaultMusicTrackId: music.id,
     musicVolume: Number(DEFAULT_MUSIC_VOLUME),
     musicTracks: [music],
+    defaultCaptionStyleId: DEFAULT_CAPTION_STYLE_ID,
+    captionStyles: createDefaultCaptionStyles(),
   };
 }
 
 function readVideoRenderSettings() {
   const defaultVoice = createDefaultVoice();
   const defaultMusic = createDefaultMusic();
+  const defaultCaptionStyles = createDefaultCaptionStyles();
   const defaultSettings = {
     defaultVoiceId: defaultVoice.id,
     voices: [defaultVoice],
     defaultMusicTrackId: defaultMusic.id,
     musicVolume: Number(DEFAULT_MUSIC_VOLUME),
     musicTracks: [defaultMusic],
+    defaultCaptionStyleId: defaultCaptionStyles[0].id,
+    captionStyles: defaultCaptionStyles,
   };
 
   if (!fs.existsSync(VIDEO_RENDER_SETTINGS_PATH)) {
@@ -240,6 +570,15 @@ function readVideoRenderSettings() {
       ? Math.min(1, Math.max(0, Number(parsed.musicVolume)))
       : Number(DEFAULT_MUSIC_VOLUME);
 
+    const rawCaptionStyles = Array.isArray(parsed?.captionStyles) ? parsed.captionStyles : [];
+    const normalizedCaptionStyles = ensureUniqueCaptionStyleIds(
+      rawCaptionStyles
+        .map((style, index) => normalizeCaptionStyleEntry(style, defaultCaptionStyles[index] || defaultCaptionStyles[0], index))
+        .filter(Boolean)
+    );
+    const captionStyles = normalizedCaptionStyles.length > 0 ? normalizedCaptionStyles : defaultCaptionStyles;
+    const defaultCaptionStyleId = normalizeString(parsed?.defaultCaptionStyleId, captionStyles[0].id);
+
     return {
       defaultVoiceId: normalizedVoices.some((voice) => voice.id === defaultVoiceId) ? defaultVoiceId : normalizedVoices[0].id,
       voices: normalizedVoices,
@@ -248,6 +587,10 @@ function readVideoRenderSettings() {
         : normalizedMusicTracks[0].id,
       musicVolume,
       musicTracks: normalizedMusicTracks,
+      defaultCaptionStyleId: captionStyles.some((style) => style.id === defaultCaptionStyleId)
+        ? defaultCaptionStyleId
+        : captionStyles[0].id,
+      captionStyles,
     };
   } catch {
     return defaultSettings;
@@ -283,6 +626,20 @@ function resolveMusicSelection(preferredMusicId) {
     return { music: fallbackMusic, resolvedMusicId: fallbackMusic.id, source: "fallback", musicVolume: settings.musicVolume };
   }
   return { source: "none", musicVolume: settings.musicVolume };
+}
+
+function resolveCaptionStyleSelection(preferredCaptionStyleId) {
+  const settings = readVideoRenderSettings();
+  const projectStyle = preferredCaptionStyleId ? settings.captionStyles.find((style) => style.id === preferredCaptionStyleId) : undefined;
+  if (projectStyle) {
+    return { style: projectStyle, resolvedCaptionStyleId: projectStyle.id, source: "project" };
+  }
+  const defaultStyle = settings.captionStyles.find((style) => style.id === settings.defaultCaptionStyleId);
+  if (defaultStyle) {
+    return { style: defaultStyle, resolvedCaptionStyleId: defaultStyle.id, source: "default" };
+  }
+  const fallbackStyle = settings.captionStyles[0] || createDefaultCaptionStyles()[0];
+  return { style: fallbackStyle, resolvedCaptionStyleId: fallbackStyle.id, source: "fallback" };
 }
 
 function writeJson(filePath, value) {
@@ -430,6 +787,14 @@ function finalizeRun(overrides = {}) {
   }
 
   activeRunContext.finalized = isTerminal;
+}
+
+function updateDirectVideoProgress(activeStep, activeStatusText) {
+  finalizeRun({
+    status: "running",
+    activeStep,
+    activeStatusText,
+  });
 }
 
 function readProjectTopic(projectId) {
@@ -621,6 +986,21 @@ function runCommand(command, args, options = {}) {
     stdout: result.stdout || "",
     stderr: result.stderr || "",
   };
+}
+
+let cachedFfmpegFilters;
+
+function ffmpegSupportsFilter(filterName) {
+  if (!cachedFfmpegFilters) {
+    const result = spawnSync("ffmpeg", ["-hide_banner", "-filters"], {
+      encoding: "utf-8",
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    cachedFfmpegFilters = result.status === 0 ? `${result.stdout || ""}\n${result.stderr || ""}` : "";
+  }
+
+  const pattern = new RegExp(`\\b${String(filterName).replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\b`);
+  return pattern.test(cachedFfmpegFilters || "");
 }
 
 async function waitForArtifactPaths(paths, requestedAtMs, timeoutMs, pollMs) {
@@ -1323,7 +1703,858 @@ function readXmlVoiceSelection(projectId) {
   }
 }
 
-function buildVideoReviewDoc(projectId, config, selectedVoice = createDefaultVoice()) {
+function normalizeWordToken(value) {
+  if (typeof value !== "string") return "";
+  const normalized = value
+    .toLowerCase()
+    .replace(/[’']/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+  return normalized || value.toLowerCase().trim();
+}
+
+function splitCaptionDisplayWords(text) {
+  return String(text || "")
+    .trim()
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter(Boolean);
+}
+
+function readAlignmentWords(alignmentPath) {
+  try {
+    const payload = JSON.parse(fs.readFileSync(alignmentPath, "utf-8"));
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    return items
+      .map((item, index) => ({
+        index,
+        text: typeof item?.text === "string" ? item.text : "",
+        normalized: normalizeWordToken(item?.text || ""),
+        start: Number.isFinite(Number(item?.start_time)) ? Number(item.start_time) : null,
+        end: Number.isFinite(Number(item?.end_time)) ? Number(item.end_time) : null,
+      }))
+      .filter((item) => item.text && item.start !== null && item.end !== null && item.end >= item.start);
+  } catch {
+    return [];
+  }
+}
+
+function readCaptionSections(captionsJsonPath) {
+  try {
+    const payload = JSON.parse(fs.readFileSync(captionsJsonPath, "utf-8"));
+    const captions = Array.isArray(payload?.captions) ? payload.captions : [];
+    return captions
+      .map((caption, index) => ({
+        id: typeof caption?.id === "string" ? caption.id : `caption-${index + 1}`,
+        index: Number.isFinite(Number(caption?.index)) ? Number(caption.index) : index + 1,
+        text: typeof caption?.text === "string" ? caption.text.trim() : "",
+        start: Number.isFinite(Number(caption?.start)) ? Number(caption.start) : 0,
+        end: Number.isFinite(Number(caption?.end)) ? Number(caption.end) : 0,
+      }))
+      .filter((caption) => caption.text && caption.end > caption.start)
+      .sort((a, b) => a.index - b.index || a.start - b.start || a.end - b.end);
+  } catch {
+    return [];
+  }
+}
+
+function fillMissingWordTimings(mappedWords, segmentStart, segmentEnd) {
+  const safeStart = Math.max(0, Number(segmentStart) || 0);
+  const safeEnd = Math.max(safeStart + 0.05, Number(segmentEnd) || safeStart + 0.05);
+  const total = mappedWords.length;
+  for (let index = 0; index < total; index += 1) {
+    const word = mappedWords[index];
+    if (Number.isFinite(word.start) && Number.isFinite(word.end) && word.end > word.start) continue;
+
+    const previousKnown = [...mappedWords.slice(0, index)].reverse().find((item) => Number.isFinite(item.start) && Number.isFinite(item.end));
+    const nextKnown = mappedWords.slice(index + 1).find((item) => Number.isFinite(item.start) && Number.isFinite(item.end));
+    const regionStart = previousKnown ? previousKnown.end : safeStart;
+    const regionEnd = nextKnown ? nextKnown.start : safeEnd;
+    const remainingUnknown = mappedWords
+      .slice(index)
+      .findIndex((item, innerIndex) => innerIndex > 0 && Number.isFinite(item.start) && Number.isFinite(item.end));
+    const slots = remainingUnknown === -1 ? total - index : remainingUnknown;
+    const span = Math.max(0.05, regionEnd - regionStart);
+    const step = span / Math.max(1, slots);
+    word.start = regionStart;
+    word.end = Math.min(safeEnd, regionStart + step);
+  }
+
+  for (let index = 0; index < total; index += 1) {
+    const word = mappedWords[index];
+    const nextWord = mappedWords[index + 1];
+    word.start = Math.max(safeStart, Number.isFinite(word.start) ? word.start : safeStart);
+    const fallbackEnd = nextWord && Number.isFinite(nextWord.start) ? nextWord.start : safeEnd;
+    word.end = Math.max(word.start + 0.05, Number.isFinite(word.end) ? word.end : fallbackEnd);
+    if (nextWord && Number.isFinite(nextWord.start) && word.end > nextWord.start) {
+      word.end = Math.max(word.start + 0.05, nextWord.start);
+    }
+  }
+}
+
+function mapCaptionWordsToAlignment(captions, alignmentWords) {
+  let cursor = 0;
+  let previousCaptionEnd = 0;
+  return captions.map((caption) => {
+    const displayWords = splitCaptionDisplayWords(caption.text);
+    const mappedWords = displayWords.map((displayWord) => ({
+      text: displayWord,
+      normalized: normalizeWordToken(displayWord),
+      start: null,
+      end: null,
+    }));
+
+    for (let wordIndex = 0; wordIndex < mappedWords.length; wordIndex += 1) {
+      const target = mappedWords[wordIndex];
+      let matchedIndex = -1;
+      for (let searchIndex = cursor; searchIndex < alignmentWords.length; searchIndex += 1) {
+        const candidate = alignmentWords[searchIndex];
+        if (!candidate?.normalized) continue;
+        if (candidate.normalized === target.normalized) {
+          matchedIndex = searchIndex;
+          break;
+        }
+      }
+
+      if (matchedIndex !== -1) {
+        const matched = alignmentWords[matchedIndex];
+        target.start = matched.start;
+        target.end = matched.end;
+        cursor = matchedIndex + 1;
+      }
+    }
+
+    const matchedWords = mappedWords.filter((word) => Number.isFinite(word.start) && Number.isFinite(word.end) && word.end > word.start);
+    const fallbackStart = Math.max(previousCaptionEnd, Number(caption.start) || 0);
+    const fallbackEnd = Math.max(fallbackStart + 0.05, Number(caption.end) || fallbackStart + 0.6);
+    const inferredStart = matchedWords.length > 0 ? matchedWords[0].start : fallbackStart;
+    const inferredEnd = matchedWords.length > 0 ? matchedWords[matchedWords.length - 1].end : fallbackEnd;
+
+    fillMissingWordTimings(mappedWords, inferredStart, inferredEnd);
+
+    const normalizedStart = mappedWords.length > 0 && Number.isFinite(mappedWords[0].start)
+      ? mappedWords[0].start
+      : inferredStart;
+    const normalizedEnd = mappedWords.length > 0 && Number.isFinite(mappedWords[mappedWords.length - 1].end)
+      ? mappedWords[mappedWords.length - 1].end
+      : inferredEnd;
+    const safeStart = Math.max(previousCaptionEnd, Number(normalizedStart) || fallbackStart);
+    const safeEnd = Math.max(safeStart + 0.05, Number(normalizedEnd) || fallbackEnd);
+    previousCaptionEnd = safeEnd;
+
+    return {
+      ...caption,
+      start: safeStart,
+      end: safeEnd,
+      words: mappedWords,
+    };
+  });
+}
+
+function assTimeFromSeconds(value) {
+  const totalCentiseconds = Math.max(0, Math.round(Number(value || 0) * 100));
+  const hours = Math.floor(totalCentiseconds / 360000);
+  const minutes = Math.floor((totalCentiseconds % 360000) / 6000);
+  const seconds = Math.floor((totalCentiseconds % 6000) / 100);
+  const centiseconds = totalCentiseconds % 100;
+  return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(centiseconds).padStart(2, "0")}`;
+}
+
+function assEscape(text) {
+  return String(text || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/{/g, "\\{")
+    .replace(/}/g, "\\}")
+    .replace(/\n/g, "\\N");
+}
+
+function hexToAssColor(hex, alpha = 0) {
+  const normalized = normalizeHexColor(hex, "#FFFFFF").slice(1);
+  const r = normalized.slice(0, 2);
+  const g = normalized.slice(2, 4);
+  const b = normalized.slice(4, 6);
+  const a = Math.min(255, Math.max(0, Math.round(alpha * 255)));
+  return `&H${a.toString(16).padStart(2, "0").toUpperCase()}${b}${g}${r}&`;
+}
+
+function assNumber(value) {
+  const parsed = Number(value || 0);
+  if (!Number.isFinite(parsed)) return "0";
+  return Number.isInteger(parsed) ? String(parsed) : parsed.toFixed(1).replace(/\.0$/, "");
+}
+
+function resolveShadowOpacity(style) {
+  const shadowStrength = Math.max(0, Number(style.shadowStrength) || 0);
+  if (shadowStrength <= 0) return 0;
+  return Math.min(0.95, 0.16 + (shadowStrength * 0.1));
+}
+
+function buildShadowTags(style) {
+  return [
+    `\\4c${hexToAssColor(style.shadowColor, 1 - resolveShadowOpacity(style))}`,
+    `\\xshad${assNumber(style.shadowOffsetX)}`,
+    `\\yshad${assNumber(style.shadowOffsetY)}`,
+    `\\blur${assNumber(style.shadowBlur)}`,
+  ].join("");
+}
+
+function resolveCaptionFontWeight(style) {
+  const parsed = Number(style?.fontWeight);
+  if (!Number.isFinite(parsed)) return DEFAULT_CAPTION_FONT_WEIGHT;
+  return Math.min(900, Math.max(100, Math.round(parsed / 100) * 100));
+}
+
+function resolveAssBoldFlag(style) {
+  return resolveCaptionFontWeight(style) >= 600 ? -1 : 0;
+}
+
+function buildCaptionWeightTags(style) {
+  return `\\b${resolveCaptionFontWeight(style)}`;
+}
+
+function buildActiveWordTags(style) {
+  const preset = style.animationPreset || "stable-pop";
+  const tags = [`\\c${hexToAssColor(style.activeWordColor)}`, buildCaptionWeightTags(style), buildShadowTags(style), "\\fscx100", "\\fscy100"];
+
+  if (preset === "pulse") {
+    tags.push("\\t(0,120,\\fscx106\\fscy106)", "\\t(120,260,\\fscx100\\fscy100)");
+  } else if (preset === "glow") {
+    tags.push(`\\3c${hexToAssColor(style.activeWordColor)}`, `\\blur${assNumber(Math.max((style.shadowBlur || 0) + 0.8, 1.2))}`, "\\t(0,160,\\fscx104\\fscy104)", "\\t(160,260,\\fscx100\\fscy100)");
+  } else if (preset === "none") {
+    // keep the active word color only
+  } else {
+    const popBlurStart = Math.max((style.shadowBlur || 0) + 1.8, 2.2);
+    const popBlurMid = Math.max((style.shadowBlur || 0) + 1.1, 1.6);
+    const popBlurEnd = Math.max((style.shadowBlur || 0) + 0.6, 1.0);
+    const popOutlineStart = Math.max((style.outlineWidth || 0) + 1.1, 1.4);
+    const popOutlineMid = Math.max((style.outlineWidth || 0) + 0.5, style.outlineWidth || 0);
+    tags.push(
+      `\\3c${hexToAssColor(style.activeWordColor)}`,
+      `\\4c${hexToAssColor(style.activeWordColor, 0.28)}`,
+      `\\bord${assNumber(popOutlineStart)}`,
+      `\\blur${assNumber(popBlurStart)}`,
+      `\\t(0,120,\\bord${assNumber(popOutlineMid)}\\blur${assNumber(popBlurMid)})`,
+      `\\t(120,260,\\bord${assNumber(style.outlineWidth || 0)}\\blur${assNumber(popBlurEnd)})`,
+    );
+  }
+
+  return `{${tags.join("")}}`;
+}
+
+function buildCaptionStateText(words, activeIndex, style, styleName) {
+  const resetTags = `{\\r${styleName}${buildCaptionWeightTags(style)}${buildShadowTags(style)}}`;
+  const linePrefix = `{${buildCaptionWeightTags(style)}${buildShadowTags(style)}}`;
+  return `${linePrefix}${words.map((word, index) => {
+    const escaped = assEscape(word.text);
+    if (index < activeIndex) {
+      return `{\\c${hexToAssColor(style.spokenWordColor)}}${escaped}${resetTags}`;
+    }
+    if (index === activeIndex) {
+      return `${buildActiveWordTags(style)}${escaped}${resetTags}`;
+    }
+    return `{\\c${hexToAssColor(style.upcomingWordColor)}}${escaped}${resetTags}`;
+  }).join(" ")}`;
+}
+function buildAnimatedCaptionAssContent(captionTimeline, style, styleName = "CaptionStyleV1") {
+
+  const outlineColor = hexToAssColor(style.outlineColor);
+  const shadowBackColor = hexToAssColor(style.shadowColor, 1 - resolveShadowOpacity(style));
+  const boxBackColor = hexToAssColor(style.backgroundColor, 1 - style.backgroundOpacity);
+  const boxStyleName = `${styleName}Box`;
+  const header = [
+    "[Script Info]",
+    "ScriptType: v4.00+",
+    "PlayResX: 1080",
+    "PlayResY: 1920",
+    "WrapStyle: 0",
+    "ScaledBorderAndShadow: yes",
+    "",
+    "[V4+ Styles]",
+    "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
+    `Style: ${styleName},${style.fontFamily},${style.fontSize},${hexToAssColor(style.upcomingWordColor)},${hexToAssColor(style.activeWordColor)},${outlineColor},${shadowBackColor},${resolveAssBoldFlag(style)},0,0,0,100,100,0,0,1,${style.outlineWidth},${style.shadowStrength > 0 ? 1 : 0},2,${style.horizontalPadding},${style.horizontalPadding},${style.bottomMargin},1`,
+    ...(style.backgroundEnabled
+      ? [`Style: ${boxStyleName},${style.fontFamily},${style.fontSize},${hexToAssColor("#FFFFFF", 1)},${hexToAssColor("#FFFFFF", 1)},${hexToAssColor("#000000", 1)},${boxBackColor},${resolveAssBoldFlag(style)},0,0,0,100,100,0,0,3,0,0,2,${style.horizontalPadding},${style.horizontalPadding},${style.bottomMargin},1`]
+      : []),
+    "",
+    "[Events]",
+    "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
+  ];
+
+  const events = [];
+  for (const caption of captionTimeline) {
+    const words = Array.isArray(caption.words) ? caption.words : [];
+    if (words.length === 0) continue;
+
+    const safeCaptionStart = Math.max(0, caption.start);
+    const safeCaptionEnd = Math.max(safeCaptionStart + 0.05, caption.end);
+    const intervals = [];
+    const plainText = words.map((word) => assEscape(word.text)).join(" ");
+
+    if (words[0].start > safeCaptionStart) {
+      intervals.push({ start: safeCaptionStart, end: words[0].start, activeIndex: -1 });
+    }
+
+    for (let index = 0; index < words.length; index += 1) {
+      const word = words[index];
+      const nextWord = words[index + 1];
+      intervals.push({ start: word.start, end: word.end, activeIndex: index });
+      const holdEnd = nextWord ? nextWord.start : safeCaptionEnd;
+      if (holdEnd > word.end + 0.01) {
+        intervals.push({ start: word.end, end: holdEnd, activeIndex: index + 1 });
+      }
+    }
+
+    for (const interval of intervals) {
+      const start = Math.max(safeCaptionStart, Number(interval.start) || safeCaptionStart);
+      const end = Math.min(safeCaptionEnd, Number(interval.end) || safeCaptionEnd);
+      if (end - start < 0.04) continue;
+      const activeIndex = Math.min(words.length - 1, interval.activeIndex);
+      const text = activeIndex < 0
+        ? `{${buildCaptionWeightTags(style)}${buildShadowTags(style)}}${words.map((word) => `{\\c${hexToAssColor(style.upcomingWordColor)}}${assEscape(word.text)}{\\r${styleName}${buildCaptionWeightTags(style)}${buildShadowTags(style)}}`).join(" ")}`
+        : buildCaptionStateText(words, activeIndex, style, styleName);
+      if (style.backgroundEnabled) {
+        events.push(`Dialogue: 0,${assTimeFromSeconds(start)},${assTimeFromSeconds(end)},${boxStyleName},,${style.horizontalPadding},${style.horizontalPadding},${style.bottomMargin},,{\\1a&HFF&\\3a&HFF&}${plainText}`);
+      }
+      events.push(`Dialogue: 1,${assTimeFromSeconds(start)},${assTimeFromSeconds(end)},${styleName},,${style.horizontalPadding},${style.horizontalPadding},${style.bottomMargin},,${text}`);
+    }
+  }
+
+  return `${header.join("\n")}\n${events.join("\n")}\n`;
+}
+
+function escapeSubtitlesFilterPath(filePath) {
+  return String(filePath)
+    .replace(/\\/g, "\\\\")
+    .replace(/:/g, "\\:")
+    .replace(/,/g, "\\,")
+    .replace(/'/g, "\\\\'")
+    .replace(/\[/g, "\\[")
+    .replace(/\]/g, "\\]");
+}
+
+function toProjectRelativePath(projectId, absolutePath) {
+  return path.relative(getProjectDir(projectId), absolutePath).split(path.sep).join("/");
+}
+
+function writeBaseVideoArtifact(finalVideoPath, videoWorkDir) {
+  const baseVideoPath = path.join(videoWorkDir, "final-base-video.mp4");
+  ensureDir(path.dirname(baseVideoPath));
+  fs.copyFileSync(finalVideoPath, baseVideoPath);
+  return baseVideoPath;
+}
+
+function renderStaticCaptionOverlays({ captionsJsonPath, videoWorkDir, captionStyleSelection }) {
+  const outputDir = path.join(videoWorkDir, "caption-overlays-static");
+  ensureDir(outputDir);
+  const style = captionStyleSelection.style;
+  runCommand("uv", [
+    "run",
+    "--with",
+    "pillow",
+    "python3",
+    STATIC_CAPTION_OVERLAY_SCRIPT,
+    "--captions-json",
+    captionsJsonPath,
+    "--output-dir",
+    outputDir,
+    "--font-family",
+    style.fontFamily,
+    ...(style.fontPath ? ["--font-path", style.fontPath] : []),
+    "--font-size",
+    String(style.fontSize),
+    "--font-weight",
+    String(style.fontWeight || DEFAULT_CAPTION_FONT_WEIGHT),
+    "--horizontal-padding",
+    String(style.horizontalPadding),
+    "--bottom-margin",
+    String(style.bottomMargin),
+    "--text-color",
+    style.activeWordColor,
+    "--outline-color",
+    style.outlineColor,
+    "--outline-width",
+    String(style.outlineWidth),
+    "--shadow-color",
+    style.shadowColor,
+    "--shadow-strength",
+    String(style.shadowStrength),
+    "--shadow-blur",
+    String(style.shadowBlur),
+    "--shadow-offset-x",
+    String(style.shadowOffsetX),
+    "--shadow-offset-y",
+    String(style.shadowOffsetY),
+    "--background-color",
+    style.backgroundColor,
+    "--background-opacity",
+    String(style.backgroundOpacity),
+    "--background-padding",
+    String(style.backgroundPadding),
+    "--background-radius",
+    String(style.backgroundRadius),
+    ...(style.backgroundEnabled ? ["--background-enabled"] : []),
+  ]);
+
+  const manifestPath = path.join(outputDir, "manifest.json");
+  const manifest = readJson(manifestPath);
+  const entries = Array.isArray(manifest?.entries)
+    ? manifest.entries.filter((entry) => entry && typeof entry === "object")
+    : [];
+
+  return {
+    outputDir,
+    manifestPath,
+    entries,
+  };
+}
+
+function renderAnimatedCaptionOverlays({ captionTimeline, videoWorkDir, captionStyleSelection, fps }) {
+  const outputDir = path.join(videoWorkDir, "caption-overlays-animated");
+  ensureDir(outputDir);
+  const style = captionStyleSelection.style;
+  const timelinePath = path.join(outputDir, "timeline.json");
+  fs.writeFileSync(timelinePath, JSON.stringify({ captions: captionTimeline }, null, 2), "utf-8");
+
+  runCommand("uv", [
+    "run",
+    "--with",
+    "pillow",
+    "python3",
+    ANIMATED_CAPTION_OVERLAY_SCRIPT,
+    "--timeline-json",
+    timelinePath,
+    "--output-dir",
+    outputDir,
+    "--font-family",
+    style.fontFamily,
+    ...(style.fontPath ? ["--font-path", style.fontPath] : []),
+    "--font-size",
+    String(style.fontSize),
+    "--font-weight",
+    String(style.fontWeight || DEFAULT_CAPTION_FONT_WEIGHT),
+    "--word-spacing",
+    String(style.wordSpacing || 0),
+    "--horizontal-padding",
+    String(style.horizontalPadding),
+    "--bottom-margin",
+    String(style.bottomMargin),
+    "--active-word-color",
+    style.activeWordColor,
+    "--spoken-word-color",
+    style.spokenWordColor,
+    "--upcoming-word-color",
+    style.upcomingWordColor,
+    "--outline-color",
+    style.outlineColor,
+    "--outline-width",
+    String(style.outlineWidth),
+    "--shadow-color",
+    style.shadowColor,
+    "--shadow-strength",
+    String(style.shadowStrength),
+    "--shadow-blur",
+    String(style.shadowBlur),
+    "--shadow-offset-x",
+    String(style.shadowOffsetX),
+    "--shadow-offset-y",
+    String(style.shadowOffsetY),
+    "--background-color",
+    style.backgroundColor,
+    "--background-opacity",
+    String(style.backgroundOpacity),
+    "--background-padding",
+    String(style.backgroundPadding),
+    "--background-radius",
+    String(style.backgroundRadius),
+    "--animation-preset",
+    String(style.animationPreset || "stable-pop"),
+    "--fps",
+    String(fps || 30),
+    ...(style.backgroundEnabled ? ["--background-enabled"] : []),
+  ]);
+
+  const manifestPath = path.join(outputDir, "manifest.json");
+  const manifest = readJson(manifestPath);
+  const entries = Array.isArray(manifest?.entries)
+    ? manifest.entries.filter((entry) => entry && typeof entry === "object")
+    : [];
+
+  return {
+    outputDir,
+    manifestPath,
+    entries,
+  };
+}
+
+function escapeConcatFilePath(filePath) {
+  return String(filePath).replace(/'/g, `'\\''`);
+}
+
+function getMediaDurationSeconds(filePath) {
+  const result = runCommand("ffprobe", [
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration",
+    "-of",
+    "default=noprint_wrappers=1:nokey=1",
+    filePath,
+  ]);
+  const duration = Number(result.stdout.trim());
+  if (!Number.isFinite(duration) || duration <= 0) {
+    throw new Error(`Could not determine media duration for ${filePath}`);
+  }
+  return duration;
+}
+
+function getMediaFrameRate(filePath) {
+  try {
+    const result = runCommand("ffprobe", [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=avg_frame_rate,r_frame_rate",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      filePath,
+    ]);
+    const lines = String(result.stdout || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    for (const line of lines) {
+      const [numeratorText, denominatorText] = line.split("/");
+      const numerator = Number(numeratorText);
+      const denominator = Number(denominatorText || "1");
+      if (Number.isFinite(numerator) && Number.isFinite(denominator) && denominator > 0) {
+        const fps = numerator / denominator;
+        if (Number.isFinite(fps) && fps >= 12 && fps <= 120) {
+          return fps;
+        }
+      }
+    }
+  } catch {}
+  return 30;
+}
+
+function buildCaptionOverlayTrack({ overlayManifest, totalDurationSeconds, emptyMessage, buildMessage }) {
+  const entries = Array.isArray(overlayManifest.entries)
+    ? overlayManifest.entries
+      .filter((entry) => entry && typeof entry === "object")
+      .map((entry) => ({
+        relativePath: typeof entry.relativePath === "string" ? entry.relativePath : "",
+        start: Number(entry.start),
+        end: Number(entry.end),
+      }))
+      .filter((entry) => entry.relativePath && Number.isFinite(entry.start) && Number.isFinite(entry.end) && entry.end > entry.start)
+      .sort((a, b) => a.start - b.start || a.end - b.end)
+    : [];
+
+  if (entries.length === 0) {
+    throw new Error(emptyMessage);
+  }
+
+  const mergedEntries = [];
+  for (const entry of entries) {
+    const previous = mergedEntries[mergedEntries.length - 1];
+    if (
+      previous
+      && previous.relativePath === entry.relativePath
+      && Math.abs(previous.end - entry.start) <= 0.001
+    ) {
+      previous.end = entry.end;
+    } else {
+      mergedEntries.push({ ...entry });
+    }
+  }
+
+
+  const blankOverlayPath = path.join(overlayManifest.outputDir, "blank-overlay.png");
+  if (!fs.existsSync(blankOverlayPath)) {
+    runCommand("ffmpeg", [
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=black@0.0:s=1080x1920,format=rgba",
+      "-frames:v",
+      "1",
+      blankOverlayPath,
+    ]);
+  }
+
+  const concatPath = path.join(overlayManifest.outputDir, "overlay-track.concat.txt");
+  const overlayTrackPath = path.join(overlayManifest.outputDir, "overlay-track.mov");
+  const lines = [];
+  let cursor = 0;
+  let lastPathForConcat = blankOverlayPath;
+
+  const pushStill = (filePath, durationSeconds) => {
+    const safeDuration = Number(durationSeconds);
+    if (!Number.isFinite(safeDuration) || safeDuration <= 0.001) return;
+    lines.push(`file '${escapeConcatFilePath(filePath)}'`);
+    lines.push(`duration ${safeDuration.toFixed(3)}`);
+    lastPathForConcat = filePath;
+  };
+
+  for (const entry of mergedEntries) {
+    const absoluteImagePath = path.join(overlayManifest.outputDir, entry.relativePath);
+    if (!fs.existsSync(absoluteImagePath)) continue;
+
+    if (entry.start > cursor + 0.001) {
+      pushStill(blankOverlayPath, entry.start - cursor);
+    }
+
+    pushStill(absoluteImagePath, entry.end - entry.start);
+    cursor = Math.max(cursor, entry.end);
+  }
+
+  if (totalDurationSeconds > cursor + 0.001) {
+    pushStill(blankOverlayPath, totalDurationSeconds - cursor);
+  }
+
+  if (lines.length === 0) {
+    throw new Error(buildMessage);
+  }
+
+  lines.push(`file '${escapeConcatFilePath(lastPathForConcat)}'`);
+  fs.writeFileSync(concatPath, `${lines.join("\n")}\n`, "utf-8");
+
+  runCommand("ffmpeg", [
+    "-y",
+    "-f",
+    "concat",
+    "-safe",
+    "0",
+    "-i",
+    concatPath,
+    "-c:v",
+    "qtrle",
+    "-pix_fmt",
+    "argb",
+    overlayTrackPath,
+  ]);
+
+  return {
+    blankOverlayPath,
+    concatPath,
+    overlayTrackPath,
+  };
+}
+
+function applyCaptionOverlayBurnIn({ baseVideoPath, finalVideoPath, overlayManifest, outputPrefix }) {
+  const overlayTrack = buildCaptionOverlayTrack({
+    overlayManifest,
+    totalDurationSeconds: getMediaDurationSeconds(baseVideoPath),
+    emptyMessage: "Caption overlay renderer could not run because no overlay entries were generated.",
+    buildMessage: "Caption overlay renderer could not build a concat track.",
+  });
+  const tempOutputPath = path.join(path.dirname(finalVideoPath), `${outputPrefix}-${Date.now()}.mp4`);
+
+  runCommand("ffmpeg", [
+    "-y",
+    "-i",
+    baseVideoPath,
+    "-i",
+    overlayTrack.overlayTrackPath,
+    "-filter_complex",
+    "[0:v][1:v]overlay=0:0:shortest=1:eof_action=pass[v]",
+    "-map",
+    "[v]",
+    "-map",
+    "0:a?",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "medium",
+    "-crf",
+    "18",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "copy",
+    "-movflags",
+    "+faststart",
+    tempOutputPath,
+  ]);
+
+  fs.renameSync(tempOutputPath, finalVideoPath);
+  return overlayTrack;
+}
+
+function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDir, alignmentPath, captionsJsonPath, captionStyleSelection }) {
+  const alignmentWords = readAlignmentWords(alignmentPath);
+  const captions = readCaptionSections(captionsJsonPath);
+  if (alignmentWords.length === 0 || captions.length === 0) {
+    throw new Error("Could not build animated caption subtitles because the alignment words or caption sections were missing.");
+  }
+
+  const timeline = mapCaptionWordsToAlignment(captions, alignmentWords);
+  const assPath = path.join(videoWorkDir, "captions-word-highlight.ass");
+  ensureDir(path.dirname(assPath));
+  fs.writeFileSync(assPath, buildAnimatedCaptionAssContent(timeline, captionStyleSelection.style), "utf-8");
+
+  const overlayFps = getMediaFrameRate(baseVideoPath);
+  const overlayOnlyPreset = captionStyleSelection.style.animationPreset === "stable-pop"
+    ? "stable-pop"
+    : captionStyleSelection.style.animationPreset === "fluid-pop"
+      ? "fluid-pop"
+      : null;
+  const requiresStableWordSpacingOverlay = Math.abs(Number(captionStyleSelection.style.wordSpacing) || 0) > 0.01;
+
+  if (overlayOnlyPreset || requiresStableWordSpacingOverlay) {
+    const overlayManifest = renderAnimatedCaptionOverlays({
+      captionTimeline: timeline,
+      videoWorkDir,
+      captionStyleSelection,
+      fps: overlayFps,
+    });
+
+    const overlayTrack = applyCaptionOverlayBurnIn({
+      baseVideoPath,
+      finalVideoPath,
+      overlayManifest,
+      outputPrefix: overlayOnlyPreset ? `final-with-${overlayOnlyPreset}-overlay-captions` : "final-with-word-spacing-overlay-captions",
+    });
+
+    return {
+      mode: "animated-image-overlay-v1",
+      requestedMode: overlayOnlyPreset ? `${overlayOnlyPreset}-overlay-v1` : "word-spacing-overlay-v1",
+      assPath,
+      timeline,
+      baseVideoPath,
+      overlayManifestPath: overlayManifest.manifestPath,
+      overlayDir: overlayManifest.outputDir,
+      overlayVideoPath: overlayTrack.overlayTrackPath,
+      overlayConcatPath: overlayTrack.concatPath,
+      renderer: "pillow-word-highlight-v1",
+      fallbackReason: overlayOnlyPreset === "stable-pop"
+        ? "Stable Pop captions now intentionally use the animated overlay renderer because ASS/libass cannot deliver a true per-word grow effect without shifting neighboring glyph layout; the overlay path preserves fixed word slots while visibly scaling the active word."
+        : overlayOnlyPreset === "fluid-pop"
+          ? "Fluid Pop captions now intentionally use the animated overlay renderer because ASS/libass cannot keep line breaks locked while letting neighboring words shift with the active word. The overlay path fixes line membership first, then reflows word positions only within each locked line."
+          : "Non-zero caption word spacing now uses the animated overlay renderer because ASS/libass cannot tighten or widen inter-word gaps independently without compromising glyph spacing; the overlay path applies the exact saved word spacing while preserving fixed word slots.",
+    };
+  }
+
+  const renderAnimatedOverlayFallback = (assReason) => {
+    const overlayManifest = renderAnimatedCaptionOverlays({
+      captionTimeline: timeline,
+      videoWorkDir,
+      captionStyleSelection,
+      fps: overlayFps,
+    });
+
+    try {
+      const overlayTrack = applyCaptionOverlayBurnIn({
+        baseVideoPath,
+        finalVideoPath,
+        overlayManifest,
+        outputPrefix: "final-with-animated-overlay-captions",
+      });
+
+      return {
+        mode: "animated-image-overlay-v1",
+        requestedMode: "ass-word-highlight-v1",
+        assPath,
+        timeline,
+        baseVideoPath,
+        overlayManifestPath: overlayManifest.manifestPath,
+        overlayDir: overlayManifest.outputDir,
+        overlayVideoPath: overlayTrack.overlayTrackPath,
+        overlayConcatPath: overlayTrack.concatPath,
+        renderer: "pillow-word-highlight-v1",
+        assUnavailableReason: assReason,
+      };
+    } catch (overlayError) {
+      const overlayReason = overlayError instanceof Error ? overlayError.message : String(overlayError);
+      throw new Error(`Animated caption rendering failed. ASS/libass path error: ${assReason}. Overlay fallback error: ${overlayReason}`);
+    }
+  };
+
+  if (!ffmpegSupportsFilter("subtitles")) {
+    return renderAnimatedOverlayFallback("ffmpeg subtitles filter is unavailable on this machine, so the dashboard used the Pillow animated overlay renderer instead.");
+  }
+
+  const tempOutputPath = path.join(videoWorkDir, `final-with-captions-${Date.now()}.mp4`);
+  const fontDir = captionStyleSelection.style.fontPath && fs.existsSync(captionStyleSelection.style.fontPath)
+    ? path.dirname(captionStyleSelection.style.fontPath)
+    : null;
+  const subtitlesFilter = fontDir
+    ? `subtitles=filename=${escapeSubtitlesFilterPath(assPath)}:fontsdir=${escapeSubtitlesFilterPath(fontDir)}`
+    : `subtitles=filename=${escapeSubtitlesFilterPath(assPath)}`;
+
+  try {
+    runCommand("ffmpeg", [
+      "-y",
+      "-i",
+      baseVideoPath,
+      "-vf",
+      subtitlesFilter,
+      "-c:v",
+      "libx264",
+      "-preset",
+      "medium",
+      "-crf",
+      "18",
+      "-pix_fmt",
+      "yuv420p",
+      "-c:a",
+      "copy",
+      "-movflags",
+      "+faststart",
+      tempOutputPath,
+    ]);
+
+    fs.renameSync(tempOutputPath, finalVideoPath);
+    return {
+      mode: "ass-word-highlight-v1",
+      requestedMode: "ass-word-highlight-v1",
+      assPath,
+      timeline,
+      baseVideoPath,
+    };
+  } catch (assError) {
+    return renderAnimatedOverlayFallback(assError instanceof Error ? assError.message : String(assError));
+  }
+}
+
+function updateVideoManifestCaptionRendering(projectId, config, captionStyleSelection, captionRender) {
+  const manifestPath = path.join(config.videoWorkDir, "manifest.json");
+  let manifest = {};
+  if (fs.existsSync(manifestPath)) {
+    try {
+      manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+    } catch {
+      manifest = {};
+    }
+  }
+
+  manifest.caption_rendering = {
+    mode: captionRender.mode,
+    requestedMode: captionRender.requestedMode,
+    captionStyleId: captionStyleSelection.resolvedCaptionStyleId,
+    captionStyleName: captionStyleSelection.style.name,
+    captionStyleSource: captionStyleSelection.source,
+    animationPreset: captionStyleSelection.style.animationPreset,
+    fontWeight: captionStyleSelection.style.fontWeight,
+    wordSpacing: captionStyleSelection.style.wordSpacing,
+    assRelativePath: toProjectRelativePath(projectId, captionRender.assPath),
+    baseVideoRelativePath: toProjectRelativePath(projectId, captionRender.baseVideoPath),
+    ...(captionRender.overlayManifestPath ? { overlayManifestRelativePath: toProjectRelativePath(projectId, captionRender.overlayManifestPath) } : {}),
+    ...(captionRender.overlayDir ? { overlayDirRelativePath: toProjectRelativePath(projectId, captionRender.overlayDir) } : {}),
+    ...(captionRender.overlayVideoPath ? { overlayVideoRelativePath: toProjectRelativePath(projectId, captionRender.overlayVideoPath) } : {}),
+    ...(captionRender.overlayConcatPath ? { overlayConcatRelativePath: toProjectRelativePath(projectId, captionRender.overlayConcatPath) } : {}),
+    ...(captionRender.renderer ? { renderer: captionRender.renderer } : {}),
+    ...(captionRender.assUnavailableReason ? { assUnavailableReason: captionRender.assUnavailableReason } : {}),
+    ...(captionRender.fallbackReason ? { fallbackReason: captionRender.fallbackReason } : {}),
+    updatedAt: new Date().toISOString(),
+  };
+
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
+}
+
+function buildVideoReviewDoc(projectId, config, selectedVoice = createDefaultVoice(), selectedMusic, captionStyleSelection) {
   const topic = readProjectTopic(projectId);
   const existingMeta = readExistingDocMetadata(config.videoDocPath);
   const status = normalizeDocStatus(existingMeta.status);
@@ -1360,7 +2591,7 @@ function buildVideoReviewDoc(projectId, config, selectedVoice = createDefaultVoi
     "",
     `${config.mode === "revise" ? "Regenerated" : "Generated"} the final vertical short-form video through the direct dashboard workflow. This execution path now calls the xml-scene-video renderer deterministically instead of routing the render through Scribe.`,
     "",
-    "This run stayed on the default deterministic pipeline: the final renderer reused the narration and forced-alignment artifacts from the XML Script step as the source of truth, then rendered the looping background video track, chroma-keyed the green-screen visual plates as foreground elements, overlaid captions separately, added ACE-Step instrumental background music, and applied any per-visual XML camera motion only to the image layer when explicitly present in the XML (otherwise the visual stays static).",
+    "This run stayed on the default deterministic pipeline: the final renderer reused the narration and forced-alignment artifacts from the XML Script step as the source of truth, then rendered the looping background video track, chroma-keyed the green-screen visual plates as foreground elements, burned in word-level captions with active, spoken, and upcoming highlighting, reused the saved soundtrack WAV chosen in the short-form settings, and applied any per-visual XML camera motion only to the image layer when explicitly present in the XML (otherwise the visual stays static).",
     ...(config.notes ? ["", "## Request notes", "", config.notes] : []),
     ...(alignmentWarning ? ["", "## Alignment warning", "", alignmentWarning] : []),
     "",
@@ -1371,7 +2602,8 @@ function buildVideoReviewDoc(projectId, config, selectedVoice = createDefaultVoi
     `- Narration voice: Qwen / ${selectedVoice.mode === "voice-design" ? `VoiceDesign \`${selectedVoice.name}\`` : `legacy custom voice \`${selectedVoice.name}\` / speaker \`${selectedVoice.speaker || DEFAULT_VOICE_SPEAKER}\``}`,
     `- Voice prompt: ${selectedVoice.voiceDesignPrompt}`,
     `- Looping background video: ${config.backgroundVideoName ? `\`${config.backgroundVideoName}\`` : "Not configured"}`,
-    "- Music path: ACE-Step instrumental default",
+    `- Caption style: ${captionStyleSelection?.style?.name ? `\`${captionStyleSelection.style.name}\` (${captionStyleSelection.style.animationPreset})` : config.captionStyleName ? `\`${config.captionStyleName}\`` : "Default/fallback"}`,
+    `- Music path: ${selectedMusic?.generatedAudioRelativePath ? `\`${selectedMusic.generatedAudioRelativePath}\`` : "Not configured"}`,
   ].join("\n");
 }
 
@@ -1550,6 +2782,23 @@ function runDirectVideo(job) {
 
   const projectMeta = readProjectMeta(job.projectId) || {};
   const selectedMusic = resolveMusicSelection(projectMeta.selectedMusicId);
+  const defaultCaptionStyles = createDefaultCaptionStyles();
+  const configuredCaptionStyle = config.captionStyle
+    ? normalizeCaptionStyleEntry(
+        config.captionStyle,
+        defaultCaptionStyles.find((style) => style.id === config.captionStyleId) || defaultCaptionStyles[0],
+        0,
+      )
+    : null;
+  const captionStyleSelection = configuredCaptionStyle
+    ? {
+        style: configuredCaptionStyle,
+        resolvedCaptionStyleId: normalizeString(config.captionStyleId, configuredCaptionStyle.id),
+        source: config.captionStyleSource === "project" || config.captionStyleSource === "default" || config.captionStyleSource === "fallback"
+          ? config.captionStyleSource
+          : "fallback",
+      }
+    : resolveCaptionStyleSelection(projectMeta.selectedCaptionStyleId);
   if (!config.backgroundVideoPath) {
     throw new Error("Missing background video selection for final-video generation. Configure a background video in short-form settings and select one on the project before rendering.");
   }
@@ -1569,6 +2818,13 @@ function runDirectVideo(job) {
   }
 
   const xmlSelectedVoice = readXmlVoiceSelection(job.projectId) || resolveVoiceSelection(projectMeta.selectedVoiceId).voice;
+  const reusableMusicPath = selectedMusic.music?.generatedAudioRelativePath
+    ? resolveMusicLibraryAbsolutePath(selectedMusic.music.generatedAudioRelativePath)
+    : null;
+  if (!reusableMusicPath || !fs.existsSync(reusableMusicPath)) {
+    throw new Error("Missing saved soundtrack file for final-video generation. Open Short-form workflow settings, save the music library, and generate the soundtrack file once for the selected preset before rendering.");
+  }
+
   const args = [
     "run",
     "--with",
@@ -1602,17 +2858,29 @@ function runDirectVideo(job) {
     existingVoicePath,
     "--existing-alignment",
     existingAlignmentPath,
-    "--captions-json",
-    captionsJsonPath,
-    "--music-prompt",
-    selectedMusic.music?.prompt || DEFAULT_MUSIC_PROMPT,
+    "--music",
+    reusableMusicPath,
     "--music-volume",
     String(selectedMusic.musicVolume ?? Number(DEFAULT_MUSIC_VOLUME)),
     "--force",
   ];
 
+  updateDirectVideoProgress("prepare-inputs", "Loading XML narration, alignment, caption, background, and soundtrack inputs.");
+  updateDirectVideoProgress("render-base-video", "Rendering the base final video from the XML scene pipeline.");
   const result = runCommand("uv", args);
-  fs.writeFileSync(config.videoDocPath, buildVideoReviewDoc(job.projectId, config, xmlSelectedVoice), "utf-8");
+  const baseVideoPath = writeBaseVideoArtifact(config.finalVideoPath, config.videoWorkDir);
+  updateDirectVideoProgress("burn-captions", "Burning captions into the rendered base video.");
+  const captionRender = applyAnimatedCaptionBurnIn({
+    baseVideoPath,
+    finalVideoPath: config.finalVideoPath,
+    videoWorkDir: config.videoWorkDir,
+    alignmentPath: existingAlignmentPath,
+    captionsJsonPath,
+    captionStyleSelection,
+  });
+  updateDirectVideoProgress("finalize-output", "Saving final-video metadata and review artifacts.");
+  updateVideoManifestCaptionRendering(job.projectId, config, captionStyleSelection, captionRender);
+  fs.writeFileSync(config.videoDocPath, buildVideoReviewDoc(job.projectId, config, xmlSelectedVoice, selectedMusic.music, captionStyleSelection), "utf-8");
   return {
     command: ["uv", ...args].join(" "),
     stdout: result.stdout.trim(),
@@ -1680,7 +2948,12 @@ async function main() {
               textScriptRunId: job.directConfig.config.textScriptRunId,
               activeStep: "completed",
             }
-          : {}),
+          : job.directConfig.kind === "video"
+            ? {
+                activeStep: "completed",
+                activeStatusText: "Final video ready",
+              }
+            : {}),
       });
       return;
     } catch (error) {

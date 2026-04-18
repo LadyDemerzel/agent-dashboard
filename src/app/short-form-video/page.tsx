@@ -15,7 +15,7 @@ import {
 } from '@/lib/short-form-video-client';
 
 function stageLabel(project: ProjectRow) {
-  if (project.video.pending || project.video.videoUrl) return 'Video';
+  if (project.video.pending || project.video.videoUrl || project.video.status === 'failed' || project.video.status === 'completed') return 'Video';
   if (project.sceneImages.pending || project.sceneImages.sceneCount > 0) return 'Visuals';
   if (project.xmlScript.pending || project.xmlScript.status !== 'draft') return 'XML Script';
   if (project.script.pending || project.script.status !== 'draft') return 'Script';
@@ -40,6 +40,8 @@ function tableStatus(project: ProjectRow) {
   if (project.research.pending) return 'working';
   if (project.hooks.pending) return 'working';
 
+  if (project.video.status === 'failed') return 'failed';
+  if (project.video.status === 'completed') return 'completed';
   if (project.video.videoUrl) return project.video.status;
   if (project.sceneImages.sceneCount > 0) return project.sceneImages.status;
   if (project.xmlScript.status !== 'draft') return project.xmlScript.status;

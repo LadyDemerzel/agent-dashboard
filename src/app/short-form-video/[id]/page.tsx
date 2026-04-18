@@ -1,13 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Badge } from '@/components/ui/badge';
 import { DiffViewer } from '@/components/DiffViewer';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -60,6 +60,12 @@ interface MusicOption {
   name: string;
 }
 
+interface CaptionStyleOption {
+  id: string;
+  name: string;
+  animationPreset?: 'none' | 'stable-pop' | 'fluid-pop' | 'pulse' | 'glow';
+}
+
 interface BackgroundVideoOption {
   id: string;
   name: string;
@@ -78,6 +84,8 @@ interface XmlScriptDoc {
   pending?: boolean;
   audioUrl?: string;
   audioPath?: string;
+  originalAudioUrl?: string;
+  originalAudioPath?: string;
   captions?: Array<{ id: string; index: number; text: string; start: number; end: number; wordCount?: number }>;
   pipeline?: {
     status: 'running' | 'completed' | 'failed' | 'idle';
@@ -100,7 +108,13 @@ interface WorkflowSettingsResponse {
     defaultMusicTrackId?: string;
     musicVolume?: number;
     musicTracks?: MusicOption[];
+    defaultCaptionStyleId?: string;
+    captionStyles?: CaptionStyleOption[];
     captionMaxWords?: number;
+    pauseRemoval?: {
+      minSilenceDurationSeconds?: number;
+      silenceThresholdDb?: number;
+    };
   };
   backgroundVideos?: {
     defaultBackgroundVideoId?: string;
@@ -218,6 +232,11 @@ async function parseJsonResponse<T>(response: Response, fallbackMessage: string)
     throw new Error(payload.error || fallbackMessage);
   }
   return payload;
+}
+
+function appendPreviewRefreshParam(url: string, token?: string | null) {
+  if (!token) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}preview=${encodeURIComponent(token)}`;
 }
 
 function MarkdownOrCode({ content, mode }: { content: string; mode: 'markdown' | 'xml' | 'json' | 'text' }) {
@@ -833,11 +852,21 @@ function XMLScriptSection({ project, onProjectRefresh }: { project: Project; onP
   const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([]);
   const [defaultVoiceId, setDefaultVoiceId] = useState<string>('');
   const [defaultCaptionMaxWords, setDefaultCaptionMaxWords] = useState<number | null>(null);
+  const [defaultPauseRemovalMinSilenceDurationSeconds, setDefaultPauseRemovalMinSilenceDurationSeconds] = useState<number | null>(null);
+  const [defaultPauseRemovalSilenceThresholdDb, setDefaultPauseRemovalSilenceThresholdDb] = useState<number | null>(null);
   const [projectCaptionMaxWordsOverride, setProjectCaptionMaxWordsOverride] = useState<string>(project.captionMaxWordsOverride ? String(project.captionMaxWordsOverride) : '');
+  const [projectPauseRemovalMinSilenceDurationSecondsOverride, setProjectPauseRemovalMinSilenceDurationSecondsOverride] = useState<string>(
+    project.pauseRemovalMinSilenceDurationSecondsOverride ? String(project.pauseRemovalMinSilenceDurationSecondsOverride) : ''
+  );
+  const [projectPauseRemovalSilenceThresholdDbOverride, setProjectPauseRemovalSilenceThresholdDbOverride] = useState<string>(
+    project.pauseRemovalSilenceThresholdDbOverride ? String(project.pauseRemovalSilenceThresholdDbOverride) : ''
+  );
   const [savingVoice, setSavingVoice] = useState(false);
   const [savingCaptionMaxWords, setSavingCaptionMaxWords] = useState(false);
+  const [savingPauseRemoval, setSavingPauseRemoval] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [captionMaxWordsError, setCaptionMaxWordsError] = useState<string | null>(null);
+  const [pauseRemovalError, setPauseRemovalError] = useState<string | null>(null);
   const shouldPoll = Boolean(project.id && (loading || doc?.pending || doc?.pipeline?.status === 'running'));
 
   const load = useCallback(async () => {
@@ -867,6 +896,18 @@ function XMLScriptSection({ project, onProjectRefresh }: { project: Project; onP
   }, [project.captionMaxWordsOverride]);
 
   useEffect(() => {
+    setProjectPauseRemovalMinSilenceDurationSecondsOverride(
+      project.pauseRemovalMinSilenceDurationSecondsOverride ? String(project.pauseRemovalMinSilenceDurationSecondsOverride) : ''
+    );
+  }, [project.pauseRemovalMinSilenceDurationSecondsOverride]);
+
+  useEffect(() => {
+    setProjectPauseRemovalSilenceThresholdDbOverride(
+      project.pauseRemovalSilenceThresholdDbOverride ? String(project.pauseRemovalSilenceThresholdDbOverride) : ''
+    );
+  }, [project.pauseRemovalSilenceThresholdDbOverride]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function loadVoiceOptions() {
@@ -884,12 +925,24 @@ function XMLScriptSection({ project, onProjectRefresh }: { project: Project; onP
           setVoiceOptions(nextVoices);
           setDefaultVoiceId(payload.data?.videoRender?.defaultVoiceId || '');
           setDefaultCaptionMaxWords(typeof payload.data?.videoRender?.captionMaxWords === 'number' ? payload.data.videoRender.captionMaxWords : null);
+          setDefaultPauseRemovalMinSilenceDurationSeconds(
+            typeof payload.data?.videoRender?.pauseRemoval?.minSilenceDurationSeconds === 'number'
+              ? payload.data.videoRender.pauseRemoval.minSilenceDurationSeconds
+              : null
+          );
+          setDefaultPauseRemovalSilenceThresholdDb(
+            typeof payload.data?.videoRender?.pauseRemoval?.silenceThresholdDb === 'number'
+              ? payload.data.videoRender.pauseRemoval.silenceThresholdDb
+              : null
+          );
         }
       } catch {
         if (!cancelled) {
           setVoiceOptions([]);
           setDefaultVoiceId('');
           setDefaultCaptionMaxWords(null);
+          setDefaultPauseRemovalMinSilenceDurationSeconds(null);
+          setDefaultPauseRemovalSilenceThresholdDb(null);
         }
       }
     }
@@ -958,16 +1011,43 @@ function XMLScriptSection({ project, onProjectRefresh }: { project: Project; onP
     }
   }
 
+  async function saveProjectPauseRemoval(minValue: string | null, thresholdValue: string | null) {
+    setSavingPauseRemoval(true);
+    setPauseRemovalError(null);
+    try {
+      await parseJsonResponse(
+        await fetch(`/api/short-form-videos/${project.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pauseRemovalMinSilenceDurationSecondsOverride:
+              minValue === null ? null : Math.min(2.5, Math.max(0.1, Math.round((Number(minValue) || 0.35) * 100) / 100)),
+            pauseRemovalSilenceThresholdDbOverride:
+              thresholdValue === null ? null : Math.min(-5, Math.max(-80, Math.round((Number(thresholdValue) || -40) * 10) / 10)),
+          }),
+        }),
+        'Failed to update XML pause-removal override'
+      );
+      await onProjectRefresh();
+    } catch (err) {
+      setPauseRemovalError(err instanceof Error ? err.message : 'Failed to update XML pause-removal override');
+    } finally {
+      setSavingPauseRemoval(false);
+    }
+  }
+
   const activeVoiceLabel = project.selectedVoiceName || voiceOptions.find((voice) => voice.id === defaultVoiceId)?.name || 'default voice';
   const effectiveCaptionMaxWords = project.captionMaxWordsOverride || defaultCaptionMaxWords;
-  const narrationStatus = getXmlPipelineTaskStatus(getXmlPipelineSteps(doc, ['narration', 'alignment']));
+  const effectivePauseRemovalMinSilenceDurationSeconds = project.pauseRemovalMinSilenceDurationSecondsOverride || defaultPauseRemovalMinSilenceDurationSeconds;
+  const effectivePauseRemovalSilenceThresholdDb = project.pauseRemovalSilenceThresholdDbOverride || defaultPauseRemovalSilenceThresholdDb;
+  const narrationStatus = getXmlPipelineTaskStatus(getXmlPipelineSteps(doc, ['narration', 'silence-removal', 'alignment']));
   const captionsStep = getXmlPipelineStep(doc, 'captions');
   const captionsStatus = getXmlPipelineTaskStatus(getXmlPipelineSteps(doc, ['captions']));
   const visualsStep = getXmlPipelineStep(doc, 'xml');
   const visualsStatus = getXmlPipelineTaskStatus(getXmlPipelineSteps(doc, ['xml']));
   const captionsJsonDetail = captionsStep?.details?.find((detail) => detail.id === 'caption-plan') || null;
 
-  async function triggerTask(task: 'full' | 'narration' | 'captions' | 'visuals') {
+  async function triggerTask(task: 'full' | 'narration' | 'silence' | 'captions' | 'visuals') {
     setSaving(true);
     try {
       const payload = await parseJsonResponse<XmlScriptDoc>(await fetch(`/api/short-form-videos/${project.id}/xml-script`, {
@@ -994,14 +1074,22 @@ function XMLScriptSection({ project, onProjectRefresh }: { project: Project; onP
       <Card id="narration-audio" className="space-y-4 p-5">
         <WorkflowSectionHeader
           title="Narration Audio"
-          description="Generate the reusable narration WAV and forced alignment JSON first. Final Video reuses these exact artifacts instead of regenerating them."
+          description="Generate the original narration WAV, remove pauses from it, then force-align the silence-removed version. Final Video reuses those exact downstream artifacts instead of regenerating them."
           status={narrationStatus === 'running' ? 'working' : narrationStatus === 'completed' ? 'approved' : narrationStatus === 'failed' ? 'failed' : 'draft'}
         />
         {error ? <ValidationNotice title="XML workflow issue" message={error} /> : null}
         {voiceError ? <ValidationNotice title="Narration voice issue" message={voiceError} /> : null}
+        {pauseRemovalError ? <ValidationNotice title="Pause-removal settings issue" message={pauseRemovalError} /> : null}
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => void triggerTask('narration')} disabled={saving || doc?.pending}>
-            {saving ? 'Starting…' : doc?.audioUrl ? 'Regenerate narration audio' : 'Generate narration audio'}
+            {saving ? 'Starting…' : doc?.originalAudioUrl ? 'Regenerate original narration + downstream timing' : 'Generate narration audio'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => void triggerTask('silence')}
+            disabled={saving || doc?.pending || !doc?.originalAudioUrl}
+          >
+            {saving ? 'Starting…' : doc?.audioUrl ? 'Re-run pause removal + alignment' : 'Run pause removal + alignment'}
           </Button>
           <Button variant="outline" onClick={() => void load()} disabled={refreshing}>
             {refreshing ? 'Refreshing…' : 'Refresh'}
@@ -1043,19 +1131,104 @@ function XMLScriptSection({ project, onProjectRefresh }: { project: Project; onP
             </div>
           </div>
         </div>
+        <div className="rounded-lg border border-border bg-background/60 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium text-foreground">Pause removal / silence trimming</h3>
+              <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
+                These project-level overrides control the ffmpeg silence-removal pass that runs after original narration generation. Re-running this step also re-runs forced alignment so downstream timing stays in sync.
+              </p>
+            </div>
+            <Link href="/short-form-video/settings#pause-removal" target="_blank" rel="noreferrer" className="text-xs text-muted-foreground hover:text-foreground">
+              Open global defaults ↗
+            </Link>
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Remove pauses longer than (seconds)</label>
+              <Input
+                type="number"
+                min={0.1}
+                max={2.5}
+                step={0.01}
+                value={projectPauseRemovalMinSilenceDurationSecondsOverride}
+                onChange={(event) => setProjectPauseRemovalMinSilenceDurationSecondsOverride(event.target.value)}
+                placeholder={defaultPauseRemovalMinSilenceDurationSeconds ? String(defaultPauseRemovalMinSilenceDurationSeconds) : '0.35'}
+                className="max-w-[160px]"
+                disabled={savingPauseRemoval || Boolean(doc?.pending)}
+              />
+              <p className="text-xs text-muted-foreground">Longer silent spans than this are trimmed out of the processed narration file.</p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Silence threshold (dB)</label>
+              <Input
+                type="number"
+                min={-80}
+                max={-5}
+                step={0.1}
+                value={projectPauseRemovalSilenceThresholdDbOverride}
+                onChange={(event) => setProjectPauseRemovalSilenceThresholdDbOverride(event.target.value)}
+                placeholder={defaultPauseRemovalSilenceThresholdDb ? String(defaultPauseRemovalSilenceThresholdDb) : '-40'}
+                className="max-w-[160px]"
+                disabled={savingPauseRemoval || Boolean(doc?.pending)}
+              />
+              <p className="text-xs text-muted-foreground">Anything quieter than this is treated as silence during trimming.</p>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              onClick={() => void saveProjectPauseRemoval(
+                projectPauseRemovalMinSilenceDurationSecondsOverride || null,
+                projectPauseRemovalSilenceThresholdDbOverride || null
+              )}
+              disabled={savingPauseRemoval || Boolean(doc?.pending)}
+            >
+              {savingPauseRemoval ? 'Saving…' : 'Save pause-removal override'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void saveProjectPauseRemoval(null, null)}
+              disabled={savingPauseRemoval || (!project.pauseRemovalMinSilenceDurationSecondsOverride && !project.pauseRemovalSilenceThresholdDbOverride) || Boolean(doc?.pending)}
+            >
+              Use global defaults
+            </Button>
+          </div>
+          <div className="mt-3 text-xs text-muted-foreground">
+            {savingPauseRemoval
+              ? 'Saving pause-removal overrides…'
+              : project.pauseRemovalMinSilenceDurationSecondsOverride || project.pauseRemovalSilenceThresholdDbOverride
+                ? `Effective pause removal: ${effectivePauseRemovalMinSilenceDurationSeconds?.toFixed(2) || '0.35'}s minimum silence, threshold ${effectivePauseRemovalSilenceThresholdDb?.toFixed(1) || '-40.0'} dB (project override).`
+                : `Effective pause removal: ${effectivePauseRemovalMinSilenceDurationSeconds?.toFixed(2) || '0.35'}s minimum silence, threshold ${effectivePauseRemovalSilenceThresholdDb?.toFixed(1) || '-40.0'} dB (global default).`}
+          </div>
+        </div>
         <XmlTaskPipelinePanel
           doc={doc}
           title="Narration Audio pipeline"
-          description="This task has two pipeline steps: generate narration audio, then run forced alignment."
-          stepIds={['narration', 'alignment']}
+          description="This task now has three steps: generate the original narration audio, remove pauses from it, then run forced alignment on the silence-removed version."
+          stepIds={['narration', 'silence-removal', 'alignment']}
         />
-        {doc?.audioUrl ? (
-          <div className="space-y-2 rounded-lg border border-border bg-background/60 p-4">
-            <div>
-              <h3 className="text-sm font-medium text-foreground">Generated narration preview</h3>
-              <p className="mt-1 text-xs text-muted-foreground">This narration audio will be reused by the final video render.</p>
-            </div>
-            <audio src={doc.audioUrl} controls className="w-full" preload="metadata" />
+        {(doc?.originalAudioUrl || doc?.audioUrl) ? (
+          <div className="grid gap-4 xl:grid-cols-2">
+            {doc?.originalAudioUrl ? (
+              <div className="space-y-2 rounded-lg border border-border bg-background/60 p-4">
+                <div>
+                  <h3 className="text-sm font-medium text-foreground">Original narration audio</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">Untrimmed source narration kept for comparison and reprocessing.</p>
+                </div>
+                <audio src={doc.originalAudioUrl} controls className="w-full" preload="metadata" />
+              </div>
+            ) : null}
+            {doc?.audioUrl ? (
+              <div className="space-y-2 rounded-lg border border-border bg-background/60 p-4">
+                <div>
+                  <h3 className="text-sm font-medium text-foreground">Silence-removed narration audio</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">This processed narration audio becomes the downstream source of truth for alignment, captions, visuals timing, and final video.</p>
+                </div>
+                <audio src={doc.audioUrl} controls className="w-full" preload="metadata" />
+              </div>
+            ) : null}
           </div>
         ) : null}
       </Card>
@@ -1366,7 +1539,11 @@ function StageReviewSection({
 
   return (
     <Card className="space-y-5 p-5">
-      <WorkflowSectionHeader title={title} description={description} status={doc.pending ? 'working' : status} />
+      <WorkflowSectionHeader
+        title={title}
+        description={description}
+        status={doc.pending ? 'working' : revision?.isFailed ? 'failed' : status}
+      />
 
       {doc.validationError ? (
         <ValidationNotice
@@ -1613,7 +1790,7 @@ function TextScriptHistoryPanel({
     ? compareIteration
       ? `Showing the full draft for iteration ${selectedIteration.number}. Diffing against iteration ${compareIteration.number} below.`
       : `Showing the full saved draft for iteration ${selectedIteration.number}. No comparison selected.`
-    : 'This plain script becomes the narration source of truth. The XML Script step below will generate the AI audio first, then forced alignment, then deterministic captions JSON, then the visuals-only XML.';
+    : 'This plain script becomes the narration source of truth. The XML Script step below will generate the original AI audio, remove pauses from it, run forced alignment on the processed narration, then generate deterministic captions JSON and the visuals-only XML.';
 
   const diff = useMemo(() => {
     if (!selectedIteration || !compareIteration || compareIteration.number === selectedIteration.number) return null;
@@ -1651,7 +1828,7 @@ function TextScriptHistoryPanel({
       {!body && !selectedIterationBody ? (
         <ValidationNotice
           title="Text script missing"
-          message="This section should contain only the approved narration text. The XML Script step will generate narration audio, forced alignment, deterministic captions JSON, and visuals from it."
+          message="This section should contain only the approved narration text. The XML Script step will generate original narration audio, pause removal, forced alignment, deterministic captions JSON, and visuals from it."
         />
       ) : null}
 
@@ -2231,20 +2408,24 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
 function VideoSection({ project, refresh }: { project: Project; refresh: () => Promise<unknown> }) {
   const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([]);
   const [musicOptions, setMusicOptions] = useState<MusicOption[]>([]);
+  const [captionStyleOptions, setCaptionStyleOptions] = useState<CaptionStyleOption[]>([]);
   const [defaultVoiceId, setDefaultVoiceId] = useState<string>('');
   const [defaultMusicId, setDefaultMusicId] = useState<string>('');
+  const [defaultCaptionStyleId, setDefaultCaptionStyleId] = useState<string>('');
   const [musicVolume, setMusicVolume] = useState<number>(0.38);
   const [savingMusic, setSavingMusic] = useState(false);
+  const [savingCaptionStyle, setSavingCaptionStyle] = useState(false);
   const [musicError, setMusicError] = useState<string | null>(null);
+  const [captionStyleError, setCaptionStyleError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadVoiceOptions() {
+    async function loadOptions() {
       try {
         const payload = await parseJsonResponse<WorkflowSettingsResponse>(
           await fetch('/api/short-form-videos/settings'),
-          'Failed to load voice settings'
+          'Failed to load workflow settings'
         );
         const nextVoices = Array.isArray(payload.data?.videoRender?.voices)
           ? payload.data.videoRender.voices.filter(
@@ -2256,25 +2437,34 @@ function VideoSection({ project, refresh }: { project: Project; refresh: () => P
               (track): track is MusicOption => Boolean(track && typeof track.id === 'string' && typeof track.name === 'string')
             )
           : [];
+        const nextCaptionStyles = Array.isArray(payload.data?.videoRender?.captionStyles)
+          ? payload.data.videoRender.captionStyles.filter(
+              (style): style is CaptionStyleOption => Boolean(style && typeof style.id === 'string' && typeof style.name === 'string')
+            )
+          : [];
         if (!cancelled) {
           setVoiceOptions(nextVoices);
           setMusicOptions(nextMusic);
+          setCaptionStyleOptions(nextCaptionStyles);
           setDefaultVoiceId(payload.data?.videoRender?.defaultVoiceId || '');
           setDefaultMusicId(payload.data?.videoRender?.defaultMusicTrackId || '');
+          setDefaultCaptionStyleId(payload.data?.videoRender?.defaultCaptionStyleId || '');
           setMusicVolume(typeof payload.data?.videoRender?.musicVolume === 'number' ? payload.data.videoRender.musicVolume : 0.38);
         }
       } catch {
         if (!cancelled) {
           setVoiceOptions([]);
           setMusicOptions([]);
+          setCaptionStyleOptions([]);
           setDefaultVoiceId('');
           setDefaultMusicId('');
+          setDefaultCaptionStyleId('');
           setMusicVolume(0.38);
         }
       }
     }
 
-    void loadVoiceOptions();
+    void loadOptions();
     return () => {
       cancelled = true;
     };
@@ -2300,31 +2490,68 @@ function VideoSection({ project, refresh }: { project: Project; refresh: () => P
     }
   }
 
+  async function saveProjectCaptionStyle(captionStyleId: string | null) {
+    setSavingCaptionStyle(true);
+    setCaptionStyleError(null);
+    try {
+      await parseJsonResponse(
+        await fetch(`/api/short-form-videos/${project.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ selectedCaptionStyleId: captionStyleId === null ? null : captionStyleId }),
+        }),
+        'Failed to update project caption style'
+      );
+      await refresh();
+    } catch (err) {
+      setCaptionStyleError(err instanceof Error ? err.message : 'Failed to update project caption style');
+    } finally {
+      setSavingCaptionStyle(false);
+    }
+  }
+
   const activeVoiceLabel = project.selectedVoiceName || voiceOptions.find((voice) => voice.id === defaultVoiceId)?.name || 'default voice';
   const activeMusicLabel = project.selectedMusicName || musicOptions.find((track) => track.id === defaultMusicId)?.name || 'default soundtrack';
+  const activeCaptionStyleLabel = project.selectedCaptionStyleName || captionStyleOptions.find((style) => style.id === defaultCaptionStyleId)?.name || 'default caption style';
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const previewRefreshToken = useMemo(() => {
+    const finalizeStep = project.video.pipeline?.steps.find((step) => step.id === 'finalize-output');
+    const captionStep = project.video.pipeline?.steps.find((step) => step.id === 'burn-captions');
+    return finalizeStep?.updatedAt || captionStep?.updatedAt || project.video.updatedAt || project.updatedAt || null;
+  }, [project.updatedAt, project.video.pipeline?.steps, project.video.updatedAt]);
+  const previewVideoUrl = useMemo(
+    () => (project.video.videoUrl ? appendPreviewRefreshParam(project.video.videoUrl, previewRefreshToken) : undefined),
+    [project.video.videoUrl, previewRefreshToken]
+  );
+
+  useEffect(() => {
+    if (!previewVideoRef.current || !previewVideoUrl) return;
+    previewVideoRef.current.load();
+  }, [previewVideoUrl]);
 
   return (
     <StageReviewSection
       projectId={project.id}
       title="Video"
       stage="video"
-      description="After visuals are approved, the dashboard renders the final short-form video directly through the xml-scene-video workflow by reusing the narration + forced-alignment artifacts already produced during the XML Script step, plus a full-duration looping background video track, green-screen chroma key compositing, ACE-Step instrumental background music, and per-visual XML camera motion that applies only to the image layer when explicitly set in the XML."
+      description="After visuals are approved, the dashboard renders the final short-form video directly through the xml-scene-video workflow by reusing the narration + forced-alignment artifacts already produced during the XML Script step, plus a full-duration looping background video track, green-screen chroma key compositing, saved background music, ASS/libass subtitle burn-in, and per-visual XML camera motion that applies only to the image layer when explicitly set in the XML."
       doc={project.video}
       mode="markdown"
       emptyText="No video yet. Generate the final video after approving the visuals."
       triggerLabel="Generate final video"
-      triggerDescription={`The video should be rendered from the XML <script> and approved scene assets by reusing the saved XML-step narration/alignment artifacts${activeVoiceLabel ? ` (voice source currently shown as ${activeVoiceLabel} in XML Script)` : ''}${activeMusicLabel ? `, soundtrack preset ${activeMusicLabel}` : ''}${project.selectedBackgroundVideoName ? `, the looping background video ${project.selectedBackgroundVideoName}` : ''}, plus the saved music mix volume (${Math.round(musicVolume * 100)}%) and the default forced-alignment + ACE-Step final-video path unless explicitly overridden. Any scene-level cameraPanX/cameraPanY/cameraZoom/cameraZoomStart/cameraZoomEnd/cameraShake values should affect image motion only, not the caption overlay; cameraZoom means fixed framing only, while animated zoom should come from explicit cameraZoomStart/cameraZoomEnd values.`}
+      triggerDescription={`The video should be rendered from the XML <script> and approved scene assets by reusing the saved XML-step narration/alignment artifacts${activeVoiceLabel ? ` (voice source currently shown as ${activeVoiceLabel} in XML Script)` : ''}${activeMusicLabel ? `, soundtrack preset ${activeMusicLabel}` : ''}${activeCaptionStyleLabel ? `, caption style ${activeCaptionStyleLabel}` : ''}${project.selectedBackgroundVideoName ? `, the looping background video ${project.selectedBackgroundVideoName}` : ''}, plus the saved music mix volume (${Math.round(musicVolume * 100)}%) and the deterministic ASS/libass caption path unless explicitly overridden.`}
       onRefresh={refresh}
       collapseDocumentByDefault
       extra={
         <div className="space-y-4">
           {musicError ? <ValidationNotice title="Soundtrack selection failed" message={musicError} /> : null}
+          {captionStyleError ? <ValidationNotice title="Caption style selection failed" message={captionStyleError} /> : null}
           <div className="rounded-lg border border-border bg-background/60 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h3 className="text-sm font-medium text-foreground">Narration source</h3>
                 <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-                  Final Video does not pick or regenerate its own voice anymore. It reuses the narration WAV + forced alignment already created in the XML Script step.
+                  Final Video does not pick or regenerate its own voice anymore. It reuses the processed narration WAV and forced alignment already created in the XML Script step.
                 </p>
               </div>
               <Link
@@ -2347,7 +2574,7 @@ function VideoSection({ project, refresh }: { project: Project; refresh: () => P
               <div>
                 <h3 className="text-sm font-medium text-foreground">Soundtrack for this project</h3>
                 <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-                  Pick which saved soundtrack prompt preset should drive real final-video music generation for this project. If you do not override it, the current global default soundtrack preset is used.
+                  Pick which saved soundtrack entry should be reused for this project. Once a soundtrack has been generated in settings, final-video renders reuse that exact saved WAV file instead of asking ACE-Step for a fresh song each time.
                 </p>
               </div>
               <Link
@@ -2386,15 +2613,74 @@ function VideoSection({ project, refresh }: { project: Project; refresh: () => P
               Saved music mix volume for new renders: <span className="font-medium text-foreground">{Math.round(musicVolume * 100)}%</span>
             </div>
           </div>
+          <div className="rounded-lg border border-border bg-background/60 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-medium text-foreground">Caption style for this project</h3>
+                <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
+                  Final-video renders now burn ASS subtitles using the selected caption-style preset. Leave the project on the global default, or override it here for a specific short-form video.
+                </p>
+              </div>
+              <Link
+                href="/short-form-video/settings#caption-styles"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Open caption styles ↗
+              </Link>
+            </div>
+            <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
+              <Select
+                value={project.captionStyleOverrideId || ''}
+                onChange={(event) => void saveProjectCaptionStyle(event.target.value || null)}
+                disabled={savingCaptionStyle || captionStyleOptions.length === 0}
+                className="max-w-sm"
+              >
+                <option value="">Use default caption style</option>
+                {captionStyleOptions.map((style) => (
+                  <option key={style.id} value={style.id}>
+                    {style.name}{style.id === defaultCaptionStyleId ? ' (default)' : ''}
+                  </option>
+                ))}
+              </Select>
+              <div className="text-xs text-muted-foreground">
+                {savingCaptionStyle
+                  ? 'Saving caption style selection…'
+                  : project.captionStyleOverrideId
+                    ? `Current project caption style override: ${project.selectedCaptionStyleName || activeCaptionStyleLabel}`
+                    : defaultCaptionStyleId
+                      ? `Using the current default caption style: ${activeCaptionStyleLabel}`
+                      : 'Using the fallback caption style.'}
+              </div>
+            </div>
+            <div className="mt-3 text-xs text-muted-foreground">
+              Effective final-render caption style: <span className="font-medium text-foreground">{activeCaptionStyleLabel}</span>
+            </div>
+          </div>
           <div className="rounded-lg border border-border bg-background/60 p-4 text-xs text-muted-foreground">
             <span className="font-medium text-foreground">Looping background video:</span>{' '}
             {project.selectedBackgroundVideoName || 'Not selected yet. Choose one in the Visual Images section before rendering the final video.'}
           </div>
           <VideoPipelinePanel project={project} />
-          {project.video.videoUrl ? (
+          {previewVideoUrl ? (
             <div className="space-y-3">
-              <h3 className="text-sm font-medium text-foreground">Preview</h3>
-              <video src={project.video.videoUrl} controls playsInline preload="metadata" className="max-h-[70vh] w-full rounded-lg border border-border bg-black" />
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-medium text-foreground">Preview</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">Use the button to open or download the final video file directly, especially on mobile.</p>
+                </div>
+                <a
+                  href={previewVideoUrl}
+                  download
+                  target="_blank"
+                  rel="noreferrer"
+                  className={buttonVariants({ variant: 'default' })}
+                >
+                  Download final video
+                </a>
+              </div>
+              <video ref={previewVideoRef} key={previewVideoUrl} src={previewVideoUrl} controls playsInline preload="metadata" className="max-h-[70vh] w-full rounded-lg border border-border bg-black" />
             </div>
           ) : null}
         </div>
@@ -2426,7 +2712,9 @@ function getSectionStatus(project: Project | null, sectionId: DetailSectionId) {
     case 'script':
       return project.script.pending ? 'working' : project.script.status || 'draft';
     case 'narration-audio': {
-      const narrationSteps = project.xmlScript.pipeline?.steps.filter((step) => step.id === 'narration' || step.id === 'alignment') || [];
+      const narrationSteps = project.xmlScript.pipeline?.steps.filter(
+        (step) => step.id === 'narration' || step.id === 'silence-removal' || step.id === 'alignment'
+      ) || [];
       if (narrationSteps.some((step) => step.status === 'failed')) return 'failed';
       if (narrationSteps.some((step) => step.status === 'active')) return 'working';
       if (narrationSteps.length > 0 && narrationSteps.every((step) => step.status === 'completed')) return 'approved';
@@ -2444,7 +2732,10 @@ function getSectionStatus(project: Project | null, sectionId: DetailSectionId) {
     case 'scene-images':
       return project.sceneImages.pending ? 'working' : project.sceneImages.status || 'draft';
     case 'video':
-      return project.video.pending ? 'working' : project.video.status || 'draft';
+      if (project.video.pipeline?.status === 'failed' || project.video.revision?.isFailed) return 'failed';
+      if (project.video.pending || project.video.pipeline?.status === 'running') return 'working';
+      if (project.video.pipeline?.status === 'completed') return 'completed';
+      return project.video.status || 'draft';
     default:
       return 'draft';
   }
@@ -2460,7 +2751,17 @@ export default function ShortFormVideoDetailPage() {
   const [savingTopic, setSavingTopic] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
 
-  const shouldPoll = Boolean(projectId && (!project || (project?.pendingStages.length ?? 0) > 0 || project?.xmlScript.pending || savingTopic));
+  const shouldPoll = Boolean(
+    projectId
+    && (
+      !project
+      || (project?.pendingStages.length ?? 0) > 0
+      || project?.xmlScript.pending
+      || project?.video.pending
+      || project?.video.pipeline?.status === 'running'
+      || savingTopic
+    )
+  );
   const {
     loading,
     refreshing,
@@ -2671,7 +2972,7 @@ export default function ShortFormVideoDetailPage() {
           mode="text"
           emptyText="No text script yet. Generate it after approving the research."
           triggerLabel="Generate text script"
-          triggerDescription="This should create the plain narration script only. The XML Script step below will later generate narration audio, forced alignment, deterministic captions JSON, and visuals XML from this approved text."
+          triggerDescription="This should create the plain narration script only. The XML Script step below will later generate original narration audio, pause removal, forced alignment, deterministic captions JSON, and visuals XML from this approved text."
           onRefresh={refreshProject}
           extra={<TextScriptHistoryPanel project={project} onProjectRefresh={refreshProject} />}
           showExtraWhenEmpty
