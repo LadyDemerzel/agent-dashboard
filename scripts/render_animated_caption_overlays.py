@@ -6,6 +6,10 @@ import re
 from pathlib import Path
 from typing import Any
 
+from pillow_runtime import ensure_pillow_runtime
+
+ensure_pillow_runtime()
+
 from PIL import Image, ImageColor, ImageDraw, ImageFilter, ImageFont
 
 CANVAS_WIDTH = 1080
