@@ -36,6 +36,7 @@ import {
   type TextScriptRunClient,
 } from '@/lib/short-form-video-client';
 import { generateClientDiff } from '@/lib/diff-client';
+import { usePageScrollRestoration } from '@/components/usePageScrollRestoration';
 
 interface ApiResponse<T> {
   success: boolean;
@@ -255,6 +256,65 @@ function MarkdownOrCode({ content, mode }: { content: string; mode: 'markdown' |
   }
 
   return <SyntaxHighlightedCode content={body} language={mode === 'xml' ? 'xml' : mode === 'json' ? 'json' : 'text'} />;
+}
+
+function ScenePreviewVideoCard({
+  src,
+  poster,
+  label,
+}: {
+  src: string;
+  poster?: string;
+  label: string;
+}) {
+  const [activated, setActivated] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (!activated || !videoRef.current) return;
+    const playAttempt = videoRef.current.play();
+    if (playAttempt && typeof playAttempt.catch === 'function') {
+      playAttempt.catch(() => {
+        // Ignore autoplay failures. The controls remain available.
+      });
+    }
+  }, [activated, src]);
+
+  if (!activated) {
+    return (
+      <button
+        type="button"
+        onClick={() => setActivated(true)}
+        className="group relative block aspect-[9/16] w-full overflow-hidden rounded-md border border-border bg-black text-left"
+      >
+        {poster ? (
+          <img src={poster} alt={label} className="h-full w-full object-cover opacity-90 transition-opacity group-hover:opacity-100" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-muted/30 text-xs text-muted-foreground">Preview ready</div>
+        )}
+        <div className="absolute inset-0 bg-black/35 transition-colors group-hover:bg-black/20" />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="rounded-full border border-white/35 bg-black/70 px-3 py-1.5 text-xs font-medium text-white shadow-lg">
+            Load preview video
+          </span>
+        </div>
+      </button>
+    );
+  }
+
+  return (
+    <video
+      ref={videoRef}
+      src={src}
+      poster={poster}
+      muted
+      loop
+      playsInline
+      controls
+      preload="metadata"
+      className="aspect-[9/16] w-full rounded-md border border-border bg-black object-cover"
+    />
+  );
 }
 
 function VideoPipelinePanel({ project }: { project: Project }) {
@@ -2333,15 +2393,10 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
                         </div>
                       ) : hasRenderableMedia ? (
                         activeTab === 'preview' && hasPreviewVideo ? (
-                          <video
-                            src={scene.previewVideo}
-                            autoPlay
-                            muted
-                            loop
-                            playsInline
-                            controls
-                            preload="metadata"
-                            className="aspect-[9/16] w-full rounded-md border border-border bg-black object-cover"
+                          <ScenePreviewVideoCard
+                            src={scene.previewVideo!}
+                            poster={scene.previewImage || scene.image || undefined}
+                            label={`${scene.caption} preview video`}
                           />
                         ) : hasRawImage ? (
                           <img src={scene.image} alt={`${scene.caption} raw green screen`} className="aspect-[9/16] w-full rounded-md border border-border bg-muted object-cover" />
@@ -2779,6 +2834,8 @@ export default function ShortFormVideoDetailPage() {
       setProject(normalizeShortFormProject(payload.data));
     },
   });
+
+  usePageScrollRestoration(projectId ? `short-form-video-detail:${projectId}` : null, Boolean(projectId) && !loading);
 
   useEffect(() => {
     if (!project || topicDirty) return;

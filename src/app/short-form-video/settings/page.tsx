@@ -12,6 +12,7 @@ import { OrbitLoader, Skeleton } from '@/components/ui/loading';
 import { SectionNavigator, useSectionScrollSpy } from '@/components/short-form-video/SectionNavigator';
 import { ValidationNotice, WorkflowSectionHeader } from '@/components/short-form-video/WorkflowShared';
 import { CaptionStylePreview, type CaptionAnimationPreset } from '@/components/short-form-video/CaptionStylePreview';
+import { usePageScrollRestoration } from '@/components/usePageScrollRestoration';
 
 type PromptKey =
   | 'hooksGenerate'
@@ -708,6 +709,8 @@ export default function ShortFormVideoSettingsPage() {
     audioUrl: null,
     reusedExisting: null,
   });
+
+  usePageScrollRestoration('short-form-video-settings', !loading);
 
   useEffect(() => {
     void loadSettings();
