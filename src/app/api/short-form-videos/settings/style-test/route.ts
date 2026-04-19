@@ -4,13 +4,12 @@ import path from "path";
 import { spawnSync } from "child_process";
 import { randomUUID } from "crypto";
 import {
-  getDefaultShortFormNanoBananaPromptTemplates,
   getEffectiveShortFormStylePrompt,
+  normalizeShortFormNanoBananaPromptTemplates,
   getShortFormStyleReferenceImagesDir,
   getShortFormStyleTestsDir,
   saveShortFormImageStyleTestResult,
   type ShortFormImageStyle,
-  type ShortFormNanoBananaPromptTemplates,
   type ShortFormStyleReferenceImage,
   type ShortFormStyleReferenceUsageType,
 } from "@/lib/short-form-image-styles";
@@ -77,27 +76,6 @@ function normalizeReferences(value: unknown): ShortFormStyleReferenceImage[] {
 }
 
 
-function normalizePromptTemplates(value: unknown): ShortFormNanoBananaPromptTemplates {
-  const defaults = getDefaultShortFormNanoBananaPromptTemplates();
-  if (!value || typeof value !== "object" || Array.isArray(value)) return defaults;
-
-  const obj = value as Record<string, unknown>;
-  return {
-    styleInstructionsTemplate:
-      typeof obj.styleInstructionsTemplate === "string" && obj.styleInstructionsTemplate.trim()
-        ? obj.styleInstructionsTemplate.trim()
-        : defaults.styleInstructionsTemplate,
-    characterReferenceTemplate:
-      typeof obj.characterReferenceTemplate === "string" && obj.characterReferenceTemplate.trim()
-        ? obj.characterReferenceTemplate.trim()
-        : defaults.characterReferenceTemplate,
-    sceneTemplate:
-      typeof obj.sceneTemplate === "string" && obj.sceneTemplate.trim()
-        ? obj.sceneTemplate.trim()
-        : defaults.sceneTemplate,
-  };
-}
-
 function validateStyle(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("style is required");
@@ -131,11 +109,6 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const style = validateStyle(body.style);
-    const commonConstraints = typeof body.commonConstraints === "string" ? body.commonConstraints.trim() : "";
-    if (!commonConstraints) {
-      return NextResponse.json({ success: false, error: "commonConstraints is required" }, { status: 400 });
-    }
-
     const runId = randomUUID();
     const runDir = path.join(getShortFormStyleTestsDir(), runId);
     const outputDir = path.join(runDir, "output");
@@ -149,20 +122,24 @@ export async function POST(request: NextRequest) {
     fs.writeFileSync(
       xmlPath,
       [
-        "<video>",
+        '<video version="2">',
         `  <topic>${escapeXml(topic)}</topic>`,
         `  <script>${escapeXml(caption)}</script>`,
-        "  <scene>",
-        `    <text>${escapeXml(caption)}</text>`,
-        `    <image>${escapeXml(imagePrompt)}</image>`,
-        "  </scene>",
+        "  <assets>",
+        '    <image id="style-test-image">',
+        `      <prompt>${escapeXml(imagePrompt)}</prompt>`,
+        "    </image>",
+        "  </assets>",
+        "  <timeline>",
+        `    <visual id="style-test-visual" label="${escapeXml(caption)}" imageId="style-test-image" />`,
+        "  </timeline>",
         "</video>",
         "",
       ].join("\n"),
       "utf-8"
     );
 
-    const promptTemplates = normalizePromptTemplates(body.promptTemplates);
+    const promptTemplates = normalizeShortFormNanoBananaPromptTemplates(body.promptTemplates);
     const characterReference = style.references.find((reference) => reference.usageType === "character");
     const extraReferences = style.references
       .filter((reference) => reference.id !== characterReference?.id)
@@ -194,8 +171,6 @@ export async function POST(request: NextRequest) {
       DEFAULT_IMAGE_STYLE_PRESET,
       "--subject",
       style.subjectPrompt,
-      "--common-constraints",
-      commonConstraints,
       "--style-extra",
       effectiveStylePrompt,
       "--header-percent",

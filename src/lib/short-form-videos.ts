@@ -1287,7 +1287,7 @@ function buildSceneImagesReviewDocument(projectId: string, scenes: Array<{ numbe
     "",
     "- `scenes/scene-XX-uncaptioned-1080x1920.png` — clean scene image for video assembly",
     "- `scenes/scene-XX-captioned-1080x1920.png` — preview image with caption overlay",
-    "- `scenes/scene-XX.png` — legacy copy of the clean scene image",
+    "- `scenes/scene-XX.png` — compatibility alias of the clean scene image",
     "",
     "## Location",
     "",
@@ -1440,47 +1440,114 @@ function normalizeXmlText(value: string) {
     .trim();
 }
 
-function readExpectedScriptScenes(projectId: string): Array<{ id: string; number: number; caption: string; referencePreviousSceneImage?: boolean }> {
+function parseXmlAttributes(raw: string) {
+  const attributes: Record<string, string> = {};
+  if (!raw.trim()) return attributes;
+
+  for (const match of raw.matchAll(/([A-Za-z_:][\w:.-]*)\s*=\s*(["'])([\s\S]*?)\2/g)) {
+    const key = match[1]?.trim();
+    if (!key) continue;
+    attributes[key] = match[3] || "";
+  }
+
+  return attributes;
+}
+
+function readExpectedScriptVisualSpec(projectId: string) {
   const scriptPath = getXmlScriptPath(projectId);
-  if (!fs.existsSync(scriptPath)) return [];
+  if (!fs.existsSync(scriptPath)) {
+    return {
+      scenes: [] as Array<{ id: string; number: number; caption: string; imageId?: string }>,
+      assetDependencies: new Map<string, string | undefined>(),
+    };
+  }
 
   try {
     const xml = extractBody(fs.readFileSync(scriptPath, "utf-8"));
-    const matches = Array.from(xml.matchAll(/<scene\b([^>]*)>([\s\S]*?)<\/scene>/gi));
-    return matches.map((match, index) => {
+    const assetsBody = xml.match(/<assets\b[^>]*>([\s\S]*?)<\/assets>/i)?.[1] || "";
+    const timelineBody = xml.match(/<timeline\b[^>]*>([\s\S]*?)<\/timeline>/i)?.[1] || "";
+    const assetDependencies = new Map<string, string | undefined>();
+
+    for (const match of assetsBody.matchAll(/<image\b([^>]*)>([\s\S]*?)<\/image>/gi)) {
+      const attributes = parseXmlAttributes(match[1] || "");
+      const imageId = attributes.id?.trim();
+      if (!imageId) continue;
+      const basedOnImageId = attributes.basedOn?.trim();
+      assetDependencies.set(imageId, basedOnImageId || undefined);
+    }
+
+    const scenes = Array.from(timelineBody.matchAll(/<visual\b([^>]*?)(?:\/>|>([\s\S]*?)<\/visual>)/gi)).map((match, index) => {
       const number = index + 1;
-      const attributes = match[1] || "";
-      const sceneBody = match[2] || "";
-      const captionMatch = sceneBody.match(/<text>([\s\S]*?)<\/text>/i);
-      const caption = normalizeXmlText(captionMatch?.[1] || "") || `Scene ${number}`;
-      const refMatch = attributes.match(/referencePreviousSceneImage\s*=\s*"([^"]+)"/i);
+      const attributes = parseXmlAttributes(match[1] || "");
+      const visualBody = match[2] || "";
+      const labelFromBody = visualBody.match(/<label>([\s\S]*?)<\/label>/i)?.[1] || "";
+      const caption = normalizeXmlText(attributes.label || labelFromBody) || `Scene ${number}`;
+      const imageId = attributes.imageId?.trim();
       return {
         id: `scene-${number}`,
         number,
         caption,
-        referencePreviousSceneImage: typeof refMatch?.[1] === "string" && refMatch[1].trim().toLowerCase() === "true",
+        ...(imageId ? { imageId } : {}),
       };
     });
+
+    return { scenes, assetDependencies };
   } catch {
-    return [];
+    return {
+      scenes: [] as Array<{ id: string; number: number; caption: string; imageId?: string }>,
+      assetDependencies: new Map<string, string | undefined>(),
+    };
   }
 }
 
-function expandRequestedSceneIndexesForContinuity(
-  expectedScenes: Array<{ number: number; referencePreviousSceneImage?: boolean }>,
+function collectDependentAssetIds(assetDependencies: Map<string, string | undefined>, rootAssetIds: Array<string | undefined>) {
+  const seeds = [...new Set(rootAssetIds.map((value) => value?.trim()).filter(Boolean) as string[])];
+  if (seeds.length === 0) return new Set<string>();
+
+  const reverseDependencies = new Map<string, string[]>();
+  for (const [imageId, basedOnImageId] of assetDependencies.entries()) {
+    if (!basedOnImageId) continue;
+    const children = reverseDependencies.get(basedOnImageId) || [];
+    children.push(imageId);
+    reverseDependencies.set(basedOnImageId, children);
+  }
+
+  const dependentIds = new Set<string>(seeds);
+  const queue = [...seeds];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+    for (const childId of reverseDependencies.get(current) || []) {
+      if (dependentIds.has(childId)) continue;
+      dependentIds.add(childId);
+      queue.push(childId);
+    }
+  }
+
+  return dependentIds;
+}
+
+function expandRequestedSceneIndexesForDependencies(
+  expectedScenes: Array<{ number: number; imageId?: string }>,
+  assetDependencies: Map<string, string | undefined>,
   targetSceneIndex?: number,
 ) {
   if (!targetSceneIndex) return [];
 
   const expanded = new Set<number>([targetSceneIndex]);
-  const sceneNumbers = expectedScenes.map((scene) => scene.number);
-  let cursor = targetSceneIndex + 1;
+  const dependentAssetIds = collectDependentAssetIds(
+    assetDependencies,
+    expectedScenes.filter((scene) => scene.number === targetSceneIndex).map((scene) => scene.imageId)
+  );
 
-  while (sceneNumbers.includes(cursor)) {
-    const scene = expectedScenes.find((entry) => entry.number === cursor);
-    if (!scene?.referencePreviousSceneImage) break;
-    expanded.add(cursor);
-    cursor += 1;
+  if (dependentAssetIds.size === 0) {
+    return Array.from(expanded).sort((a, b) => a - b);
+  }
+
+  for (const scene of expectedScenes) {
+    if (scene.imageId && dependentAssetIds.has(scene.imageId)) {
+      expanded.add(scene.number);
+    }
   }
 
   return Array.from(expanded).sort((a, b) => a - b);
@@ -1534,8 +1601,9 @@ function buildSceneImagesProgressState(projectId: string, scenes: SceneImageArti
 
   const requestedAtMs = revision?.requestedAt ? Date.parse(revision.requestedAt) : Number.NaN;
   const targetSceneIndex = parseSceneIdToIndex(revision?.action === "request-scene-change" ? revision.sceneId ?? undefined : undefined);
-  const expectedScenes = readExpectedScriptScenes(projectId);
-  const expandedTargetSceneIndexes = expandRequestedSceneIndexesForContinuity(expectedScenes, targetSceneIndex);
+  const expectedVisualSpec = readExpectedScriptVisualSpec(projectId);
+  const expectedScenes = expectedVisualSpec.scenes;
+  const expandedTargetSceneIndexes = expandRequestedSceneIndexesForDependencies(expectedScenes, expectedVisualSpec.assetDependencies, targetSceneIndex);
   const trackedSceneIndexes = new Set(expandedTargetSceneIndexes);
   const manifestByNumber = new Map(scenes.map((scene) => [scene.number, scene]));
   const orderedNumbers = expectedScenes.length > 0

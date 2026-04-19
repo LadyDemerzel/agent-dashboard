@@ -452,7 +452,6 @@ export async function POST(
                 imageStyleId: resolvedImageStyle.resolvedStyleId,
                 imageStyleName: resolvedImageStyle.style.name,
                 imageStyleSubject: resolvedImageStyle.style.subjectPrompt,
-                imageCommonConstraints: resolvedImageStyle.settings.commonConstraints,
                 imageStylePrompt: resolvedImageStyle.effectiveStylePrompt,
                 imageStyleHeaderPercent: resolvedImageStyle.style.headerPercent,
                 imageStyleReferences: resolvedImageStyle.style.references || [],

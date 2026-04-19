@@ -43,7 +43,6 @@ export interface ShortFormNanoBananaPromptTemplates {
 }
 
 export interface ShortFormImageStyleSettings {
-  commonConstraints: string;
   defaultStyleId: string;
   styles: ShortFormImageStyle[];
   promptTemplates: ShortFormNanoBananaPromptTemplates;
@@ -63,19 +62,55 @@ const STYLE_TESTS_DIR = path.join(SHORT_FORM_VIDEOS_DIR, "_style-tests");
 const STYLE_REFERENCE_IMAGES_DIR = path.join(SHORT_FORM_VIDEOS_DIR, "_style-reference-images");
 const DEFAULT_STYLE_ID = "default-charcoal";
 
+const LEGACY_PER_STYLE_PLACEHOLDER = "{{perStyleInstructionsBlock}}";
+const LEGACY_EXTRA_REFERENCES_PLACEHOLDER = "{{extraReferencesBlock}}";
+const LEGACY_TOPIC_LINE_PLACEHOLDER = "{{topicLine}}";
+const LEGACY_SCRIPT_LINE_PLACEHOLDER = "{{scriptLine}}";
+const LEGACY_ASSET_ID_LINE_PLACEHOLDER = "{{assetIdLine}}";
+const LEGACY_ASSET_DERIVATION_LINE_PLACEHOLDER = "{{assetDerivationLine}}";
+const LEGACY_EXTRA_DIRECTION_LINE_PLACEHOLDER = "{{extraDirectionLine}}";
+const LEGACY_CONTINUITY_LINE_PLACEHOLDER = "{{continuityInstructionsLine}}";
+const LEGACY_COMPOSITION_RULE = "CRITICAL COMPOSITION RULE: keep roughly the top {{headerPercent}} percent of the vertical frame available for later caption overlay, but render it as the real scene background continuing upward as a natural extension of the same environment rather than a separate header treatment.";
+const LEGACY_SAFE_AREA_RULE = "Never interpret the caption-safe area as a literal header, banner, title card, plaque, boxed strip, abrupt empty strip, or separate top panel. Do not introduce any hard horizontal divider or clean rectangular block near the top. Keep foreground subjects and important props mostly below the safe area while letting the same background, lighting, atmosphere, and texture extend naturally all the way to the top.";
+const LEGACY_STYLE_DIRECTION_RULE = "Visual style must remain consistent across every scene. Use the selected shared/per-style art direction for the actual medium, palette, rendering approach, mood, and finish; do not silently fall back to an unrelated house style.";
+
+const STYLE_TEMPLATE_PER_STYLE_BLOCK = "Additional per-style art direction from the selected style: {{perStyleInstructions}}";
+const STYLE_TEMPLATE_EXTRA_REFERENCES_BLOCK = "Additional attached reference images are provided alongside the primary character reference. Use each one only for the role described below:\n{{extraReferences}}";
+const SCENE_TEMPLATE_TOPIC_BLOCK = "Topic context: {{topic}}.";
+const SCENE_TEMPLATE_SCRIPT_BLOCK = "Full script context: {{script}}.";
+const SCENE_TEMPLATE_ASSET_ID_BLOCK = "Asset id: {{assetId}}.";
+const SCENE_TEMPLATE_ASSET_DERIVATION_BLOCK = "This asset is derived from asset {{assetDerivedFromId}}. Use the attached derived-from asset as a continuity/reference input when it is available, but keep the current asset prompt as the source of truth.";
+const SCENE_TEMPLATE_EXTRA_DIRECTION_BLOCK = "Revision direction: {{extraDirection}}.";
+
+const DEFAULT_INLINE_SHARED_STYLE_RULES = [
+  "Keep every image as one cohesive full-frame composition with no separate header, banner, boxed strip, or hard horizontal divider.",
+  "No tiling, split panels, framed prints, inset cards, mockups, collage layouts, or floating rectangles unless explicitly requested.",
+  "Characters should never be cut off unless the crop is clearly motivated by the left, right, or bottom edge of the frame.",
+];
+
+const DEFAULT_INLINE_GREENSCREEN_STYLE_RULES = [
+  "CRITICAL BACKGROUND RULE: render the character and all foreground props against a uniform pure chroma-key green background (#00FF00 or equivalent vivid studio greenscreen) that fills the entire frame edge to edge.",
+  "The greenscreen should stay distinctly green, not cyan/teal/blue-green: keep blue in the backdrop as close to zero as possible so the background does not drift toward aqua.",
+  "The greenscreen should read like a single flat digital/studio fill: no realistic environment, scenic background, textured backdrop, painted strokes, gradient background, corner darkening, mottled noise, shadows cast onto a wall, floor reflections, haze, smoke, or colored light spill in the green area.",
+  "Keep the subject fully in front of the greenscreen with clean silhouette separation, crisp but natural edges, minimal semi-transparent wisps, and no motion blur or smeared edges that would make chroma keying difficult.",
+  "Avoid green clothing, green accessories, green makeup, green props, or green translucent objects on the subject. Prefer wardrobe and props that contrast strongly against green.",
+  "When greenscreen output is requested, any instruction about background continuation, scenic atmosphere, or matching the reference background is overridden. Match only the artistic treatment on the foreground subject and props, never inherit the reference background itself.",
+];
+
 const DEFAULT_NANO_BANANA_PROMPT_TEMPLATES: ShortFormNanoBananaPromptTemplates = {
   styleInstructionsTemplate: [
     "Keep the same subject identity and overall look: {{subjectPrompt}}.",
     "If a primary character reference image is attached, treat it as the source of truth for the recurring character's face, hair, body proportions, skin tone, and signature outfit/wardrobe styling. Preserve the same outfit, colors, silhouette, and accessories across scenes unless the scene direction explicitly calls for a deliberate outfit change.",
-    "Visual style must remain consistent across every scene. Use the selected shared/per-style art direction for the actual medium, palette, rendering approach, mood, and finish; do not silently fall back to an unrelated house style.",
-    "CRITICAL COMPOSITION RULE: keep roughly the top {{headerPercent}} percent of the vertical frame available for later caption overlay, but render it as the real scene background continuing upward as a natural extension of the same environment rather than a separate header treatment.",
+    "Visual style must remain consistent across every scene. Use the selected editable style-instructions template plus per-style art direction for the actual medium, palette, rendering approach, mood, and finish; do not silently fall back to an unrelated house style.",
+    "CRITICAL COMPOSITION RULE: keep roughly the top {{headerPercent}} percent of the vertical frame available for later caption overlay by leaving that area compositionally quieter inside the same full-frame image, not by adding a separate header treatment or boxed panel.",
     "The entire image must read as one unified full-bleed composition. Do not create a framed print, white border, paper margin, inset panel, floating portrait rectangle, mockup card, collage layout, picture-in-picture, split tile, or sticker-cutout subject pasted over a separate background.",
-    "Never interpret the caption-safe area as a literal header, banner, title card, plaque, boxed strip, abrupt empty strip, or separate top panel. Do not introduce any hard horizontal divider or clean rectangular block near the top. Keep foreground subjects and important props mostly below the safe area while letting the same background, lighting, atmosphere, and texture extend naturally all the way to the top.",
+    "Never interpret the caption-safe area as a literal header, banner, title card, plaque, boxed strip, abrupt empty strip, or separate top panel. Do not introduce any hard horizontal divider or clean rectangular block near the top. Keep foreground subjects and important props mostly below the safe area while the same full-frame plate continues cleanly to the top edge.",
     "If the scene suggests comparison, anatomy emphasis, or multiple ideas, solve it within one cohesive scene using pose, depth, lighting, and integrated visual cues rather than divider lines, before/after cards, boxed inserts, or framed sub-images.",
     "CRITICAL: generate clean artwork only with no text, letters, subtitles, labels, logos, UI chrome, speech bubbles, or watermarks anywhere in the image.",
-    "{{sharedConstraintsBlock}}",
-    "{{perStyleInstructionsBlock}}",
-    "{{extraReferencesBlock}}",
+    ...DEFAULT_INLINE_SHARED_STYLE_RULES,
+    ...DEFAULT_INLINE_GREENSCREEN_STYLE_RULES,
+    STYLE_TEMPLATE_PER_STYLE_BLOCK,
+    STYLE_TEMPLATE_EXTRA_REFERENCES_BLOCK,
   ].join("\n\n"),
   characterReferenceTemplate: [
     "Create a single consistent character reference for a TikTok educational image series.",
@@ -87,16 +122,18 @@ const DEFAULT_NANO_BANANA_PROMPT_TEMPLATES: ShortFormNanoBananaPromptTemplates =
     "{{styleInstructionsBlock}}",
   ].join("\n\n"),
   sceneTemplate: [
-    "{{topicLine}}",
-    "{{scriptLine}}",
-    "Create scene {{sceneNumber}} for a short-form educational video.",
-    "Scene goal: {{sceneText}}.",
-    "Scene image direction: {{sceneImagePrompt}}.",
-    "Honor the requested framing and viewpoint cues from the scene direction. If a primary character reference is attached, preserve the same outfit from that reference unless the current scene direction explicitly changes wardrobe.",
-    "{{extraDirectionLine}}",
-    "{{continuityInstructionsLine}}",
+    SCENE_TEMPLATE_TOPIC_BLOCK,
+    SCENE_TEMPLATE_SCRIPT_BLOCK,
+    "Generate one reusable image asset for a short-form educational video.",
+    SCENE_TEMPLATE_ASSET_ID_BLOCK,
+    "Primary image asset direction: {{assetPrompt}}.",
+    SCENE_TEMPLATE_ASSET_DERIVATION_BLOCK,
+    "Treat this as reusable source art that may be referenced by multiple timeline visuals, so do not optimize it around a single visual label, caption, or beat name.",
+    "Honor the requested framing and viewpoint cues from the asset prompt. If a primary character reference is attached, preserve the same outfit from that reference unless the asset prompt explicitly changes wardrobe.",
+    SCENE_TEMPLATE_EXTRA_DIRECTION_BLOCK,
+    "{{continuityInstructions}}",
     "Make the core idea instantly understandable at a glance and visually scroll-stopping.",
-    "Interpret the scene direction as a single cohesive composition even if the wording suggests comparison, split-screen, before/after, overlay, anatomy callout, or editorial insert. Prefer one integrated scene with natural depth and subtle embedded cues instead of separate panels or boxed elements.",
+    "Interpret the asset prompt as a single cohesive composition even if the wording suggests comparison, split-screen, before/after, overlay, anatomy callout, or editorial insert. Prefer one integrated scene with natural depth and subtle embedded cues instead of separate panels or boxed elements.",
     "The generated image itself must contain no text, letters, subtitles, labels, logos, UI chrome, or watermark; captions will be overlaid later outside the model.",
     "{{styleInstructionsBlock}}",
   ].join("\n\n"),
@@ -109,13 +146,6 @@ function slugify(text: string) {
     .replace(/^-+|-+$/g, "")
     .slice(0, 64);
 }
-
-const DEFAULT_COMMON_CONSTRAINTS = [
-  "Preserve a natural top caption-safe background area as a real continuation of the same scene, not a boxed header or hard divider.",
-  "No tiling, split panels, framed prints, inset cards, mockups, collage layouts, or floating rectangles unless explicitly requested.",
-  "No readable text, labels, subtitles, UI chrome, or watermarks inside the generated artwork.",
-  "Keep every image as one cohesive full-frame composition with the subject naturally embedded into the environment.",
-].join("\n");
 
 const DEFAULT_STYLE: ShortFormImageStyle = {
   id: DEFAULT_STYLE_ID,
@@ -346,25 +376,184 @@ function normalizePromptTemplateValue(value: unknown, fallback: string) {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
+function splitPromptTemplateBlocks(value: string) {
+  return value
+    .split(/\n\s*\n+/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+}
+
+function dedupePromptBlocks(blocks: string[]) {
+  const seen = new Set<string>();
+  const normalizedBlocks: string[] = [];
+
+  for (const block of blocks) {
+    const trimmed = block.trim();
+    if (!trimmed) continue;
+    const key = trimmed.replace(/\s+/g, " ").toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalizedBlocks.push(trimmed);
+  }
+
+  return normalizedBlocks;
+}
+
+function insertBlocksBeforePlaceholder(blocks: string[], placeholder: string, insertions: string[]) {
+  const index = blocks.findIndex((block) => block === placeholder);
+  if (index === -1) {
+    return [...blocks, ...insertions];
+  }
+  return [...blocks.slice(0, index), ...insertions, ...blocks.slice(index)];
+}
+
+function normalizeStyleInstructionsTemplate(template: string) {
+  let blocks = splitPromptTemplateBlocks(template)
+    .flatMap((block) => {
+      if (block === LEGACY_PER_STYLE_PLACEHOLDER) {
+        return [STYLE_TEMPLATE_PER_STYLE_BLOCK];
+      }
+
+      if (block === LEGACY_EXTRA_REFERENCES_PLACEHOLDER) {
+        return [STYLE_TEMPLATE_EXTRA_REFERENCES_BLOCK];
+      }
+
+      if (block === LEGACY_COMPOSITION_RULE) {
+        return [
+          "CRITICAL COMPOSITION RULE: keep roughly the top {{headerPercent}} percent of the vertical frame available for later caption overlay by leaving that area compositionally quieter inside the same full-frame image, not by adding a separate header treatment or boxed panel.",
+        ];
+      }
+
+      if (block === LEGACY_STYLE_DIRECTION_RULE) {
+        return [
+          "Visual style must remain consistent across every scene. Use the selected editable style-instructions template plus per-style art direction for the actual medium, palette, rendering approach, mood, and finish; do not silently fall back to an unrelated house style.",
+        ];
+      }
+
+      if (block === LEGACY_SAFE_AREA_RULE) {
+        return [
+          "Never interpret the caption-safe area as a literal header, banner, title card, plaque, boxed strip, abrupt empty strip, or separate top panel. Do not introduce any hard horizontal divider or clean rectangular block near the top. Keep foreground subjects and important props mostly below the safe area while the same full-frame plate continues cleanly to the top edge.",
+        ];
+      }
+
+      return [
+        block
+          .replace(LEGACY_PER_STYLE_PLACEHOLDER, STYLE_TEMPLATE_PER_STYLE_BLOCK)
+          .replace(LEGACY_EXTRA_REFERENCES_PLACEHOLDER, STYLE_TEMPLATE_EXTRA_REFERENCES_BLOCK)
+          .trim(),
+      ].filter(Boolean);
+    });
+
+  blocks = insertBlocksBeforePlaceholder(blocks, STYLE_TEMPLATE_PER_STYLE_BLOCK, DEFAULT_INLINE_SHARED_STYLE_RULES);
+  blocks = insertBlocksBeforePlaceholder(blocks, STYLE_TEMPLATE_PER_STYLE_BLOCK, DEFAULT_INLINE_GREENSCREEN_STYLE_RULES);
+
+  return dedupePromptBlocks(blocks).join("\n\n");
+}
+
+function normalizeSceneTemplate(template: string) {
+  let blocks = splitPromptTemplateBlocks(template).flatMap((block) => {
+    if (block === LEGACY_TOPIC_LINE_PLACEHOLDER) {
+      return [SCENE_TEMPLATE_TOPIC_BLOCK];
+    }
+
+    if (block === LEGACY_SCRIPT_LINE_PLACEHOLDER) {
+      return [SCENE_TEMPLATE_SCRIPT_BLOCK];
+    }
+
+    if (block === LEGACY_ASSET_ID_LINE_PLACEHOLDER) {
+      return [SCENE_TEMPLATE_ASSET_ID_BLOCK];
+    }
+
+    if (block === LEGACY_ASSET_DERIVATION_LINE_PLACEHOLDER) {
+      return [SCENE_TEMPLATE_ASSET_DERIVATION_BLOCK];
+    }
+
+    if (block === LEGACY_EXTRA_DIRECTION_LINE_PLACEHOLDER) {
+      return [SCENE_TEMPLATE_EXTRA_DIRECTION_BLOCK];
+    }
+
+    if (block === LEGACY_CONTINUITY_LINE_PLACEHOLDER) {
+      return ["{{continuityInstructions}}"];
+    }
+
+    if (block === "Create scene {{sceneNumber}} for a short-form educational video.") {
+      return [
+        "Generate one reusable image asset for a short-form educational video.",
+        SCENE_TEMPLATE_ASSET_ID_BLOCK,
+      ];
+    }
+
+    if (block === "Scene goal: {{sceneText}}.") {
+      return [
+        "Treat this as reusable source art that may be referenced by multiple timeline visuals, so do not optimize it around a single visual label, caption, or beat name.",
+      ];
+    }
+
+    if (block === "Scene image direction: {{sceneImagePrompt}}.") {
+      return [
+        "Primary image asset direction: {{assetPrompt}}.",
+        SCENE_TEMPLATE_ASSET_DERIVATION_BLOCK,
+      ];
+    }
+
+    if (block === "Honor the requested framing and viewpoint cues from the scene direction. If a primary character reference is attached, preserve the same outfit from that reference unless the current scene direction explicitly changes wardrobe.") {
+      return [
+        "Honor the requested framing and viewpoint cues from the asset prompt. If a primary character reference is attached, preserve the same outfit from that reference unless the asset prompt explicitly changes wardrobe.",
+      ];
+    }
+
+    if (block === "Interpret the scene direction as a single cohesive composition even if the wording suggests comparison, split-screen, before/after, overlay, anatomy callout, or editorial insert. Prefer one integrated scene with natural depth and subtle embedded cues instead of separate panels or boxed elements.") {
+      return [
+        "Interpret the asset prompt as a single cohesive composition even if the wording suggests comparison, split-screen, before/after, overlay, anatomy callout, or editorial insert. Prefer one integrated scene with natural depth and subtle embedded cues instead of separate panels or boxed elements.",
+      ];
+    }
+
+    return [
+      block
+        .replace(LEGACY_TOPIC_LINE_PLACEHOLDER, SCENE_TEMPLATE_TOPIC_BLOCK)
+        .replace(LEGACY_SCRIPT_LINE_PLACEHOLDER, SCENE_TEMPLATE_SCRIPT_BLOCK)
+        .replace(LEGACY_ASSET_ID_LINE_PLACEHOLDER, SCENE_TEMPLATE_ASSET_ID_BLOCK)
+        .replace(LEGACY_ASSET_DERIVATION_LINE_PLACEHOLDER, SCENE_TEMPLATE_ASSET_DERIVATION_BLOCK)
+        .replace(LEGACY_EXTRA_DIRECTION_LINE_PLACEHOLDER, SCENE_TEMPLATE_EXTRA_DIRECTION_BLOCK)
+        .replace(LEGACY_CONTINUITY_LINE_PLACEHOLDER, "{{continuityInstructions}}")
+        .replace("{{sceneImagePrompt}}", "{{assetPrompt}}")
+        .replace("{{sceneText}}", "{{assetPrompt}}")
+        .replace("{{sceneNumber}}", "{{assetId}}")
+        .trim(),
+    ].filter(Boolean);
+  });
+
+  blocks = insertBlocksBeforePlaceholder(blocks, SCENE_TEMPLATE_EXTRA_DIRECTION_BLOCK, [
+    SCENE_TEMPLATE_ASSET_ID_BLOCK,
+    SCENE_TEMPLATE_ASSET_DERIVATION_BLOCK,
+  ]);
+
+  return dedupePromptBlocks(blocks).join("\n\n");
+}
+
 function normalizePromptTemplates(value: unknown): ShortFormNanoBananaPromptTemplates {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return DEFAULT_NANO_BANANA_PROMPT_TEMPLATES;
+    return {
+      ...DEFAULT_NANO_BANANA_PROMPT_TEMPLATES,
+      styleInstructionsTemplate: normalizeStyleInstructionsTemplate(DEFAULT_NANO_BANANA_PROMPT_TEMPLATES.styleInstructionsTemplate),
+    };
   }
 
   const obj = value as Record<string, unknown>;
   return {
-    styleInstructionsTemplate: normalizePromptTemplateValue(obj.styleInstructionsTemplate, DEFAULT_NANO_BANANA_PROMPT_TEMPLATES.styleInstructionsTemplate),
+    styleInstructionsTemplate: normalizeStyleInstructionsTemplate(
+      normalizePromptTemplateValue(obj.styleInstructionsTemplate, DEFAULT_NANO_BANANA_PROMPT_TEMPLATES.styleInstructionsTemplate),
+    ),
     characterReferenceTemplate: normalizePromptTemplateValue(obj.characterReferenceTemplate, DEFAULT_NANO_BANANA_PROMPT_TEMPLATES.characterReferenceTemplate),
-    sceneTemplate: normalizePromptTemplateValue(obj.sceneTemplate, DEFAULT_NANO_BANANA_PROMPT_TEMPLATES.sceneTemplate),
+    sceneTemplate: normalizeSceneTemplate(normalizePromptTemplateValue(obj.sceneTemplate, DEFAULT_NANO_BANANA_PROMPT_TEMPLATES.sceneTemplate)),
   };
 }
 
 function defaultSettings(): ShortFormImageStyleSettings {
   return {
-    commonConstraints: DEFAULT_COMMON_CONSTRAINTS,
     defaultStyleId: DEFAULT_STYLE_ID,
     styles: [DEFAULT_STYLE],
-    promptTemplates: DEFAULT_NANO_BANANA_PROMPT_TEMPLATES,
+    promptTemplates: normalizePromptTemplates(undefined),
   };
 }
 
@@ -387,10 +576,6 @@ function normalizeSettings(value: unknown): ShortFormImageStyleSettings {
     : normalizedStyles[0].id;
 
   return {
-    commonConstraints:
-      typeof obj.commonConstraints === "string" && obj.commonConstraints.trim()
-        ? obj.commonConstraints.trim()
-        : DEFAULT_COMMON_CONSTRAINTS,
     defaultStyleId,
     styles: normalizedStyles,
     promptTemplates: normalizePromptTemplates(obj.promptTemplates),
@@ -416,10 +601,6 @@ function normalizeSettingsForStorage(value: unknown): ShortFormImageStyleSetting
     : normalizedStyles[0].id;
 
   return {
-    commonConstraints:
-      typeof obj.commonConstraints === "string" && obj.commonConstraints.trim()
-        ? obj.commonConstraints.trim()
-        : DEFAULT_COMMON_CONSTRAINTS,
     defaultStyleId,
     styles: normalizedStyles,
     promptTemplates: normalizePromptTemplates(obj.promptTemplates),
@@ -485,12 +666,16 @@ export function resolveShortFormImageStyle(styleId?: string | null) {
     style,
     resolvedStyleId: style.id,
     effectiveStylePrompt,
-    combinedStylePrompt: [settings.commonConstraints, effectiveStylePrompt].filter(Boolean).join("\n"),
+    combinedStylePrompt: effectiveStylePrompt,
   };
 }
 
 export function getDefaultShortFormNanoBananaPromptTemplates() {
-  return DEFAULT_NANO_BANANA_PROMPT_TEMPLATES;
+  return normalizePromptTemplates(undefined);
+}
+
+export function normalizeShortFormNanoBananaPromptTemplates(value: unknown) {
+  return normalizePromptTemplates(value);
 }
 
 export function getShortFormStyleTestsDir() {

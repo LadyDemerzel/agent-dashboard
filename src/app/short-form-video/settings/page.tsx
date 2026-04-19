@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { OrbitLoader, Skeleton } from '@/components/ui/loading';
 import { SectionNavigator, useSectionScrollSpy } from '@/components/short-form-video/SectionNavigator';
@@ -44,7 +45,6 @@ type SettingsSectionId =
   | 'caption-styles'
   | 'background-videos'
   | 'image-templates'
-  | 'image-shared-constraints'
   | 'image-styles'
   | 'prompt-hooks'
   | 'prompt-research'
@@ -99,11 +99,73 @@ interface NanoBananaPromptTemplates {
 }
 
 interface ImageStyleSettings {
-  commonConstraints: string;
   defaultStyleId: string;
   styles: ImageStyle[];
   promptTemplates: NanoBananaPromptTemplates;
 }
+
+const NANO_BANANA_PLACEHOLDER_ROWS = [
+  {
+    placeholder: '{{topic}}',
+    explanation: "The project topic from the short-form video metadata. This comes from the XML video topic or dashboard project topic field.",
+    example: 'Facial posture reset',
+  },
+  {
+    placeholder: '{{script}}',
+    explanation: 'The full spoken script context for the current short-form video, pulled from the XML or generated script.',
+    example: 'Your jawline changes when posture changes, because your neck position affects the tissue under your chin.',
+  },
+  {
+    placeholder: '{{assetId}}',
+    explanation: 'The current XML image asset id being rendered for this scene. It usually comes from <assets><image id="...">.',
+    example: 'jawline-side-profile',
+  },
+  {
+    placeholder: '{{assetPrompt}}',
+    explanation: 'The current asset prompt text for the scene image. This is the main per-asset visual instruction from the XML asset or legacy scene prompt.',
+    example: 'Single full-frame side-profile portrait showing improved neck alignment and a cleaner jawline silhouette.',
+  },
+  {
+    placeholder: '{{assetDerivedFromId}}',
+    explanation: 'The source asset id when the current XML asset uses basedOn for continuity or variation reuse.',
+    example: 'character-base-profile',
+  },
+  {
+    placeholder: '{{extraDirection}}',
+    explanation: 'Optional revision notes entered during a rerender or style test. Comes from the dashboard request note field.',
+    example: 'Make the chin tuck clearer and simplify the shoulder line.',
+  },
+  {
+    placeholder: '{{continuityInstructions}}',
+    explanation: 'Auto-generated continuity guidance when a scene references the previous frame or a derived asset. The generator composes this from scene linkage data.',
+    example: 'Attached reference image 2 shows the actual previous generated scene. Treat that image as the primary continuity anchor for this frame.',
+  },
+  {
+    placeholder: '{{styleInstructionsBlock}}',
+    explanation: 'The fully rendered output of the Style instructions template below. The scene and character templates both inject this full block.',
+    example: 'Keep the same subject identity and overall look: same androgynous high-fashion model across all scenes...',
+  },
+  {
+    placeholder: '{{subjectPrompt}}',
+    explanation: 'The selected image style subject prompt from the style library. This defines the recurring subject identity.',
+    example: 'same androgynous high-fashion model across all scenes, sharp eye area, defined cheekbones, elegant neutral styling',
+  },
+  {
+    placeholder: '{{headerPercent}}',
+    explanation: "The selected style's caption-safe top-area percentage from the style library.",
+    example: '28',
+  },
+  {
+    placeholder: '{{perStyleInstructions}}',
+    explanation: 'The effective per-style art direction text from the selected style. This includes the style prompt plus any reference-driven guidance added by the runtime.',
+    example: 'Clean dramatic high-contrast pencil-and-charcoal illustration, premium modern TikTok aesthetic, restrained vivid red accents only on the key focal area.',
+  },
+  {
+    placeholder: '{{extraReferences}}',
+    explanation: 'A bullet list describing every non-character reference image attached to the selected style, including label, usage type, and usage instructions.',
+    example: "- Attached reference image 2 (Lighting ref): usage type 'lighting'. Use this reference for soft rim lighting and subtle studio falloff.",
+  },
+] as const;
 
 type VoiceMode = 'voice-design' | 'custom-voice';
 type VoiceSourceType = 'generated' | 'uploaded-reference';
@@ -394,7 +456,6 @@ function createEmptySectionFeedback(): Record<SettingsSectionId, SectionFeedback
     'caption-styles': { saving: false, error: null, message: null },
     'background-videos': { saving: false, error: null, message: null },
     'image-templates': { saving: false, error: null, message: null },
-    'image-shared-constraints': { saving: false, error: null, message: null },
     'image-styles': { saving: false, error: null, message: null },
     'prompt-hooks': { saving: false, error: null, message: null },
     'prompt-research': { saving: false, error: null, message: null },
@@ -911,6 +972,7 @@ export default function ShortFormVideoSettingsPage() {
   const [selectedMusicId, setSelectedMusicId] = useState<string | null>(null);
   const [selectedCaptionStyleId, setSelectedCaptionStyleId] = useState<string | null>(null);
   const [selectedAnimationPresetId, setSelectedAnimationPresetId] = useState<string | null>(null);
+  const [captionLibraryTab, setCaptionLibraryTab] = useState<'styles' | 'presets'>('styles');
   const [animationPresetJsonDraft, setAnimationPresetJsonDraft] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1069,6 +1131,15 @@ export default function ShortFormVideoSettingsPage() {
   }, [selectedAnimationPreset]);
 
   useEffect(() => {
+    if (!selectedCaptionStyle?.animationPresetId || !videoRender?.animationPresets.some((preset) => preset.id === selectedCaptionStyle.animationPresetId)) {
+      return;
+    }
+    setSelectedAnimationPresetId((current) => (
+      current === selectedCaptionStyle.animationPresetId ? current : selectedCaptionStyle.animationPresetId
+    ));
+  }, [selectedCaptionStyle?.animationPresetId, videoRender]);
+
+  useEffect(() => {
     setTtsPreview({
       isLoading: false,
       error: null,
@@ -1090,9 +1161,6 @@ export default function ShortFormVideoSettingsPage() {
     const imageTemplateDirty = imageStyles && initialImageStyles
       ? serializeForCompare(imageStyles.promptTemplates) !== serializeForCompare(initialImageStyles.promptTemplates)
       : false;
-    const imageSharedDirty = imageStyles && initialImageStyles
-      ? (imageStyles.commonConstraints || '') !== (initialImageStyles.commonConstraints || '')
-      : false;
     const imageStyleLibraryDirty = imageStyles && initialImageStyles
       ? serializeForCompare({ styles: imageStyles.styles, defaultStyleId: imageStyles.defaultStyleId }) !==
         serializeForCompare({ styles: initialImageStyles.styles, defaultStyleId: initialImageStyles.defaultStyleId })
@@ -1106,12 +1174,10 @@ export default function ShortFormVideoSettingsPage() {
           musicTracks: videoRender.musicTracks,
           defaultMusicTrackId: videoRender.defaultMusicTrackId,
           musicVolume: videoRender.musicVolume,
-          captionMaxWords: videoRender.captionMaxWords,
         }) !== serializeForCompare({
           musicTracks: initialVideoRender.musicTracks,
           defaultMusicTrackId: initialVideoRender.defaultMusicTrackId,
           musicVolume: initialVideoRender.musicVolume,
-          captionMaxWords: initialVideoRender.captionMaxWords,
         })
       : false;
     const captionStylesDirty = videoRender && initialVideoRender
@@ -1119,10 +1185,12 @@ export default function ShortFormVideoSettingsPage() {
           animationPresets: videoRender.animationPresets,
           captionStyles: videoRender.captionStyles,
           defaultCaptionStyleId: videoRender.defaultCaptionStyleId,
+          captionMaxWords: videoRender.captionMaxWords,
         }) !== serializeForCompare({
           animationPresets: initialVideoRender.animationPresets,
           captionStyles: initialVideoRender.captionStyles,
           defaultCaptionStyleId: initialVideoRender.defaultCaptionStyleId,
+          captionMaxWords: initialVideoRender.captionMaxWords,
         })
       : false;
     const pauseRemovalDirty = videoRender && initialVideoRender
@@ -1149,7 +1217,6 @@ export default function ShortFormVideoSettingsPage() {
       'caption-styles': captionStylesDirty,
       'background-videos': backgroundVideosDirty,
       'image-templates': imageTemplateDirty,
-      'image-shared-constraints': imageSharedDirty,
       'image-styles': imageStyleLibraryDirty,
       'prompt-hooks': promptGroupDirty['prompt-hooks'],
       'prompt-research': promptGroupDirty['prompt-research'],
@@ -1161,15 +1228,14 @@ export default function ShortFormVideoSettingsPage() {
     () => [
       { id: 'prompt-hooks' as const, label: 'Hook prompts', dirty: dirtyBySection['prompt-hooks'] },
       { id: 'prompt-research' as const, label: 'Research prompts', dirty: dirtyBySection['prompt-research'] },
-      { id: 'text-script-prompts' as const, label: 'Text-script prompts', dirty: dirtyBySection['text-script-prompts'] },
-      { id: 'tts-voice' as const, label: 'Voice library', dirty: dirtyBySection['tts-voice'] },
-      { id: 'pause-removal' as const, label: 'Pause removal', dirty: dirtyBySection['pause-removal'] },
-      { id: 'caption-styles' as const, label: 'Caption styles', dirty: dirtyBySection['caption-styles'] },
-      { id: 'image-templates' as const, label: 'Nano Banana templates', dirty: dirtyBySection['image-templates'] },
-      { id: 'image-shared-constraints' as const, label: 'Shared image constraints', dirty: dirtyBySection['image-shared-constraints'] },
+      { id: 'text-script-prompts' as const, label: 'Text-script Scribe prompts', dirty: dirtyBySection['text-script-prompts'] },
+      { id: 'pause-removal' as const, label: 'Pause-removal defaults', dirty: dirtyBySection['pause-removal'] },
+      { id: 'tts-voice' as const, label: 'Qwen voice library', dirty: dirtyBySection['tts-voice'] },
+      { id: 'image-templates' as const, label: 'Nano Banana prompt templates', dirty: dirtyBySection['image-templates'] },
       { id: 'image-styles' as const, label: 'Image style library', dirty: dirtyBySection['image-styles'] },
-      { id: 'background-videos' as const, label: 'Background videos', dirty: dirtyBySection['background-videos'] },
-      { id: 'music-library' as const, label: 'Music library', dirty: dirtyBySection['music-library'] },
+      { id: 'caption-styles' as const, label: 'Caption style library', dirty: dirtyBySection['caption-styles'] },
+      { id: 'background-videos' as const, label: 'Looping background video library', dirty: dirtyBySection['background-videos'] },
+      { id: 'music-library' as const, label: 'Music soundtrack library', dirty: dirtyBySection['music-library'] },
     ],
     [dirtyBySection]
   );
@@ -1414,16 +1480,6 @@ export default function ShortFormVideoSettingsPage() {
       return;
     }
 
-    if (sectionId === 'image-shared-constraints') {
-      setImageStyles((current) =>
-        current ? { ...current, commonConstraints: data.imageStyles.commonConstraints } : data.imageStyles
-      );
-      setInitialImageStyles((current) =>
-        current ? { ...current, commonConstraints: data.imageStyles.commonConstraints } : data.imageStyles
-      );
-      return;
-    }
-
     if (sectionId === 'image-styles') {
       setImageStyles((current) =>
         current
@@ -1478,7 +1534,6 @@ export default function ShortFormVideoSettingsPage() {
                 musicTracks: videoRender.musicTracks,
                 defaultMusicTrackId: videoRender.defaultMusicTrackId,
                 musicVolume: videoRender.musicVolume,
-                captionMaxWords: videoRender.captionMaxWords,
               },
             }
           : null;
@@ -1489,6 +1544,7 @@ export default function ShortFormVideoSettingsPage() {
                 animationPresets: videoRender.animationPresets,
                 captionStyles: videoRender.captionStyles,
                 defaultCaptionStyleId: videoRender.defaultCaptionStyleId,
+                captionMaxWords: videoRender.captionMaxWords,
               },
             }
           : null;
@@ -1498,8 +1554,6 @@ export default function ShortFormVideoSettingsPage() {
         return textScriptSettings ? { textScript: textScriptSettings } : null;
       case 'image-templates':
         return imageStyles ? { imageStyles: { promptTemplates: imageStyles.promptTemplates } } : null;
-      case 'image-shared-constraints':
-        return imageStyles ? { imageStyles: { commonConstraints: imageStyles.commonConstraints } } : null;
       case 'image-styles':
         return imageStyles ? { imageStyles: { styles: imageStyles.styles, defaultStyleId: imageStyles.defaultStyleId } } : null;
       default: {
@@ -1538,7 +1592,7 @@ export default function ShortFormVideoSettingsPage() {
                   ? 'Saved. New final-video runs will use this caption-style library/default immediately.'
                   : sectionId === 'background-videos'
                     ? 'Saved. Projects now use this background-video library/default immediately.'
-                    : sectionId === 'image-templates' || sectionId === 'image-shared-constraints' || sectionId === 'image-styles'
+                    : sectionId === 'image-templates' || sectionId === 'image-styles'
                       ? 'Saved. New scene-image runs and tests will use this section immediately.'
                       : sectionId === 'text-script-prompts'
                         ? 'Saved. New text-script runs will use these full Scribe prompt templates and the default max-iteration limit immediately.'
@@ -1587,6 +1641,7 @@ export default function ShortFormVideoSettingsPage() {
           animationPresets: initialVideoRender.animationPresets,
           captionStyles: initialVideoRender.captionStyles,
           defaultCaptionStyleId: initialVideoRender.defaultCaptionStyleId,
+          captionMaxWords: initialVideoRender.captionMaxWords,
         });
         setSelectedCaptionStyleId(initialVideoRender.defaultCaptionStyleId || initialVideoRender.captionStyles[0]?.id || null);
         setSelectedAnimationPresetId(initialVideoRender.animationPresets[0]?.id || null);
@@ -1598,7 +1653,6 @@ export default function ShortFormVideoSettingsPage() {
         musicTracks: initialVideoRender.musicTracks,
         defaultMusicTrackId: initialVideoRender.defaultMusicTrackId,
         musicVolume: initialVideoRender.musicVolume,
-        captionMaxWords: initialVideoRender.captionMaxWords,
       });
       setSelectedMusicId(initialVideoRender.defaultMusicTrackId || initialVideoRender.musicTracks[0]?.id || null);
       return;
@@ -1616,11 +1670,6 @@ export default function ShortFormVideoSettingsPage() {
 
     if (sectionId === 'image-templates' && imageStyles && initialImageStyles) {
       setImageStyles({ ...imageStyles, promptTemplates: initialImageStyles.promptTemplates });
-      return;
-    }
-
-    if (sectionId === 'image-shared-constraints' && imageStyles && initialImageStyles) {
-      setImageStyles({ ...imageStyles, commonConstraints: initialImageStyles.commonConstraints });
       return;
     }
 
@@ -1898,6 +1947,7 @@ export default function ShortFormVideoSettingsPage() {
       ...videoRender,
       animationPresets: [...videoRender.animationPresets, nextPreset],
     });
+    setCaptionLibraryTab('presets');
     setSelectedAnimationPresetId(nextPreset.id);
   }
 
@@ -1922,6 +1972,7 @@ export default function ShortFormVideoSettingsPage() {
       ...videoRender,
       animationPresets: nextPresets,
     });
+    setCaptionLibraryTab('presets');
     setSelectedAnimationPresetId(duplicate.id);
   }
 
@@ -1941,6 +1992,7 @@ export default function ShortFormVideoSettingsPage() {
         ? { ...style, animationPresetId: fallbackPreset.id, animationPreset: fallbackPreset.slug }
         : style),
     });
+    setCaptionLibraryTab('presets');
     setSelectedAnimationPresetId(fallbackPreset.id);
   }
 
@@ -1955,6 +2007,7 @@ export default function ShortFormVideoSettingsPage() {
       defaultCaptionStyleId: videoRender.defaultCaptionStyleId || dedupedId,
       captionStyles: [...videoRender.captionStyles, nextStyle],
     });
+    setCaptionLibraryTab('styles');
     setSelectedCaptionStyleId(dedupedId);
   }
 
@@ -1976,6 +2029,7 @@ export default function ShortFormVideoSettingsPage() {
       ...videoRender,
       captionStyles: nextStyles,
     });
+    setCaptionLibraryTab('styles');
     setSelectedCaptionStyleId(duplicated.id);
   }
 
@@ -1989,7 +2043,22 @@ export default function ShortFormVideoSettingsPage() {
       defaultCaptionStyleId: nextDefault,
       captionStyles: remaining,
     });
+    setCaptionLibraryTab('styles');
     setSelectedCaptionStyleId(remaining[0]?.id || null);
+  }
+
+  function handleCaptionStyleSelection(styleId: string) {
+    setCaptionLibraryTab('styles');
+    setSelectedCaptionStyleId(styleId);
+    const nextStyle = videoRender?.captionStyles.find((style) => style.id === styleId);
+    if (nextStyle) {
+      setSelectedAnimationPresetId(nextStyle.animationPresetId);
+    }
+  }
+
+  function handleAnimationPresetSelection(presetId: string) {
+    setCaptionLibraryTab('presets');
+    setSelectedAnimationPresetId(presetId);
   }
 
   function addMusic() {
@@ -2076,8 +2145,6 @@ export default function ShortFormVideoSettingsPage() {
 
     const styleId = selectedStyle.id;
     const styleSnapshot = { ...selectedStyle };
-    const commonConstraints = imageStyles.commonConstraints;
-
     setStyleTestsById((current) => ({
       ...current,
       [styleId]: {
@@ -2094,7 +2161,6 @@ export default function ShortFormVideoSettingsPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            commonConstraints,
             promptTemplates: imageStyles.promptTemplates,
             style: styleSnapshot,
           }),
@@ -2729,7 +2795,7 @@ export default function ShortFormVideoSettingsPage() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <WorkflowSectionHeader
               title="Nano Banana prompt templates"
-              description="These are the real editable templates used by the direct dashboard scene-image path. The runtime now hard-enforces a green-screen foreground-plate workflow so final backgrounds come from the selected looping background video rather than the generated scene art."
+              description="These are the real editable templates used by the direct dashboard scene-image path. Shared visual rules and greenscreen requirements now live inside the style-instructions template itself, so what you edit here is what Nano Banana gets."
               status={dirtyBySection['image-templates'] ? 'needs review' : 'approved'}
             />
             <SectionActions
@@ -2743,11 +2809,29 @@ export default function ShortFormVideoSettingsPage() {
 
           {imageStyles ? (
             <div className="space-y-4">
-              <div className="grid gap-4 xl:grid-cols-3">
+              <div className="space-y-4">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-medium text-foreground">Style instructions block template</h3>
-                    <span className="text-[11px] text-muted-foreground">Injected into both character-ref and scene prompts</span>
+                    <h3 className="text-sm font-medium text-foreground">Scene generation template</h3>
+                    <span className="text-[11px] text-muted-foreground">Used as the real per-scene Nano Banana prompt surface</span>
+                  </div>
+                  <Textarea
+                    value={imageStyles.promptTemplates.sceneTemplate}
+                    onChange={(event) => {
+                      updateSectionFeedbackState('image-templates', { error: null, message: null });
+                      setImageStyles({
+                        ...imageStyles,
+                        promptTemplates: { ...imageStyles.promptTemplates, sceneTemplate: event.target.value },
+                      });
+                    }}
+                    className="min-h-[240px] font-mono text-xs"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-medium text-foreground">Style instructions template</h3>
+                    <span className="text-[11px] text-muted-foreground">Rendered first, then injected into the scene and character templates</span>
                   </div>
                   <Textarea
                     value={imageStyles.promptTemplates.styleInstructionsTemplate}
@@ -2779,79 +2863,35 @@ export default function ShortFormVideoSettingsPage() {
                     className="min-h-[240px] font-mono text-xs"
                   />
                 </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-medium text-foreground">Scene generation template</h3>
-                    <span className="text-[11px] text-muted-foreground">The real per-scene Nano Banana prompt wrapper</span>
-                  </div>
-                  <Textarea
-                    value={imageStyles.promptTemplates.sceneTemplate}
-                    onChange={(event) => {
-                      updateSectionFeedbackState('image-templates', { error: null, message: null });
-                      setImageStyles({
-                        ...imageStyles,
-                        promptTemplates: { ...imageStyles.promptTemplates, sceneTemplate: event.target.value },
-                      });
-                    }}
-                    className="min-h-[240px] font-mono text-xs"
-                  />
-                </div>
               </div>
 
               <div className="rounded-lg border border-border/70 bg-background/40 p-3 text-xs text-muted-foreground">
                 <p className="font-medium text-foreground">Useful placeholders</p>
-                <ul className="mt-2 grid gap-1 md:grid-cols-2 xl:grid-cols-3">
-                  <li><code>{'{{styleInstructionsBlock}}'}</code> → rendered shared constraints + per-style instructions block</li>
-                  <li><code>{'{{subjectPrompt}}'}</code>, <code>{'{{headerPercent}}'}</code></li>
-                  <li><code>{'{{sharedConstraintsBlock}}'}</code>, <code>{'{{perStyleInstructionsBlock}}'}</code>, <code>{'{{extraReferencesBlock}}'}</code></li>
-                  <li><code>{'{{sceneNumber}}'}</code>, <code>{'{{sceneText}}'}</code>, <code>{'{{sceneImagePrompt}}'}</code></li>
-                  <li><code>{'{{topicLine}}'}</code>, <code>{'{{scriptLine}}'}</code></li>
-                  <li><code>{'{{extraDirectionLine}}'}</code>, <code>{'{{continuityInstructionsLine}}'}</code></li>
-                </ul>
+                <div className="mt-2 overflow-x-auto">
+                  <table className="min-w-full border-collapse text-left text-xs text-muted-foreground">
+                    <thead>
+                      <tr className="border-b border-border/70 text-[11px] uppercase tracking-wide text-muted-foreground">
+                        <th className="px-2 py-2 font-medium">Placeholder</th>
+                        <th className="px-2 py-2 font-medium">What it represents</th>
+                        <th className="px-2 py-2 font-medium">Example value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {NANO_BANANA_PLACEHOLDER_ROWS.map((row) => (
+                        <tr key={row.placeholder} className="border-b border-border/50 align-top last:border-b-0">
+                          <td className="px-2 py-2 font-mono text-[11px] text-foreground">{row.placeholder}</td>
+                          <td className="px-2 py-2 leading-5">{row.explanation}</td>
+                          <td className="px-2 py-2 leading-5 text-foreground/80">{row.example}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           ) : null}
 
           <SectionFeedbackNotice feedback={sectionFeedback['image-templates']} />
-        </Card>
-      </section>
-
-      <section id="image-shared-constraints" className="scroll-mt-24">
-        <Card className="space-y-5 p-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <WorkflowSectionHeader
-              title="Shared image constraints"
-              description="Reusable visual rules applied across styles via the real Nano Banana style-instructions block."
-              status={dirtyBySection['image-shared-constraints'] ? 'needs review' : 'approved'}
-            />
-            <SectionActions
-              dirty={dirtyBySection['image-shared-constraints']}
-              saving={sectionFeedback['image-shared-constraints'].saving}
-              saveLabel="Save constraints"
-              onSave={() => void saveSection('image-shared-constraints')}
-              onReset={() => resetSection('image-shared-constraints')}
-            />
-          </div>
-
-          {imageStyles ? (
-            <div className="space-y-2">
-              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Shared/common constraints</label>
-              <Textarea
-                value={imageStyles.commonConstraints}
-                onChange={(event) => {
-                  updateSectionFeedbackState('image-shared-constraints', { error: null, message: null });
-                  setImageStyles({
-                    ...imageStyles,
-                    commonConstraints: event.target.value,
-                  });
-                }}
-                className="min-h-[180px] font-mono text-xs"
-              />
-            </div>
-          ) : null}
-
-          <SectionFeedbackNotice feedback={sectionFeedback['image-shared-constraints']} />
         </Card>
       </section>
 
@@ -2917,7 +2957,7 @@ export default function ShortFormVideoSettingsPage() {
                     <div>
                       <h2 className="text-sm font-medium text-foreground">Edit style</h2>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Per-style instructions are injected into the real Nano Banana templates through the shared style-instructions block.
+                        Per-style instructions are injected into the real Nano Banana templates through the editable style-instructions block.
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -3126,8 +3166,8 @@ export default function ShortFormVideoSettingsPage() {
                       <div>
                         <h3 className="text-sm font-medium text-foreground">Style test</h3>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Lightweight one-scene generation loop using the current editor values, including the real Nano Banana templates,
-                          shared constraints, and any uploaded style reference images with their usage instructions.
+                          Lightweight one-scene generation loop using the current editor values, including the real Nano Banana templates
+                          and any uploaded style reference images with their usage instructions.
                         </p>
                       </div>
                       <Button onClick={() => void generateStyleTest()} disabled={selectedStyleTest?.isLoading || anySectionSaving || selectedStyleUpload?.isUploading}>
@@ -3223,6 +3263,24 @@ export default function ShortFormVideoSettingsPage() {
           {videoRender ? (
             <div className="space-y-5">
               <div className="rounded-lg border border-border bg-background/60 p-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Caption max words</label>
+                  <Input
+                    type="number"
+                    min={2}
+                    max={12}
+                    value={videoRender.captionMaxWords}
+                    onChange={(event) => {
+                      updateSectionFeedbackState('caption-styles', { error: null, message: null });
+                      setVideoRender({ ...videoRender, captionMaxWords: Math.max(2, Math.min(12, Number(event.target.value || 6))) });
+                    }}
+                    className="max-w-[140px]"
+                  />
+                  <p className="text-xs text-muted-foreground">Global default for deterministic caption chunking during the XML Script pipeline. Projects can still override this per video.</p>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border bg-background/60 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-medium text-foreground">Saved caption styles</h3>
@@ -3230,372 +3288,386 @@ export default function ShortFormVideoSettingsPage() {
                       Final-video renders keep the current deterministic caption segmentation and forced-alignment timing pipeline, then burn animated subtitles with word-level highlighting. The active word stays white, already-spoken words shift lighter, and upcoming words stay darker unless a style overrides those colors.
                     </p>
                   </div>
-                  <Button variant="outline" onClick={addCaptionStyle} disabled={sectionFeedback['caption-styles'].saving}>
-                    Add caption style
+                  <Button
+                    variant="outline"
+                    onClick={captionLibraryTab === 'styles' ? addCaptionStyle : addAnimationPreset}
+                    disabled={sectionFeedback['caption-styles'].saving}
+                  >
+                    {captionLibraryTab === 'styles' ? 'Add caption style' : 'Add animation preset'}
                   </Button>
                 </div>
 
-                <div className="mt-4 grid gap-4 lg:grid-cols-[320px,1fr]">
-                  <div className="space-y-4">
-                    <div className="space-y-2 rounded-lg border border-border bg-background/50 p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Caption style library</label>
-                        <Button variant="outline" size="sm" onClick={addCaptionStyle} disabled={sectionFeedback['caption-styles'].saving}>
-                          Add
-                        </Button>
+                <div className="mt-4 space-y-4">
+                  <div className="rounded-lg border border-border bg-background/50 p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Library mode</label>
+                        <p className="mt-1 text-xs text-muted-foreground">Switch between caption-style editing and animation-preset editing so only one library is expanded at a time.</p>
                       </div>
-                      <Select
-                        value={selectedCaptionStyleId || ''}
-                        onChange={(event) => setSelectedCaptionStyleId(event.target.value)}
-                        disabled={videoRender.captionStyles.length === 0}
-                      >
-                        {videoRender.captionStyles.map((style) => (
-                          <option key={style.id} value={style.id}>
-                            {style.name}{style.id === videoRender.defaultCaptionStyleId ? ' (default)' : ''}
-                          </option>
-                        ))}
-                      </Select>
-                      <div className="text-xs text-muted-foreground">
-                        Default caption style:{' '}
-                        <span className="font-medium text-foreground">
-                          {videoRender.captionStyles.find((style) => style.id === videoRender.defaultCaptionStyleId)?.name || 'Not set'}
-                        </span>
-                      </div>
+                      <TabsList className="w-full justify-start sm:w-auto">
+                        <TabsTrigger active={captionLibraryTab === 'styles'} onClick={() => setCaptionLibraryTab('styles')} type="button">
+                          Caption styles
+                        </TabsTrigger>
+                        <TabsTrigger active={captionLibraryTab === 'presets'} onClick={() => setCaptionLibraryTab('presets')} type="button">
+                          Animation presets
+                        </TabsTrigger>
+                      </TabsList>
                     </div>
 
-                    <div className="space-y-2 rounded-lg border border-border bg-background/50 p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Animation preset library</label>
-                        <Button variant="outline" size="sm" onClick={addAnimationPreset} disabled={sectionFeedback['caption-styles'].saving}>
-                          Add
-                        </Button>
-                      </div>
-                      <Select
-                        value={selectedAnimationPresetId || ''}
-                        onChange={(event) => setSelectedAnimationPresetId(event.target.value)}
-                        disabled={videoRender.animationPresets.length === 0}
-                      >
-                        {videoRender.animationPresets.map((preset) => {
-                          const usageCount = videoRender.captionStyles.filter((style) => style.animationPresetId === preset.id).length;
-                          return (
-                            <option key={preset.id} value={preset.id}>
-                              {preset.name}{preset.builtIn ? ' (built-in)' : ''}{usageCount > 0 ? ` · ${usageCount} style${usageCount === 1 ? '' : 's'}` : ''}
+                    {captionLibraryTab === 'styles' ? (
+                      <div className="mt-4 space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Caption style library</label>
+                        <Select
+                          value={selectedCaptionStyleId || ''}
+                          onChange={(event) => handleCaptionStyleSelection(event.target.value)}
+                          disabled={videoRender.captionStyles.length === 0}
+                        >
+                          {videoRender.captionStyles.map((style) => (
+                            <option key={style.id} value={style.id}>
+                              {style.name}{style.id === videoRender.defaultCaptionStyleId ? ' (default)' : ''}
                             </option>
-                          );
-                        })}
-                      </Select>
-                      {selectedAnimationPreset ? (
-                        <div className="rounded-lg border border-border bg-background/40 p-3 text-xs text-muted-foreground">
-                          <p className="font-medium text-foreground">{selectedAnimationPreset.name}</p>
-                          <p className="mt-1">{selectedAnimationPreset.description || 'No description yet.'}</p>
-                          <p className="mt-2">Used by {videoRender.captionStyles.filter((style) => style.animationPresetId === selectedAnimationPreset.id).length} caption style(s).</p>
+                          ))}
+                        </Select>
+                        <div className="text-xs text-muted-foreground">
+                          Default caption style:{' '}
+                          <span className="font-medium text-foreground">
+                            {videoRender.captionStyles.find((style) => style.id === videoRender.defaultCaptionStyleId)?.name || 'Not set'}
+                          </span>
                         </div>
-                      ) : null}
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="mt-4 space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Animation preset library</label>
+                        <Select
+                          value={selectedAnimationPresetId || ''}
+                          onChange={(event) => handleAnimationPresetSelection(event.target.value)}
+                          disabled={videoRender.animationPresets.length === 0}
+                        >
+                          {videoRender.animationPresets.map((preset) => {
+                            const usageCount = videoRender.captionStyles.filter((style) => style.animationPresetId === preset.id).length;
+                            return (
+                              <option key={preset.id} value={preset.id}>
+                                {preset.name}{preset.builtIn ? ' (built-in)' : ''}{usageCount > 0 ? ` · ${usageCount} style${usageCount === 1 ? '' : 's'}` : ''}
+                              </option>
+                            );
+                          })}
+                        </Select>
+                        {selectedAnimationPreset ? (
+                          <div className="rounded-lg border border-border bg-background/40 p-3 text-xs text-muted-foreground">
+                            <p className="font-medium text-foreground">{selectedAnimationPreset.name}</p>
+                            <p className="mt-1">{selectedAnimationPreset.description || 'No description yet.'}</p>
+                            <p className="mt-2">Used by {videoRender.captionStyles.filter((style) => style.animationPresetId === selectedAnimationPreset.id).length} caption style(s).</p>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
 
-                  {selectedCaptionStyle && selectedCaptionStyleAnimationPreset && selectedAnimationPreset ? (
-                    <div className="space-y-4 rounded-lg border border-border bg-background/50 p-4">
-                      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)]">
-                        <div className="space-y-4">
-                          <div className="rounded-lg border border-border bg-background/40 p-4">
-                            <div className="grid gap-4 md:grid-cols-2">
-                              <div className="space-y-2">
-                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Style name</label>
-                                <Input value={selectedCaptionStyle.name} onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, name: event.target.value }))} />
-                              </div>
-                              <div className="space-y-2">
-                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Animation preset reference</label>
-                                <Select
-                                  value={selectedCaptionStyle.animationPresetId}
-                                  onChange={(event) => updateSelectedCaptionStyle((style) => {
-                                    const preset = getCaptionAnimationPresetById(videoRender.animationPresets, event.target.value);
-                                    return { ...style, animationPresetId: preset.id, animationPreset: preset.slug };
-                                  })}
-                                >
-                                  {videoRender.animationPresets.map((preset) => (
-                                    <option key={preset.id} value={preset.id}>{preset.name}</option>
-                                  ))}
-                                </Select>
-                                <p className="text-xs text-muted-foreground">Caption styles now reference a first-class preset entity by id. Edit the preset library below to change motion globally for any linked styles.</p>
-                              </div>
+                  {captionLibraryTab === 'styles' ? (
+                    selectedCaptionStyle && selectedCaptionStyleAnimationPreset ? (
+                      <div className="space-y-4 rounded-lg border border-border bg-background/50 p-4">
+                        <div className="rounded-lg border border-border bg-background/40 p-4">
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Style name</label>
+                              <Input value={selectedCaptionStyle.name} onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, name: event.target.value }))} />
                             </div>
-
-                            <div className="mt-4 grid gap-4 md:grid-cols-2">
-                              <div className="space-y-2">
-                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Font family</label>
-                                <Input value={selectedCaptionStyle.fontFamily} onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, fontFamily: event.target.value }))} />
-                              </div>
-                              <div className="space-y-2">
-                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Font weight</label>
-                                <Select value={String(selectedCaptionStyle.fontWeight)} onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, fontWeight: Number(event.target.value) || 700 }))}>
-                                  {CAPTION_FONT_WEIGHT_OPTIONS.map((option) => (
-                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                  ))}
-                                </Select>
-                              </div>
-                            </div>
-
-                            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                              <CaptionStyleNumberField label="Font size" value={selectedCaptionStyle.fontSize} min={32} max={120} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, fontSize: value }))} />
-                              <CaptionStyleNumberField label="Word spacing" value={selectedCaptionStyle.wordSpacing} min={-20} max={32} step={0.1} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, wordSpacing: value }))} />
-                              <CaptionStyleNumberField label="Side padding" value={selectedCaptionStyle.horizontalPadding} min={0} max={320} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, horizontalPadding: value }))} />
-                              <CaptionStyleNumberField label="Bottom margin" value={selectedCaptionStyle.bottomMargin} min={0} max={900} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, bottomMargin: value }))} />
-                              <CaptionStyleNumberField label="Outline width" value={selectedCaptionStyle.outlineWidth} min={0} max={12} step={0.1} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, outlineWidth: value }))} />
-                              <CaptionStyleNumberField label="Shadow strength" value={selectedCaptionStyle.shadowStrength} min={0} max={12} step={0.1} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowStrength: value }))} />
-                              <CaptionStyleNumberField label="Shadow blur" value={selectedCaptionStyle.shadowBlur} min={0} max={16} step={0.1} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowBlur: value }))} />
-                              <CaptionStyleNumberField label="Shadow X" value={selectedCaptionStyle.shadowOffsetX} min={-32} max={32} step={0.1} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowOffsetX: value }))} />
-                              <CaptionStyleNumberField label="Shadow Y" value={selectedCaptionStyle.shadowOffsetY} min={-32} max={32} step={0.1} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowOffsetY: value }))} />
-                              <CaptionStyleNumberField label="Background padding" value={selectedCaptionStyle.backgroundPadding} min={0} max={96} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundPadding: value }))} />
-                              <CaptionStyleNumberField label="Background radius" value={selectedCaptionStyle.backgroundRadius} min={0} max={96} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundRadius: value }))} />
-                            </div>
-
-                            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                              {[
-                                ['Active word', 'activeWordColor'],
-                                ['Spoken words', 'spokenWordColor'],
-                                ['Upcoming words', 'upcomingWordColor'],
-                                ['Outline', 'outlineColor'],
-                                ['Shadow', 'shadowColor'],
-                                ['Background', 'backgroundColor'],
-                              ].map(([label, key]) => (
-                                <div key={key} className="space-y-2 rounded-lg border border-border bg-background/30 p-3">
-                                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label} color</label>
-                                  <div className="flex items-center gap-3">
-                                    <input
-                                      type="color"
-                                      value={selectedCaptionStyle[key as keyof CaptionStyleEntry] as string}
-                                      onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, [key]: event.target.value.toUpperCase() }))}
-                                      className="h-10 w-12 cursor-pointer rounded border border-border bg-transparent p-1"
-                                    />
-                                    <Input
-                                      value={selectedCaptionStyle[key as keyof CaptionStyleEntry] as string}
-                                      onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, [key]: event.target.value.toUpperCase() }))}
-                                      className="font-mono text-xs"
-                                    />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-
-                            <div className="mt-4 rounded-lg border border-border bg-background/30 p-4">
-                              <div className="flex flex-wrap items-center justify-between gap-3">
-                                <div>
-                                  <h4 className="text-sm font-medium text-foreground">Background box</h4>
-                                  <p className="mt-1 text-xs text-muted-foreground">Preview and final render both use the saved background box intent.</p>
-                                </div>
-                                <label className="inline-flex items-center gap-2 text-sm text-foreground">
-                                  <input type="checkbox" checked={selectedCaptionStyle.backgroundEnabled} onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundEnabled: event.target.checked }))} />
-                                  Enable box
-                                </label>
-                              </div>
-                              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                                <div className="space-y-2">
-                                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Box opacity</label>
-                                  <div className="flex items-center gap-3">
-                                    <input type="range" min={0} max={1} step={0.01} value={selectedCaptionStyle.backgroundOpacity} onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundOpacity: Number(event.target.value) }))} className="w-full" />
-                                    <div className="w-14 text-right text-sm text-foreground">{Math.round(selectedCaptionStyle.backgroundOpacity * 100)}%</div>
-                                  </div>
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  Current linked animation preset: <span className="font-medium text-foreground">{selectedCaptionStyleAnimationPreset.name}</span><br />
-                                  Layout mode: <span className="font-medium text-foreground">{selectedCaptionStyleAnimationPreset.config.layoutMode}</span><br />
-                                  Timing mode: <span className="font-medium text-foreground">{selectedCaptionStyleAnimationPreset.config.timing.mode}</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
-                              <Button type="button" variant={selectedCaptionStyle.id === videoRender.defaultCaptionStyleId ? 'default' : 'outline'} onClick={() => {
-                                updateSectionFeedbackState('caption-styles', { error: null, message: null });
-                                setVideoRender({ ...videoRender, defaultCaptionStyleId: selectedCaptionStyle.id });
-                              }}>
-                                {selectedCaptionStyle.id === videoRender.defaultCaptionStyleId ? 'Default caption style' : 'Set as default'}
-                              </Button>
-                              <Button type="button" variant="outline" onClick={() => duplicateCaptionStyle(selectedCaptionStyle.id)}>Duplicate caption style</Button>
-                              <Button type="button" variant="outline" onClick={() => deleteCaptionStyle(selectedCaptionStyle.id)} disabled={videoRender.captionStyles.length <= 1}>Delete caption style</Button>
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Animation preset reference</label>
+                              <Select
+                                value={selectedCaptionStyle.animationPresetId}
+                                onChange={(event) => {
+                                  const preset = getCaptionAnimationPresetById(videoRender.animationPresets, event.target.value);
+                                  updateSelectedCaptionStyle((style) => ({ ...style, animationPresetId: preset.id, animationPreset: preset.slug }));
+                                  setSelectedAnimationPresetId(preset.id);
+                                }}
+                              >
+                                {videoRender.animationPresets.map((preset) => (
+                                  <option key={preset.id} value={preset.id}>{preset.name}</option>
+                                ))}
+                              </Select>
+                              <p className="text-xs text-muted-foreground">Caption styles now reference a first-class preset entity by id. Use the Animation presets tab to edit the linked motion globally.</p>
                             </div>
                           </div>
 
-                          <div className="rounded-lg border border-border bg-background/40 p-4">
+                          <div className="mt-4 grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Font family</label>
+                              <Input value={selectedCaptionStyle.fontFamily} onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, fontFamily: event.target.value }))} />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Font weight</label>
+                              <Select value={String(selectedCaptionStyle.fontWeight)} onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, fontWeight: Number(event.target.value) || 700 }))}>
+                                {CAPTION_FONT_WEIGHT_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                              </Select>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                            <CaptionStyleNumberField label="Font size" value={selectedCaptionStyle.fontSize} min={32} max={120} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, fontSize: value }))} />
+                            <CaptionStyleNumberField label="Word spacing" value={selectedCaptionStyle.wordSpacing} min={-20} max={32} step={0.1} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, wordSpacing: value }))} />
+                            <CaptionStyleNumberField label="Side padding" value={selectedCaptionStyle.horizontalPadding} min={0} max={320} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, horizontalPadding: value }))} />
+                            <CaptionStyleNumberField label="Bottom margin" value={selectedCaptionStyle.bottomMargin} min={0} max={900} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, bottomMargin: value }))} />
+                            <CaptionStyleNumberField label="Outline width" value={selectedCaptionStyle.outlineWidth} min={0} max={12} step={0.1} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, outlineWidth: value }))} />
+                            <CaptionStyleNumberField label="Shadow strength" value={selectedCaptionStyle.shadowStrength} min={0} max={12} step={0.1} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowStrength: value }))} />
+                            <CaptionStyleNumberField label="Shadow blur" value={selectedCaptionStyle.shadowBlur} min={0} max={16} step={0.1} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowBlur: value }))} />
+                            <CaptionStyleNumberField label="Shadow X" value={selectedCaptionStyle.shadowOffsetX} min={-32} max={32} step={0.1} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowOffsetX: value }))} />
+                            <CaptionStyleNumberField label="Shadow Y" value={selectedCaptionStyle.shadowOffsetY} min={-32} max={32} step={0.1} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, shadowOffsetY: value }))} />
+                            <CaptionStyleNumberField label="Background padding" value={selectedCaptionStyle.backgroundPadding} min={0} max={96} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundPadding: value }))} />
+                            <CaptionStyleNumberField label="Background radius" value={selectedCaptionStyle.backgroundRadius} min={0} max={96} onChange={(value) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundRadius: value }))} />
+                          </div>
+
+                          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                            {[
+                              ['Active word', 'activeWordColor'],
+                              ['Spoken words', 'spokenWordColor'],
+                              ['Upcoming words', 'upcomingWordColor'],
+                              ['Outline', 'outlineColor'],
+                              ['Shadow', 'shadowColor'],
+                              ['Background', 'backgroundColor'],
+                            ].map(([label, key]) => (
+                              <div key={key} className="space-y-2 rounded-lg border border-border bg-background/30 p-3">
+                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label} color</label>
+                                <div className="flex items-center gap-3">
+                                  <input
+                                    type="color"
+                                    value={selectedCaptionStyle[key as keyof CaptionStyleEntry] as string}
+                                    onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, [key]: event.target.value.toUpperCase() }))}
+                                    className="h-10 w-12 cursor-pointer rounded border border-border bg-transparent p-1"
+                                  />
+                                  <Input
+                                    value={selectedCaptionStyle[key as keyof CaptionStyleEntry] as string}
+                                    onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, [key]: event.target.value.toUpperCase() }))}
+                                    className="font-mono text-xs"
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="mt-4 rounded-lg border border-border bg-background/30 p-4">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               <div>
-                                <h4 className="text-sm font-medium text-foreground">Animation preset editor</h4>
-                                <p className="mt-1 text-xs text-muted-foreground">Built-ins are now first-class presets. Edit them directly, or duplicate them into custom variants.</p>
+                                <h4 className="text-sm font-medium text-foreground">Background box</h4>
+                                <p className="mt-1 text-xs text-muted-foreground">Preview and final render both use the saved background box intent.</p>
                               </div>
-                              <div className="flex flex-wrap gap-2">
-                                <Button type="button" variant="outline" size="sm" onClick={() => duplicateAnimationPreset(selectedAnimationPreset.id)}>Duplicate preset</Button>
-                                <Button type="button" variant="outline" size="sm" onClick={() => deleteAnimationPreset(selectedAnimationPreset.id)} disabled={videoRender.animationPresets.length <= 1}>Delete preset</Button>
-                              </div>
+                              <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                                <input type="checkbox" checked={selectedCaptionStyle.backgroundEnabled} onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundEnabled: event.target.checked }))} />
+                                Enable box
+                              </label>
                             </div>
-
                             <div className="mt-4 grid gap-4 md:grid-cols-2">
                               <div className="space-y-2">
-                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Preset name</label>
-                                <Input value={selectedAnimationPreset.name} onChange={(event) => updateSelectedAnimationPreset((preset) => ({ ...preset, name: event.target.value }))} />
-                              </div>
-                              <div className="space-y-2">
-                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Slug</label>
-                                <Input value={selectedAnimationPreset.slug} onChange={(event) => updateSelectedAnimationPreset((preset) => ({ ...preset, slug: event.target.value }))} className="font-mono text-xs" />
-                              </div>
-                            </div>
-
-                            <div className="mt-4 space-y-2">
-                              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Description</label>
-                              <Textarea value={selectedAnimationPreset.description} onChange={(event) => updateSelectedAnimationPreset((preset) => ({ ...preset, description: event.target.value }))} className="min-h-[76px] text-xs" />
-                            </div>
-
-                            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                              <div className="space-y-2">
-                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Layout mode</label>
-                                <Select value={selectedAnimationPreset.config.layoutMode} onChange={(event) => updateSelectedAnimationPreset((preset) => ({ ...preset, config: { ...preset.config, layoutMode: event.target.value === 'fluid' ? 'fluid' : 'stable' } }))}>
-                                  <option value="stable">Stable slots</option>
-                                  <option value="fluid">Fluid reflow</option>
-                                </Select>
-                              </div>
-                              <div className="space-y-2">
-                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Timing mode</label>
-                                <Select value={selectedAnimationPreset.config.timing.mode} onChange={(event) => updateSelectedAnimationPreset((preset) => ({ ...preset, config: { ...preset.config, timing: { ...preset.config.timing, mode: event.target.value === 'fixed' ? 'fixed' : 'word-relative' } } }))}>
-                                  <option value="word-relative">Word-relative</option>
-                                  <option value="fixed">Fixed duration</option>
-                                </Select>
-                              </div>
-                              <CaptionStyleNumberField label="Timing multiplier" value={selectedAnimationPreset.config.timing.multiplier} min={0.1} max={4} step={0.05} onChange={(value) => updateSelectedAnimationPreset((preset) => ({ ...preset, config: { ...preset.config, timing: { ...preset.config.timing, multiplier: value } } }))} />
-                              <CaptionStyleNumberField label="Fixed duration ms" value={selectedAnimationPreset.config.timing.fixedMs} min={40} max={2000} step={10} onChange={(value) => updateSelectedAnimationPreset((preset) => ({ ...preset, config: { ...preset.config, timing: { ...preset.config.timing, fixedMs: value } } }))} />
-                              <CaptionStyleNumberField label="Min duration ms" value={selectedAnimationPreset.config.timing.minMs} min={40} max={2000} step={10} onChange={(value) => updateSelectedAnimationPreset((preset) => ({ ...preset, config: { ...preset.config, timing: { ...preset.config.timing, minMs: value } } }))} />
-                              <CaptionStyleNumberField label="Max duration ms" value={selectedAnimationPreset.config.timing.maxMs} min={40} max={2000} step={10} onChange={(value) => updateSelectedAnimationPreset((preset) => ({ ...preset, config: { ...preset.config, timing: { ...preset.config.timing, maxMs: value } } }))} />
-                            </div>
-
-                            <div className="mt-4 grid gap-4 md:grid-cols-3">
-                              {([
-                                ['outlineColorMode', 'outlineColor', 'Outline source'],
-                                ['shadowColorMode', 'shadowColor', 'Shadow source'],
-                                ['glowColorMode', 'glowColor', 'Glow source'],
-                              ] as const).map(([modeKey, colorKey, label]) => {
-                                const modeValue = selectedAnimationPreset.config.colors[modeKey];
-                                const customValue = selectedAnimationPreset.config.colors[colorKey] || '#FFFFFF';
-                                return (
-                                  <div key={modeKey} className="space-y-2 rounded-lg border border-border bg-background/30 p-3">
-                                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</label>
-                                    <Select value={modeValue} onChange={(event) => updateSelectedAnimationPreset((preset) => ({
-                                      ...preset,
-                                      config: {
-                                        ...preset.config,
-                                        colors: {
-                                          ...preset.config.colors,
-                                          [modeKey]: event.target.value as ShortFormCaptionAnimationColorMode,
-                                        },
-                                      },
-                                    }))}>
-                                      {CAPTION_ANIMATION_COLOR_MODE_OPTIONS.map((option) => (
-                                        <option key={option.value} value={option.value}>{option.label}</option>
-                                      ))}
-                                    </Select>
-                                    {modeValue === 'custom' ? (
-                                      <Input value={customValue} onChange={(event) => updateSelectedAnimationPreset((preset) => ({
-                                        ...preset,
-                                        config: {
-                                          ...preset.config,
-                                          colors: {
-                                            ...preset.config.colors,
-                                            [colorKey]: event.target.value.toUpperCase(),
-                                          },
-                                        },
-                                      }))} className="font-mono text-xs" />
-                                    ) : null}
-                                  </div>
-                                );
-                              })}
-                            </div>
-
-                            <div className="mt-4 space-y-4">
-                              <div>
-                                <h5 className="text-sm font-medium text-foreground">Motion tracks</h5>
-                                <p className="mt-1 text-xs text-muted-foreground">Edit the keyframes that drive scale, lift, blur, glow, outline, and shadow response during the active-word window.</p>
-                              </div>
-                              <div className="grid gap-4 xl:grid-cols-2">
-                                {CAPTION_ANIMATION_TRACK_LABELS.map((trackDefinition) => {
-                                  const track = selectedAnimationPreset.config.motion[trackDefinition.key];
-                                  const trackRange = trackDefinition.key === 'scale'
-                                    ? { min: 0.2, max: 4, step: 0.01 }
-                                    : trackDefinition.key === 'translateXEm' || trackDefinition.key === 'translateYEm'
-                                      ? { min: -4, max: 4, step: 0.01 }
-                                      : trackDefinition.key === 'shadowOpacityMultiplier'
-                                        ? { min: 0, max: 4, step: 0.01 }
-                                        : trackDefinition.key === 'glowStrength'
-                                          ? { min: 0, max: 2.5, step: 0.01 }
-                                          : trackDefinition.key === 'extraBlur'
-                                            ? { min: 0, max: 20, step: 0.05 }
-                                            : { min: 0, max: 16, step: 0.05 };
-                                  return (
-                                    <AnimationPresetTrackEditor
-                                      key={trackDefinition.key}
-                                      label={trackDefinition.label}
-                                      helper={trackDefinition.helper}
-                                      track={track}
-                                      min={trackRange.min}
-                                      max={trackRange.max}
-                                      step={trackRange.step}
-                                      onChange={(nextTrack) => updateSelectedAnimationPreset((preset) => ({
-                                        ...preset,
-                                        config: {
-                                          ...preset.config,
-                                          motion: {
-                                            ...preset.config.motion,
-                                            [trackDefinition.key]: nextTrack,
-                                          },
-                                        },
-                                      }))}
-                                    />
-                                  );
-                                })}
-                              </div>
-                            </div>
-
-                            <div className="mt-4 rounded-lg border border-border bg-background/30 p-4">
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <h5 className="text-sm font-medium text-foreground">Advanced preset JSON</h5>
-                                  <p className="mt-1 text-xs text-muted-foreground">Full control over timing, easing, start/end values, motion tracks, and future-compatible fields.</p>
+                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Box opacity</label>
+                                <div className="flex items-center gap-3">
+                                  <input type="range" min={0} max={1} step={0.01} value={selectedCaptionStyle.backgroundOpacity} onChange={(event) => updateSelectedCaptionStyle((style) => ({ ...style, backgroundOpacity: Number(event.target.value) }))} className="w-full" />
+                                  <div className="w-14 text-right text-sm text-foreground">{Math.round(selectedCaptionStyle.backgroundOpacity * 100)}%</div>
                                 </div>
-                                <Button type="button" variant="outline" size="sm" onClick={() => setAnimationPresetJsonDraft(formatAnimationPresetConfigJson(selectedAnimationPreset.config))}>Reset editor</Button>
                               </div>
-                              <Textarea value={animationPresetJsonDraft} onChange={(event) => setAnimationPresetJsonDraft(event.target.value)} className="mt-3 min-h-[320px] font-mono text-xs" />
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    const parsed = parseAnimationPresetConfigJson(animationPresetJsonDraft, selectedAnimationPreset.config);
-                                    if (!parsed) {
-                                      updateSectionFeedbackState('caption-styles', { error: 'Animation preset JSON is invalid.', message: null });
-                                      return;
-                                    }
-                                    updateSelectedAnimationPreset((preset) => ({ ...preset, config: parsed }));
-                                  }}
-                                >
-                                  Apply JSON to preset
-                                </Button>
-                                <div className="text-xs text-muted-foreground">Structured controls now cover timing, color routing, and per-track keyframes. The JSON editor remains the escape hatch for full config control.</div>
+                              <div className="text-xs text-muted-foreground">
+                                Current linked animation preset: <span className="font-medium text-foreground">{selectedCaptionStyleAnimationPreset.name}</span><br />
+                                Layout mode: <span className="font-medium text-foreground">{selectedCaptionStyleAnimationPreset.config.layoutMode}</span><br />
+                                Timing mode: <span className="font-medium text-foreground">{selectedCaptionStyleAnimationPreset.config.timing.mode}</span>
                               </div>
                             </div>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+                            <Button type="button" variant={selectedCaptionStyle.id === videoRender.defaultCaptionStyleId ? 'default' : 'outline'} onClick={() => {
+                              updateSectionFeedbackState('caption-styles', { error: null, message: null });
+                              setVideoRender({ ...videoRender, defaultCaptionStyleId: selectedCaptionStyle.id });
+                            }}>
+                              {selectedCaptionStyle.id === videoRender.defaultCaptionStyleId ? 'Default caption style' : 'Set as default'}
+                            </Button>
+                            <Button type="button" variant="outline" onClick={() => duplicateCaptionStyle(selectedCaptionStyle.id)}>Duplicate caption style</Button>
+                            <Button type="button" variant="outline" onClick={() => deleteCaptionStyle(selectedCaptionStyle.id)} disabled={videoRender.captionStyles.length <= 1}>Delete caption style</Button>
                           </div>
                         </div>
 
-                        <div className="space-y-3">
+                        <div className="rounded-lg border border-border bg-background/40 p-4">
                           <div>
                             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Animated preview</p>
-                            <p className="mt-1 text-xs text-muted-foreground">Preview now uses the linked preset config directly, including stable vs fluid layout, timing, color-source selection, and keyframed motion/glow/outline behavior.</p>
+                            <p className="mt-1 text-xs text-muted-foreground">Preview now sits below the style controls so the editor keeps more horizontal room while still showing the linked preset behavior.</p>
                           </div>
-                          <CaptionStylePreview style={{ ...selectedCaptionStyle, animationPreset: selectedCaptionStyleAnimationPreset }} />
-                          <div className="rounded-lg border border-border bg-background/40 p-3 text-xs text-muted-foreground">
+                          <div className="mt-4 mx-auto max-w-sm">
+                            <CaptionStylePreview style={{ ...selectedCaptionStyle, animationPreset: selectedCaptionStyleAnimationPreset }} />
+                          </div>
+                          <div className="mt-4 rounded-lg border border-border bg-background/30 p-3 text-xs text-muted-foreground">
                             Editing <span className="font-medium text-foreground">{selectedCaptionStyle.name}</span> currently previews with preset <span className="font-medium text-foreground">{selectedCaptionStyleAnimationPreset.name}</span>.
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ) : null}
+                    ) : null
+                  ) : (
+                    selectedAnimationPreset ? (
+                      <div className="rounded-lg border border-border bg-background/50 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <h4 className="text-sm font-medium text-foreground">Animation preset editor</h4>
+                            <p className="mt-1 text-xs text-muted-foreground">Built-ins are now first-class presets. Edit them directly, or duplicate them into custom variants.</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button type="button" variant="outline" size="sm" onClick={() => duplicateAnimationPreset(selectedAnimationPreset.id)}>Duplicate preset</Button>
+                            <Button type="button" variant="outline" size="sm" onClick={() => deleteAnimationPreset(selectedAnimationPreset.id)} disabled={videoRender.animationPresets.length <= 1}>Delete preset</Button>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Preset name</label>
+                            <Input value={selectedAnimationPreset.name} onChange={(event) => updateSelectedAnimationPreset((preset) => ({ ...preset, name: event.target.value }))} />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Slug</label>
+                            <Input value={selectedAnimationPreset.slug} onChange={(event) => updateSelectedAnimationPreset((preset) => ({ ...preset, slug: event.target.value }))} className="font-mono text-xs" />
+                          </div>
+                        </div>
+
+                        <div className="mt-4 space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Description</label>
+                          <Textarea value={selectedAnimationPreset.description} onChange={(event) => updateSelectedAnimationPreset((preset) => ({ ...preset, description: event.target.value }))} className="min-h-[76px] text-xs" />
+                        </div>
+
+                        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                          <div className="space-y-2">
+                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Layout mode</label>
+                            <Select value={selectedAnimationPreset.config.layoutMode} onChange={(event) => updateSelectedAnimationPreset((preset) => ({ ...preset, config: { ...preset.config, layoutMode: event.target.value === 'fluid' ? 'fluid' : 'stable' } }))}>
+                              <option value="stable">Stable slots</option>
+                              <option value="fluid">Fluid reflow</option>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Timing mode</label>
+                            <Select value={selectedAnimationPreset.config.timing.mode} onChange={(event) => updateSelectedAnimationPreset((preset) => ({ ...preset, config: { ...preset.config, timing: { ...preset.config.timing, mode: event.target.value === 'fixed' ? 'fixed' : 'word-relative' } } }))}>
+                              <option value="word-relative">Word-relative</option>
+                              <option value="fixed">Fixed duration</option>
+                            </Select>
+                          </div>
+                          <CaptionStyleNumberField label="Timing multiplier" value={selectedAnimationPreset.config.timing.multiplier} min={0.1} max={4} step={0.05} onChange={(value) => updateSelectedAnimationPreset((preset) => ({ ...preset, config: { ...preset.config, timing: { ...preset.config.timing, multiplier: value } } }))} />
+                          <CaptionStyleNumberField label="Fixed duration ms" value={selectedAnimationPreset.config.timing.fixedMs} min={40} max={2000} step={10} onChange={(value) => updateSelectedAnimationPreset((preset) => ({ ...preset, config: { ...preset.config, timing: { ...preset.config.timing, fixedMs: value } } }))} />
+                          <CaptionStyleNumberField label="Min duration ms" value={selectedAnimationPreset.config.timing.minMs} min={40} max={2000} step={10} onChange={(value) => updateSelectedAnimationPreset((preset) => ({ ...preset, config: { ...preset.config, timing: { ...preset.config.timing, minMs: value } } }))} />
+                          <CaptionStyleNumberField label="Max duration ms" value={selectedAnimationPreset.config.timing.maxMs} min={40} max={2000} step={10} onChange={(value) => updateSelectedAnimationPreset((preset) => ({ ...preset, config: { ...preset.config, timing: { ...preset.config.timing, maxMs: value } } }))} />
+                        </div>
+
+                        <div className="mt-4 grid gap-4 md:grid-cols-3">
+                          {([
+                            ['outlineColorMode', 'outlineColor', 'Outline source'],
+                            ['shadowColorMode', 'shadowColor', 'Shadow source'],
+                            ['glowColorMode', 'glowColor', 'Glow source'],
+                          ] as const).map(([modeKey, colorKey, label]) => {
+                            const modeValue = selectedAnimationPreset.config.colors[modeKey];
+                            const customValue = selectedAnimationPreset.config.colors[colorKey] || '#FFFFFF';
+                            return (
+                              <div key={modeKey} className="space-y-2 rounded-lg border border-border bg-background/30 p-3">
+                                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</label>
+                                <Select value={modeValue} onChange={(event) => updateSelectedAnimationPreset((preset) => ({
+                                  ...preset,
+                                  config: {
+                                    ...preset.config,
+                                    colors: {
+                                      ...preset.config.colors,
+                                      [modeKey]: event.target.value as ShortFormCaptionAnimationColorMode,
+                                    },
+                                  },
+                                }))}>
+                                  {CAPTION_ANIMATION_COLOR_MODE_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                  ))}
+                                </Select>
+                                {modeValue === 'custom' ? (
+                                  <Input value={customValue} onChange={(event) => updateSelectedAnimationPreset((preset) => ({
+                                    ...preset,
+                                    config: {
+                                      ...preset.config,
+                                      colors: {
+                                        ...preset.config.colors,
+                                        [colorKey]: event.target.value.toUpperCase(),
+                                      },
+                                    },
+                                  }))} className="font-mono text-xs" />
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="mt-4 space-y-4">
+                          <div>
+                            <h5 className="text-sm font-medium text-foreground">Motion tracks</h5>
+                            <p className="mt-1 text-xs text-muted-foreground">Edit the keyframes that drive scale, lift, blur, glow, outline, and shadow response during the active-word window.</p>
+                          </div>
+                          <div className="grid gap-4 xl:grid-cols-2">
+                            {CAPTION_ANIMATION_TRACK_LABELS.map((trackDefinition) => {
+                              const track = selectedAnimationPreset.config.motion[trackDefinition.key];
+                              const trackRange = trackDefinition.key === 'scale'
+                                ? { min: 0.2, max: 4, step: 0.01 }
+                                : trackDefinition.key === 'translateXEm' || trackDefinition.key === 'translateYEm'
+                                  ? { min: -4, max: 4, step: 0.01 }
+                                  : trackDefinition.key === 'shadowOpacityMultiplier'
+                                    ? { min: 0, max: 4, step: 0.01 }
+                                    : trackDefinition.key === 'glowStrength'
+                                      ? { min: 0, max: 2.5, step: 0.01 }
+                                      : trackDefinition.key === 'extraBlur'
+                                        ? { min: 0, max: 20, step: 0.05 }
+                                        : { min: 0, max: 16, step: 0.05 };
+                              return (
+                                <AnimationPresetTrackEditor
+                                  key={trackDefinition.key}
+                                  label={trackDefinition.label}
+                                  helper={trackDefinition.helper}
+                                  track={track}
+                                  min={trackRange.min}
+                                  max={trackRange.max}
+                                  step={trackRange.step}
+                                  onChange={(nextTrack) => updateSelectedAnimationPreset((preset) => ({
+                                    ...preset,
+                                    config: {
+                                      ...preset.config,
+                                      motion: {
+                                        ...preset.config.motion,
+                                        [trackDefinition.key]: nextTrack,
+                                      },
+                                    },
+                                  }))}
+                                />
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 rounded-lg border border-border bg-background/30 p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <h5 className="text-sm font-medium text-foreground">Advanced preset JSON</h5>
+                              <p className="mt-1 text-xs text-muted-foreground">Full control over timing, easing, start/end values, motion tracks, and future-compatible fields.</p>
+                            </div>
+                            <Button type="button" variant="outline" size="sm" onClick={() => setAnimationPresetJsonDraft(formatAnimationPresetConfigJson(selectedAnimationPreset.config))}>Reset editor</Button>
+                          </div>
+                          <Textarea value={animationPresetJsonDraft} onChange={(event) => setAnimationPresetJsonDraft(event.target.value)} className="mt-3 min-h-[320px] font-mono text-xs" />
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const parsed = parseAnimationPresetConfigJson(animationPresetJsonDraft, selectedAnimationPreset.config);
+                                if (!parsed) {
+                                  updateSectionFeedbackState('caption-styles', { error: 'Animation preset JSON is invalid.', message: null });
+                                  return;
+                                }
+                                updateSelectedAnimationPreset((preset) => ({ ...preset, config: parsed }));
+                              }}
+                            >
+                              Apply JSON to preset
+                            </Button>
+                            <div className="text-xs text-muted-foreground">Structured controls now cover timing, color routing, and per-track keyframes. The JSON editor remains the escape hatch for full config control.</div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null
+                  )}
                 </div>
               </div>
             </div>
@@ -3907,22 +3979,6 @@ export default function ShortFormVideoSettingsPage() {
                           <div className="w-16 text-right text-sm text-foreground">{Math.round(videoRender.musicVolume * 100)}%</div>
                         </div>
                         <p className="text-xs text-muted-foreground">This exact saved volume is passed into the final ffmpeg music mix for every new final-video run.</p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Caption max words</label>
-                        <Input
-                          type="number"
-                          min={2}
-                          max={12}
-                          value={videoRender.captionMaxWords}
-                          onChange={(event) => {
-                            updateSectionFeedbackState('music-library', { error: null, message: null });
-                            setVideoRender({ ...videoRender, captionMaxWords: Math.max(2, Math.min(12, Number(event.target.value || 6))) });
-                          }}
-                          className="max-w-[140px]"
-                        />
-                        <p className="text-xs text-muted-foreground">Used by the deterministic caption generator that runs after forced alignment during the XML Script pipeline.</p>
                       </div>
 
                       <div className="space-y-4 rounded-lg border border-border bg-background/60 p-4">

@@ -110,7 +110,7 @@ export function SectionNavigator<T extends string>({
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">On this page</p>
         </div>
         <nav className="space-y-1">
-          {sections.map((section) => {
+          {availableSections.map((section) => {
             const isActive = section.id === activeSection;
             const isAvailable = section.available !== false;
             return (
@@ -149,7 +149,7 @@ export function SectionNavigator<T extends string>({
       <div className="fixed inset-x-0 bottom-0 z-20 px-4 pt-2 pb-[env(safe-area-inset-bottom)] md:left-56 xl:hidden">
         <Card className="mx-auto max-w-full rounded-b-none border-b-0 border-border/80 bg-background/95 px-2 pt-2 pb-0 shadow-[0_-12px_24px_rgba(0,0,0,0.28)] backdrop-blur">
           <div className="flex gap-2 overflow-x-auto pb-0">
-            {sections.map((section) => {
+            {availableSections.map((section) => {
               const isActive = section.id === activeSection;
               const isAvailable = section.available !== false;
               return (

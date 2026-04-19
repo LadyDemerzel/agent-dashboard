@@ -18,7 +18,6 @@ export interface DirectSceneImagesConfig {
   imageStyleId: string;
   imageStyleName: string;
   imageStyleSubject: string;
-  imageCommonConstraints: string;
   imageStylePrompt: string;
   imageStyleHeaderPercent: number;
   imageStyleReferences?: ShortFormStyleReferenceImage[];

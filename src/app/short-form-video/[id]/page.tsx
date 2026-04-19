@@ -101,7 +101,6 @@ interface WorkflowSettingsResponse {
   prompts?: Record<string, string>;
   definitions?: Array<{ key: string; title: string; description: string; stage: string }>;
   imageStyles?: {
-    commonConstraints?: string;
     defaultStyleId?: string;
     styles?: ImageStyleOption[];
   };
@@ -1406,7 +1405,7 @@ function XMLScriptSection({ project, onProjectRefresh }: { project: Project; onP
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-medium text-foreground">Visual planning notes</h3>
-              <p className="mt-1 text-xs text-muted-foreground">Preferred XML schema: <code>&lt;assets&gt;</code> defines reusable green-screen image assets, and <code>&lt;timeline&gt;</code> defines timed visual entries only. Captions live in a separate deterministic JSON artifact.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Supported XML schema: <code>&lt;assets&gt;</code> defines reusable green-screen image assets, and <code>&lt;timeline&gt;</code> defines timed visual entries only. Captions live in a separate deterministic JSON artifact.</p>
             </div>
             <StatusBadge
               status={visualsStatus === 'running' ? 'working' : doc?.status || 'draft'}
@@ -2239,7 +2238,7 @@ function SceneImagesSection({ project, refresh }: { project: Project; refresh: (
               <div>
                 <h3 className="text-sm font-medium text-foreground">Visual style for this project</h3>
                 <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-                  Pick the reusable style that should feed the direct visual generation path. Shared/common constraints from settings still apply regardless of which style you choose.
+                  Pick the reusable style that should feed the direct visual generation path. The saved style-instructions template and this style's own instructions are what drive generation.
                 </p>
               </div>
               <Link

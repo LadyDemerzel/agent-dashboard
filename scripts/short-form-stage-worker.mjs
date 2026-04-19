@@ -21,15 +21,7 @@ const DEFAULT_IMAGE_ASPECT_RATIO = "9:16";
 const DEFAULT_IMAGE_HEADER_PERCENT = "28";
 const DEFAULT_IMAGE_STYLE_PRESET = "dark-charcoal-natural-header";
 const DEFAULT_IMAGE_SUBJECT = "same androgynous high-fashion model across all scenes, sharp eye area, defined cheekbones, elegant neutral styling";
-const DEFAULT_IMAGE_STYLE_PROMPT = "Preserve a natural top caption-safe background area as a real continuation of the same scene, not a boxed header or hard divider. No tiling, split panels, framed prints, inset cards, mockups, collage layouts, or floating rectangles unless explicitly requested. No readable text, labels, subtitles, UI chrome, or watermarks inside the generated artwork. Keep every image as one cohesive full-frame composition with the subject naturally embedded into the environment. Clean dramatic high-contrast pencil-and-charcoal illustration, premium modern TikTok aesthetic, dark smoky atmospheric background, restrained vivid red accents only on the key focal area, minimal clutter.";
-const GREEN_SCREEN_SCENE_CONSTRAINTS = [
-  "CRITICAL BACKGROUND RULE: render the character and all foreground props against a uniform pure chroma-key green background (#00FF00 or equivalent vivid studio greenscreen) that fills the entire frame edge to edge.",
-  "The greenscreen should stay distinctly green, not cyan/teal/blue-green: keep blue in the backdrop as close to zero as possible so the background does not drift toward aqua.",
-  "The greenscreen should read like a single flat digital/studio fill: no realistic environment, scenic background, textured backdrop, painted strokes, gradient background, corner darkening, mottled noise, shadows cast onto a wall, floor reflections, haze, smoke, or colored light spill in the green area.",
-  "Keep the subject fully in front of the greenscreen with clean silhouette separation, crisp but natural edges, minimal semi-transparent wisps, and no motion blur or smeared edges that would make chroma keying difficult.",
-  "Avoid green clothing, green accessories, green makeup, green props, or green translucent objects on the subject. Prefer wardrobe and props that contrast strongly against green.",
-  "Lighting should be even and flattering on the subject while keeping the greenscreen flat, vivid, uniform, and easy to key across the whole frame."
-].join(" ");
+const DEFAULT_IMAGE_STYLE_PROMPT = "Clean dramatic high-contrast pencil-and-charcoal illustration, premium modern TikTok aesthetic, dark smoky atmospheric background, restrained vivid red accents only on the key focal area, minimal clutter.";
 const DEFAULT_VOICE_SPEAKER = "Aiden";
 const DEFAULT_VOICE_INSTRUCT = "Educated American male narrator, slightly deeper and lower-pitched, polished and confident, calm authority, crisp social-video pacing, speak only English, no other languages or non-speech sounds.";
 const DEFAULT_VOICE_PREVIEW_TEXT = "Most people think their face shape is fixed, but posture, breathing, and muscular balance change more than you expect. In this lesson, I will walk through the habits that matter most, the mistakes that waste effort, and the small adjustments that create visible changes over time. Keep your shoulders relaxed, your neck long, and your breathing steady as we go step by step.";
@@ -1186,36 +1178,100 @@ function parseSceneIdToIndex(sceneId) {
   return Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
-function parseSceneRuntimeSpec(xmlPath) {
-  if (!fs.existsSync(xmlPath)) return [];
-  const xml = fs.readFileSync(xmlPath, "utf-8");
-  const sceneMatches = [...xml.matchAll(/<scene\b([^>]*)>/g)];
-  return sceneMatches.map((match, index) => {
-    const attrs = match[1] || "";
-    const refMatch = attrs.match(/referencePreviousSceneImage\s*=\s*"([^"]+)"/i);
-    const raw = refMatch?.[1]?.trim().toLowerCase();
-    const referencePreviousSceneImage = raw ? ["1", "true", "yes", "y", "on"].includes(raw) : false;
-    return { index: index + 1, referencePreviousSceneImage };
-  });
+function parseXmlAttributes(raw) {
+  const attributes = {};
+  if (typeof raw !== "string" || !raw.trim()) return attributes;
+
+  for (const match of raw.matchAll(/([A-Za-z_:][\w:.-]*)\s*=\s*(["'])([\s\S]*?)\2/g)) {
+    const key = match[1]?.trim();
+    if (!key) continue;
+    attributes[key] = match[3] || "";
+  }
+
+  return attributes;
 }
 
-function expandSceneIndexesForContinuity(xmlPath, requestedIndexes) {
+function parseVisualRuntimeSpec(xmlPath) {
+  if (!fs.existsSync(xmlPath)) {
+    return { visuals: [], assetDependencies: new Map() };
+  }
+
+  const xml = fs.readFileSync(xmlPath, "utf-8");
+  const assetDependencies = new Map();
+  const assetsBody = xml.match(/<assets\b[^>]*>([\s\S]*?)<\/assets>/i)?.[1] || "";
+  const timelineBody = xml.match(/<timeline\b[^>]*>([\s\S]*?)<\/timeline>/i)?.[1] || "";
+
+  for (const match of assetsBody.matchAll(/<image\b([^>]*)>([\s\S]*?)<\/image>/gi)) {
+    const attributes = parseXmlAttributes(match[1] || "");
+    const imageId = typeof attributes.id === "string" ? attributes.id.trim() : "";
+    if (!imageId) continue;
+    const basedOnImageId = typeof attributes.basedOn === "string" ? attributes.basedOn.trim() : "";
+    assetDependencies.set(imageId, basedOnImageId || undefined);
+  }
+
+  const visuals = [...timelineBody.matchAll(/<visual\b([^>]*?)(?:\/>|>([\s\S]*?)<\/visual>)/gi)].map((match, index) => {
+    const attributes = parseXmlAttributes(match[1] || "");
+    const imageId = typeof attributes.imageId === "string" ? attributes.imageId.trim() : "";
+    return {
+      index: index + 1,
+      imageId: imageId || undefined,
+    };
+  });
+
+  return { visuals, assetDependencies };
+}
+
+function collectDependentAssetIds(assetDependencies, rootAssetIds) {
+  const seeds = [...new Set((Array.isArray(rootAssetIds) ? rootAssetIds : [])
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean))];
+  if (seeds.length === 0) return new Set();
+
+  const reverseDependencies = new Map();
+  for (const [imageId, basedOnImageId] of assetDependencies.entries()) {
+    if (!basedOnImageId) continue;
+    const children = reverseDependencies.get(basedOnImageId) || [];
+    children.push(imageId);
+    reverseDependencies.set(basedOnImageId, children);
+  }
+
+  const dependentIds = new Set(seeds);
+  const queue = [...seeds];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+    for (const childId of reverseDependencies.get(current) || []) {
+      if (dependentIds.has(childId)) continue;
+      dependentIds.add(childId);
+      queue.push(childId);
+    }
+  }
+
+  return dependentIds;
+}
+
+function expandSceneIndexesForDependencies(xmlPath, requestedIndexes) {
   const normalized = [...new Set((Array.isArray(requestedIndexes) ? requestedIndexes : [])
     .map((value) => Number(value))
     .filter((value) => Number.isInteger(value) && value > 0))].sort((a, b) => a - b);
   if (normalized.length === 0) return [];
 
-  const scenes = parseSceneRuntimeSpec(xmlPath);
-  if (scenes.length === 0) return normalized;
+  const { visuals, assetDependencies } = parseVisualRuntimeSpec(xmlPath);
+  if (visuals.length === 0) return normalized;
 
   const expanded = new Set(normalized);
-  for (const requestedIndex of normalized) {
-    let cursor = requestedIndex + 1;
-    while (cursor <= scenes.length) {
-      const scene = scenes[cursor - 1];
-      if (!scene?.referencePreviousSceneImage) break;
-      expanded.add(cursor);
-      cursor += 1;
+  const requestedAssetIds = collectDependentAssetIds(
+    assetDependencies,
+    normalized
+      .map((index) => visuals[index - 1]?.imageId)
+      .filter((value) => typeof value === "string" && value.trim())
+  );
+
+  if (requestedAssetIds.size > 0) {
+    for (const visual of visuals) {
+      if (visual?.imageId && requestedAssetIds.has(visual.imageId)) {
+        expanded.add(visual.index);
+      }
     }
   }
 
@@ -1236,65 +1292,6 @@ function resolveStyleReferenceAbsolutePath(relativePath) {
     throw new Error(`Style reference image not found: ${relativePath}`);
   }
   return absolutePath;
-}
-
-function withGreenScreenPromptTemplates(promptTemplates = {}) {
-  const next = { ...promptTemplates };
-  const sceneTemplate = normalizeString(next.sceneTemplate, "");
-  const styleInstructionsTemplate = normalizeString(next.styleInstructionsTemplate, "");
-
-  next.sceneTemplate = [
-    sceneTemplate,
-    "",
-    "Greenscreen render requirement: output the subject as a clean foreground plate over a uniform chroma-key green background, with no scenic/environment background baked into the image.",
-    "Do not reuse, repaint, approximate, or preserve any background/environment from style references, character references, prior scenes, or implied scene descriptions. Carry over only the subject identity, outfit continuity, medium, palette, and lighting treatment on the subject itself.",
-  ]
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-  next.styleInstructionsTemplate = [
-    styleInstructionsTemplate,
-    "",
-    "Greenscreen compositing requirement: {{greenScreenConstraintBlock}}",
-    "When greenscreen output is requested, any instruction about background continuation, scenic atmosphere, or matching the reference background is overridden. Match only the artistic treatment on the foreground subject/props; never inherit the reference background itself.",
-  ]
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-  return next;
-}
-
-function sanitizeGreenScreenConstraints(value) {
-  const text = normalizeString(value, "");
-  if (!text) return "";
-
-  return text
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => !/(caption-safe background area|real continuation of the same scene|background continuing upward|subject naturally embedded into the environment|same environment)/i.test(line))
-    .join("\n");
-}
-
-function sanitizeGreenScreenStylePrompt(value) {
-  const text = normalizeString(value, "");
-  const override = "For greenscreen output, preserve only the artistic medium, palette, rendering approach, and lighting treatment on the foreground subject. Do not recreate or preserve any environment/background from references or prior scenes.";
-  return [text, override].filter(Boolean).join(" ").trim();
-}
-
-function sanitizeGreenScreenReferenceInstructions(value, usageType) {
-  const text = normalizeString(value, "");
-  if (usageType === "character") {
-    return [
-      text,
-      "Use this reference only for recurring character identity, face, hair, body proportions, and outfit continuity. Ignore its original background/environment completely.",
-    ].filter(Boolean).join(" ").trim();
-  }
-
-  return [
-    text.replace(/\bbackgrounds?\b/gi, "visual treatment"),
-    "Use this reference for medium, palette, brushwork, and lighting style only. Do not copy, preserve, or reinterpret its background/environment when generating greenscreen output.",
-  ].filter(Boolean).join(" ").trim();
 }
 
 function runCommand(command, args, options = {}) {
@@ -1933,7 +1930,7 @@ function buildSceneImagesReviewDoc(projectId, scenes, options = {}) {
     "",
     `${scopeLabel} The direct dashboard workflow now calls the xml-scene-images generator deterministically instead of routing this execution step through Scribe. Each scene should now output a raw green-screen foreground plate for assembly, while dashboard preview videos composite that plate over the project's selected looping background video.`,
     "",
-    `This run ${modeLabel} **${scenes.length} visuals** using the structured Nano Banana path with the selected style **${options.imageStyleName || "Default charcoal"}**: one consistent character reference, the selected shared/per-style art direction, natural top caption-safe headroom, and a hard greenscreen requirement so the final video can chroma-key the subject over a persistent looping background video. The generated artwork still contains no baked-in text. When the XML marks a scene with referencePreviousSceneImage=\"true\", the generator also feeds in the previous actual generated scene image as an extra continuity reference.${styleReferenceLine}`,
+    `This run ${modeLabel} **${scenes.length} visuals** using the structured Nano Banana path with the selected style **${options.imageStyleName || "Default charcoal"}**: one consistent character reference, the saved editable style-instructions template plus per-style art direction, natural top caption-safe headroom, and a hard greenscreen requirement so the final video can chroma-key the subject over a persistent looping background video. The generated artwork still contains no baked-in text. Reused XML imageIds stay deterministic, and any XML asset declared with basedOn keeps reference-derived variants explicit in the XML and manifest for debugging.${styleReferenceLine}`,
     ...(options.notes ? ["", "## Request notes", "", options.notes] : []),
     "",
     "## Scene Breakdown",
@@ -1945,8 +1942,8 @@ function buildSceneImagesReviewDoc(projectId, scenes, options = {}) {
     "## Files Generated",
     "",
     "- `scenes/scene-XX-uncaptioned-1080x1920.png` — raw green-screen scene image for chroma-key assembly",
-    "- `scenes/scene-XX-captioned-1080x1920.png` — legacy captioned image preview (kept for compatibility)",
-    "- `scenes/scene-XX.png` — legacy copy of the raw green-screen scene image",
+    "- `scenes/scene-XX-captioned-1080x1920.png` — captioned image preview for review",
+    "- `scenes/scene-XX.png` — compatibility alias of the raw green-screen scene image",
     "- dashboard scene preview videos — generated on demand by compositing the raw scene plate over the selected background video",
     "- `scenes/manifest.json` — generator manifest with image prompts and absolute output paths",
     "- `scene-images.json` — dashboard manifest with relative project paths for review UI",
@@ -3028,20 +3025,13 @@ function runDirectSceneImages(job) {
       path: resolveStyleReferenceAbsolutePath(reference.imageRelativePath),
       label: reference.label,
       usageType: reference.usageType || "general",
-      usageInstructions: sanitizeGreenScreenReferenceInstructions(
-        reference.usageInstructions || "Use this reference as supporting visual context when helpful.",
-        reference.usageType || "general",
-      ),
+      usageInstructions: reference.usageInstructions || "Use this reference as supporting visual context when helpful.",
     }));
   const extraReferencesJsonPath = path.join(runDir, "style-references.json");
   fs.writeFileSync(extraReferencesJsonPath, JSON.stringify(extraReferencesPayload, null, 2), "utf-8");
   const promptTemplatesJsonPath = path.join(runDir, "nano-banana-prompt-templates.json");
   if (config.imagePromptTemplates && typeof config.imagePromptTemplates === "object") {
-    const promptTemplates = withGreenScreenPromptTemplates({
-      ...config.imagePromptTemplates,
-      greenScreenConstraintBlock: GREEN_SCREEN_SCENE_CONSTRAINTS,
-    });
-    fs.writeFileSync(promptTemplatesJsonPath, JSON.stringify(promptTemplates, null, 2), "utf-8");
+    fs.writeFileSync(promptTemplatesJsonPath, JSON.stringify(config.imagePromptTemplates, null, 2), "utf-8");
   }
 
   const args = [
@@ -3065,10 +3055,8 @@ function runDirectSceneImages(job) {
     DEFAULT_IMAGE_STYLE_PRESET,
     "--subject",
     config.imageStyleSubject || DEFAULT_IMAGE_SUBJECT,
-    "--common-constraints",
-    [sanitizeGreenScreenConstraints(config.imageCommonConstraints || ""), GREEN_SCREEN_SCENE_CONSTRAINTS].filter(Boolean).join("\n\n"),
     "--style-extra",
-    sanitizeGreenScreenStylePrompt(config.imageStylePrompt || DEFAULT_IMAGE_STYLE_PROMPT),
+    config.imageStylePrompt || DEFAULT_IMAGE_STYLE_PROMPT,
     "--extra-references-json",
     extraReferencesJsonPath,
     "--force",
@@ -3088,7 +3076,7 @@ function runDirectSceneImages(job) {
   }
 
   const requestedSceneIndexes = [parseSceneIdToIndex(config.sceneId)].filter(Boolean);
-  const sceneIndexes = expandSceneIndexesForContinuity(runtimeXmlPath, requestedSceneIndexes);
+  const sceneIndexes = expandSceneIndexesForDependencies(runtimeXmlPath, requestedSceneIndexes);
   if (sceneIndexes.length > 0) {
     args.push("--only-scenes", ...sceneIndexes.map((index) => String(index)));
     config.sceneIndexes = sceneIndexes;

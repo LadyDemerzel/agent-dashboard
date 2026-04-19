@@ -127,9 +127,6 @@ export async function PATCH(request: NextRequest) {
     }
 
     const candidate = mergeImageStylesPatch(imageStyles as Partial<ShortFormImageStyleSettings>);
-    if (typeof candidate.commonConstraints !== "string" || !candidate.commonConstraints.trim()) {
-      return NextResponse.json({ success: false, error: "Common constraints must be a non-empty string" }, { status: 400 });
-    }
     if (!Array.isArray(candidate.styles) || candidate.styles.length === 0) {
       return NextResponse.json({ success: false, error: "At least one image style is required" }, { status: 400 });
     }
