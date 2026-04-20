@@ -37,6 +37,11 @@ export async function PATCH(
   const selectedMusicId = body.selectedMusicId === null ? null : typeof body.selectedMusicId === "string" ? body.selectedMusicId.trim() : undefined;
   const selectedCaptionStyleId = body.selectedCaptionStyleId === null ? null : typeof body.selectedCaptionStyleId === "string" ? body.selectedCaptionStyleId.trim() : undefined;
   const selectedBackgroundVideoId = typeof body.selectedBackgroundVideoId === "string" ? body.selectedBackgroundVideoId.trim() : undefined;
+  const chromaKeyEnabledOverride = body.chromaKeyEnabledOverride === null
+    ? null
+    : typeof body.chromaKeyEnabledOverride === "boolean"
+      ? body.chromaKeyEnabledOverride
+      : undefined;
   const textScriptMaxIterationsOverride = body.textScriptMaxIterationsOverride === null
     ? null
     : typeof body.textScriptMaxIterationsOverride === "number" && Number.isFinite(body.textScriptMaxIterationsOverride)
@@ -97,6 +102,9 @@ export async function PATCH(
     ...(selectedMusicId !== undefined ? { selectedMusicId: selectedMusicId === null ? undefined : selectedMusicId } : {}),
     ...(selectedCaptionStyleId !== undefined ? { selectedCaptionStyleId: selectedCaptionStyleId === null ? undefined : selectedCaptionStyleId } : {}),
     ...(selectedBackgroundVideoId !== undefined ? { selectedBackgroundVideoId } : {}),
+    ...(chromaKeyEnabledOverride !== undefined
+      ? { chromaKeyEnabledOverride: chromaKeyEnabledOverride === null ? undefined : chromaKeyEnabledOverride }
+      : {}),
     ...(textScriptMaxIterationsOverride !== undefined
       ? { textScriptMaxIterationsOverride: textScriptMaxIterationsOverride === null ? undefined : textScriptMaxIterationsOverride }
       : {}),

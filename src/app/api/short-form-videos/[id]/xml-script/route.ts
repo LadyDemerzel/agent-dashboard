@@ -20,6 +20,10 @@ import {
   resolveShortFormPauseRemovalSettings,
   resolveShortFormVoiceSelection,
 } from "@/lib/short-form-video-render-settings";
+import {
+  getShortFormXmlVisualPlanningSettings,
+  renderShortFormXmlVisualPlanningPrompt,
+} from "@/lib/short-form-xml-visual-planning-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -65,71 +69,27 @@ function buildXmlAuthoringPrompt(project: NonNullable<ReturnType<typeof getShort
   const captionPlanPath = path.join(workDir, "captions", "caption-sections.json");
   const alignmentPath = path.join(workDir, "alignment", "word-timestamps.json");
   const transcriptPath = path.join(workDir, "voice", "text-script.txt");
+  const settings = getShortFormXmlVisualPlanningSettings();
+  const revisionNotes = notes || "";
+  const revisionNotesBlock = revisionNotes
+    ? renderShortFormXmlVisualPlanningPrompt(settings.revisionNotesPromptTemplate, {
+        revisionNotes,
+        xmlScriptPath,
+      })
+    : "";
 
-  return [
-    "Write the XML script artifact for a short-form video workflow refactor.",
-    "",
-    "You must write the final XML to the exact path below, with YAML front matter followed by raw XML only:",
+  return renderShortFormXmlVisualPlanningPrompt(settings.promptTemplate, {
     xmlScriptPath,
-    "",
-    `Project topic: ${project.topic || "Untitled short-form video"}`,
-    project.selectedHookText ? `Selected hook: ${project.selectedHookText}` : "",
-    notes ? `Revision notes: ${notes}` : "",
-    "",
-    "Inputs you must read before writing:",
-    `- Approved plain text script: ${textScriptPath}`,
-    `- Exact narration transcript used for TTS/alignment: ${transcriptPath}`,
-    `- Forced-alignment JSON: ${alignmentPath}`,
-    `- Deterministic caption JSON (for timing/context only; do NOT copy it into XML): ${captionPlanPath}`,
-    "",
-    "Required XML schema:",
-    `<video version=\"2\">`,
-    `  <topic>...</topic>`,
-    `  <script>...</script>`,
-    `  <assets>`,
-    `    <image id=\"asset-id\">`,
-    `      <prompt>Describe one reusable green-screen image asset.</prompt>`,
-    `    </image>`,
-    `    <image id=\"asset-id-2\" basedOn=\"asset-id\">`,
-    `      <prompt>Describe a NEW image to generate using the prior asset as a reference.</prompt>`,
-    `    </image>`,
-    `  </assets>`,
-    `  <timeline>`,
-    `    <visual id=\"visual-1\" label=\"Hook setup\" start=\"0.00\" end=\"1.20\" imageId=\"asset-id\" cameraZoom=\"0.05\" />`,
-    `    <visual id=\"visual-2\" label=\"Reveal\" start=\"1.20\" end=\"2.40\" imageId=\"asset-id\" cameraZoomStart=\"0.02\" cameraZoomEnd=\"0.08\" />`,
-    `  </timeline>`,
-
-    `</video>`,
-    "",
-    "Semantics:",
-    "- <script> must match the approved plain text narration.",
-    "- Captions do NOT belong in the XML anymore. Do not emit <caption> nodes anywhere.",
-    "- The caption JSON is a separate deterministic artifact used by the final renderer and review timeline.",
-    "- <timeline><visual> entries should only describe visuals: label, start/end timing, imageId, and optional camera motion.",
-    "- <assets>/<image id> defines reusable underlying image assets.",
-    "- Reusing the exact same image asset = multiple <visual> entries with the same imageId.",
-    "- Generating a NEW image from a previous image reference = define a new <image id=... basedOn=...> asset.",
-    "- Visuals must be green-screen foreground plates for downstream compositing.",
-    "- Ensure there is an actual visual or camera change at least every 3 seconds across the timeline.",
-    "- Camera motion/framing belongs on <visual> attributes, not on <image> assets.",
-    "- `cameraZoom` means a static zoom/framing value only.",
-    "- Use `cameraZoomStart` + `cameraZoomEnd` when you want an explicit animated zoom.",
-    "- Keep camera motion sparse and subtle by default.",
-    "",
-    "Practical authoring rules:",
-    "- Give each <visual> a concise label attribute so the dashboard can identify the beat on the visual timeline.",
-    "- Prefer fewer reusable assets than one fresh asset per caption when continuity makes sense.",
-    "- Distinguish exact asset reuse from reference-derived new assets clearly through image ids and basedOn.",
-    "- Prompts should describe the green-screen foreground plate only, not a scenic background.",
-    "- No baked-in text in generated images.",
-    "",
-    "Output contract:",
-    "- Write directly to the xml-script.md path above.",
-    "- Include YAML front matter with status: needs review, agent: workflow, and suitable title/tags.",
-    "- After writing, read the file back and verify it exists on disk.",
-    "",
-    `Project directory: ${projectDir}`,
-  ].filter(Boolean).join("\n");
+    topic: project.topic || "Untitled short-form video",
+    selectedHook: project.selectedHookText ?? "",
+    revisionNotes,
+    revisionNotesBlock,
+    textScriptPath,
+    transcriptPath,
+    alignmentPath,
+    captionPlanPath,
+    projectDir,
+  });
 }
 
 export async function GET(

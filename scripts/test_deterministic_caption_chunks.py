@@ -98,6 +98,16 @@ class DeterministicCaptionChunkTests(unittest.TestCase):
         chunks = self.build_text_chunks(script_text, max_words=6)
         self.assertEqual(chunks, ["grads found attractive people were", "52.4 percent more"])
 
+    def test_preserves_commas_inside_numbers(self) -> None:
+        chunks = self.build_text_chunks("alpha beta 1,000 people noticed a change quickly.", max_words=3)
+        self.assertEqual(chunks, ["alpha beta 1,000", "people noticed", "a change quickly"])
+
+        chunks = self.build_text_chunks("Researchers tracked 12,345 patients, and results improved.", max_words=6)
+        self.assertEqual(chunks, ["Researchers tracked 12,345 patients", "and results improved"])
+
+        chunks = self.build_text_chunks("The market reached 1,234,567 users fast.", max_words=6)
+        self.assertEqual(chunks, ["The market reached 1,234,567 users fast"])
+
     def test_preserves_infinitive_object_phrase_when_it_fits_under_cap(self) -> None:
         chunks = self.build_text_chunks(
             "You are 30 percent more likely to land prestigious roles",

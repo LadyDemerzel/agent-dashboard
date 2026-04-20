@@ -187,6 +187,9 @@ export interface ShortFormProjectClient {
   selectedCaptionStyleId?: string;
   selectedCaptionStyleName?: string;
   captionStyleOverrideId?: string;
+  chromaKeyEnabled: boolean;
+  chromaKeyEnabledSource: 'project' | 'default';
+  chromaKeyEnabledOverride?: boolean;
   captionMaxWordsOverride?: number;
   pauseRemovalMinSilenceDurationSecondsOverride?: number;
   pauseRemovalSilenceThresholdDbOverride?: number;
@@ -624,6 +627,9 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
     selectedCaptionStyleId: asOptionalString(obj.selectedCaptionStyleId),
     selectedCaptionStyleName: asOptionalString(obj.selectedCaptionStyleName),
     captionStyleOverrideId: asOptionalString(obj.captionStyleOverrideId),
+    chromaKeyEnabled: asBoolean(obj.chromaKeyEnabled),
+    chromaKeyEnabledSource: obj.chromaKeyEnabledSource === 'project' ? 'project' : 'default',
+    chromaKeyEnabledOverride: typeof obj.chromaKeyEnabledOverride === 'boolean' ? obj.chromaKeyEnabledOverride : undefined,
     captionMaxWordsOverride: typeof obj.captionMaxWordsOverride === 'number' ? obj.captionMaxWordsOverride : undefined,
     pauseRemovalMinSilenceDurationSecondsOverride: typeof obj.pauseRemovalMinSilenceDurationSecondsOverride === 'number'
       ? obj.pauseRemovalMinSilenceDurationSecondsOverride

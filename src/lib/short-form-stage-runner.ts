@@ -40,6 +40,8 @@ export interface DirectVideoConfig {
   backgroundVideoId?: string;
   backgroundVideoName?: string;
   backgroundVideoPath?: string;
+  chromaKeyEnabled?: boolean;
+  chromaKeySource?: "project" | "default";
   notes?: string;
 }
 

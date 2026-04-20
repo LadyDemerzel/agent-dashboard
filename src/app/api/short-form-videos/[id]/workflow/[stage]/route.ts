@@ -33,7 +33,10 @@ import {
   resolveShortFormBackgroundVideoAbsolutePath,
   resolveShortFormBackgroundVideoSelection,
 } from "@/lib/short-form-background-videos";
-import { resolveShortFormCaptionStyleSelection } from "@/lib/short-form-video-render-settings";
+import {
+  resolveShortFormCaptionStyleSelection,
+  resolveShortFormChromaKeySelection,
+} from "@/lib/short-form-video-render-settings";
 import {
   getShortFormTextScriptSettings,
   SHORT_FORM_TEXT_SCRIPT_PASSING_SCORE,
@@ -319,6 +322,11 @@ export async function POST(
   const requestedAction = typeof body.action === "string" ? body.action : "generate";
   const notes = typeof body.notes === "string" ? body.notes.trim() : "";
   const sceneId = typeof body.sceneId === "string" ? body.sceneId.trim() : "";
+  const requestedChromaKeyOverride = body.chromaKeyEnabledOverride === null
+    ? null
+    : typeof body.chromaKeyEnabledOverride === "boolean"
+      ? body.chromaKeyEnabledOverride
+      : undefined;
 
   ensureInitialStageDoc(id, stage, project.topic);
 
@@ -357,6 +365,13 @@ export async function POST(
   const resolvedImageStyle = resolveShortFormImageStyle(project.selectedImageStyleId);
   const resolvedBackgroundVideo = resolveShortFormBackgroundVideoSelection(project.selectedBackgroundVideoId);
   const resolvedCaptionStyle = resolveShortFormCaptionStyleSelection(project.selectedCaptionStyleId);
+  const resolvedChromaKey = resolveShortFormChromaKeySelection(
+    requestedChromaKeyOverride === undefined
+      ? project.chromaKeyEnabledOverride
+      : requestedChromaKeyOverride === null
+        ? undefined
+        : requestedChromaKeyOverride
+  );
 
   const textScriptWorkflow = stage === "script" && textScriptRunId
     ? buildTextScriptWorkflowConfig(project, { mode, notes: requestNotes, textScriptRunId })
@@ -380,7 +395,10 @@ export async function POST(
             ? ["No looping background video is configured. The direct video render should fail clearly until one is chosen in settings/project selection."]
             : []),
         ...(stage === "video"
-          ? [`Selected caption style: ${resolvedCaptionStyle.captionStyle.name} (${resolvedCaptionStyle.source === "project" ? "project override" : resolvedCaptionStyle.source === "default" ? "global default" : "fallback"})`]
+          ? [
+              `Selected caption style: ${resolvedCaptionStyle.captionStyle.name} (${resolvedCaptionStyle.source === "project" ? "project override" : resolvedCaptionStyle.source === "default" ? "global default" : "fallback"})`,
+              `Chroma key: ${resolvedChromaKey.enabled ? "enabled" : "disabled"} (${resolvedChromaKey.source === "project" ? "project override" : "global default"})`,
+            ]
           : []),
         directWorkflowRequestLine,
       ].join("\n")
@@ -485,6 +503,8 @@ export async function POST(
                   captionStyleSource: resolvedCaptionStyle.source,
                   captionStyle: resolvedCaptionStyle.captionStyle,
                   animationPreset: resolvedCaptionStyle.animationPreset,
+                  chromaKeyEnabled: resolvedChromaKey.enabled,
+                  chromaKeySource: resolvedChromaKey.source,
                   ...(requestNotes ? { notes: requestNotes } : {}),
                 },
               }

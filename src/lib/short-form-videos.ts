@@ -6,6 +6,7 @@ import { readFeedback, type FeedbackThread } from "@/lib/feedback";
 import { resolveShortFormImageStyle } from "@/lib/short-form-image-styles";
 import {
   resolveShortFormCaptionStyleSelection,
+  resolveShortFormChromaKeySelection,
   resolveShortFormMusicSelection,
   resolveShortFormPauseRemovalSettings,
   resolveShortFormVoiceSelection,
@@ -172,6 +173,7 @@ export interface ShortFormProjectMeta {
   selectedMusicId?: string;
   selectedBackgroundVideoId?: string;
   selectedCaptionStyleId?: string;
+  chromaKeyEnabledOverride?: boolean;
   textScriptMaxIterationsOverride?: number;
   captionMaxWordsOverride?: number;
   pauseRemovalMinSilenceDurationSecondsOverride?: number;
@@ -299,6 +301,9 @@ export interface ShortFormProject {
   selectedCaptionStyleId?: string;
   selectedCaptionStyleName?: string;
   captionStyleOverrideId?: string;
+  chromaKeyEnabled: boolean;
+  chromaKeyEnabledSource: "project" | "default";
+  chromaKeyEnabledOverride?: boolean;
   captionMaxWordsOverride?: number;
   pauseRemovalMinSilenceDurationSecondsOverride?: number;
   pauseRemovalSilenceThresholdDbOverride?: number;
@@ -2602,6 +2607,7 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
   const resolvedMusic = resolveShortFormMusicSelection(nextMeta.selectedMusicId);
   const resolvedBackground = resolveShortFormBackgroundVideoSelection(nextMeta.selectedBackgroundVideoId);
   const resolvedCaptionStyle = resolveShortFormCaptionStyleSelection(nextMeta.selectedCaptionStyleId);
+  const resolvedChromaKey = resolveShortFormChromaKeySelection(nextMeta.chromaKeyEnabledOverride);
   const resolvedPauseRemoval = resolveShortFormPauseRemovalSettings({
     ...(typeof nextMeta.pauseRemovalMinSilenceDurationSecondsOverride === "number"
       ? { minSilenceDurationSeconds: nextMeta.pauseRemovalMinSilenceDurationSecondsOverride }
@@ -2643,6 +2649,9 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
     selectedCaptionStyleId: resolvedCaptionStyle.resolvedCaptionStyleId,
     selectedCaptionStyleName: resolvedCaptionStyle.captionStyle.name,
     captionStyleOverrideId: nextMeta.selectedCaptionStyleId,
+    chromaKeyEnabled: resolvedChromaKey.enabled,
+    chromaKeyEnabledSource: resolvedChromaKey.source,
+    chromaKeyEnabledOverride: nextMeta.chromaKeyEnabledOverride,
     captionMaxWordsOverride: nextMeta.captionMaxWordsOverride,
     pauseRemovalMinSilenceDurationSecondsOverride: nextMeta.pauseRemovalMinSilenceDurationSecondsOverride,
     pauseRemovalSilenceThresholdDbOverride: nextMeta.pauseRemovalSilenceThresholdDbOverride,

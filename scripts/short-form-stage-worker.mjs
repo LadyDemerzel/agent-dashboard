@@ -2861,6 +2861,8 @@ function updateVideoManifestCaptionRendering(projectId, config, captionStyleSele
   manifest.caption_rendering = {
     mode: captionRender.mode,
     requestedMode: captionRender.requestedMode,
+    chromaKeyEnabled: Boolean(config.chromaKeyEnabled),
+    chromaKeySource: config.chromaKeySource || 'default',
     captionStyleId: captionStyleSelection.resolvedCaptionStyleId,
     captionStyleName: captionStyleSelection.style.name,
     captionStyleSource: captionStyleSelection.source,
@@ -2921,7 +2923,7 @@ function buildVideoReviewDoc(projectId, config, selectedVoice = createDefaultVoi
     "",
     `${config.mode === "revise" ? "Regenerated" : "Generated"} the final vertical short-form video through the direct dashboard workflow. This execution path now calls the xml-scene-video renderer deterministically instead of routing the render through Scribe.`,
     "",
-    "This run stayed on the default deterministic pipeline: the final renderer reused the narration and forced-alignment artifacts from the XML Script step as the source of truth, then rendered the looping background video track, chroma-keyed the green-screen visual plates as foreground elements, burned in word-level captions with active, spoken, and upcoming highlighting, reused the saved soundtrack WAV chosen in the short-form settings, and applied any per-visual XML camera motion only to the image layer when explicitly present in the XML (otherwise the visual stays static).",
+    `This run stayed on the default deterministic pipeline: the final renderer reused the narration and forced-alignment artifacts from the XML Script step as the source of truth, then rendered the looping background video track and ${config.chromaKeyEnabled ? 'chroma-keyed the green-screen visual plates as foreground elements' : 'kept the raw foreground plates without chroma keying'}, burned in word-level captions with active, spoken, and upcoming highlighting, reused the saved soundtrack WAV chosen in the short-form settings, and applied any per-visual XML camera motion only to the image layer when explicitly present in the XML (otherwise the visual stays static).`,
     ...(config.notes ? ["", "## Request notes", "", config.notes] : []),
     ...(alignmentWarning ? ["", "## Alignment warning", "", alignmentWarning] : []),
     "",
@@ -2937,6 +2939,7 @@ function buildVideoReviewDoc(projectId, config, selectedVoice = createDefaultVoi
     `- Voice prompt: ${selectedVoice.sourceType === "uploaded-reference" ? "Uses the saved uploaded reference clip for voice-clone narration." : selectedVoice.voiceDesignPrompt}`,
     `- Looping background video: ${config.backgroundVideoName ? `\`${config.backgroundVideoName}\`` : "Not configured"}`,
     `- Caption style: ${captionStyleSelection?.style?.name ? `\`${captionStyleSelection.style.name}\` (${captionStyleSelection.animationPreset?.name || captionStyleSelection.style.animationPreset || captionStyleSelection.style.animationPresetId || "animation preset"})` : config.captionStyleName ? `\`${config.captionStyleName}\`` : "Default/fallback"}`,
+    `- Chroma key: ${config.chromaKeyEnabled ? 'Enabled' : 'Disabled'}${config.chromaKeySource ? ` (${config.chromaKeySource === 'project' ? 'project override' : 'global default'})` : ''}`,
     `- Music path: ${selectedMusic?.generatedAudioRelativePath ? `\`${selectedMusic.generatedAudioRelativePath}\`` : "Not configured"}`,
   ].join("\n");
 }
@@ -3104,6 +3107,7 @@ function runDirectVideo(job) {
   if (!config) {
     throw new Error("Missing direct video config");
   }
+  config.chromaKeyEnabled = config.chromaKeyEnabled !== false;
 
   const projectMeta = readProjectMeta(job.projectId) || {};
   const selectedMusic = resolveMusicSelection(projectMeta.selectedMusicId);
@@ -3194,6 +3198,7 @@ function runDirectVideo(job) {
     config.videoWorkDir,
     "--background-video",
     config.backgroundVideoPath,
+    ...(config.chromaKeyEnabled === false ? ["--disable-chroma-key"] : []),
     "--tts-engine",
     "qwen",
     "--qwen-mode",

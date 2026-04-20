@@ -36,7 +36,7 @@ NUMERIC_FOLLOWERS = {
 }
 SPACY_MODEL_CANDIDATES = ["en_core_web_sm", "en_core_web_md", "en_core_web_lg"]
 NAMED_SPAN_CONNECTORS = {"of", "the", "and", "&"}
-WORD_RE = re.compile(r"[A-Za-z0-9]+(?:[’'\-][A-Za-z0-9]+)*")
+WORD_RE = re.compile(r"\d+(?:,\d{3})+(?:\.\d+)?|[A-Za-z0-9]+(?:[’'\-][A-Za-z0-9]+)*")
 WEAK_LEADING_POS = {"ADP", "PART", "SCONJ", "CCONJ"}
 WEAK_TRAILING_POS = {"ADP", "PART", "SCONJ", "CCONJ", "DET"}
 PREFERRED_BOUNDARY_REASONS = {

@@ -109,6 +109,7 @@ interface WorkflowSettingsResponse {
     voices?: VoiceOption[];
     defaultMusicTrackId?: string;
     musicVolume?: number;
+    chromaKeyEnabledByDefault?: boolean;
     musicTracks?: MusicOption[];
     defaultCaptionStyleId?: string;
     captionStyles?: CaptionStyleOption[];
@@ -1025,6 +1026,7 @@ function XMLScriptSection({ project, onProjectRefresh }: { project: Project; onP
       setDoc(payload.data || null);
       setEditing(false);
       setError(null);
+      void onProjectRefresh().catch(() => undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save XML script');
     } finally {
@@ -1455,6 +1457,7 @@ function StageReviewSection({
   triggerDescription,
   onRefresh,
   extra,
+  triggerPayload,
   collapseDocumentByDefault = false,
   showExtraWhenEmpty = false,
 }: {
@@ -1469,6 +1472,7 @@ function StageReviewSection({
   triggerDescription?: string;
   onRefresh: () => Promise<unknown>;
   extra?: React.ReactNode;
+  triggerPayload?: Record<string, unknown>;
   collapseDocumentByDefault?: boolean;
   showExtraWhenEmpty?: boolean;
 }) {
@@ -1500,7 +1504,7 @@ function StageReviewSection({
         await fetch(`/api/short-form-videos/${projectId}/workflow/${stage}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'generate' }),
+          body: JSON.stringify({ action: 'generate', ...(triggerPayload || {}) }),
         }),
         `Failed to trigger ${title.toLowerCase()}`
       );
@@ -2468,11 +2472,14 @@ function VideoSection({ project, refresh }: { project: Project; refresh: () => P
   const [defaultVoiceId, setDefaultVoiceId] = useState<string>('');
   const [defaultMusicId, setDefaultMusicId] = useState<string>('');
   const [defaultCaptionStyleId, setDefaultCaptionStyleId] = useState<string>('');
+  const [defaultChromaKeyEnabled, setDefaultChromaKeyEnabled] = useState<boolean>(false);
   const [musicVolume, setMusicVolume] = useState<number>(0.38);
   const [savingMusic, setSavingMusic] = useState(false);
   const [savingCaptionStyle, setSavingCaptionStyle] = useState(false);
+  const [savingChromaKey, setSavingChromaKey] = useState(false);
   const [musicError, setMusicError] = useState<string | null>(null);
   const [captionStyleError, setCaptionStyleError] = useState<string | null>(null);
+  const [chromaKeyError, setChromaKeyError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -2505,6 +2512,7 @@ function VideoSection({ project, refresh }: { project: Project; refresh: () => P
           setDefaultVoiceId(payload.data?.videoRender?.defaultVoiceId || '');
           setDefaultMusicId(payload.data?.videoRender?.defaultMusicTrackId || '');
           setDefaultCaptionStyleId(payload.data?.videoRender?.defaultCaptionStyleId || '');
+          setDefaultChromaKeyEnabled(Boolean(payload.data?.videoRender?.chromaKeyEnabledByDefault));
           setMusicVolume(typeof payload.data?.videoRender?.musicVolume === 'number' ? payload.data.videoRender.musicVolume : 0.38);
         }
       } catch {
@@ -2515,6 +2523,7 @@ function VideoSection({ project, refresh }: { project: Project; refresh: () => P
           setDefaultVoiceId('');
           setDefaultMusicId('');
           setDefaultCaptionStyleId('');
+          setDefaultChromaKeyEnabled(false);
           setMusicVolume(0.38);
         }
       }
@@ -2566,9 +2575,31 @@ function VideoSection({ project, refresh }: { project: Project; refresh: () => P
     }
   }
 
+  async function saveProjectChromaKey(value: boolean | null) {
+    setSavingChromaKey(true);
+    setChromaKeyError(null);
+    try {
+      await parseJsonResponse(
+        await fetch(`/api/short-form-videos/${project.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chromaKeyEnabledOverride: value }),
+        }),
+        'Failed to update project chroma-key setting'
+      );
+      await refresh();
+    } catch (err) {
+      setChromaKeyError(err instanceof Error ? err.message : 'Failed to update project chroma-key setting');
+    } finally {
+      setSavingChromaKey(false);
+    }
+  }
+
   const activeVoiceLabel = project.selectedVoiceName || voiceOptions.find((voice) => voice.id === defaultVoiceId)?.name || 'default voice';
   const activeMusicLabel = project.selectedMusicName || musicOptions.find((track) => track.id === defaultMusicId)?.name || 'default soundtrack';
   const activeCaptionStyleLabel = project.selectedCaptionStyleName || captionStyleOptions.find((style) => style.id === defaultCaptionStyleId)?.name || 'default caption style';
+  const activeChromaKeyLabel = project.chromaKeyEnabled ? 'enabled' : 'disabled';
+  const activeChromaKeySourceLabel = project.chromaKeyEnabledSource === 'project' ? 'project override' : 'global default';
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const previewRefreshToken = useMemo(() => {
     const finalizeStep = project.video.pipeline?.steps.find((step) => step.id === 'finalize-output');
@@ -2590,18 +2621,20 @@ function VideoSection({ project, refresh }: { project: Project; refresh: () => P
       projectId={project.id}
       title="Video"
       stage="video"
-      description="After visuals are approved, the dashboard renders the final short-form video directly through the xml-scene-video workflow by reusing the narration + forced-alignment artifacts already produced during the XML Script step, plus a full-duration looping background video track, green-screen chroma key compositing, saved background music, ASS/libass subtitle burn-in, and per-visual XML camera motion that applies only to the image layer when explicitly set in the XML."
+      description="After visuals are approved, the dashboard renders the final short-form video directly through the xml-scene-video workflow by reusing the narration + forced-alignment artifacts already produced during the XML Script step, plus a full-duration looping background video track, optional chroma-key compositing, saved background music, ASS/libass subtitle burn-in, and per-visual XML camera motion that applies only to the image layer when explicitly set in the XML."
       doc={project.video}
       mode="markdown"
       emptyText="No video yet. Generate the final video after approving the visuals."
       triggerLabel="Generate final video"
-      triggerDescription={`The video should be rendered from the XML <script> and approved scene assets by reusing the saved XML-step narration/alignment artifacts${activeVoiceLabel ? ` (voice source currently shown as ${activeVoiceLabel} in XML Script)` : ''}${activeMusicLabel ? `, soundtrack preset ${activeMusicLabel}` : ''}${activeCaptionStyleLabel ? `, caption style ${activeCaptionStyleLabel}` : ''}${project.selectedBackgroundVideoName ? `, the looping background video ${project.selectedBackgroundVideoName}` : ''}, plus the saved music mix volume (${Math.round(musicVolume * 100)}%) and the deterministic ASS/libass caption path unless explicitly overridden.`}
+      triggerDescription={`The video should be rendered from the XML <script> and approved scene assets by reusing the saved XML-step narration/alignment artifacts${activeVoiceLabel ? ` (voice source currently shown as ${activeVoiceLabel} in XML Script)` : ''}${activeMusicLabel ? `, soundtrack preset ${activeMusicLabel}` : ''}${activeCaptionStyleLabel ? `, caption style ${activeCaptionStyleLabel}` : ''}${project.selectedBackgroundVideoName ? `, the looping background video ${project.selectedBackgroundVideoName}` : ''}, with chroma key currently ${activeChromaKeyLabel} via ${activeChromaKeySourceLabel}, plus the saved music mix volume (${Math.round(musicVolume * 100)}%) and the deterministic ASS/libass caption path unless explicitly overridden.`}
       onRefresh={refresh}
+      triggerPayload={{ chromaKeyEnabledOverride: project.chromaKeyEnabledOverride ?? null }}
       collapseDocumentByDefault
       extra={
         <div className="space-y-4">
           {musicError ? <ValidationNotice title="Soundtrack selection failed" message={musicError} /> : null}
           {captionStyleError ? <ValidationNotice title="Caption style selection failed" message={captionStyleError} /> : null}
+          {chromaKeyError ? <ValidationNotice title="Chroma-key selection failed" message={chromaKeyError} /> : null}
           <div className="rounded-lg border border-border bg-background/60 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -2714,9 +2747,38 @@ function VideoSection({ project, refresh }: { project: Project; refresh: () => P
               Effective final-render caption style: <span className="font-medium text-foreground">{activeCaptionStyleLabel}</span>
             </div>
           </div>
-          <div className="rounded-lg border border-border bg-background/60 p-4 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">Looping background video:</span>{' '}
-            {project.selectedBackgroundVideoName || 'Not selected yet. Choose one in the Visual Images section before rendering the final video.'}
+          <div className="rounded-lg border border-border bg-background/60 p-3 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-3">
+              <span>
+                <span className="font-medium text-foreground">Background:</span>{' '}
+                {project.selectedBackgroundVideoName || 'Not selected yet'}
+              </span>
+              <span className="text-border">•</span>
+              <span className="font-medium text-foreground">Chroma key</span>
+              <Select
+                value={typeof project.chromaKeyEnabledOverride === 'boolean' ? (project.chromaKeyEnabledOverride ? 'enabled' : 'disabled') : ''}
+                onChange={(event) => void saveProjectChromaKey(event.target.value === '' ? null : event.target.value === 'enabled')}
+                disabled={savingChromaKey}
+                className="h-8 w-[190px] py-1 text-xs"
+              >
+                <option value="">Use default ({defaultChromaKeyEnabled ? 'On' : 'Off'})</option>
+                <option value="disabled">Force off</option>
+                <option value="enabled">Force on</option>
+              </Select>
+              <span>
+                {savingChromaKey
+                  ? 'Saving…'
+                  : `Effective: ${activeChromaKeyLabel} (${activeChromaKeySourceLabel})`}
+              </span>
+              <Link
+                href="/short-form-video/settings#pause-removal"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Defaults ↗
+              </Link>
+            </div>
           </div>
           <VideoPipelinePanel project={project} />
           {previewVideoUrl ? (

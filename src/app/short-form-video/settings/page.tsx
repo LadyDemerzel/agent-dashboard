@@ -48,7 +48,8 @@ type SettingsSectionId =
   | 'image-styles'
   | 'prompt-hooks'
   | 'prompt-research'
-  | 'text-script-prompts';
+  | 'text-script-prompts'
+  | 'xml-visual-planning';
 
 interface PromptDefinition {
   key: PromptKey;
@@ -167,6 +168,67 @@ const NANO_BANANA_PLACEHOLDER_ROWS = [
   },
 ] as const;
 
+const XML_VISUAL_PLANNING_PLACEHOLDER_ROWS = [
+  {
+    placeholder: '{{xmlScriptPath}}',
+    explanation: 'Absolute path where Scribe must write the final xml-script.md artifact.',
+    example: '/Users/ittaisvidler/tenxsolo/business/content/deliverables/short-form-videos/abc123/xml-script.md',
+  },
+  {
+    placeholder: '{{topic}}',
+    explanation: 'The short-form project topic, with the same fallback the runtime uses when the topic is empty.',
+    example: 'Facial posture reset',
+  },
+  {
+    placeholder: '{{selectedHook}}',
+    explanation: 'The approved hook text only. Put any surrounding label text directly in the editable prompt template.',
+    example: 'Your jawline changed because your posture changed',
+  },
+  {
+    placeholder: '{{revisionNotesBlock}}',
+    explanation: 'The fully rendered conditional revision-notes block. It is injected only when rerun revision notes exist.',
+    example: 'Revision notes: Make the asset reuse more explicit and reduce camera motion.',
+  },
+  {
+    placeholder: '{{textScriptPath}}',
+    explanation: 'Absolute path to the approved plain narration text script for this project.',
+    example: '/Users/ittaisvidler/tenxsolo/business/content/deliverables/short-form-videos/abc123/script.md',
+  },
+  {
+    placeholder: '{{transcriptPath}}',
+    explanation: 'Absolute path to the exact narration transcript file used for TTS and alignment reuse.',
+    example: '/Users/ittaisvidler/tenxsolo/business/content/deliverables/short-form-videos/abc123/output/xml-script-work/voice/text-script.txt',
+  },
+  {
+    placeholder: '{{alignmentPath}}',
+    explanation: 'Absolute path to the forced-alignment word-timestamps JSON produced earlier in the XML pipeline.',
+    example: '/Users/ittaisvidler/tenxsolo/business/content/deliverables/short-form-videos/abc123/output/xml-script-work/alignment/word-timestamps.json',
+  },
+  {
+    placeholder: '{{captionPlanPath}}',
+    explanation: 'Absolute path to the deterministic caption JSON that visual planning can reference for timing context.',
+    example: '/Users/ittaisvidler/tenxsolo/business/content/deliverables/short-form-videos/abc123/output/xml-script-work/captions/caption-sections.json',
+  },
+  {
+    placeholder: '{{projectDir}}',
+    explanation: 'Absolute project root for the short-form deliverable.',
+    example: '/Users/ittaisvidler/tenxsolo/business/content/deliverables/short-form-videos/abc123',
+  },
+] as const;
+
+const XML_VISUAL_PLANNING_REVISION_NOTES_PLACEHOLDER_ROWS = [
+  {
+    placeholder: '{{revisionNotes}}',
+    explanation: 'The rerun revision notes text only. Put any surrounding label text directly in this conditional template.',
+    example: 'Make the asset reuse more explicit and reduce camera motion.',
+  },
+  {
+    placeholder: '{{xmlScriptPath}}',
+    explanation: 'Absolute path to the existing xml-script.md artifact for this project, so rerun guidance can tell Scribe exactly which file to read or edit.',
+    example: '/Users/ittaisvidler/tenxsolo/business/content/deliverables/short-form-videos/abc123/xml-script.md',
+  },
+] as const;
+
 type VoiceMode = 'voice-design' | 'custom-voice';
 type VoiceSourceType = 'generated' | 'uploaded-reference';
 
@@ -235,6 +297,7 @@ interface VideoRenderSettings {
   voices: VoiceLibraryEntry[];
   defaultMusicTrackId?: string;
   musicVolume: number;
+  chromaKeyEnabledByDefault: boolean;
   musicTracks: MusicLibraryEntry[];
   defaultCaptionStyleId: string;
   animationPresets: AnimationPresetEntry[];
@@ -268,6 +331,11 @@ interface TextScriptSettings {
   reviewPrompt: string;
 }
 
+interface XmlVisualPlanningSettings {
+  promptTemplate: string;
+  revisionNotesPromptTemplate: string;
+}
+
 interface SettingsResponse {
   success: boolean;
   data?: {
@@ -277,6 +345,7 @@ interface SettingsResponse {
     videoRender: VideoRenderSettings;
     backgroundVideos: BackgroundVideoSettings;
     textScript: TextScriptSettings;
+    xmlVisualPlanning: XmlVisualPlanningSettings;
   };
   error?: string;
 }
@@ -460,6 +529,7 @@ function createEmptySectionFeedback(): Record<SettingsSectionId, SectionFeedback
     'prompt-hooks': { saving: false, error: null, message: null },
     'prompt-research': { saving: false, error: null, message: null },
     'text-script-prompts': { saving: false, error: null, message: null },
+    'xml-visual-planning': { saving: false, error: null, message: null },
   };
 }
 
@@ -967,6 +1037,8 @@ export default function ShortFormVideoSettingsPage() {
   const [initialBackgroundVideos, setInitialBackgroundVideos] = useState<BackgroundVideoSettings | null>(null);
   const [textScriptSettings, setTextScriptSettings] = useState<TextScriptSettings | null>(null);
   const [initialTextScriptSettings, setInitialTextScriptSettings] = useState<TextScriptSettings | null>(null);
+  const [xmlVisualPlanningSettings, setXmlVisualPlanningSettings] = useState<XmlVisualPlanningSettings | null>(null);
+  const [initialXmlVisualPlanningSettings, setInitialXmlVisualPlanningSettings] = useState<XmlVisualPlanningSettings | null>(null);
   const [selectedStyleId, setSelectedStyleId] = useState<string | null>(null);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | null>(null);
   const [selectedMusicId, setSelectedMusicId] = useState<string | null>(null);
@@ -1056,6 +1128,8 @@ export default function ShortFormVideoSettingsPage() {
       setInitialBackgroundVideos(data.backgroundVideos);
       setTextScriptSettings(data.textScript);
       setInitialTextScriptSettings(data.textScript);
+      setXmlVisualPlanningSettings(data.xmlVisualPlanning);
+      setInitialXmlVisualPlanningSettings(data.xmlVisualPlanning);
       setSelectedStyleId((current) => current || data.imageStyles.defaultStyleId || data.imageStyles.styles[0]?.id || null);
       setSelectedVoiceId((current) => current || data.videoRender.defaultVoiceId || data.videoRender.voices[0]?.id || null);
       setSelectedMusicId((current) => current || data.videoRender.defaultMusicTrackId || data.videoRender.musicTracks[0]?.id || null);
@@ -1194,13 +1268,22 @@ export default function ShortFormVideoSettingsPage() {
         })
       : false;
     const pauseRemovalDirty = videoRender && initialVideoRender
-      ? serializeForCompare(videoRender.pauseRemoval) !== serializeForCompare(initialVideoRender.pauseRemoval)
+      ? serializeForCompare({
+          pauseRemoval: videoRender.pauseRemoval,
+          chromaKeyEnabledByDefault: videoRender.chromaKeyEnabledByDefault,
+        }) !== serializeForCompare({
+          pauseRemoval: initialVideoRender.pauseRemoval,
+          chromaKeyEnabledByDefault: initialVideoRender.chromaKeyEnabledByDefault,
+        })
       : false;
     const backgroundVideosDirty = backgroundVideos && initialBackgroundVideos
       ? serializeForCompare(backgroundVideos) !== serializeForCompare(initialBackgroundVideos)
       : false;
     const textScriptPromptsDirty = textScriptSettings && initialTextScriptSettings
       ? serializeForCompare(textScriptSettings) !== serializeForCompare(initialTextScriptSettings)
+      : false;
+    const xmlVisualPlanningDirty = xmlVisualPlanningSettings && initialXmlVisualPlanningSettings
+      ? serializeForCompare(xmlVisualPlanningSettings) !== serializeForCompare(initialXmlVisualPlanningSettings)
       : false;
 
     const promptGroupDirty = Object.fromEntries(
@@ -1221,14 +1304,16 @@ export default function ShortFormVideoSettingsPage() {
       'prompt-hooks': promptGroupDirty['prompt-hooks'],
       'prompt-research': promptGroupDirty['prompt-research'],
       'text-script-prompts': textScriptPromptsDirty,
+      'xml-visual-planning': xmlVisualPlanningDirty,
     };
-  }, [backgroundVideos, imageStyles, initialBackgroundVideos, initialImageStyles, initialPrompts, initialTextScriptSettings, initialVideoRender, prompts, textScriptSettings, videoRender]);
+  }, [backgroundVideos, imageStyles, initialBackgroundVideos, initialImageStyles, initialPrompts, initialTextScriptSettings, initialVideoRender, initialXmlVisualPlanningSettings, prompts, textScriptSettings, videoRender, xmlVisualPlanningSettings]);
 
   const sections = useMemo(
     () => [
       { id: 'prompt-hooks' as const, label: 'Hook prompts', dirty: dirtyBySection['prompt-hooks'] },
       { id: 'prompt-research' as const, label: 'Research prompts', dirty: dirtyBySection['prompt-research'] },
       { id: 'text-script-prompts' as const, label: 'Text-script Scribe prompts', dirty: dirtyBySection['text-script-prompts'] },
+      { id: 'xml-visual-planning' as const, label: 'Visual-planning Scribe prompt', dirty: dirtyBySection['xml-visual-planning'] },
       { id: 'pause-removal' as const, label: 'Pause-removal defaults', dirty: dirtyBySection['pause-removal'] },
       { id: 'tts-voice' as const, label: 'Qwen voice library', dirty: dirtyBySection['tts-voice'] },
       { id: 'image-templates' as const, label: 'Nano Banana prompt templates', dirty: dirtyBySection['image-templates'] },
@@ -1393,6 +1478,127 @@ export default function ShortFormVideoSettingsPage() {
     </section>
   );
 
+  const xmlVisualPlanningPromptSection = (
+    <section id="xml-visual-planning" className="scroll-mt-24">
+      <Card className="space-y-5 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <WorkflowSectionHeader
+            title="Visual-planning Scribe prompt"
+            description="This is the actual full top-level prompt template the dashboard sends to Scribe when Plan visuals writes the XML script. The only extra layer is an optional revision-notes block that you place explicitly with {{revisionNotesBlock}}."
+            status={dirtyBySection['xml-visual-planning'] ? 'needs review' : 'approved'}
+          />
+          <SectionActions
+            dirty={dirtyBySection['xml-visual-planning']}
+            saving={sectionFeedback['xml-visual-planning'].saving}
+            saveLabel="Save visual-planning prompt"
+            onSave={() => void saveSection('xml-visual-planning')}
+            onReset={() => resetSection('xml-visual-planning')}
+          />
+        </div>
+
+        {xmlVisualPlanningSettings ? (
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Full visual-planning prompt template</label>
+              <Textarea
+                value={xmlVisualPlanningSettings.promptTemplate}
+                onChange={(event) => {
+                  updateSectionFeedbackState('xml-visual-planning', { error: null, message: null });
+                  setXmlVisualPlanningSettings({ ...xmlVisualPlanningSettings, promptTemplate: event.target.value });
+                }}
+                className="min-h-[560px] font-mono text-xs"
+              />
+              <div className="space-y-1 text-xs text-muted-foreground">
+                <p>
+                  Runtime placeholders stay in this template because the setting is global, but this field is the real prompt surface used at runtime for Scribe XML visual planning. Keep labels like “Selected hook:” inline here when you want them always visible.
+                </p>
+                <p>
+                  Place <code>{'{{revisionNotesBlock}}'}</code> wherever the optional revision-notes instructions should appear. If no revision notes are supplied for a rerun, that block is omitted entirely.
+                </p>
+                <p>
+                  Keep this field as the complete top-level prompt. If you change artifact instructions or placeholder names here, the Plan Visuals runtime behavior will change immediately.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border/70 bg-background/40 p-3 text-xs text-muted-foreground">
+              <p className="font-medium text-foreground">Full prompt placeholders</p>
+              <div className="mt-2 overflow-x-auto">
+                <table className="min-w-full border-collapse text-left text-xs text-muted-foreground">
+                  <thead>
+                    <tr className="border-b border-border/70 text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-2 py-2 font-medium">Placeholder</th>
+                      <th className="px-2 py-2 font-medium">What it represents</th>
+                      <th className="px-2 py-2 font-medium">Example value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {XML_VISUAL_PLANNING_PLACEHOLDER_ROWS.map((row) => (
+                      <tr key={row.placeholder} className="border-b border-border/50 align-top last:border-b-0">
+                        <td className="px-2 py-2 font-mono text-[11px] text-foreground">{row.placeholder}</td>
+                        <td className="px-2 py-2 leading-5">{row.explanation}</td>
+                        <td className="px-2 py-2 leading-5 text-foreground/80">{row.example}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Conditional revision-notes prompt template</label>
+              <Textarea
+                value={xmlVisualPlanningSettings.revisionNotesPromptTemplate}
+                onChange={(event) => {
+                  updateSectionFeedbackState('xml-visual-planning', { error: null, message: null });
+                  setXmlVisualPlanningSettings({ ...xmlVisualPlanningSettings, revisionNotesPromptTemplate: event.target.value });
+                }}
+                className="min-h-[120px] font-mono text-xs"
+              />
+              <div className="space-y-1 text-xs text-muted-foreground">
+                <p>
+                  This template renders only when rerun revision notes exist. The rendered result becomes <code>{'{{revisionNotesBlock}}'}</code> inside the full prompt above.
+                </p>
+                <p>
+                  Use this to control the revision-notes label or any extra guidance without leaving an empty line like “Revision notes:” when no notes were provided.
+                </p>
+                <p>
+                  This conditional template supports both <code>{'{{revisionNotes}}'}</code> and <code>{'{{xmlScriptPath}}'}</code>.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border/70 bg-background/40 p-3 text-xs text-muted-foreground">
+              <p className="font-medium text-foreground">Revision-notes template placeholders</p>
+              <div className="mt-2 overflow-x-auto">
+                <table className="min-w-full border-collapse text-left text-xs text-muted-foreground">
+                  <thead>
+                    <tr className="border-b border-border/70 text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-2 py-2 font-medium">Placeholder</th>
+                      <th className="px-2 py-2 font-medium">What it represents</th>
+                      <th className="px-2 py-2 font-medium">Example value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {XML_VISUAL_PLANNING_REVISION_NOTES_PLACEHOLDER_ROWS.map((row) => (
+                      <tr key={row.placeholder} className="border-b border-border/50 align-top last:border-b-0">
+                        <td className="px-2 py-2 font-mono text-[11px] text-foreground">{row.placeholder}</td>
+                        <td className="px-2 py-2 leading-5">{row.explanation}</td>
+                        <td className="px-2 py-2 leading-5 text-foreground/80">{row.example}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <SectionFeedbackNotice feedback={sectionFeedback['xml-visual-planning']} />
+      </Card>
+    </section>
+  );
+
   function updateSectionFeedbackState(sectionId: SettingsSectionId, patch: Partial<SectionFeedback>) {
     setSectionFeedback((current) => ({
       ...current,
@@ -1470,6 +1676,12 @@ export default function ShortFormVideoSettingsPage() {
       return;
     }
 
+    if (sectionId === 'xml-visual-planning') {
+      setXmlVisualPlanningSettings(data.xmlVisualPlanning);
+      setInitialXmlVisualPlanningSettings(data.xmlVisualPlanning);
+      return;
+    }
+
     if (sectionId === 'image-templates') {
       setImageStyles((current) =>
         current ? { ...current, promptTemplates: data.imageStyles.promptTemplates } : data.imageStyles
@@ -1524,6 +1736,7 @@ export default function ShortFormVideoSettingsPage() {
           ? {
               videoRender: {
                 pauseRemoval: videoRender.pauseRemoval,
+                chromaKeyEnabledByDefault: videoRender.chromaKeyEnabledByDefault,
               },
             }
           : null;
@@ -1552,6 +1765,8 @@ export default function ShortFormVideoSettingsPage() {
         return backgroundVideos ? { backgroundVideos } : null;
       case 'text-script-prompts':
         return textScriptSettings ? { textScript: textScriptSettings } : null;
+      case 'xml-visual-planning':
+        return xmlVisualPlanningSettings ? { xmlVisualPlanning: xmlVisualPlanningSettings } : null;
       case 'image-templates':
         return imageStyles ? { imageStyles: { promptTemplates: imageStyles.promptTemplates } } : null;
       case 'image-styles':
@@ -1596,7 +1811,9 @@ export default function ShortFormVideoSettingsPage() {
                       ? 'Saved. New scene-image runs and tests will use this section immediately.'
                       : sectionId === 'text-script-prompts'
                         ? 'Saved. New text-script runs will use these full Scribe prompt templates and the default max-iteration limit immediately.'
-                        : 'Saved. New workflow runs will use this prompt section immediately.',
+                        : sectionId === 'xml-visual-planning'
+                          ? 'Saved. New Plan Visuals XML runs will use this full Scribe prompt template immediately.'
+                          : 'Saved. New workflow runs will use this prompt section immediately.',
       });
       return data;
     } catch (err) {
@@ -1631,6 +1848,7 @@ export default function ShortFormVideoSettingsPage() {
         setVideoRender({
           ...videoRender,
           pauseRemoval: initialVideoRender.pauseRemoval,
+          chromaKeyEnabledByDefault: initialVideoRender.chromaKeyEnabledByDefault,
         });
         return;
       }
@@ -1665,6 +1883,11 @@ export default function ShortFormVideoSettingsPage() {
 
     if (sectionId === 'text-script-prompts' && initialTextScriptSettings) {
       setTextScriptSettings(initialTextScriptSettings);
+      return;
+    }
+
+    if (sectionId === 'xml-visual-planning' && initialXmlVisualPlanningSettings) {
+      setXmlVisualPlanningSettings(initialXmlVisualPlanningSettings);
       return;
     }
 
@@ -2340,8 +2563,8 @@ export default function ShortFormVideoSettingsPage() {
           <p className="mt-1 max-w-4xl text-sm text-muted-foreground">
             Edit the real settings the dashboard actually uses: Qwen narration voice controls for final-video generation,
             pause-removal defaults for the narration timing pass, reusable looping background videos, Nano Banana scene-image templates and style rules,
-            and the remaining hooks / research / script prompt templates. For text scripts, these settings feed the dashboard-owned workflow wrappers
-            that then call Scribe. Each section now saves independently so you can iterate without committing unrelated draft changes.
+            and the remaining hooks / research / script / visual-planning prompt templates. For the Scribe-driven stages, these settings now expose the
+            actual top-level prompts the dashboard uses at runtime. Each section now saves independently so you can iterate without committing unrelated draft changes.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -2359,12 +2582,14 @@ export default function ShortFormVideoSettingsPage() {
 
       {textScriptPromptSection}
 
+      {xmlVisualPlanningPromptSection}
+
       <section id="pause-removal" className="scroll-mt-24">
         <Card className="space-y-5 p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <WorkflowSectionHeader
               title="Pause-removal defaults"
-              description="Set the global silence-trimming defaults for the narration pipeline. This ffmpeg pass runs after original narration generation and before forced alignment. Individual projects can override these values from their Narration Audio section."
+              description="Set the global silence-trimming defaults for the narration pipeline plus the default final-render chroma-key behavior. The silence-trimming ffmpeg pass runs after original narration generation and before forced alignment. Individual projects can override these values from their project page."
               status={dirtyBySection['pause-removal'] ? 'needs review' : 'approved'}
             />
             <SectionActions
@@ -2378,6 +2603,24 @@ export default function ShortFormVideoSettingsPage() {
 
           {videoRender ? (
             <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Default final-video chroma key</label>
+                <Select
+                  value={videoRender.chromaKeyEnabledByDefault ? 'enabled' : 'disabled'}
+                  onChange={(event) => {
+                    updateSectionFeedbackState('pause-removal', { error: null, message: null });
+                    setVideoRender({
+                      ...videoRender,
+                      chromaKeyEnabledByDefault: event.target.value === 'enabled',
+                    });
+                  }}
+                  className="max-w-[220px]"
+                >
+                  <option value="disabled">Disabled</option>
+                  <option value="enabled">Enabled</option>
+                </Select>
+                <p className="text-xs text-muted-foreground">New projects use this for final-video runs unless a project-level override says otherwise. Default is now off.</p>
+              </div>
               <div className="space-y-2">
                 <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Remove pauses longer than (seconds)</label>
                 <Input

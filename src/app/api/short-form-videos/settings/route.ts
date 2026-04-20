@@ -25,6 +25,11 @@ import {
   saveShortFormTextScriptSettings,
   type ShortFormTextScriptSettings,
 } from "@/lib/short-form-text-script-settings";
+import {
+  getShortFormXmlVisualPlanningSettings,
+  saveShortFormXmlVisualPlanningSettings,
+  type ShortFormXmlVisualPlanningSettings,
+} from "@/lib/short-form-xml-visual-planning-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +41,7 @@ function buildPayload() {
     videoRender: getShortFormVideoRenderSettings(),
     backgroundVideos: getShortFormBackgroundVideoSettings(),
     textScript: getShortFormTextScriptSettings(),
+    xmlVisualPlanning: getShortFormXmlVisualPlanningSettings(),
   };
 }
 
@@ -94,9 +100,10 @@ export async function PATCH(request: NextRequest) {
   const videoRender = body && typeof body === "object" && !Array.isArray(body) ? body.videoRender : undefined;
   const backgroundVideos = body && typeof body === "object" && !Array.isArray(body) ? body.backgroundVideos : undefined;
   const textScript = body && typeof body === "object" && !Array.isArray(body) ? body.textScript : undefined;
+  const xmlVisualPlanning = body && typeof body === "object" && !Array.isArray(body) ? body.xmlVisualPlanning : undefined;
 
-  if (prompts === undefined && imageStyles === undefined && videoRender === undefined && backgroundVideos === undefined && textScript === undefined) {
-    return NextResponse.json({ success: false, error: "prompts, imageStyles, videoRender, backgroundVideos, or textScript is required" }, { status: 400 });
+  if (prompts === undefined && imageStyles === undefined && videoRender === undefined && backgroundVideos === undefined && textScript === undefined && xmlVisualPlanning === undefined) {
+    return NextResponse.json({ success: false, error: "prompts, imageStyles, videoRender, backgroundVideos, textScript, or xmlVisualPlanning is required" }, { status: 400 });
   }
 
   if (prompts !== undefined) {
@@ -172,6 +179,9 @@ export async function PATCH(request: NextRequest) {
     }
     if (typeof candidate.musicVolume !== "number" || Number.isNaN(candidate.musicVolume) || candidate.musicVolume < 0 || candidate.musicVolume > 1) {
       return NextResponse.json({ success: false, error: "Music volume must be a number between 0 and 1" }, { status: 400 });
+    }
+    if (typeof candidate.chromaKeyEnabledByDefault !== "boolean") {
+      return NextResponse.json({ success: false, error: "Chroma-key default must be enabled or disabled" }, { status: 400 });
     }
 
     if (typeof candidate.captionMaxWords !== "number" || Number.isNaN(candidate.captionMaxWords) || candidate.captionMaxWords < 2 || candidate.captionMaxWords > 12) {
@@ -368,6 +378,26 @@ export async function PATCH(request: NextRequest) {
     }
 
     saveShortFormTextScriptSettings(candidate);
+  }
+
+  if (xmlVisualPlanning !== undefined) {
+    if (!xmlVisualPlanning || typeof xmlVisualPlanning !== "object" || Array.isArray(xmlVisualPlanning)) {
+      return NextResponse.json({ success: false, error: "xmlVisualPlanning must be an object" }, { status: 400 });
+    }
+
+    const candidate = {
+      ...getShortFormXmlVisualPlanningSettings(),
+      ...(xmlVisualPlanning as Partial<ShortFormXmlVisualPlanningSettings>),
+    } satisfies ShortFormXmlVisualPlanningSettings;
+
+    if (typeof candidate.promptTemplate !== "string" || !candidate.promptTemplate.trim()) {
+      return NextResponse.json({ success: false, error: "Visual-planning full prompt template must be a non-empty string" }, { status: 400 });
+    }
+    if (typeof candidate.revisionNotesPromptTemplate !== "string" || !candidate.revisionNotesPromptTemplate.trim()) {
+      return NextResponse.json({ success: false, error: "Visual-planning revision-notes prompt template must be a non-empty string" }, { status: 400 });
+    }
+
+    saveShortFormXmlVisualPlanningSettings(candidate);
   }
 
   if (backgroundVideos !== undefined) {
