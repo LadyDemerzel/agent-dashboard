@@ -108,7 +108,7 @@ export function WorkflowArtifactActionButton({
           aria-haspopup="dialog"
           onClick={() => setOpen((value) => !value)}
           disabled={isDisabled}
-          className="cursor-pointer rounded-l-none border-l border-primary-foreground/20 px-3"
+          className="cursor-pointer rounded-l-none border-l border-zinc-300 px-3"
         >
           <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0" />
         </Button>
