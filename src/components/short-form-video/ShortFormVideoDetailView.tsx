@@ -27,6 +27,7 @@ import {
   StaleArtifactNotice,
   ShortFormSubpageShell,
   ValidationNotice,
+  WorkflowArtifactActionButton,
   WorkflowSectionHeader,
 } from "@/components/short-form-video/WorkflowShared";
 import {
@@ -1397,7 +1398,6 @@ function XMLScriptSection({
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
-  const [requestNotes, setRequestNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([]);
   const [defaultVoiceId, setDefaultVoiceId] = useState<string>("");
@@ -1717,6 +1717,7 @@ function XMLScriptSection({
 
   async function triggerTask(
     task: "full" | "narration" | "silence" | "captions" | "visuals",
+    options?: { notes?: string },
   ) {
     setSaving(true);
     try {
@@ -1724,13 +1725,13 @@ function XMLScriptSection({
         await fetch(`/api/short-form-videos/${project.id}/xml-script`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ task, notes: requestNotes }),
+          body: JSON.stringify({
+            task,
+            ...(options?.notes ? { notes: options.notes } : {}),
+          }),
         }),
         "Failed to start XML workflow task",
       );
-      if (task === "visuals" || task === "full") {
-        setRequestNotes("");
-      }
       setDoc(payload.data || null);
       setDraft(payload.data?.content || "");
       setError(null);
@@ -2195,17 +2196,18 @@ function XMLScriptSection({
       </Card>
 
       <Card id="plan-visuals" className="space-y-4 p-5">
-        <div className="flex flex-wrap gap-2">
-          <Button
-            onClick={() => void triggerTask("visuals")}
-            disabled={saving || doc?.pending}
-          >
-            {saving
-              ? "Starting…"
-              : doc?.exists
-                ? "Re-plan visuals"
-                : "Plan visuals"}
-          </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <WorkflowArtifactActionButton
+            hasArtifact={Boolean(doc?.exists)}
+            initialLabel="Plan visuals"
+            rerunLabel="Re-plan visuals"
+            rerunWithNotesLabel="Re-plan visuals with revision notes"
+            loading={saving || Boolean(doc?.pending)}
+            loadingLabel="Starting…"
+            onInitialRun={() => triggerTask("visuals")}
+            onCleanRerun={() => triggerTask("visuals")}
+            onRerunWithNotes={(notes) => triggerTask("visuals", { notes })}
+          />
           {doc?.exists ? (
             <Button
               variant="secondary"
@@ -2221,33 +2223,16 @@ function XMLScriptSection({
           >
             {editing ? "Cancel edit" : "Edit XML"}
           </Button>
-        </div>
-        <div className="rounded-lg border border-border bg-background/60 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-medium text-foreground">
-                Visual planning notes
-              </h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Supported XML schema: <code>&lt;assets&gt;</code> defines
-                reusable green-screen image assets, and{" "}
-                <code>&lt;timeline&gt;</code> defines timed visual entries only.
-                Captions live in a separate deterministic JSON artifact.
-              </p>
-            </div>
-            <StatusBadge
-              status={
-                visualsStatus === "running" ? "working" : doc?.status || "draft"
-              }
-              compact
-            />
-          </div>
-          <Textarea
-            value={requestNotes}
-            onChange={(e) => setRequestNotes(e.target.value)}
-            className="mt-4 min-h-[84px]"
-            placeholder="Optional notes for the visuals planning pass — for example new visual direction or debugging notes."
+          <StatusBadge
+            status={
+              visualsStatus === "running" ? "working" : doc?.status || "draft"
+            }
+            compact
           />
+        </div>
+        <div className="rounded-lg border border-border bg-background/60 p-4 text-xs text-muted-foreground">
+          Supported XML schema: <code>&lt;assets&gt;</code> defines reusable green-screen image assets, and{" "}
+          <code>&lt;timeline&gt;</code> defines timed visual entries only. Captions live in a separate deterministic JSON artifact.
         </div>
         {visualsStatus === "running" ? (
           <PendingNotice
@@ -2360,7 +2345,10 @@ function StageReviewSection({
     }
   }, [doc.exists, collapseDocumentByDefault]);
 
-  async function triggerGenerate() {
+  async function triggerStageAction(
+    action: "generate" | "revise",
+    options?: { notes?: string },
+  ) {
     setSaving(true);
     setActionError(null);
 
@@ -2370,7 +2358,8 @@ function StageReviewSection({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            action: "generate",
+            action,
+            ...(options?.notes ? { notes: options.notes } : {}),
             ...(triggerPayload || {}),
           }),
         }),
@@ -2423,29 +2412,18 @@ function StageReviewSection({
     setActionError(null);
 
     try {
-      if (status === "requested changes") {
-        await parseJsonResponse(
-          await fetch(`/api/short-form-videos/${projectId}/workflow/${stage}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "revise", notes: note }),
+      await parseJsonResponse(
+        await fetch(`/api/short-form-videos/${projectId}/workflow/${stage}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status,
+            comment: note || `Status updated to ${status}`,
+            updatedBy: "ittai",
           }),
-          `Failed to request ${title.toLowerCase()} changes`,
-        );
-      } else {
-        await parseJsonResponse(
-          await fetch(`/api/short-form-videos/${projectId}/workflow/${stage}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              status,
-              comment: note || `Status updated to ${status}`,
-              updatedBy: "ittai",
-            }),
-          }),
-          `Failed to update ${title.toLowerCase()} status`,
-        );
-      }
+        }),
+        `Failed to update ${title.toLowerCase()} status`,
+      );
 
       setNote("");
       await onRefresh();
@@ -2548,12 +2526,20 @@ function StageReviewSection({
       {!doc.exists ? (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">{emptyText}</p>
-          <Button
-            onClick={() => void triggerGenerate()}
-            disabled={triggerDisabled || saving || doc.pending}
-          >
-            {doc.pending || saving ? `${triggerLabel}…` : triggerLabel}
-          </Button>
+          <WorkflowArtifactActionButton
+            hasArtifact={false}
+            initialLabel={triggerLabel}
+            rerunLabel={`Re-${triggerLabel.toLowerCase()}`}
+            rerunWithNotesLabel={`Re-${triggerLabel.toLowerCase()} with revision notes`}
+            loading={doc.pending || saving}
+            loadingLabel={`${triggerLabel}…`}
+            disabled={triggerDisabled}
+            onInitialRun={() => triggerStageAction("generate")}
+            onCleanRerun={() => triggerStageAction("generate")}
+            onRerunWithNotes={(notes) =>
+              triggerStageAction("revise", { notes })
+            }
+          />
           {triggerDescription ? (
             <p className="text-xs text-muted-foreground">
               {triggerDescription}
@@ -2571,13 +2557,33 @@ function StageReviewSection({
         </div>
       ) : (
         <>
+          <div className="flex flex-wrap items-center gap-2">
+            <WorkflowArtifactActionButton
+              hasArtifact
+              initialLabel={triggerLabel}
+              rerunLabel={`Re-${triggerLabel.toLowerCase()}`}
+              rerunWithNotesLabel={`Re-${triggerLabel.toLowerCase()} with revision notes`}
+              loading={saving || doc.pending}
+              disabled={triggerDisabled}
+              onInitialRun={() => triggerStageAction("generate")}
+              onCleanRerun={() => triggerStageAction("generate")}
+              onRerunWithNotes={(notes) =>
+                triggerStageAction("revise", { notes })
+              }
+            />
+            {triggerDisabledReason ? (
+              <div className="text-xs text-amber-200">
+                {triggerDisabledReason}
+              </div>
+            ) : null}
+          </div>
+
           <StageReviewControls
             status={status}
             note={note}
             saving={saving}
             pending={doc.pending}
             editing={editing}
-            subjectLabel={title}
             showEditButton={!canCollapseDocument || documentExpanded}
             onStatusChange={setStatus}
             onNoteChange={setNote}
@@ -3736,7 +3742,6 @@ function SoundDesignSection({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(project.soundDesign.content || "");
-  const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [savingOverrides, setSavingOverrides] = useState(false);
   const [savingPlanStatus, setSavingPlanStatus] = useState(false);
@@ -4007,7 +4012,10 @@ function SoundDesignSection({
     }));
   }
 
-  async function runAction(action: "generate" | "resolve" | "preview") {
+  async function runAction(
+    action: "generate" | "resolve" | "preview",
+    options?: { notes?: string },
+  ) {
     const shouldMarkPlanPending = action === "generate";
     setSaving(true);
     setActionError(null);
@@ -4031,7 +4039,7 @@ function SoundDesignSection({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               action,
-              notes,
+              ...(options?.notes ? { notes: options.notes } : {}),
               content: editing ? draft : undefined,
             }),
           }),
@@ -4276,16 +4284,17 @@ function SoundDesignSection({
     return (
       <section id="plan-sound-design" className="scroll-mt-24 space-y-5">
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            onClick={() => void runAction("generate")}
+          <WorkflowArtifactActionButton
+            hasArtifact={project.soundDesign.exists}
+            initialLabel="Plan sound design"
+            rerunLabel="Re-plan sound design"
+            rerunWithNotesLabel="Re-plan sound design with revision notes"
+            loading={saving || project.soundDesign.pending}
             disabled={busy || project.soundDesign.pending}
-          >
-            {saving
-              ? "Working…"
-              : project.soundDesign.exists
-                ? "Re-plan sound design"
-                : "Plan sound design"}
-          </Button>
+            onInitialRun={() => runAction("generate")}
+            onCleanRerun={() => runAction("generate")}
+            onRerunWithNotes={(notes) => runAction("generate", { notes })}
+          />
           {project.soundDesign.exists && planSoundDesignStatus === "needs review" ? (
             <Button
               variant="secondary"
@@ -4295,6 +4304,7 @@ function SoundDesignSection({
               {savingPlanStatus ? "Approving…" : "Approve Plan Sound Design"}
             </Button>
           ) : null}
+          <StatusBadge status={planSoundDesignStatus} compact />
           <Link
             href={buildShortFormSettingsHref("sound-library", {
               hash: "sound-library",
@@ -4307,24 +4317,8 @@ function SoundDesignSection({
           </Link>
         </div>
 
-        <div className="rounded-lg border border-border bg-background/60 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-medium text-foreground">
-                Planning notes
-              </h3>
-              <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-                Optional guidance for the XML planning pass. Audio rendering and event overrides live on Generate Sound Design.
-              </p>
-            </div>
-            <StatusBadge status={planSoundDesignStatus} compact />
-          </div>
-          <Textarea
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            className="mt-4 min-h-[84px]"
-            placeholder="Optional notes for the planning pass, for example make transitions lighter, keep ambience subtle, or add one stronger opening hit."
-          />
+        <div className="rounded-lg border border-border bg-background/60 p-4 text-xs text-muted-foreground">
+          Plan Sound Design writes the XML planning artifact. Audio rendering and event overrides live on Generate Sound Design.
         </div>
 
         {actionError ? (

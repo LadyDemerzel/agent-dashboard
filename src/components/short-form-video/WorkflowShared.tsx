@@ -1,12 +1,146 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { OrbitLoader } from "@/components/ui/loading";
 import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/StatusBadge";
 import { cn } from "@/lib/utils";
+
+export function WorkflowArtifactActionButton({
+  hasArtifact,
+  initialLabel,
+  rerunLabel,
+  rerunWithNotesLabel,
+  loadingLabel = "Working…",
+  notesPlaceholder = "Enter revision instructions to incorporate",
+  disabled = false,
+  loading = false,
+  onInitialRun,
+  onCleanRerun,
+  onRerunWithNotes,
+}: {
+  hasArtifact: boolean;
+  initialLabel: string;
+  rerunLabel: string;
+  rerunWithNotesLabel: string;
+  loadingLabel?: string;
+  notesPlaceholder?: string;
+  disabled?: boolean;
+  loading?: boolean;
+  onInitialRun: () => void | Promise<void>;
+  onCleanRerun: () => void | Promise<void>;
+  onRerunWithNotes: (notes: string) => void | Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [notes, setNotes] = useState("");
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const buttonGroupRef = useRef<HTMLDivElement | null>(null);
+  const textareaId = `${rerunWithNotesLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-notes`;
+  const isDisabled = disabled || loading;
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Node;
+      if (
+        panelRef.current?.contains(target) ||
+        buttonGroupRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  async function submitRevisionNotes() {
+    await onRerunWithNotes(notes);
+    setNotes("");
+    setOpen(false);
+  }
+
+  if (!hasArtifact) {
+    return (
+      <Button onClick={() => void onInitialRun()} disabled={isDisabled}>
+        {loading ? loadingLabel : initialLabel}
+      </Button>
+    );
+  }
+
+  return (
+    <div className="relative inline-flex flex-col items-start">
+      <div ref={buttonGroupRef} className="inline-flex rounded-md shadow-sm">
+        <Button
+          type="button"
+          onClick={() => void onCleanRerun()}
+          disabled={isDisabled}
+          className="rounded-r-none"
+        >
+          {loading ? loadingLabel : rerunLabel}
+        </Button>
+        <Button
+          type="button"
+          aria-label={`Open revision notes for ${rerunLabel.toLowerCase()}`}
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          onClick={() => setOpen((value) => !value)}
+          disabled={isDisabled}
+          className="rounded-l-none border-l border-primary-foreground/20 px-3"
+        >
+          <span aria-hidden="true">⌄</span>
+        </Button>
+      </div>
+      {open ? (
+        <Card
+          ref={panelRef}
+          role="dialog"
+          aria-label={`${rerunLabel} revision notes`}
+          className="absolute left-0 top-full z-20 mt-2 w-[min(22rem,calc(100vw-2rem))] space-y-3 p-3 shadow-lg"
+        >
+          <div className="space-y-2">
+            <Label htmlFor={textareaId} className="sr-only">
+              Revision instructions
+            </Label>
+            <Textarea
+              id={textareaId}
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              placeholder={notesPlaceholder}
+              className="min-h-[96px]"
+              autoFocus
+            />
+          </div>
+          <Button
+            type="button"
+            className="w-full"
+            onClick={() => void submitRevisionNotes()}
+            disabled={isDisabled || !notes.trim()}
+          >
+            {loading ? loadingLabel : rerunWithNotesLabel}
+          </Button>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
 
 export function ShortFormSubpageHeader({
   eyebrow,
@@ -222,7 +356,6 @@ export function StageReviewControls({
   saving,
   pending,
   editing,
-  subjectLabel,
   showEditButton = true,
   onStatusChange,
   onNoteChange,
@@ -234,15 +367,12 @@ export function StageReviewControls({
   saving: boolean;
   pending?: boolean;
   editing: boolean;
-  subjectLabel: string;
   showEditButton?: boolean;
   onStatusChange: (value: string) => void;
   onNoteChange: (value: string) => void;
   onApply: () => void;
   onToggleEdit: () => void;
 }) {
-  const cleanRerun = status === "requested changes" && !note.trim();
-
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -254,35 +384,21 @@ export function StageReviewControls({
           >
             <option value="draft">Draft</option>
             <option value="needs review">Needs Review</option>
-            <option value="requested changes">Requested Changes</option>
+            {status === "requested changes" ? (
+              <option value="requested changes">Requested Changes</option>
+            ) : null}
             <option value="approved">Approved</option>
             <option value="published">Published</option>
           </Select>
         </div>
-        <div className="flex-1 space-y-2">
-          <Input
-            value={note}
-            onChange={(e) => onNoteChange(e.target.value)}
-            placeholder={
-              status === "requested changes"
-                ? `Optional notes — leave blank to regenerate ${subjectLabel.toLowerCase()} cleanly`
-                : "Optional note"
-            }
-          />
-          {status === "requested changes" ? (
-            <p className="text-xs text-muted-foreground">
-              Leave notes empty to rerun {subjectLabel.toLowerCase()} from the
-              current approved inputs, or add notes to request a targeted
-              revision.
-            </p>
-          ) : null}
-        </div>
+        <Input
+          value={note}
+          onChange={(e) => onNoteChange(e.target.value)}
+          placeholder="Optional status note"
+          className="flex-1"
+        />
         <Button onClick={onApply} disabled={saving}>
-          {status === "requested changes"
-            ? cleanRerun
-              ? `Regenerate ${subjectLabel.toLowerCase()}`
-              : "Request changes"
-            : "Apply status"}
+          Apply status
         </Button>
         {showEditButton ? (
           <Button variant="outline" onClick={onToggleEdit}>
@@ -292,8 +408,7 @@ export function StageReviewControls({
       </div>
       {pending ? (
         <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-muted-foreground">
-          Waiting for the latest{" "}
-          {status === "requested changes" ? "revision" : "generation"} to land.
+          Waiting for the latest workflow run to land.
         </div>
       ) : null}
     </div>
