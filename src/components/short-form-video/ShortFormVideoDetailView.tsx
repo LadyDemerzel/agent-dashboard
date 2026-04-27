@@ -4306,7 +4306,6 @@ function SoundDesignSection({
               {savingPlanStatus ? "Approving…" : "Approve Plan Sound Design"}
             </Button>
           ) : null}
-          <StatusBadge status={planSoundDesignStatus} compact />
           <Link
             href={buildShortFormSettingsHref("sound-library", {
               hash: "sound-library",
@@ -4317,10 +4316,6 @@ function SoundDesignSection({
           >
             Open Sound Library settings ↗
           </Link>
-        </div>
-
-        <div className="rounded-lg border border-border bg-background/60 p-4 text-xs text-muted-foreground">
-          Plan Sound Design writes the XML planning artifact. Audio rendering and event overrides live on Generate Sound Design.
         </div>
 
         {actionError ? (
