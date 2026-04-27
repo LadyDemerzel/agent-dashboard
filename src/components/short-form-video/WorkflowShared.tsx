@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
+import { EditIconButton } from "@/components/EditIconButton";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -406,9 +407,12 @@ export function StageReviewControls({
           Apply status
         </Button>
         {showEditButton ? (
-          <Button variant="outline" onClick={onToggleEdit}>
-            {editing ? "Cancel edit" : "Edit"}
-          </Button>
+          <EditIconButton
+            editing={editing}
+            onClick={onToggleEdit}
+            tooltip="Edit document"
+            editingTooltip="Cancel document edit"
+          />
         ) : null}
       </div>
       {pending ? (

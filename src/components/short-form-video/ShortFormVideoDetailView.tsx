@@ -6,6 +6,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
 import { DiffViewer } from "@/components/DiffViewer";
+import { EditIconButton } from "@/components/EditIconButton";
 import { RefreshIconButton } from "@/components/RefreshIconButton";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -1066,13 +1067,11 @@ ${option.text}`)
                       </button>
                       {expanded ? (
                         <div className="flex shrink-0 flex-wrap gap-2">
-                          <Button
-                            variant="outline"
+                          <EditIconButton
                             onClick={() => beginEdit(option)}
                             disabled={saving || manualMutationsBlocked}
-                          >
-                            Edit
-                          </Button>
+                            tooltip="Edit hook"
+                          />
                           <Button
                             variant="outline"
                             onClick={() => void deleteHook(option)}
@@ -2219,12 +2218,12 @@ function XMLScriptSection({
               Approve XML script
             </Button>
           ) : null}
-          <Button
-            variant="outline"
+          <EditIconButton
+            editing={editing}
             onClick={() => void setEditing((current) => !current)}
-          >
-            {editing ? "Cancel edit" : "Edit XML"}
-          </Button>
+            tooltip="Edit XML script"
+            editingTooltip="Cancel XML edit"
+          />
           <StatusBadge
             status={
               visualsStatus === "running" ? "working" : doc?.status || "draft"
@@ -4285,18 +4284,30 @@ function SoundDesignSection({
   if (mode === "plan") {
     return (
       <section id="plan-sound-design" className="scroll-mt-24 space-y-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <WorkflowArtifactActionButton
-            hasArtifact={project.soundDesign.exists}
-            initialLabel="Plan sound design"
-            rerunLabel="Re-plan sound design"
-            rerunWithNotesLabel="Re-plan sound design with revision notes"
-            loading={saving || project.soundDesign.pending}
-            disabled={busy || project.soundDesign.pending}
-            onInitialRun={() => runAction("generate")}
-            onCleanRerun={() => runAction("generate")}
-            onRerunWithNotes={(notes) => runAction("generate", { notes })}
-          />
+        <div className="flex flex-wrap items-start gap-2">
+          <div className="flex flex-col items-start gap-2">
+            <WorkflowArtifactActionButton
+              hasArtifact={project.soundDesign.exists}
+              initialLabel="Plan sound design"
+              rerunLabel="Re-plan sound design"
+              rerunWithNotesLabel="Re-plan sound design with revision notes"
+              loading={saving || project.soundDesign.pending}
+              disabled={busy || project.soundDesign.pending}
+              onInitialRun={() => runAction("generate")}
+              onCleanRerun={() => runAction("generate")}
+              onRerunWithNotes={(notes) => runAction("generate", { notes })}
+            />
+            <Link
+              href={buildShortFormSettingsHref("sound-library", {
+                hash: "sound-library",
+              })}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Open Sound Library settings ↗
+            </Link>
+          </div>
           {project.soundDesign.exists && planSoundDesignStatus === "needs review" ? (
             <Button
               variant="secondary"
@@ -4306,16 +4317,6 @@ function SoundDesignSection({
               {savingPlanStatus ? "Approving…" : "Approve Plan Sound Design"}
             </Button>
           ) : null}
-          <Link
-            href={buildShortFormSettingsHref("sound-library", {
-              hash: "sound-library",
-            })}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-muted-foreground hover:text-foreground"
-          >
-            Open Sound Library settings ↗
-          </Link>
         </div>
 
         {actionError ? (
@@ -4336,17 +4337,15 @@ function SoundDesignSection({
                 Inspect, copy, or edit the generated XML plan before resolving assets or rendering audio.
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {project.soundDesign.content ? (
-                <Button
-                  variant="outline"
-                  onClick={() => setEditing((current) => !current)}
-                  disabled={busy}
-                >
-                  {editing ? "Cancel edit" : "Edit XML"}
-                </Button>
-              ) : null}
-            </div>
+            {project.soundDesign.content ? (
+              <EditIconButton
+                editing={editing}
+                onClick={() => setEditing((current) => !current)}
+                disabled={busy}
+                tooltip="Edit sound-design XML"
+                editingTooltip="Cancel sound-design XML edit"
+              />
+            ) : null}
           </div>
 
           {editing ? (
