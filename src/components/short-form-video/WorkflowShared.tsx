@@ -1,13 +1,90 @@
-'use client';
+"use client";
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { OrbitLoader } from '@/components/ui/loading';
-import { Select } from '@/components/ui/select';
-import { StatusBadge } from '@/components/StatusBadge';
-import { cn } from '@/lib/utils';
+import type { ReactNode } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { OrbitLoader } from "@/components/ui/loading";
+import { Select } from "@/components/ui/select";
+import { StatusBadge } from "@/components/StatusBadge";
+import { cn } from "@/lib/utils";
+
+export function ShortFormSubpageHeader({
+  eyebrow,
+  title,
+  description,
+  status,
+  actions,
+}: {
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  status?: string;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="min-w-0 max-w-4xl">
+        {eyebrow ? (
+          <p className="text-sm text-muted-foreground">{eyebrow}</p>
+        ) : null}
+        <h1 className="mt-1 text-3xl font-bold tracking-tight text-foreground">
+          {title}
+        </h1>
+        {description ? (
+          <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+        ) : null}
+      </div>
+      {status || actions ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {status ? <StatusBadge status={status} /> : null}
+          {actions}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function ShortFormSubpageShell({
+  eyebrow,
+  title,
+  description,
+  status,
+  actions,
+  preContent,
+  children,
+  className,
+  contentClassName,
+}: {
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  status?: string;
+  actions?: ReactNode;
+  preContent?: ReactNode;
+  children: ReactNode;
+  className?: string;
+  contentClassName?: string;
+}) {
+  return (
+    <div
+      className={cn("space-y-6 p-4 pb-24 sm:p-6 sm:pb-28 lg:p-8", className)}
+    >
+      <ShortFormSubpageHeader
+        eyebrow={eyebrow}
+        title={title}
+        description={description}
+        status={status}
+        actions={actions}
+      />
+      {preContent}
+      <div className={cn("min-w-0 space-y-6", contentClassName)}>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export function WorkflowSectionHeader({
   title,
@@ -30,7 +107,7 @@ export function WorkflowSectionHeader({
 }
 
 export function ValidationNotice({
-  title = 'Validation error',
+  title = "Validation error",
   message,
   className,
 }: {
@@ -39,7 +116,13 @@ export function ValidationNotice({
   className?: string;
 }) {
   return (
-    <div className={cn('rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100', className)} role="alert">
+    <div
+      className={cn(
+        "rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100",
+        className,
+      )}
+      role="alert"
+    >
       <p className="font-medium text-red-200">{title}</p>
       <p className="mt-1 text-red-100/90">{message}</p>
     </div>
@@ -56,7 +139,11 @@ export function PendingNotice({
   return (
     <div className="rounded-lg border border-border bg-background/70 p-4">
       <OrbitLoader label={label} />
-      {hint ? <p className="-mt-1 text-center text-xs text-muted-foreground">{hint}</p> : null}
+      {hint ? (
+        <p className="-mt-1 text-center text-xs text-muted-foreground">
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -75,18 +162,34 @@ export function RevisionRequestNotice({
   warning?: string;
 }) {
   return (
-    <div className={cn(
-      'rounded-lg border p-4',
-      pending ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-amber-500/25 bg-amber-500/10'
-    )}>
+    <div
+      className={cn(
+        "rounded-lg border p-4",
+        pending
+          ? "border-emerald-500/20 bg-emerald-500/5"
+          : "border-amber-500/25 bg-amber-500/10",
+      )}
+    >
       <div className="space-y-3">
-        {pending ? <OrbitLoader label={title} /> : <p className="text-sm font-medium text-amber-100">{title}</p>}
+        {pending ? (
+          <OrbitLoader label={title} />
+        ) : (
+          <p className="text-sm font-medium text-amber-100">{title}</p>
+        )}
         <div className="space-y-2 text-sm">
-          {requestedAt ? <p className="text-muted-foreground">Requested {new Date(requestedAt).toLocaleString()}</p> : null}
+          {requestedAt ? (
+            <p className="text-muted-foreground">
+              Requested {new Date(requestedAt).toLocaleString()}
+            </p>
+          ) : null}
           {requestText ? (
             <div className="rounded-md border border-border/60 bg-background/60 p-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Latest requested changes</p>
-              <p className="mt-2 whitespace-pre-wrap text-foreground">{requestText}</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Latest requested changes
+              </p>
+              <p className="mt-2 whitespace-pre-wrap text-foreground">
+                {requestText}
+              </p>
             </div>
           ) : null}
           {warning ? <p className="text-amber-100">{warning}</p> : null}
@@ -109,7 +212,7 @@ export function StaleArtifactNotice({
       <p className="mt-1 text-amber-50/80">
         {updatedAt
           ? `Showing the current on-disk version from ${new Date(updatedAt).toLocaleString()}. A newer revision has not been written yet.`
-          : 'Showing the current on-disk version. A newer revision has not been written yet.'}
+          : "Showing the current on-disk version. A newer revision has not been written yet."}
       </p>
     </div>
   );
@@ -129,12 +232,14 @@ export function AutoRefreshBanner({
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-sm font-medium text-foreground">
-            {activeStages.length > 0 ? 'Auto-refresh is on while background jobs run.' : 'Refreshing workflow state…'}
+            {activeStages.length > 0
+              ? "Auto-refresh is on while background jobs run."
+              : "Refreshing workflow state…"}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
             {activeStages.length > 0
-              ? 'The dashboard is polling for new outputs so pending stages update automatically without a manual refresh.'
-              : 'Checking for the latest workflow updates.'}
+              ? "The dashboard is polling for new outputs so pending stages update automatically without a manual refresh."
+              : "Checking for the latest workflow updates."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -175,14 +280,17 @@ export function StageReviewControls({
   onApply: () => void;
   onToggleEdit: () => void;
 }) {
-  const cleanRerun = status === 'requested changes' && !note.trim();
+  const cleanRerun = status === "requested changes" && !note.trim();
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">Status</span>
-          <Select value={status} onChange={(e) => onStatusChange(e.target.value)}>
+          <Select
+            value={status}
+            onChange={(e) => onStatusChange(e.target.value)}
+          >
             <option value="draft">Draft</option>
             <option value="needs review">Needs Review</option>
             <option value="requested changes">Requested Changes</option>
@@ -194,30 +302,38 @@ export function StageReviewControls({
           <Input
             value={note}
             onChange={(e) => onNoteChange(e.target.value)}
-            placeholder={status === 'requested changes' ? `Optional notes — leave blank to regenerate ${subjectLabel.toLowerCase()} cleanly` : 'Optional note'}
+            placeholder={
+              status === "requested changes"
+                ? `Optional notes — leave blank to regenerate ${subjectLabel.toLowerCase()} cleanly`
+                : "Optional note"
+            }
           />
-          {status === 'requested changes' ? (
+          {status === "requested changes" ? (
             <p className="text-xs text-muted-foreground">
-              Leave notes empty to rerun {subjectLabel.toLowerCase()} from the current approved inputs, or add notes to request a targeted revision.
+              Leave notes empty to rerun {subjectLabel.toLowerCase()} from the
+              current approved inputs, or add notes to request a targeted
+              revision.
             </p>
           ) : null}
         </div>
         <Button onClick={onApply} disabled={saving}>
-          {status === 'requested changes'
+          {status === "requested changes"
             ? cleanRerun
               ? `Regenerate ${subjectLabel.toLowerCase()}`
-              : 'Request changes'
-            : 'Apply status'}
+              : "Request changes"
+            : "Apply status"}
         </Button>
         {showEditButton ? (
           <Button variant="outline" onClick={onToggleEdit}>
-            {editing ? 'Cancel edit' : 'Edit'}
+            {editing ? "Cancel edit" : "Edit"}
           </Button>
         ) : null}
       </div>
       {pending ? (
         <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-muted-foreground">
-          Waiting for the latest {status === 'requested changes' ? 'revision' : 'generation'} to land. This section will refresh automatically.
+          Waiting for the latest{" "}
+          {status === "requested changes" ? "revision" : "generation"} to land.
+          This section will refresh automatically.
         </div>
       ) : null}
     </div>

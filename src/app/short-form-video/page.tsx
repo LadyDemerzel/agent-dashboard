@@ -14,14 +14,26 @@ import {
   type ShortFormProjectRowClient as ProjectRow,
 } from '@/lib/short-form-video-client';
 
+const CURRENT_STAGE_LABELS: Record<string, string> = {
+  topic: 'Topic',
+  hook: 'Hook selected',
+  research: 'Research',
+  script: 'Script',
+  'xml-script': 'Plan Visuals',
+  'scene-images': 'Generate Visuals',
+  'sound-design': 'Plan Sound Design',
+  video: 'Final Video',
+};
+
 function stageLabel(project: ProjectRow) {
-  if (project.video.pending || project.video.videoUrl || project.video.status === 'failed' || project.video.status === 'completed') return 'Video';
-  if (project.sceneImages.pending || project.sceneImages.sceneCount > 0) return 'Visuals';
-  if (project.xmlScript.pending || project.xmlScript.status !== 'draft') return 'XML Script';
-  if (project.script.pending || project.script.status !== 'draft') return 'Script';
-  if (project.research.pending || project.research.status !== 'draft') return 'Research';
-  if (project.hooks.pending || project.hooks.selectedHookText) return 'Hook selected';
-  return 'Topic';
+  if (project.video.pending) return 'Final Video';
+  if (project.soundDesign.pending) {
+    return project.soundDesign.eventCount > 0 ? 'Generate Sound Design' : 'Plan Sound Design';
+  }
+  if (project.currentStage === 'sound-design') {
+    return project.soundDesign.eventCount > 0 ? 'Generate Sound Design' : 'Plan Sound Design';
+  }
+  return CURRENT_STAGE_LABELS[project.currentStage] || 'Topic';
 }
 
 function primaryProjectText(project: ProjectRow) {
@@ -34,21 +46,31 @@ function secondaryProjectText(project: ProjectRow) {
 
 function tableStatus(project: ProjectRow) {
   if (project.video.pending) return 'working';
+  if (project.soundDesign.pending) return 'working';
   if (project.sceneImages.pending) return 'working';
   if (project.xmlScript.pending) return 'working';
   if (project.script.pending) return 'working';
   if (project.research.pending) return 'working';
   if (project.hooks.pending) return 'working';
 
-  if (project.video.status === 'failed') return 'failed';
-  if (project.video.status === 'completed') return 'completed';
-  if (project.video.videoUrl) return project.video.status;
-  if (project.sceneImages.sceneCount > 0) return project.sceneImages.status;
-  if (project.xmlScript.status !== 'draft') return project.xmlScript.status;
-  if (project.script.status !== 'draft') return project.script.status;
-  if (project.research.status !== 'draft') return project.research.status;
-  if (project.hooks.selectedHookText) return 'approved';
-  return 'draft';
+  switch (project.currentStage) {
+    case 'video':
+      return project.video.status;
+    case 'sound-design':
+      return project.soundDesign.status;
+    case 'scene-images':
+      return project.sceneImages.status;
+    case 'xml-script':
+      return project.xmlScript.status;
+    case 'script':
+      return project.script.status;
+    case 'research':
+      return project.research.status;
+    case 'hook':
+      return project.hooks.selectedHookText ? 'approved' : 'draft';
+    default:
+      return 'draft';
+  }
 }
 
 export default function ShortFormVideoPage() {
@@ -85,7 +107,7 @@ export default function ShortFormVideoPage() {
       });
       const data = await res.json();
       if (data.success && data.data?.id) {
-        router.push(`/short-form-video/${data.data.id}`);
+        router.push(`/short-form-video/${data.data.id}/topic`);
       }
     } finally {
       setCreating(false);
@@ -98,10 +120,10 @@ export default function ShortFormVideoPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Short-Form Video</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Create and review hook, research, script, scene image, and final video projects.
+            Create and review hook, research, script, Plan Visuals, Generate Visuals, Plan Sound Design, Generate Sound Design, and Final Video projects.
           </p>
         </div>
-        <Link href="/short-form-video/settings" className={buttonVariants({ variant: 'outline' })}>
+        <Link href="/short-form-video/settings/prompts" className={buttonVariants({ variant: 'outline' })}>
           Settings
         </Link>
       </div>
@@ -147,7 +169,7 @@ export default function ShortFormVideoPage() {
               {projects.map((project) => (
                 <TableRow key={project.id}>
                   <TableCell>
-                    <Link href={`/short-form-video/${project.id}`} className="block hover:underline">
+                    <Link href={`/short-form-video/${project.id}/topic`} className="block hover:underline">
                       <div className="font-medium text-foreground">{primaryProjectText(project)}</div>
                       {secondaryProjectText(project) ? (
                         <div className="mt-1 text-xs text-muted-foreground">{secondaryProjectText(project)}</div>

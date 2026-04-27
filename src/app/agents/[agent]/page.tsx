@@ -1,7 +1,6 @@
 "use client";
 
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import { usePolling } from "@/components/usePolling";
 import { AgentFilesEditor } from "@/components/AgentFilesEditor";
@@ -109,13 +108,6 @@ export default function AgentDetailPage({
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
-      <Link
-        href="/agents"
-        className="text-muted-foreground hover:text-foreground text-sm mb-6 inline-flex items-center gap-1 transition-colors"
-      >
-        &larr; Back to Agents
-      </Link>
-
       {/* Agent Header with Live Status */}
       <Card className="p-6 mb-6">
         <div className="flex items-start justify-between">

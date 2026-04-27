@@ -30,6 +30,12 @@ import {
   saveShortFormXmlVisualPlanningSettings,
   type ShortFormXmlVisualPlanningSettings,
 } from "@/lib/short-form-xml-visual-planning-settings";
+import {
+  appendSoundLibraryUrls,
+  getShortFormSoundDesignSettings,
+  saveShortFormSoundDesignSettings,
+  type ShortFormSoundDesignSettings,
+} from "@/lib/short-form-sound-design-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +48,7 @@ function buildPayload() {
     backgroundVideos: getShortFormBackgroundVideoSettings(),
     textScript: getShortFormTextScriptSettings(),
     xmlVisualPlanning: getShortFormXmlVisualPlanningSettings(),
+    soundDesign: appendSoundLibraryUrls(getShortFormSoundDesignSettings()),
   };
 }
 
@@ -86,6 +93,15 @@ function mergeBackgroundVideosPatch(patch: Partial<ShortFormBackgroundVideoSetti
   } satisfies ShortFormBackgroundVideoSettings;
 }
 
+function mergeSoundDesignPatch(patch: Partial<ShortFormSoundDesignSettings>) {
+  const current = getShortFormSoundDesignSettings();
+  return {
+    ...current,
+    ...patch,
+    library: patch.library || current.library,
+  } satisfies ShortFormSoundDesignSettings;
+}
+
 export async function GET() {
   return NextResponse.json({
     success: true,
@@ -101,9 +117,10 @@ export async function PATCH(request: NextRequest) {
   const backgroundVideos = body && typeof body === "object" && !Array.isArray(body) ? body.backgroundVideos : undefined;
   const textScript = body && typeof body === "object" && !Array.isArray(body) ? body.textScript : undefined;
   const xmlVisualPlanning = body && typeof body === "object" && !Array.isArray(body) ? body.xmlVisualPlanning : undefined;
+  const soundDesign = body && typeof body === "object" && !Array.isArray(body) ? body.soundDesign : undefined;
 
-  if (prompts === undefined && imageStyles === undefined && videoRender === undefined && backgroundVideos === undefined && textScript === undefined && xmlVisualPlanning === undefined) {
-    return NextResponse.json({ success: false, error: "prompts, imageStyles, videoRender, backgroundVideos, textScript, or xmlVisualPlanning is required" }, { status: 400 });
+  if (prompts === undefined && imageStyles === undefined && videoRender === undefined && backgroundVideos === undefined && textScript === undefined && xmlVisualPlanning === undefined && soundDesign === undefined) {
+    return NextResponse.json({ success: false, error: "prompts, imageStyles, videoRender, backgroundVideos, textScript, xmlVisualPlanning, or soundDesign is required" }, { status: 400 });
   }
 
   if (prompts !== undefined) {
@@ -398,6 +415,75 @@ export async function PATCH(request: NextRequest) {
     }
 
     saveShortFormXmlVisualPlanningSettings(candidate);
+  }
+
+  if (soundDesign !== undefined) {
+    if (!soundDesign || typeof soundDesign !== "object" || Array.isArray(soundDesign)) {
+      return NextResponse.json({ success: false, error: "soundDesign must be an object" }, { status: 400 });
+    }
+
+    const candidate = mergeSoundDesignPatch(soundDesign as Partial<ShortFormSoundDesignSettings>);
+    if (typeof candidate.promptTemplate !== "string" || !candidate.promptTemplate.trim()) {
+      return NextResponse.json({ success: false, error: "Sound-design prompt template must be a non-empty string" }, { status: 400 });
+    }
+    if (typeof candidate.revisionPromptTemplate !== "string" || !candidate.revisionPromptTemplate.trim()) {
+      return NextResponse.json({ success: false, error: "Sound-design revision prompt template must be a non-empty string" }, { status: 400 });
+    }
+    if (typeof candidate.defaultDuckingDb !== "number" || Number.isNaN(candidate.defaultDuckingDb) || candidate.defaultDuckingDb < -24 || candidate.defaultDuckingDb > 0) {
+      return NextResponse.json({ success: false, error: "Sound-design ducking must be a number between -24 and 0 dB" }, { status: 400 });
+    }
+    if (typeof candidate.maxConcurrentOneShots !== "number" || Number.isNaN(candidate.maxConcurrentOneShots) || candidate.maxConcurrentOneShots < 1 || candidate.maxConcurrentOneShots > 8) {
+      return NextResponse.json({ success: false, error: "Max concurrent one-shots must be between 1 and 8" }, { status: 400 });
+    }
+    if (!Array.isArray(candidate.library)) {
+      return NextResponse.json({ success: false, error: "Sound library must be an array" }, { status: 400 });
+    }
+    if (candidate.library.length === 0) {
+      return NextResponse.json({ success: false, error: "At least one sound-library entry is required" }, { status: 400 });
+    }
+
+    const seenSoundIds = new Set<string>();
+    for (const sound of candidate.library) {
+      if (typeof sound.id !== "string" || !sound.id.trim()) {
+        return NextResponse.json({ success: false, error: "Each sound-library entry must have an id" }, { status: 400 });
+      }
+      if (seenSoundIds.has(sound.id)) {
+        return NextResponse.json({ success: false, error: `Sound-library entry id ${sound.id} is duplicated. Save unique ids before continuing.` }, { status: 400 });
+      }
+      seenSoundIds.add(sound.id);
+      if (typeof sound.name !== "string" || !sound.name.trim()) {
+        return NextResponse.json({ success: false, error: "Each sound-library entry must have a name" }, { status: 400 });
+      }
+      if (typeof sound.category !== "string" || !sound.category.trim()) {
+        return NextResponse.json({ success: false, error: `Sound ${sound.name} must have a category` }, { status: 400 });
+      }
+      if (!Array.isArray(sound.semanticTypes) || sound.semanticTypes.length === 0) {
+        return NextResponse.json({ success: false, error: `Sound ${sound.name} must include at least one semantic type` }, { status: 400 });
+      }
+      if (!Array.isArray(sound.tags)) {
+        return NextResponse.json({ success: false, error: `Sound ${sound.name} must include tags as an array` }, { status: 400 });
+      }
+      if (!["point", "bed", "riser"].includes(sound.timingType)) {
+        return NextResponse.json({ success: false, error: `Sound ${sound.name} must use a valid timing type` }, { status: 400 });
+      }
+      if (!["scene-start", "scene-end", "caption-start", "caption-end", "global-start", "global-end"].includes(sound.defaultAnchor)) {
+        return NextResponse.json({ success: false, error: `Sound ${sound.name} must use a valid default anchor` }, { status: 400 });
+      }
+      if (typeof sound.defaultGainDb !== "number" || Number.isNaN(sound.defaultGainDb) || sound.defaultGainDb < -36 || sound.defaultGainDb > 12) {
+        return NextResponse.json({ success: false, error: `Sound ${sound.name} must use a default gain between -36 and 12 dB` }, { status: 400 });
+      }
+      if (typeof sound.defaultFadeInMs !== "number" || Number.isNaN(sound.defaultFadeInMs) || sound.defaultFadeInMs < 0 || sound.defaultFadeInMs > 10_000) {
+        return NextResponse.json({ success: false, error: `Sound ${sound.name} must use a fade-in between 0 and 10000 ms` }, { status: 400 });
+      }
+      if (typeof sound.defaultFadeOutMs !== "number" || Number.isNaN(sound.defaultFadeOutMs) || sound.defaultFadeOutMs < 0 || sound.defaultFadeOutMs > 10_000) {
+        return NextResponse.json({ success: false, error: `Sound ${sound.name} must use a fade-out between 0 and 10000 ms` }, { status: 400 });
+      }
+      if (typeof sound.anchorRatio !== "number" || Number.isNaN(sound.anchorRatio) || sound.anchorRatio < 0 || sound.anchorRatio > 1) {
+        return NextResponse.json({ success: false, error: `Sound ${sound.name} must use an anchor ratio between 0 and 1` }, { status: 400 });
+      }
+    }
+
+    saveShortFormSoundDesignSettings(candidate);
   }
 
   if (backgroundVideos !== undefined) {

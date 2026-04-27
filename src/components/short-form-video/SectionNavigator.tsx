@@ -5,6 +5,13 @@ import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/StatusBadge';
 import { cn } from '@/lib/utils';
 
+const APP_SHELL_SCROLL_CONTAINER_ID = 'app-shell-content';
+
+function getScrollContainer() {
+  if (typeof document === 'undefined') return null;
+  return document.getElementById(APP_SHELL_SCROLL_CONTAINER_ID);
+}
+
 export interface SectionNavigatorItem<T extends string = string> {
   id: T;
   label: string;
@@ -38,14 +45,18 @@ export function useSectionScrollSpy<T extends string>(sections: SectionNavigator
       return () => window.cancelAnimationFrame(frame);
     }
 
+    const scrollContainer = getScrollContainer();
     let ticking = false;
     let frame = 0;
 
     const updateActiveSection = () => {
       ticking = false;
 
-      const viewportAnchor = window.scrollY + Math.min(160, Math.max(window.innerHeight * 0.25, 96));
-      const nearPageBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 24;
+      const scrollTop = scrollContainer ? scrollContainer.scrollTop : window.scrollY;
+      const viewportHeight = scrollContainer ? scrollContainer.clientHeight : window.innerHeight;
+      const scrollHeight = scrollContainer ? scrollContainer.scrollHeight : document.documentElement.scrollHeight;
+      const viewportAnchor = scrollTop + Math.min(160, Math.max(viewportHeight * 0.25, 96));
+      const nearPageBottom = viewportHeight + scrollTop >= scrollHeight - 24;
 
       if (nearPageBottom) {
         setActiveSection(sectionElements[sectionElements.length - 1].id);
@@ -53,9 +64,12 @@ export function useSectionScrollSpy<T extends string>(sections: SectionNavigator
       }
 
       let nextActive = sectionElements[0].id;
+      const containerTop = scrollContainer ? scrollContainer.getBoundingClientRect().top : 0;
 
       for (const section of sectionElements) {
-        const sectionTop = section.element.getBoundingClientRect().top + window.scrollY;
+        const sectionTop = scrollContainer
+          ? section.element.getBoundingClientRect().top - containerTop + scrollTop
+          : section.element.getBoundingClientRect().top + window.scrollY;
         if (sectionTop <= viewportAnchor) {
           nextActive = section.id;
         } else {
@@ -72,13 +86,15 @@ export function useSectionScrollSpy<T extends string>(sections: SectionNavigator
       frame = window.requestAnimationFrame(updateActiveSection);
     };
 
+    const scrollTarget: HTMLElement | Window = scrollContainer || window;
+
     requestUpdate();
-    window.addEventListener('scroll', requestUpdate, { passive: true });
+    scrollTarget.addEventListener('scroll', requestUpdate, { passive: true });
     window.addEventListener('resize', requestUpdate);
 
     return () => {
       window.cancelAnimationFrame(frame);
-      window.removeEventListener('scroll', requestUpdate);
+      scrollTarget.removeEventListener('scroll', requestUpdate);
       window.removeEventListener('resize', requestUpdate);
     };
   }, [sections]);

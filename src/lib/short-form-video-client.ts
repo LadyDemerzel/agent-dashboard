@@ -167,13 +167,63 @@ export interface Scene {
   status?: 'completed' | 'in-progress';
 }
 
+export interface SoundDesignResolvedEventClient {
+  id: string;
+  type: 'impact' | 'riser' | 'click' | 'whoosh' | 'ambience';
+  track: string;
+  anchor: string;
+  sceneId?: string;
+  captionId?: string;
+  offsetMs: number;
+  assetId?: string;
+  assetName?: string;
+  assetRelativePath?: string;
+  timingType?: 'point' | 'bed' | 'riser';
+  resolvedStartSeconds: number;
+  resolvedEndSeconds?: number;
+  durationSeconds?: number;
+  resolvedGainDb: number;
+  resolvedFadeInMs: number;
+  resolvedFadeOutMs: number;
+  duckingDb: number;
+  muted?: boolean;
+  solo?: boolean;
+  manualAssetId?: string;
+  manualGainDb?: number;
+  manualNudgeMs?: number;
+  compatibleAssetIds?: string[];
+  status: 'resolved' | 'unresolved';
+  resolutionReason?: string;
+  rationale?: string;
+  notes?: string;
+  overlap?: 'allow' | 'avoid';
+}
+
+export interface SoundDesignSummaryClient extends StageDoc {
+  previewAudioUrl?: string;
+  previewAudioPath?: string;
+  reviewAudioUrls?: Record<string, string>;
+  resolution?: {
+    version: number;
+    generatedAt: string;
+    previewAudioRelativePath?: string;
+    previewUpdatedAt?: string;
+    events: SoundDesignResolvedEventClient[];
+    stats: {
+      total: number;
+      resolved: number;
+      unresolved: number;
+    };
+  };
+}
+
 export interface ShortFormProjectClient {
   id: string;
   title: string;
   topic: string;
   createdAt: string;
   updatedAt: string;
-  pendingStages: Array<'hooks' | 'research' | 'script' | 'scene-images' | 'video'>;
+  pendingStages: Array<'hooks' | 'research' | 'script' | 'scene-images' | 'sound-design' | 'video'>;
   selectedHookId?: string;
   selectedHookText?: string;
   selectedImageStyleId?: string;
@@ -187,6 +237,8 @@ export interface ShortFormProjectClient {
   selectedCaptionStyleId?: string;
   selectedCaptionStyleName?: string;
   captionStyleOverrideId?: string;
+  soundDesignDecision?: 'approved' | 'skipped';
+  soundDesignSkipReason?: string;
   chromaKeyEnabled: boolean;
   chromaKeyEnabledSource: 'project' | 'default';
   chromaKeyEnabledOverride?: boolean;
@@ -211,6 +263,7 @@ export interface ShortFormProjectClient {
     pipeline?: XmlPipelineClient;
   };
   sceneImages: StageDoc & { scenes: Scene[]; sceneProgress?: SceneImageProgressSummaryClient };
+  soundDesign: SoundDesignSummaryClient;
   video: StageDoc & { videoUrl?: string; videoPath?: string; pipeline?: VideoPipelineClient };
 }
 
@@ -226,6 +279,7 @@ export interface ShortFormProjectRowClient {
   script: { status: string; pending?: boolean; textScriptLatestRunId?: string; textScriptMaxIterationsOverride?: number };
   xmlScript: { status: string; pending?: boolean };
   sceneImages: { status: string; sceneCount: number; pending?: boolean };
+  soundDesign: { status: string; eventCount: number; pending?: boolean };
   video: { status: string; videoUrl?: string; pending?: boolean };
 }
 
@@ -586,8 +640,10 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
   const xmlScriptCaptions = Array.isArray(xmlScriptObj.captions) ? xmlScriptObj.captions.map(normalizeCaptionSection).filter((item): item is CaptionSection => Boolean(item)) : undefined;
   const xmlScript = normalizeStageDoc(xmlScriptObj);
   const sceneImagesObj = asObject(obj.sceneImages);
+  const soundDesignObj = asObject(obj.soundDesign);
   const videoObj = asObject(obj.video);
   const sceneImagesBase = normalizeStageDoc(sceneImagesObj);
+  const soundDesignBase = normalizeStageDoc(soundDesignObj);
   const videoBase = normalizeStageDoc(videoObj);
 
   const generations = Array.isArray(hooks.generations)
@@ -596,8 +652,13 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
 
   const pendingStages = Array.isArray(obj.pendingStages)
     ? obj.pendingStages.filter(
-        (stage): stage is 'hooks' | 'research' | 'script' | 'scene-images' | 'video' =>
-          stage === 'hooks' || stage === 'research' || stage === 'script' || stage === 'scene-images' || stage === 'video'
+        (stage): stage is 'hooks' | 'research' | 'script' | 'scene-images' | 'sound-design' | 'video' =>
+          stage === 'hooks'
+          || stage === 'research'
+          || stage === 'script'
+          || stage === 'scene-images'
+          || stage === 'sound-design'
+          || stage === 'video'
       )
     : [];
 
@@ -627,6 +688,8 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
     selectedCaptionStyleId: asOptionalString(obj.selectedCaptionStyleId),
     selectedCaptionStyleName: asOptionalString(obj.selectedCaptionStyleName),
     captionStyleOverrideId: asOptionalString(obj.captionStyleOverrideId),
+    soundDesignDecision: obj.soundDesignDecision === 'approved' || obj.soundDesignDecision === 'skipped' ? obj.soundDesignDecision : undefined,
+    soundDesignSkipReason: asOptionalString(obj.soundDesignSkipReason),
     chromaKeyEnabled: asBoolean(obj.chromaKeyEnabled),
     chromaKeyEnabledSource: obj.chromaKeyEnabledSource === 'project' ? 'project' : 'default',
     chromaKeyEnabledOverride: typeof obj.chromaKeyEnabledOverride === 'boolean' ? obj.chromaKeyEnabledOverride : undefined,
@@ -671,6 +734,73 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
       scenes,
       sceneProgress: normalizeSceneImageProgressSummary(sceneImagesObj.sceneProgress),
     },
+    soundDesign: {
+      ...soundDesignBase,
+      previewAudioUrl: asOptionalString(soundDesignObj.previewAudioUrl),
+      previewAudioPath: asOptionalString(soundDesignObj.previewAudioPath),
+      reviewAudioUrls: (() => {
+        const reviewAudioUrls = asObject(soundDesignObj.reviewAudioUrls);
+        const entries = Object.entries(reviewAudioUrls)
+          .filter((entry): entry is [string, string] => typeof entry[0] === 'string' && typeof entry[1] === 'string' && entry[1].length > 0);
+        return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+      })(),
+      resolution: (() => {
+        const resolution = asObject(soundDesignObj.resolution);
+        const events = Array.isArray(resolution.events)
+          ? resolution.events.map((event) => {
+              const item = asObject(event);
+              return {
+                id: asString(item.id),
+                type: item.type === 'riser' || item.type === 'click' || item.type === 'whoosh' || item.type === 'ambience' ? item.type : 'impact',
+                track: asString(item.track),
+                anchor: asString(item.anchor),
+                sceneId: asOptionalString(item.sceneId),
+                captionId: asOptionalString(item.captionId),
+                offsetMs: typeof item.offsetMs === 'number' ? item.offsetMs : 0,
+                assetId: asOptionalString(item.assetId),
+                assetName: asOptionalString(item.assetName),
+                assetRelativePath: asOptionalString(item.assetRelativePath),
+                timingType: item.timingType === 'bed' || item.timingType === 'riser' ? item.timingType : item.timingType === 'point' ? 'point' : undefined,
+                resolvedStartSeconds: typeof item.resolvedStartSeconds === 'number' ? item.resolvedStartSeconds : 0,
+                resolvedEndSeconds: typeof item.resolvedEndSeconds === 'number' ? item.resolvedEndSeconds : undefined,
+                durationSeconds: typeof item.durationSeconds === 'number' ? item.durationSeconds : undefined,
+                resolvedGainDb: typeof item.resolvedGainDb === 'number' ? item.resolvedGainDb : 0,
+                resolvedFadeInMs: typeof item.resolvedFadeInMs === 'number' ? item.resolvedFadeInMs : 0,
+                resolvedFadeOutMs: typeof item.resolvedFadeOutMs === 'number' ? item.resolvedFadeOutMs : 0,
+                duckingDb: typeof item.duckingDb === 'number' ? item.duckingDb : -8,
+                muted: asBoolean(item.muted),
+                solo: asBoolean(item.solo),
+                manualAssetId: asOptionalString(item.manualAssetId),
+                manualGainDb: typeof item.manualGainDb === 'number' ? item.manualGainDb : undefined,
+                manualNudgeMs: typeof item.manualNudgeMs === 'number' ? item.manualNudgeMs : undefined,
+                compatibleAssetIds: Array.isArray(item.compatibleAssetIds)
+                  ? item.compatibleAssetIds.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+                  : undefined,
+                status: item.status === 'resolved' ? 'resolved' : 'unresolved',
+                resolutionReason: asOptionalString(item.resolutionReason),
+                rationale: asOptionalString(item.rationale),
+                notes: asOptionalString(item.notes),
+                overlap: item.overlap === 'allow' ? 'allow' : item.overlap === 'avoid' ? 'avoid' : undefined,
+              } as SoundDesignResolvedEventClient;
+            })
+          : [];
+        if (!events.length && typeof resolution.version !== 'number' && typeof resolution.generatedAt !== 'string') {
+          return undefined;
+        }
+        return {
+          version: typeof resolution.version === 'number' ? resolution.version : 1,
+          generatedAt: asString(resolution.generatedAt),
+          previewAudioRelativePath: asOptionalString(resolution.previewAudioRelativePath),
+          previewUpdatedAt: asOptionalString(resolution.previewUpdatedAt),
+          events,
+          stats: {
+            total: typeof asObject(resolution.stats).total === 'number' ? Number(asObject(resolution.stats).total) : events.length,
+            resolved: typeof asObject(resolution.stats).resolved === 'number' ? Number(asObject(resolution.stats).resolved) : events.filter((event) => event.status === 'resolved').length,
+            unresolved: typeof asObject(resolution.stats).unresolved === 'number' ? Number(asObject(resolution.stats).unresolved) : events.filter((event) => event.status !== 'resolved').length,
+          },
+        };
+      })(),
+    },
     video: {
       ...videoBase,
       videoUrl: asOptionalString(videoObj.videoUrl),
@@ -688,6 +818,7 @@ export function normalizeShortFormProjectRow(value: unknown): ShortFormProjectRo
   const script = asObject(obj.script);
   const xmlScript = asObject(obj.xmlScript);
   const sceneImagesBase = asObject(obj.sceneImages);
+  const soundDesignBase = asObject(obj.soundDesign);
   const videoBase = asObject(obj.video);
   const rawSceneImages = asObject(obj.sceneImages);
   const rawSceneCount = rawSceneImages.sceneCount;
@@ -715,6 +846,13 @@ export function normalizeShortFormProjectRow(value: unknown): ShortFormProjectRo
     },
     xmlScript: { status: project.xmlScript.status, pending: asBoolean(xmlScript.pending) },
     sceneImages: { status: project.sceneImages.status, sceneCount, pending: asBoolean(sceneImagesBase.pending) },
+    soundDesign: {
+      status: asString(soundDesignBase.status, project.soundDesign.status),
+      eventCount: typeof soundDesignBase.eventCount === 'number' && Number.isFinite(soundDesignBase.eventCount)
+        ? soundDesignBase.eventCount
+        : project.soundDesign.resolution?.events.length || 0,
+      pending: asBoolean(soundDesignBase.pending),
+    },
     video: { status: project.video.status, videoUrl: project.video.videoUrl, pending: asBoolean(videoBase.pending) },
   };
 }

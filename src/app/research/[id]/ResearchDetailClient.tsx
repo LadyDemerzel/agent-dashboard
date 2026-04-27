@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -182,9 +181,7 @@ export function ResearchDetailClient({ file, content, statusLog }: ResearchDetai
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
-      <Link href="/research" className="text-muted-foreground hover:text-foreground text-sm mb-6 inline-flex items-center gap-1 transition-colors">&larr; Back to Research</Link>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
           <Card className="p-6">
             <div className="flex items-start justify-between mb-4">

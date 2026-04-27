@@ -131,7 +131,6 @@ export function CaptionStylePreview({
 
   useEffect(() => {
     if (!animated) {
-      setElapsedMs(0);
       return;
     }
     let frame = 0;
@@ -145,8 +144,9 @@ export function CaptionStylePreview({
     return () => window.cancelAnimationFrame(frame);
   }, [animated]);
 
-  const activeIndex = animated ? Math.floor(elapsedMs / WORD_SWITCH_MS) % SAMPLE_WORDS.length : 3;
-  const wordProgress = animated ? (elapsedMs % WORD_SWITCH_MS) / WORD_SWITCH_MS : 0.82;
+  const previewElapsedMs = animated ? elapsedMs : 0;
+  const activeIndex = animated ? Math.floor(previewElapsedMs / WORD_SWITCH_MS) % SAMPLE_WORDS.length : 3;
+  const wordProgress = animated ? (previewElapsedMs % WORD_SWITCH_MS) / WORD_SWITCH_MS : 0.82;
   const animationFrame = useMemo(
     () => resolveCaptionAnimationFrame(style.animationPreset.config, wordProgress, WORD_SWITCH_MS / 1000),
     [style.animationPreset, wordProgress],

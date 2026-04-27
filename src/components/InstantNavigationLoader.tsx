@@ -40,7 +40,7 @@ export function InstantNavigationLoader() {
   if (!isNavigating) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-14 bottom-0 z-[60] bg-background md:top-0 md:left-56">
+    <div className="pointer-events-none absolute inset-0 z-[60] bg-background">
       <PageLoadingShell />
     </div>
   );

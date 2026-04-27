@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -376,11 +375,9 @@ export default function YouTubeVideoDetailPage() {
 
   if (!video) {
     return (
-      <div className="p-4 sm:p-6 lg:p-8">
-        <div>
-          <Link href="/youtube-videos" className="text-muted-foreground hover:text-foreground">← Back to Videos</Link>
-          <div className="mt-8 text-center text-muted-foreground">Video not found</div>
-        </div>
+      <div className="space-y-3 p-4 sm:p-6 lg:p-8">
+        <h1 className="text-2xl font-bold text-foreground">Video not found</h1>
+        <div className="text-muted-foreground">This YouTube workflow record could not be loaded.</div>
       </div>
     );
   }
@@ -397,10 +394,8 @@ export default function YouTubeVideoDetailPage() {
   return (
     <div className="p-4 sm:p-6 lg:p-8">
       <div>
-        <Link href="/youtube-videos" className="text-muted-foreground hover:text-foreground text-sm">← Back to Videos</Link>
-
         {/* Header */}
-        <div className="mt-4 mb-8">
+        <div className="mb-8">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold text-foreground">{video.title}</h1>

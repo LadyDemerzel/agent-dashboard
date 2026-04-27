@@ -3,6 +3,7 @@ import { getShortFormProject, updateProjectMeta } from "@/lib/short-form-videos"
 import { resolveShortFormImageStyle } from "@/lib/short-form-image-styles";
 import { getShortFormVideoRenderSettings } from "@/lib/short-form-video-render-settings";
 import { getShortFormBackgroundVideoSettings } from "@/lib/short-form-background-videos";
+import { getSoundDesignHandoffState } from "@/lib/short-form-sound-design-handoff";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,16 @@ export async function PATCH(
   const selectedMusicId = body.selectedMusicId === null ? null : typeof body.selectedMusicId === "string" ? body.selectedMusicId.trim() : undefined;
   const selectedCaptionStyleId = body.selectedCaptionStyleId === null ? null : typeof body.selectedCaptionStyleId === "string" ? body.selectedCaptionStyleId.trim() : undefined;
   const selectedBackgroundVideoId = typeof body.selectedBackgroundVideoId === "string" ? body.selectedBackgroundVideoId.trim() : undefined;
+  const soundDesignDecision = body.soundDesignDecision === null
+    ? null
+    : body.soundDesignDecision === "approved" || body.soundDesignDecision === "skipped"
+      ? body.soundDesignDecision
+      : undefined;
+  const soundDesignSkipReason = body.soundDesignSkipReason === null
+    ? null
+    : typeof body.soundDesignSkipReason === "string"
+      ? body.soundDesignSkipReason.trim()
+      : undefined;
   const chromaKeyEnabledOverride = body.chromaKeyEnabledOverride === null
     ? null
     : typeof body.chromaKeyEnabledOverride === "boolean"
@@ -94,6 +105,24 @@ export async function PATCH(
     }
   }
 
+  if (soundDesignDecision === "skipped" && !(soundDesignSkipReason || project.soundDesignSkipReason)) {
+    return NextResponse.json({ success: false, error: "Add a brief reason before skipping sound design" }, { status: 400 });
+  }
+
+  if (soundDesignDecision === "approved") {
+    const handoff = getSoundDesignHandoffState({
+      soundDesignDecision,
+      soundDesignSkipReason: soundDesignSkipReason ?? project.soundDesignSkipReason,
+      soundDesign: project.soundDesign,
+    });
+    if (!handoff.canApprove) {
+      return NextResponse.json({
+        success: false,
+        error: handoff.gateReason || "Generate Sound Design must have a resolved preview mix before it can be approved.",
+      }, { status: 400 });
+    }
+  }
+
   const updated = updateProjectMeta(id, {
     ...(topic !== undefined ? { topic } : {}),
     ...(title !== undefined ? { title } : topic ? { title: topic } : {}),
@@ -102,6 +131,17 @@ export async function PATCH(
     ...(selectedMusicId !== undefined ? { selectedMusicId: selectedMusicId === null ? undefined : selectedMusicId } : {}),
     ...(selectedCaptionStyleId !== undefined ? { selectedCaptionStyleId: selectedCaptionStyleId === null ? undefined : selectedCaptionStyleId } : {}),
     ...(selectedBackgroundVideoId !== undefined ? { selectedBackgroundVideoId } : {}),
+    ...(soundDesignDecision !== undefined
+      ? {
+          soundDesignDecision: soundDesignDecision === null ? undefined : soundDesignDecision,
+          soundDesignSkipReason:
+            soundDesignDecision === "skipped"
+              ? (soundDesignSkipReason === null ? undefined : soundDesignSkipReason || undefined)
+              : undefined,
+        }
+      : soundDesignSkipReason !== undefined
+        ? { soundDesignSkipReason: soundDesignSkipReason === null ? undefined : soundDesignSkipReason || undefined }
+        : {}),
     ...(chromaKeyEnabledOverride !== undefined
       ? { chromaKeyEnabledOverride: chromaKeyEnabledOverride === null ? undefined : chromaKeyEnabledOverride }
       : {}),

@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { getShortFormProject } from "@/lib/short-form-videos";
+import { ShortFormVideoDetailShell } from "@/components/short-form-video/ShortFormVideoDetailShell";
 import { createEntityPageTitle, createPageMetadata } from "@/lib/metadata";
+import { normalizeShortFormProject } from "@/lib/short-form-video-client";
+import { getShortFormProject } from "@/lib/short-form-videos";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +22,22 @@ export async function generateMetadata({
   );
 }
 
-export default function ShortFormVideoDetailLayout({ children }: { children: ReactNode }) {
-  return children;
+export default async function ShortFormVideoDetailLayout({
+  children,
+  params,
+}: {
+  children: ReactNode;
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const project = getShortFormProject(id);
+
+  return (
+    <ShortFormVideoDetailShell
+      projectId={id}
+      initialProject={project ? normalizeShortFormProject(project) : null}
+    >
+      {children}
+    </ShortFormVideoDetailShell>
+  );
 }

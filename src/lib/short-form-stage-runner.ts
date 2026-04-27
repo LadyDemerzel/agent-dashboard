@@ -32,6 +32,8 @@ export interface DirectVideoConfig {
   videoDocPath: string;
   videoWorkDir: string;
   mode: "generate" | "revise";
+  soundDesignDecision?: "approved" | "skipped";
+  soundDesignPreviewRelativePath?: string;
   captionStyleId?: string;
   captionStyleName?: string;
   captionStyleSource?: "project" | "default" | "fallback";
@@ -115,23 +117,26 @@ function getRunDir(projectId: string) {
   );
 }
 
-function getVerificationSettingsForStage(stage: ShortFormStageKey) {
+function getVerificationSettingsForStage(stage: ShortFormStageKey): { verificationTimeoutMs: number; verificationPollMs: number } {
   switch (stage) {
     case "research":
     case "script":
       return { verificationTimeoutMs: 10 * 60_000, verificationPollMs: 5_000 };
     case "scene-images":
       return { verificationTimeoutMs: 45 * 60_000, verificationPollMs: 15_000 };
+    case "sound-design":
+      return { verificationTimeoutMs: 15 * 60_000, verificationPollMs: 10_000 };
     case "video":
       return { verificationTimeoutMs: 60 * 60_000, verificationPollMs: 15_000 };
   }
 }
 
-export function getPreferredModelsForStage(stage: ShortFormStageKey) {
+export function getPreferredModelsForStage(stage: ShortFormStageKey): string[] {
   switch (stage) {
     case "research":
     case "script":
     case "scene-images":
+    case "sound-design":
     case "video":
       return [DEFAULT_RELIABLE_MODEL, DEFAULT_RETRY_MODEL].filter(Boolean);
   }
@@ -143,14 +148,16 @@ export function enqueueShortFormStageRun(job: Omit<ShortFormStageRunJob, "runId"
   verificationPollMs?: number;
 }) {
   const runId = randomUUID();
+  const verificationSettings = getVerificationSettingsForStage(job.stage);
   const fullJob: ShortFormStageRunJob = {
+    ...job,
     runId,
     preferredModels:
       job.preferredModels && job.preferredModels.length > 0
         ? job.preferredModels
         : getPreferredModelsForStage(job.stage),
-    ...getVerificationSettingsForStage(job.stage),
-    ...job,
+    verificationTimeoutMs: job.verificationTimeoutMs ?? verificationSettings.verificationTimeoutMs,
+    verificationPollMs: job.verificationPollMs ?? verificationSettings.verificationPollMs,
   };
 
   const runDir = getRunDir(job.projectId);

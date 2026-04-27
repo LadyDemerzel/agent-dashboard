@@ -41,6 +41,7 @@ import {
   getShortFormTextScriptSettings,
   SHORT_FORM_TEXT_SCRIPT_PASSING_SCORE,
 } from "@/lib/short-form-text-script-settings";
+import { getSoundDesignHandoffState } from "@/lib/short-form-sound-design-handoff";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,7 @@ const STAGE_AGENT: Record<ShortFormStageKey, "oracle" | "scribe" | "workflow"> =
   research: "oracle",
   script: "scribe",
   "scene-images": "workflow",
+  "sound-design": "workflow",
   video: "workflow",
 };
 
@@ -60,7 +62,9 @@ function getStageTitle(stage: ShortFormStageKey) {
     case "script":
       return "Text Script";
     case "scene-images":
-      return "Visuals";
+      return "Generate Visuals";
+    case "sound-design":
+      return "Plan Sound Design";
     case "video":
       return "Video";
   }
@@ -83,9 +87,14 @@ function ensureInitialStageDoc(projectId: string, stage: ShortFormStageKey, topi
       body: "Waiting for Scribe to generate the plain narration text script.",
     },
     "scene-images": {
-      title: `${topic || "Short-form video"} visuals`,
+      title: `${topic || "Short-form video"} generate visuals`,
       agent: "workflow",
-      body: "# Visuals\n\nWaiting for the dashboard workflow to generate the visual manifest and green-screen assets.",
+      body: "# Generate Visuals\n\nWaiting for the dashboard workflow to generate the visual manifest and green-screen assets.",
+    },
+    "sound-design": {
+      title: `${topic || "Short-form video"} plan sound design`,
+      agent: "workflow",
+      body: "# Plan Sound Design\n\nWaiting for the dashboard workflow to plan tasteful sound design before audio generation.",
     },
     video: {
       title: `${topic || "Short-form video"} final video`,
@@ -120,7 +129,7 @@ ${cleaned}`;
     : "";
 }
 
-function promptKeyFor(stage: Exclude<ShortFormStageKey, "script">, mode: "generate" | "revise") {
+function promptKeyFor(stage: Exclude<ShortFormStageKey, "script" | "sound-design">, mode: "generate" | "revise") {
   if (stage === "research") return mode === "generate" ? "researchGenerate" : "researchRevise";
   if (stage === "scene-images") return mode === "generate" ? "sceneImagesGenerate" : "sceneImagesRevise";
   return mode === "generate" ? "videoGenerate" : "videoRevise";
@@ -131,6 +140,7 @@ function getStageArtifactRequirements(stage: ShortFormStageKey, paths: {
   scriptPath: string;
   sceneManifestPath: string;
   sceneDocPath: string;
+  soundDesignPath: string;
   videoDocPath: string;
   finalVideoPath: string;
 }) {
@@ -159,6 +169,14 @@ function getStageArtifactRequirements(stage: ShortFormStageKey, paths: {
         verification: [
           `After writing, read back ${paths.sceneDocPath}.`,
           `Then read back ${paths.sceneManifestPath} and confirm it is valid JSON with a non-empty top-level scenes array.`,
+        ],
+      };
+    case "sound-design":
+      return {
+        primary: paths.soundDesignPath,
+        required: [paths.soundDesignPath],
+        verification: [
+          `After writing, read back ${paths.soundDesignPath} and verify the sound-design artifact is present and updated.`,
         ],
       };
     case "video":
@@ -256,47 +274,79 @@ function buildStageTask(
     notes?: string;
   }
 ) {
-  const prompts = getShortFormWorkflowPrompts();
-  const promptMode = shouldUseCleanRerunPrompt(stage, requestContext.mode, requestContext.notes) ? "generate" : requestContext.mode;
-  const template = prompts[promptKeyFor(stage, promptMode)];
   const projectDir = getProjectDir(project.id);
   const researchPath = getStageFilePath(project.id, "research");
   const scriptPath = getStageFilePath(project.id, "script");
   const sceneManifestPath = getSceneManifestPath(project.id);
   const sceneDocPath = getStageFilePath(project.id, "scene-images");
+  const soundDesignPath = getStageFilePath(project.id, "sound-design");
   const videoDocPath = getStageFilePath(project.id, "video");
   const xmlScriptPath = getXmlScriptPath(project.id);
   const finalVideoPath = `${projectDir}/output/final-video.mp4`;
   const sceneImagesDir = `${projectDir}/scenes`;
   const videoWorkDir = `${projectDir}/output/xml-scene-video-work`;
-  const researchContent = fs.existsSync(researchPath) ? fs.readFileSync(researchPath, "utf-8") : "No approved research file found.";
-  const renderedPrompt = renderShortFormPrompt(template, {
-    topic: project.topic,
-    selectedHookLine: project.selectedHookText ? `Selected hook: ${project.selectedHookText}` : "",
-    selectedHookTextOrFallback: project.selectedHookText || "Use the topic context if no hook is selected.",
-    notesOrFallback: requestContext.notes || "",
-    revisionInstructionLine: buildRevisionInstruction(stage, requestContext.mode, requestContext.notes),
-    researchPath,
-    scriptPath: xmlScriptPath,
-    sceneManifestPath,
-    sceneDocPath,
-    videoDocPath,
-    finalVideoPath,
-    sceneImagesDir,
-    videoWorkDir,
-    approvedResearch: researchContent,
-    projectDir,
-  });
   const requirements = getStageArtifactRequirements(stage, {
     researchPath,
     scriptPath: xmlScriptPath,
     sceneManifestPath,
     sceneDocPath,
+    soundDesignPath,
     videoDocPath,
     finalVideoPath,
   });
 
+  let renderedPrompt: string;
+  if (stage === "sound-design") {
+    renderedPrompt = [
+      `Create or revise the sound-design artifact for the short-form project at ${soundDesignPath}.`,
+      `Topic: ${project.topic || "Untitled short-form video"}`,
+      project.selectedHookText ? `Selected hook: ${project.selectedHookText}` : "Selected hook: none approved yet.",
+      requestContext.notes ? `Requested changes: ${requestContext.notes}` : "Requested changes: none.",
+      `Use the approved XML/script context from ${xmlScriptPath} when timing cues.`,
+      "Keep the plan tasteful and aligned to narration pacing, but bias away from under-designing.",
+      "Plan richer, more frequent sound effects where the edit supports them, especially on transitions, reveals, motion accents, scene changes, and strong caption turns.",
+      "Write the updated artifact back to the same sound-design path.",
+    ].join("\n");
+  } else {
+    const prompts = getShortFormWorkflowPrompts();
+    const promptMode = shouldUseCleanRerunPrompt(stage, requestContext.mode, requestContext.notes) ? "generate" : requestContext.mode;
+    const template = prompts[promptKeyFor(stage, promptMode)];
+    const researchContent = fs.existsSync(researchPath) ? fs.readFileSync(researchPath, "utf-8") : "No approved research file found.";
+    renderedPrompt = renderShortFormPrompt(template, {
+      topic: project.topic,
+      selectedHookLine: project.selectedHookText ? `Selected hook: ${project.selectedHookText}` : "",
+      selectedHookTextOrFallback: project.selectedHookText || "Use the topic context if no hook is selected.",
+      notesOrFallback: requestContext.notes || "",
+      revisionInstructionLine: buildRevisionInstruction(stage, requestContext.mode, requestContext.notes),
+      researchPath,
+      scriptPath: xmlScriptPath,
+      sceneManifestPath,
+      sceneDocPath,
+      videoDocPath,
+      finalVideoPath,
+      sceneImagesDir,
+      videoWorkDir,
+      approvedResearch: researchContent,
+      projectDir,
+    });
+  }
+
   return [renderedPrompt, buildExecutionContract(stage, requestContext.mode, requirements)].join("\n\n");
+}
+
+function getProjectStageState(project: NonNullable<ReturnType<typeof getShortFormProject>>, stage: ShortFormStageKey) {
+  switch (stage) {
+    case "research":
+      return project.research;
+    case "script":
+      return project.script;
+    case "scene-images":
+      return project.sceneImages;
+    case "sound-design":
+      return project.soundDesign;
+    case "video":
+      return project.video;
+  }
 }
 
 function readStageStatus(filePath: string) {
@@ -320,6 +370,13 @@ export async function POST(
 
   const body = await request.json().catch(() => ({}));
   const requestedAction = typeof body.action === "string" ? body.action : "generate";
+  const soundDesignHandoff = getSoundDesignHandoffState(project);
+  if (stage === "video" && !soundDesignHandoff.canProceedToFinalVideo) {
+    return NextResponse.json({
+      success: false,
+      error: soundDesignHandoff.gateReason || "Generate Sound Design must be approved or explicitly skipped before final render.",
+    }, { status: 400 });
+  }
   const notes = typeof body.notes === "string" ? body.notes.trim() : "";
   const sceneId = typeof body.sceneId === "string" ? body.sceneId.trim() : "";
   const requestedChromaKeyOverride = body.chromaKeyEnabledOverride === null
@@ -402,7 +459,7 @@ export async function POST(
           : []),
         directWorkflowRequestLine,
       ].join("\n")
-    : buildStageTask(project, "research", { mode, notes: requestNotes });
+    : buildStageTask(project, stage as Exclude<ShortFormStageKey, "script">, { mode, notes: requestNotes });
   const projectDir = getProjectDir(id);
   const researchPath = getStageFilePath(id, "research");
   const scriptPath = getStageFilePath(id, "script");
@@ -410,6 +467,7 @@ export async function POST(
   ensureXmlScriptDocument(id, project.topic);
   const sceneManifestPath = getSceneManifestPath(id);
   const sceneDocPath = getStageFilePath(id, "scene-images");
+  const soundDesignPath = getStageFilePath(id, "sound-design");
   const videoDocPath = getStageFilePath(id, "video");
   const finalVideoPath = `${projectDir}/output/final-video.mp4`;
   const sceneImagesDir = `${projectDir}/scenes`;
@@ -419,6 +477,7 @@ export async function POST(
     scriptPath: stage === "script" ? scriptPath : xmlScriptPath,
     sceneManifestPath,
     sceneDocPath,
+    soundDesignPath,
     videoDocPath,
     finalVideoPath,
   });
@@ -438,7 +497,7 @@ export async function POST(
     const filePath = getStageFilePath(id, stage);
     createThread(filePath, `${id}:${stage}`, STAGE_AGENT[stage], null, null, requestNotes || notes, "user");
     updateStageFrontMatterStatus(id, stage, "requested changes");
-    appendStatusLog(filePath, project[stage === "scene-images" ? "sceneImages" : stage].status || "draft", "requested changes", "ittai", requestNotes || notes);
+    appendStatusLog(filePath, getProjectStageState(project, stage).status || "draft", "requested changes", "ittai", requestNotes || notes);
   }
 
   try {
@@ -498,6 +557,8 @@ export async function POST(
                         ),
                       }
                     : {}),
+                  soundDesignDecision: project.soundDesignDecision,
+                  soundDesignPreviewRelativePath: project.soundDesign.resolution?.previewAudioRelativePath || project.soundDesign.previewAudioPath,
                   captionStyleId: resolvedCaptionStyle.resolvedCaptionStyleId,
                   captionStyleName: resolvedCaptionStyle.captionStyle.name,
                   captionStyleSource: resolvedCaptionStyle.source,
@@ -554,7 +615,7 @@ export async function PATCH(
 
   const filePath = ensureInitialStageDoc(id, stage, project.topic);
   const currentContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf-8") : "";
-  const currentStatus = project[stage === "scene-images" ? "sceneImages" : stage].status || "draft";
+  const currentStatus = getProjectStageState(project, stage).status || "draft";
 
   let finalContent = currentContent;
 

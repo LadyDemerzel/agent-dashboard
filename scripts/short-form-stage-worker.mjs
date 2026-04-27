@@ -64,6 +64,15 @@ const MUSIC_LIBRARY_DIR = path.join(
   "short-form-videos",
   "_music-library",
 );
+const SOUND_LIBRARY_DIR = path.join(
+  HOME_DIR,
+  "tenxsolo",
+  "business",
+  "content",
+  "deliverables",
+  "short-form-videos",
+  "_sound-library",
+);
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -90,6 +99,10 @@ function normalizeStoredRelativePath(value) {
 
 function resolveMusicLibraryAbsolutePath(relativePath) {
   return path.resolve(MUSIC_LIBRARY_DIR, relativePath);
+}
+
+function resolveSoundLibraryAbsolutePath(relativePath) {
+  return path.resolve(SOUND_LIBRARY_DIR, relativePath);
 }
 
 function readReusableMusicArtifact(track, value) {
@@ -1891,7 +1904,7 @@ function buildSceneImagesReviewDoc(projectId, scenes, options = {}) {
   const topic = readProjectTopic(projectId);
   const existingMeta = readExistingDocMetadata(existingDocPath);
   const status = normalizeDocStatus(existingMeta.status);
-  const title = existingMeta.title || (topic ? `Visuals: ${topic}` : "Scene Images");
+  const title = existingMeta.title || (topic ? `Generate Visuals: ${topic}` : "Generate Visuals");
   const totalDuration = formatSceneImagesDuration(scenes);
   const rows = scenes
     .map((scene) => `| ${scene.number} | ${scene.duration || "—"} | ${String(scene.caption).replace(/\|/g, "\\|")} |`)
@@ -1924,7 +1937,7 @@ function buildSceneImagesReviewDoc(projectId, scenes, options = {}) {
     `updatedAt: "${new Date().toISOString()}"`,
     "---",
     "",
-    "# Visuals Review Document",
+    "# Generate Visuals Review Document",
     "",
     "## Summary",
     "",
@@ -2571,6 +2584,138 @@ function getMediaFrameRate(filePath) {
   return 30;
 }
 
+function readProjectSoundDesignResolution(projectId) {
+  const resolutionPath = path.join(getProjectDir(projectId), "output", "sound-design-work", "resolution.json");
+  if (!fs.existsSync(resolutionPath)) return null;
+  try {
+    return readJson(resolutionPath);
+  } catch {
+    return null;
+  }
+}
+
+function resolveProjectRelativePath(projectId, relativePath) {
+  if (!relativePath || typeof relativePath !== "string") return null;
+  const projectDir = path.resolve(getProjectDir(projectId));
+  const resolvedPath = path.resolve(projectDir, relativePath);
+  if (resolvedPath !== projectDir && !resolvedPath.startsWith(`${projectDir}${path.sep}`)) {
+    return null;
+  }
+  return resolvedPath;
+}
+
+function renderProjectSoundDesignMix({ projectId, narrationPath, musicPath, musicVolume, workDir, soundDesignDecision, soundDesignPreviewRelativePath }) {
+  if (soundDesignDecision === "skipped") {
+    return null;
+  }
+
+  const resolution = readProjectSoundDesignResolution(projectId);
+  const approvedPreviewRelativePath = normalizeString(
+    soundDesignPreviewRelativePath,
+    typeof resolution?.previewAudioRelativePath === "string" ? resolution.previewAudioRelativePath : "",
+  );
+  if (soundDesignDecision === "approved" && approvedPreviewRelativePath) {
+    const approvedPreviewPath = resolveProjectRelativePath(projectId, approvedPreviewRelativePath);
+    if (approvedPreviewPath && fs.existsSync(approvedPreviewPath)) {
+      return approvedPreviewPath;
+    }
+  }
+
+  const events = Array.isArray(resolution?.events)
+    ? resolution.events.filter((event) => event && typeof event === "object" && event.status === "resolved" && event.assetRelativePath && !event.muted)
+    : [];
+  if (!events.length) return null;
+
+  const anySolo = events.some((event) => event.solo === true);
+  const activeEvents = anySolo ? events.filter((event) => event.solo === true) : events;
+  if (!activeEvents.length) return null;
+
+  const mixDir = path.join(workDir, "sound-design");
+  ensureDir(mixDir);
+  const mixPath = path.join(mixDir, "sound-design-mix.wav");
+  const inputArgs = ["-y", "-i", narrationPath];
+  const filterLines = ["[0:a]volume=1.0[narr]"];
+  const backgroundLabels = [];
+  let inputIndex = 1;
+
+  if (musicPath && fs.existsSync(musicPath)) {
+    inputArgs.push("-i", musicPath);
+    filterLines.push(`[${inputIndex}:a]volume=${Number.isFinite(musicVolume) ? Number(musicVolume).toFixed(3) : "0.160"}[music]`);
+    backgroundLabels.push("[music]");
+    inputIndex += 1;
+  }
+
+  for (const event of activeEvents) {
+    const absolutePath = resolveSoundLibraryAbsolutePath(event.assetRelativePath);
+    if (!fs.existsSync(absolutePath)) continue;
+    const startSeconds = Number.isFinite(Number(event.resolvedStartSeconds)) ? Math.max(0, Number(event.resolvedStartSeconds)) : 0;
+    const endSeconds = Number.isFinite(Number(event.resolvedEndSeconds)) ? Math.max(startSeconds, Number(event.resolvedEndSeconds)) : null;
+    const sourceDuration = getMediaDurationSeconds(absolutePath);
+    const desiredDuration = endSeconds != null ? Math.max(0.05, endSeconds - startSeconds) : sourceDuration;
+    const shouldLoop = event.timingType === "bed" && desiredDuration > sourceDuration + 0.02;
+    if (shouldLoop) inputArgs.push("-stream_loop", "-1");
+    inputArgs.push("-i", absolutePath);
+    const gainScale = Math.pow(10, Number.isFinite(Number(event.resolvedGainDb)) ? Number(event.resolvedGainDb) / 20 : 0);
+    const fadeInSeconds = Math.max(0, (Number(event.resolvedFadeInMs) || 0) / 1000);
+    const fadeOutSeconds = Math.max(0, (Number(event.resolvedFadeOutMs) || 0) / 1000);
+    const delayMs = Math.max(0, Math.round(startSeconds * 1000));
+    const filters = [
+      `atrim=0:${desiredDuration.toFixed(3)}`,
+      `volume=${gainScale.toFixed(5)}`,
+      ...(fadeInSeconds > 0 ? [`afade=t=in:st=0:d=${fadeInSeconds.toFixed(3)}`] : []),
+      ...(fadeOutSeconds > 0 && desiredDuration > 0.05 ? [`afade=t=out:st=${Math.max(0, desiredDuration - fadeOutSeconds).toFixed(3)}:d=${Math.min(fadeOutSeconds, desiredDuration).toFixed(3)}`] : []),
+      `adelay=${delayMs}|${delayMs}`,
+    ];
+    const label = `sfx${inputIndex}`;
+    filterLines.push(`[${inputIndex}:a]${filters.join(",")}[${label}]`);
+    backgroundLabels.push(`[${label}]`);
+    inputIndex += 1;
+  }
+
+  if (!backgroundLabels.length) return null;
+  filterLines.push(`${backgroundLabels.join("")}amix=inputs=${backgroundLabels.length}:normalize=0:dropout_transition=0[bgraw]`);
+  if (ffmpegSupportsFilter("sidechaincompress")) {
+    filterLines.push(`[bgraw][narr]sidechaincompress=threshold=0.04:ratio=10:attack=15:release=280:makeup=1[duckedbg]`);
+  } else {
+    filterLines.push(`[bgraw]volume=0.75[duckedbg]`);
+  }
+  filterLines.push(`[narr][duckedbg]amix=inputs=2:normalize=0:weights='1 1'[mix]`);
+
+  runCommand("ffmpeg", [
+    ...inputArgs,
+    "-filter_complex",
+    filterLines.join(";"),
+    "-map",
+    "[mix]",
+    "-c:a",
+    "pcm_s16le",
+    mixPath,
+  ]);
+  return mixPath;
+}
+
+function muxAudioOntoVideo(videoPath, audioPath, workDir) {
+  const muxedPath = path.join(workDir, `with-sound-design-${Date.now()}.mp4`);
+  runCommand("ffmpeg", [
+    "-y",
+    "-i",
+    videoPath,
+    "-i",
+    audioPath,
+    "-map",
+    "0:v:0",
+    "-map",
+    "1:a:0",
+    "-c:v",
+    "copy",
+    "-c:a",
+    "aac",
+    "-shortest",
+    muxedPath,
+  ]);
+  fs.renameSync(muxedPath, videoPath);
+}
+
 function buildCaptionOverlayTrack({ overlayManifest, totalDurationSeconds, emptyMessage, buildMessage }) {
   const entries = Array.isArray(overlayManifest.entries)
     ? overlayManifest.entries
@@ -2941,6 +3086,13 @@ function buildVideoReviewDoc(projectId, config, selectedVoice = createDefaultVoi
     `- Caption style: ${captionStyleSelection?.style?.name ? `\`${captionStyleSelection.style.name}\` (${captionStyleSelection.animationPreset?.name || captionStyleSelection.style.animationPreset || captionStyleSelection.style.animationPresetId || "animation preset"})` : config.captionStyleName ? `\`${config.captionStyleName}\`` : "Default/fallback"}`,
     `- Chroma key: ${config.chromaKeyEnabled ? 'Enabled' : 'Disabled'}${config.chromaKeySource ? ` (${config.chromaKeySource === 'project' ? 'project override' : 'global default'})` : ''}`,
     `- Music path: ${selectedMusic?.generatedAudioRelativePath ? `\`${selectedMusic.generatedAudioRelativePath}\`` : "Not configured"}`,
+    `- Sound design handoff: ${config.soundDesignDecision === "skipped"
+      ? "Skipped intentionally. Final render omitted the sound-design mix."
+      : config.soundDesignDecision === "approved"
+        ? config.soundDesignPreviewRelativePath
+          ? `Approved preview mix reused from \`${config.soundDesignPreviewRelativePath}\` when available.`
+          : "Approved. Final render rebuilt the sound-design mix from the saved resolution data because no preview mix path was available."
+        : "Not approved or skipped."}`,
   ].join("\n");
 }
 
@@ -3236,7 +3388,21 @@ function runDirectVideo(job) {
     captionsJsonPath,
     captionStyleSelection,
   });
-  updateDirectVideoProgress("finalize-output", "Saving final-video metadata and review artifacts.");
+  const soundDesignMixPath = renderProjectSoundDesignMix({
+    projectId: job.projectId,
+    narrationPath: existingVoicePath,
+    musicPath: reusableMusicPath,
+    musicVolume: selectedMusic.musicVolume ?? Number(DEFAULT_MUSIC_VOLUME),
+    workDir: config.videoWorkDir,
+    soundDesignDecision: config.soundDesignDecision,
+    soundDesignPreviewRelativePath: config.soundDesignPreviewRelativePath,
+  });
+  if (soundDesignMixPath && fs.existsSync(soundDesignMixPath)) {
+    updateDirectVideoProgress("finalize-output", "Merging the sound-design mix into the final render.");
+    muxAudioOntoVideo(config.finalVideoPath, soundDesignMixPath, config.videoWorkDir);
+  } else {
+    updateDirectVideoProgress("finalize-output", "Saving final-video metadata and review artifacts.");
+  }
   updateVideoManifestCaptionRendering(job.projectId, config, captionStyleSelection, captionRender);
   fs.writeFileSync(config.videoDocPath, buildVideoReviewDoc(job.projectId, config, xmlSelectedVoice, selectedMusic.music, captionStyleSelection), "utf-8");
   return {

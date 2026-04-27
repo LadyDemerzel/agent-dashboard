@@ -17,8 +17,15 @@ import {
   getXmlScriptPath,
   type XmlScriptDocumentSummary,
 } from "@/lib/short-form-xml-script";
+import {
+  getShortFormSoundDesignPreviewRelativePath,
+  getShortFormSoundDesignPreviewRelativePathForMode,
+  readShortFormSoundDesignDocument,
+  type ShortFormSoundDesignResolution,
+} from "@/lib/short-form-sound-design";
+import { getSoundDesignHandoffState } from "@/lib/short-form-sound-design-handoff";
 
-export type ShortFormStageKey = "research" | "script" | "scene-images" | "video";
+export type ShortFormStageKey = "research" | "script" | "scene-images" | "sound-design" | "video";
 export type PendingStageKey = "hooks" | ShortFormStageKey;
 
 export interface HookOption {
@@ -167,12 +174,15 @@ export interface ShortFormProjectMeta {
   pendingResearch?: boolean;
   pendingScript?: boolean;
   pendingSceneImages?: boolean;
+  pendingSoundDesign?: boolean;
   pendingVideo?: boolean;
   selectedImageStyleId?: string;
   selectedVoiceId?: string;
   selectedMusicId?: string;
   selectedBackgroundVideoId?: string;
   selectedCaptionStyleId?: string;
+  soundDesignDecision?: "approved" | "skipped";
+  soundDesignSkipReason?: string;
   chromaKeyEnabledOverride?: boolean;
   textScriptMaxIterationsOverride?: number;
   captionMaxWordsOverride?: number;
@@ -282,6 +292,13 @@ export interface VideoPipelineSummary {
   steps: VideoPipelineStep[];
 }
 
+export interface SoundDesignStageSummary extends StageDocumentSummary {
+  previewAudioUrl?: string;
+  previewAudioPath?: string;
+  reviewAudioUrls?: Record<string, string>;
+  resolution?: ShortFormSoundDesignResolution;
+}
+
 export interface ShortFormProject {
   id: string;
   topic: string;
@@ -301,6 +318,8 @@ export interface ShortFormProject {
   selectedCaptionStyleId?: string;
   selectedCaptionStyleName?: string;
   captionStyleOverrideId?: string;
+  soundDesignDecision?: "approved" | "skipped";
+  soundDesignSkipReason?: string;
   chromaKeyEnabled: boolean;
   chromaKeyEnabledSource: "project" | "default";
   chromaKeyEnabledOverride?: boolean;
@@ -323,6 +342,7 @@ export interface ShortFormProject {
     scenes: SceneImageArtifact[];
     sceneProgress?: SceneImageProgressSummary;
   };
+  soundDesign: SoundDesignStageSummary;
   video: StageDocumentSummary & {
     videoUrl?: string;
     videoPath?: string;
@@ -360,6 +380,11 @@ export interface ShortFormProjectRow {
     sceneCount: number;
     pending?: boolean;
   };
+  soundDesign: {
+    status: string;
+    eventCount: number;
+    pending?: boolean;
+  };
   video: {
     status: string;
     videoUrl?: string;
@@ -385,16 +410,18 @@ export const SHORT_FORM_VIDEOS_DIR = path.join(
 const STAGE_PLACEHOLDER_BODIES: Record<ShortFormStageKey, string> = {
   research: "# Research\n\nWaiting for Oracle to generate research.",
   script: "Waiting for Scribe to generate the plain narration text script.",
-  "scene-images": "# Visuals\n\nWaiting for the dashboard workflow to generate the storyboard images and manifest.",
+  "scene-images": "# Generate Visuals\n\nWaiting for the dashboard workflow to generate the storyboard images and manifest.",
+  "sound-design": "# Plan Sound Design\n\nWaiting for the dashboard workflow to plan tasteful sound design before audio generation.",
   video: "# Final Video\n\nWaiting for the dashboard workflow to generate the final rendered video.",
 };
 
 const OPENCLAW_DIR = path.join(HOME_DIR, ".openclaw");
-const AGENT_FOR_STAGE: Record<ShortFormStageKey, "oracle" | "scribe"> = {
+const AGENT_FOR_STAGE: Record<ShortFormStageKey, "oracle" | "scribe" | "workflow"> = {
   research: "oracle",
   script: "scribe",
-  "scene-images": "scribe",
-  video: "scribe",
+  "scene-images": "workflow",
+  "sound-design": "workflow",
+  video: "workflow",
 };
 
 function getWorkflowRunDir(projectId: string) {
@@ -408,6 +435,8 @@ function getStageRunInactivityFailureMs(stage: ShortFormStageKey) {
       return 10 * 60_000;
     case "scene-images":
       return 45 * 60_000;
+    case "sound-design":
+      return 15 * 60_000;
     case "video":
       return 60 * 60_000;
   }
@@ -462,6 +491,8 @@ export function getStageFilePath(projectId: string, stage: ShortFormStageKey) {
       return path.join(projectDir, "script.md");
     case "scene-images":
       return path.join(projectDir, "scene-images.md");
+    case "sound-design":
+      return path.join(projectDir, "sound-design.md");
     case "video":
       return path.join(projectDir, "video.md");
   }
@@ -1254,8 +1285,8 @@ function buildSceneImagesReviewDocument(projectId: string, scenes: Array<{ numbe
   const title = typeof parsed?.frontMatter.title === "string" && parsed.frontMatter.title.trim()
     ? parsed.frontMatter.title.trim()
     : topic
-      ? `Visuals: ${topic}`
-      : "Visuals";
+      ? `Generate Visuals: ${topic}`
+      : "Generate Visuals";
 
   const frontMatter = generateFrontMatter({
     title,
@@ -1276,7 +1307,7 @@ function buildSceneImagesReviewDocument(projectId: string, scenes: Array<{ numbe
   return [
     frontMatter,
     "",
-    "# Visuals Review Document",
+    "# Generate Visuals Review Document",
     "",
     "## Summary",
     "",
@@ -2352,7 +2383,7 @@ function buildVideoPipelineSummary(
         : prepareInputsStatus === "active"
           ? (activeStatusText || "Loading the XML narration, alignment, and caption artifacts required for final-video rendering.")
           : prepareInputsStatus === "completed"
-            ? "Reused the XML narration WAV, forced-alignment JSON, and deterministic caption sections from the XML Script stage."
+            ? "Reused the XML narration WAV, forced-alignment JSON, and deterministic caption sections from the Plan Visuals stage."
             : "Waiting for the XML narration, alignment, and caption artifacts required for final-video rendering.",
       updatedAt: getFileUpdatedAt(xmlCaptionsPath) || getFileUpdatedAt(xmlAlignmentPath) || getFileUpdatedAt(xmlVoicePath),
       details: [
@@ -2454,15 +2485,66 @@ function getVideoStage(projectId: string, options?: { pending?: boolean }) {
   };
 }
 
+function getSoundDesignStage(projectId: string): SoundDesignStageSummary {
+  const doc = readShortFormSoundDesignDocument(projectId);
+  const previewPath = doc.resolution?.previewAudioRelativePath || getShortFormSoundDesignPreviewRelativePath(projectId);
+  const previewAbsolutePath = previewPath ? path.join(getProjectDir(projectId), previewPath) : undefined;
+  const previewExists = previewAbsolutePath ? fs.existsSync(previewAbsolutePath) : false;
+  const reviewAudioUrls = new Map<string, string>();
+
+  const withoutSfxPath = getShortFormSoundDesignPreviewRelativePathForMode(projectId, "without-sfx");
+  if (sceneMediaPathExists(projectId, withoutSfxPath)) {
+    reviewAudioUrls.set("without-sfx", toMediaUrl(projectId, withoutSfxPath, getProjectMediaVersion(projectId, withoutSfxPath)));
+  }
+
+  const effectsOnlyPath = getShortFormSoundDesignPreviewRelativePathForMode(projectId, "effects-only");
+  if (sceneMediaPathExists(projectId, effectsOnlyPath)) {
+    reviewAudioUrls.set("effects-only", toMediaUrl(projectId, effectsOnlyPath, getProjectMediaVersion(projectId, effectsOnlyPath)));
+  }
+
+  const tracks = Array.from(new Set((doc.resolution?.events || [])
+    .filter((event) => event.status === "resolved" && event.track)
+    .map((event) => event.track)
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)));
+  for (const track of tracks) {
+    const trackPath = getShortFormSoundDesignPreviewRelativePathForMode(projectId, "effects-only", track);
+    if (sceneMediaPathExists(projectId, trackPath)) {
+      reviewAudioUrls.set(`track:${track}`, toMediaUrl(projectId, trackPath, getProjectMediaVersion(projectId, trackPath)));
+    }
+  }
+
+  return {
+    exists: doc.content.trim().length > 0,
+    status: doc.status,
+    content: doc.content,
+    updatedAt: doc.updatedAt,
+    openThreads: getOpenThreadCountForFile(doc.path),
+    ...(previewExists && previewPath ? {
+      previewAudioPath: previewPath,
+      previewAudioUrl: toMediaUrl(projectId, previewPath, getProjectMediaVersion(projectId, previewPath)),
+    } : {}),
+    ...(reviewAudioUrls.size > 0 ? { reviewAudioUrls: Object.fromEntries(reviewAudioUrls) } : {}),
+    ...(doc.resolution ? { resolution: doc.resolution } : {}),
+  };
+}
+
 function inferCurrentStage(project: {
   selectedHookText?: string;
   research: StageDocumentSummary;
   script: StageDocumentSummary;
   xmlScript: XmlScriptDocumentSummary;
   sceneImages: StageDocumentSummary & { scenes: SceneImageArtifact[]; sceneProgress?: SceneImageProgressSummary };
+  soundDesign: SoundDesignStageSummary & { pending?: boolean };
+  soundDesignDecision?: "approved" | "skipped";
+  soundDesignSkipReason?: string;
   video: StageDocumentSummary & { videoUrl?: string };
 }) {
+  const sceneImagesApproved = project.sceneImages.status === "approved" || project.sceneImages.status === "published";
+  const soundDesignHandoff = getSoundDesignHandoffState(project);
+
   if (project.video.videoUrl) return "video";
+  if (soundDesignHandoff.canProceedToFinalVideo) return "video";
+  if (project.soundDesign.pending || sceneImagesApproved || project.soundDesign.exists) return "sound-design";
   if (project.sceneImages.scenes.length > 0) return "scene-images";
   if (project.xmlScript.exists) return "xml-script";
   if (project.script.exists) return "script";
@@ -2489,6 +2571,7 @@ function reconcilePendingStages(
     research: StageDocumentSummary;
     script: StageDocumentSummary;
     sceneImages: StageDocumentSummary & { scenes: SceneImageArtifact[]; sceneProgress?: SceneImageProgressSummary; validationError?: string };
+    soundDesign: SoundDesignStageSummary;
     video: StageDocumentSummary & { videoUrl?: string };
   }
 ) {
@@ -2527,6 +2610,13 @@ function reconcilePendingStages(
   }
 
   if (
+    meta.pendingSoundDesign &&
+    ((state.soundDesign.exists && !state.soundDesign.revision?.isPending) || state.soundDesign.revision?.isFailed)
+  ) {
+    updates.pendingSoundDesign = false;
+  }
+
+  if (
     meta.pendingVideo &&
     (((Boolean(state.video.videoUrl) || hasMeaningfulStageOutput("video", state.video)) && !state.video.revision?.isPending) ||
       state.video.revision?.isFailed)
@@ -2547,6 +2637,7 @@ function getPendingStages(
     research?: StageDocumentSummary;
     script?: StageDocumentSummary;
     sceneImages?: StageDocumentSummary;
+    soundDesign?: StageDocumentSummary;
     video?: StageDocumentSummary;
   }
 ): PendingStageKey[] {
@@ -2555,6 +2646,7 @@ function getPendingStages(
     meta.pendingResearch || state?.research?.revision?.isPending ? "research" : null,
     meta.pendingScript || state?.script?.revision?.isPending ? "script" : null,
     meta.pendingSceneImages || state?.sceneImages?.revision?.isPending ? "scene-images" : null,
+    meta.pendingSoundDesign || state?.soundDesign?.revision?.isPending ? "sound-design" : null,
     meta.pendingVideo || state?.video?.revision?.isPending ? "video" : null,
   ].filter((stage): stage is PendingStageKey => Boolean(stage));
 }
@@ -2582,6 +2674,7 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
     textScriptMaxIterationsOverride: meta.textScriptMaxIterationsOverride,
   };
   const sceneImages = { ...getSceneImagesStage(projectId, { pending: Boolean(meta.pendingSceneImages) }), pending: Boolean(meta.pendingSceneImages) };
+  const soundDesign = getSoundDesignStage(projectId);
   const video = { ...getVideoStage(projectId, { pending: Boolean(meta.pendingVideo) }), pending: Boolean(meta.pendingVideo) };
 
   const nextMeta = reconcilePendingStages(projectId, meta, {
@@ -2591,6 +2684,7 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
     research,
     script,
     sceneImages,
+    soundDesign,
     video,
   });
 
@@ -2649,6 +2743,8 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
     selectedCaptionStyleId: resolvedCaptionStyle.resolvedCaptionStyleId,
     selectedCaptionStyleName: resolvedCaptionStyle.captionStyle.name,
     captionStyleOverrideId: nextMeta.selectedCaptionStyleId,
+    soundDesignDecision: nextMeta.soundDesignDecision,
+    soundDesignSkipReason: nextMeta.soundDesignDecision === "skipped" ? nextMeta.soundDesignSkipReason : undefined,
     chromaKeyEnabled: resolvedChromaKey.enabled,
     chromaKeyEnabledSource: resolvedChromaKey.source,
     chromaKeyEnabledOverride: nextMeta.chromaKeyEnabledOverride,
@@ -2660,6 +2756,7 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
       research: resolvedResearch,
       script: resolvedScript,
       sceneImages: resolvedSceneImages,
+      soundDesign,
       video: resolvedVideo,
     }),
     hooks: {
@@ -2673,6 +2770,7 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
     script: resolvedScript,
     xmlScript: resolvedXmlScript,
     sceneImages: resolvedSceneImages,
+    soundDesign: { ...soundDesign, pending: Boolean(nextMeta.pendingSoundDesign || soundDesign.revision?.isPending) },
     video: resolvedVideo,
   };
 
@@ -2690,13 +2788,28 @@ export function listShortFormProjectRows(): ShortFormProjectRow[] {
     .map((dir): ShortFormProjectRow | null => {
       const project = getShortFormProject(dir);
       if (!project) return null;
+      const sceneImagesApproved = project.sceneImages.status === "approved" || project.sceneImages.status === "published";
+      const soundDesignHandoff = getSoundDesignHandoffState(project);
+      const soundDesignRowStatus = project.soundDesign.pending
+        ? "working"
+        : soundDesignHandoff.canProceedToFinalVideo
+          ? soundDesignHandoff.status
+          : project.soundDesign.exists
+            ? (soundDesignHandoff.canApprove ? "ready" : "needs review")
+            : sceneImagesApproved
+              ? "ready"
+              : project.soundDesign.status;
       const videoRowStatus = project.video.pipeline?.status === "failed" || project.video.revision?.isFailed
         ? "failed"
         : project.video.pipeline?.status === "completed"
           ? "completed"
-          : project.video.pipeline?.status === "running"
+          : project.video.pending || project.video.pipeline?.status === "running"
             ? "running"
-            : project.video.status;
+            : !sceneImagesApproved
+              ? "draft"
+              : !soundDesignHandoff.canProceedToFinalVideo
+                ? "blocked"
+                : project.video.status || "ready";
 
       return {
         id: project.id,
@@ -2727,6 +2840,11 @@ export function listShortFormProjectRows(): ShortFormProjectRow[] {
           status: project.sceneImages.status,
           sceneCount: project.sceneImages.scenes.length,
           pending: project.sceneImages.pending,
+        },
+        soundDesign: {
+          status: soundDesignRowStatus,
+          eventCount: project.soundDesign.resolution?.events?.length || 0,
+          pending: project.soundDesign.pending,
         },
         video: {
           status: videoRowStatus,
@@ -2801,6 +2919,7 @@ export function updatePendingStage(projectId: string, stage: PendingStageKey, pe
     research: "pendingResearch",
     script: "pendingScript",
     "scene-images": "pendingSceneImages",
+    "sound-design": "pendingSoundDesign",
     video: "pendingVideo",
   } as const;
 

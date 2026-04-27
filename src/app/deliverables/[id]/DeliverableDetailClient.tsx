@@ -286,11 +286,7 @@ export function DeliverableDetailClient({
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
-      <Link href="/deliverables" className="text-muted-foreground hover:text-foreground text-sm mb-6 inline-flex items-center gap-1 transition-colors">
-        &larr; Back to Deliverables
-      </Link>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
           {/* Header */}
