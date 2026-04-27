@@ -158,7 +158,7 @@ interface WorkflowSettingsResponse {
       name: string;
       category?: string;
       semanticTypes?: Array<
-        "impact" | "riser" | "click" | "whoosh" | "ambience"
+        "impact" | "riser" | "click" | "whoosh" | "ambience" | "music-riser" | "music-reverb-tail" | "mix-duck" | "mix-eq"
       >;
       audioRelativePath?: string;
       timingType?: "point" | "bed" | "riser";
@@ -171,10 +171,14 @@ interface SoundLibraryOption {
   id: string;
   name: string;
   category?: string;
-  semanticTypes?: Array<"impact" | "riser" | "click" | "whoosh" | "ambience">;
+  semanticTypes?: Array<"impact" | "riser" | "click" | "whoosh" | "ambience" | "music-riser" | "music-reverb-tail" | "mix-duck" | "mix-eq">;
   audioRelativePath?: string;
   timingType?: "point" | "bed" | "riser";
   anchorRatio?: number;
+  stylePalettes?: string[];
+  frequencyBand?: 'low' | 'mid' | 'high' | 'full-range';
+  layerRoles?: string[];
+  literalness?: 'literal' | 'stylized' | 'emotional-metaphor';
 }
 
 type SoundDesignReviewRenderMode = "without-sfx" | "effects-only";

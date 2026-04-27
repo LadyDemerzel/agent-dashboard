@@ -390,6 +390,10 @@ interface SoundLibraryEntry {
   category: string;
   semanticTypes: Array<"impact" | "riser" | "click" | "whoosh" | "ambience">;
   tags: string[];
+  stylePalettes?: string[];
+  frequencyBand?: "low" | "mid" | "high" | "full-range";
+  layerRoles?: string[];
+  literalness?: "literal" | "stylized" | "emotional-metaphor";
   timingType: "point" | "bed" | "riser";
   defaultAnchor:
     | "scene-start"
@@ -423,6 +427,12 @@ interface SoundDesignSettings {
   revisionPromptTemplate: string;
   defaultDuckingDb: number;
   maxConcurrentOneShots: number;
+  musicDuckingDb: number;
+  musicEqCutDb: number;
+  musicEqFrequencyHz: number;
+  musicEqQ: number;
+  musicLowCutHz: number;
+  musicHighCutHz: number;
   library: SoundLibraryEntry[];
 }
 
@@ -860,6 +870,10 @@ function createSoundDraft(
     category: overrides?.category ?? "Impact",
     semanticTypes: overrides?.semanticTypes || ["impact"],
     tags: overrides?.tags || [],
+    stylePalettes: overrides?.stylePalettes || [],
+    frequencyBand: overrides?.frequencyBand,
+    layerRoles: overrides?.layerRoles || [],
+    literalness: overrides?.literalness,
     timingType: overrides?.timingType || "point",
     defaultAnchor: overrides?.defaultAnchor || "scene-start",
     defaultGainDb: overrides?.defaultGainDb ?? -6,
@@ -1018,6 +1032,10 @@ function buildSoundLibrarySearchHaystack(sound: SoundLibraryEntry) {
     sound.category,
     sound.semanticTypes.join(" "),
     sound.tags.join(" "),
+    (sound.stylePalettes || []).join(" "),
+    sound.frequencyBand || "",
+    (sound.layerRoles || []).join(" "),
+    sound.literalness || "",
     sound.recommendedUses,
     sound.avoidUses,
     sound.notes,
@@ -3309,15 +3327,64 @@ export function ShortFormVideoSettingsView({
                     />
                   </div>
                 </div>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {[
+                    { key: "musicDuckingDb", label: "Music ducking (dB)", min: -24, max: 0, step: 1 },
+                    { key: "musicEqCutDb", label: "Music mid EQ cut (dB)", min: -18, max: 0, step: 1 },
+                    { key: "musicEqFrequencyHz", label: "Music EQ frequency (Hz)", min: 120, max: 8000, step: 50 },
+                    { key: "musicEqQ", label: "Music EQ Q", min: 0.1, max: 10, step: 0.1 },
+                    { key: "musicLowCutHz", label: "Music low cut (Hz, 0 off)", min: 0, max: 500, step: 5 },
+                    { key: "musicHighCutHz", label: "Music high cut (Hz, 0 off)", min: 0, max: 20000, step: 100 },
+                  ].map((control) => (
+                    <div key={control.key} className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        {control.label}
+                      </label>
+                      <Input
+                        type="number"
+                        min={control.min}
+                        max={control.max}
+                        step={control.step}
+                        value={
+                          soundDesignSettings[
+                            control.key as keyof Pick<
+                              SoundDesignSettings,
+                              | "musicDuckingDb"
+                              | "musicEqCutDb"
+                              | "musicEqFrequencyHz"
+                              | "musicEqQ"
+                              | "musicLowCutHz"
+                              | "musicHighCutHz"
+                            >
+                          ]
+                        }
+                        onChange={(event) => {
+                          updateSectionFeedbackState("sound-library", {
+                            error: null,
+                            message: null,
+                          });
+                          const value = Number(event.target.value);
+                          setSoundDesignSettings({
+                            ...soundDesignSettings,
+                            [control.key]: Math.max(
+                              control.min,
+                              Math.min(control.max, Number.isFinite(value) ? value : control.min),
+                            ),
+                          });
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
                 <div className="rounded-lg border border-border/70 bg-background/40 p-3 text-xs text-muted-foreground">
                   <p className="font-medium text-foreground">
                     What counts as the current global rule set
                   </p>
                   <ul className="mt-2 list-disc space-y-1 pl-4">
                     <li>The planning prompt and revision prompt above.</li>
-                    <li>The ducking and concurrency limits above.</li>
+                    <li>The ducking, music EQ carve, and concurrency limits above.</li>
                     <li>
-                      Each library entry’s semantic types, anchors, gain, fades,
+                      Each library entry’s semantic types, palette metadata, low/mid/high layer metadata, anchors, gain, fades,
                       recommended uses, and avoid notes.
                     </li>
                   </ul>
@@ -3892,6 +3959,89 @@ export function ShortFormVideoSettingsView({
                           );
                         })}
                       </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Style palettes
+                        </label>
+                        <Input
+                          value={(selectedSound.stylePalettes || []).join(", ")}
+                          onChange={(event) =>
+                            updateSelectedSound((sound) => ({
+                              ...sound,
+                              stylePalettes: event.target.value
+                                .split(",")
+                                .map((item) => item.trim())
+                                .filter(Boolean),
+                            }))
+                          }
+                          placeholder="clean tech, premium editorial"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Frequency band
+                        </label>
+                        <Select
+                          value={selectedSound.frequencyBand || ""}
+                          onChange={(event) =>
+                            updateSelectedSound((sound) => ({
+                              ...sound,
+                              frequencyBand: event.target.value
+                                ? (event.target.value as SoundLibraryEntry["frequencyBand"])
+                                : undefined,
+                            }))
+                          }
+                        >
+                          <option value="">Any / untagged</option>
+                          <option value="low">Low weight</option>
+                          <option value="mid">Mid body</option>
+                          <option value="high">High air</option>
+                          <option value="full-range">Full-range</option>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Literalness
+                        </label>
+                        <Select
+                          value={selectedSound.literalness || ""}
+                          onChange={(event) =>
+                            updateSelectedSound((sound) => ({
+                              ...sound,
+                              literalness: event.target.value
+                                ? (event.target.value as SoundLibraryEntry["literalness"])
+                                : undefined,
+                            }))
+                          }
+                        >
+                          <option value="">Any / untagged</option>
+                          <option value="literal">Literal</option>
+                          <option value="stylized">Stylized</option>
+                          <option value="emotional-metaphor">Emotional metaphor</option>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Layer roles (comma separated)
+                      </label>
+                      <Input
+                        value={(selectedSound.layerRoles || []).join(", ")}
+                        onChange={(event) =>
+                          updateSelectedSound((sound) => ({
+                            ...sound,
+                            layerRoles: event.target.value
+                              .split(",")
+                              .map((item) => item.trim())
+                              .filter(Boolean),
+                          }))
+                        }
+                        placeholder="weight, body, motion, air, tick, sparkle"
+                      />
                     </div>
 
                     <div className="space-y-2">
@@ -5194,6 +5344,10 @@ export function ShortFormVideoSettingsView({
       defaultFadeOutMs: selectedSound?.defaultFadeOutMs,
       license: selectedSound?.license || "Internal",
       source: selectedSound?.source,
+      stylePalettes: selectedSound?.stylePalettes ? [...selectedSound.stylePalettes] : undefined,
+      frequencyBand: selectedSound?.frequencyBand,
+      layerRoles: selectedSound?.layerRoles ? [...selectedSound.layerRoles] : undefined,
+      literalness: selectedSound?.literalness,
     });
     setSoundDesignSettings({
       ...soundDesignSettings,
@@ -5218,6 +5372,8 @@ export function ShortFormVideoSettingsView({
       name,
       semanticTypes: [...source.semanticTypes],
       tags: [...source.tags],
+      stylePalettes: source.stylePalettes ? [...source.stylePalettes] : undefined,
+      layerRoles: source.layerRoles ? [...source.layerRoles] : undefined,
       waveformPeaks: source.waveformPeaks
         ? [...source.waveformPeaks]
         : undefined,

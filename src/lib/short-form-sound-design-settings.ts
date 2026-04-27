@@ -16,8 +16,13 @@ const SOUND_LIBRARY_DIR = path.join(SHORT_FORM_VIDEOS_DIR, "_sound-library");
 
 const DEFAULT_PLANNING_BRIEF_TEMPLATE = [
   "Create a tasteful but confidently designed sound-design plan for this short-form video.",
-  "Use the saved sound-design library when choosing semantic sound cues.",
+  "Choose one coherent style palette before individual cues (clean tech, gritty athletic, cinematic trailer, organic/nature, glitch/digital, playful UI, etc.) and keep the palette coherent unless a beat intentionally breaks it.",
+  "Use the saved sound-design library when choosing semantic sound cues, including style palette, frequency band, layer role, and literalness metadata when present.",
   "Bias away from under-designing. Plan richer, more frequent sound effects where the edit supports them, especially on transitions, reveals, movement, scene changes, and strong caption beats.",
+  "For major transitions, impacts, risers, whooshes, and useful ambience, plan frequency-layered cue groups: low weight/rumble, mid body/motion, and high air/tick/sparkle/texture. Give related layers the same groupId.",
+  "Distinguish literal, stylized, and emotional-metaphor cues. Use emotional realism when the sound should match the feeling or metaphor rather than the visible object.",
+  "Plan music transitions where useful: reverse-beat/tail risers, reverb tails on final beats, suckbacks under transitions, and impacts/slams on payoff beats.",
+  "Narration owns the mix. Plan music ducking plus midrange EQ carving around speech; do not rely only on lowering gain.",
   "Keep narration clear and well-supported, but do not default to sparse minimal coverage.",
   "Return compact XML inside <soundDesign> with self-closing <event /> tags.",
 ].join("\n");
@@ -60,12 +65,12 @@ function buildTopLevelSoundDesignPromptTemplate(planningBriefTemplate: string) {
     "Artifact requirements:",
     "- Write YAML front matter first with title, status: needs review, date, agent: Scribe, and category: sound-design.",
     "- After the front matter, write raw <soundDesign> XML only.",
-    "- Use one <soundDesign version=\"1\" duckingDb=\"...\" maxConcurrentOneShots=\"...\"> root element.",
+    "- Use one <soundDesign version=\"1\" duckingDb=\"...\" maxConcurrentOneShots=\"...\" musicDuckingDb=\"...\" musicEqCutDb=\"...\" musicEqFrequencyHz=\"...\" musicEqQ=\"...\"> root element.",
     "- Inside it, return only self-closing <event /> tags for timed cues.",
-    "- Every event must include id, type, track, anchor, and the relevant sceneId or captionId when timing depends on them.",
+    "- Every event must include id, type, track, anchor, and the relevant sceneId or captionId when timing depends on them. Optional attrs include groupId, frequencyBand, layerRole, stylePalette, literalness, musicDuckingDb, musicEqCutDb, musicEqFrequencyHz, musicEqQ, musicLowCutHz, and musicHighCutHz.",
     "- Keep cues tasteful and narration-supportive, but do not under-design the soundtrack.",
     "- Bias toward purposeful cue density where the edit supports it, especially across hook punctuation, transitions, reveals, motion accents, and major caption turns.",
-    "- Use the saved library as the allowed source palette when choosing cue types and event intent.",
+    "- Use the saved library as the allowed source palette when choosing cue types and event intent; metadata can guide palette coherence and low/mid/high layered cue groups.",
     "- Write the updated artifact back to {{soundDesignPath}}, then read it back and verify the file exists and contains a <soundDesign> root.",
   ].join("\n");
 }
@@ -79,6 +84,10 @@ const DEFAULT_SOUND_LIBRARY: ShortFormSoundLibraryEntry[] = [
     category: "Impact",
     semanticTypes: ["impact"],
     tags: ["subtle", "reveal", "punctuation"],
+    stylePalettes: ["clean tech", "premium editorial"],
+    frequencyBand: "mid",
+    layerRoles: ["body", "punctuation"],
+    literalness: "stylized",
     timingType: "point",
     defaultAnchor: "scene-start",
     defaultGainDb: -5,
@@ -97,6 +106,10 @@ const DEFAULT_SOUND_LIBRARY: ShortFormSoundLibraryEntry[] = [
     category: "Whoosh",
     semanticTypes: ["whoosh"],
     tags: ["transition", "movement", "clean"],
+    stylePalettes: ["clean tech", "premium editorial"],
+    frequencyBand: "high",
+    layerRoles: ["motion", "air"],
+    literalness: "stylized",
     timingType: "point",
     defaultAnchor: "scene-start",
     defaultGainDb: -7,
@@ -115,6 +128,10 @@ const DEFAULT_SOUND_LIBRARY: ShortFormSoundLibraryEntry[] = [
     category: "Ambience",
     semanticTypes: ["ambience"],
     tags: ["texture", "air", "light"],
+    stylePalettes: ["premium editorial", "organic/nature"],
+    frequencyBand: "high",
+    layerRoles: ["air", "texture"],
+    literalness: "emotional-metaphor",
     timingType: "bed",
     defaultAnchor: "scene-start",
     defaultGainDb: -18,
@@ -129,16 +146,23 @@ const DEFAULT_SOUND_LIBRARY: ShortFormSoundLibraryEntry[] = [
   },
 ];
 
-export type ShortFormSoundSemanticType = "impact" | "riser" | "click" | "whoosh" | "ambience";
+export type ShortFormSoundSemanticType = "impact" | "riser" | "click" | "whoosh" | "ambience" | "music-riser" | "music-reverb-tail" | "mix-duck" | "mix-eq";
+export type ShortFormSoundLibrarySemanticType = "impact" | "riser" | "click" | "whoosh" | "ambience";
 export type ShortFormSoundTimingType = "point" | "bed" | "riser";
 export type ShortFormSoundAnchor = "scene-start" | "scene-end" | "caption-start" | "caption-end" | "global-start" | "global-end";
+export type ShortFormSoundFrequencyBand = "low" | "mid" | "high" | "full-range";
+export type ShortFormSoundLiteralness = "literal" | "stylized" | "emotional-metaphor";
 
 export interface ShortFormSoundLibraryEntry {
   id: string;
   name: string;
   category: string;
-  semanticTypes: ShortFormSoundSemanticType[];
+  semanticTypes: ShortFormSoundLibrarySemanticType[];
   tags: string[];
+  stylePalettes?: string[];
+  frequencyBand?: ShortFormSoundFrequencyBand;
+  layerRoles?: string[];
+  literalness?: ShortFormSoundLiteralness;
   timingType: ShortFormSoundTimingType;
   defaultAnchor: ShortFormSoundAnchor;
   defaultGainDb: number;
@@ -166,6 +190,12 @@ export interface ShortFormSoundDesignSettings {
   revisionPromptTemplate: string;
   defaultDuckingDb: number;
   maxConcurrentOneShots: number;
+  musicDuckingDb: number;
+  musicEqCutDb: number;
+  musicEqFrequencyHz: number;
+  musicEqQ: number;
+  musicLowCutHz: number;
+  musicHighCutHz: number;
   library: ShortFormSoundLibraryEntry[];
 }
 
@@ -194,11 +224,28 @@ export interface ShortFormSoundDesignEvent {
   notes?: string;
   rationale?: string;
   overlap?: "allow" | "avoid";
+  groupId?: string;
+  frequencyBand?: ShortFormSoundFrequencyBand;
+  layerRole?: string;
+  stylePalette?: string;
+  literalness?: ShortFormSoundLiteralness;
+  musicDuckingDb?: number;
+  musicEqCutDb?: number;
+  musicEqFrequencyHz?: number;
+  musicEqQ?: number;
+  musicLowCutHz?: number;
+  musicHighCutHz?: number;
 }
 
 export interface ShortFormSoundDesignMix {
   defaultDuckingDb: number;
   maxConcurrentOneShots: number;
+  musicDuckingDb: number;
+  musicEqCutDb: number;
+  musicEqFrequencyHz: number;
+  musicEqQ: number;
+  musicLowCutHz: number;
+  musicHighCutHz: number;
 }
 
 export interface ShortFormSoundDesignArtifact {
@@ -241,6 +288,14 @@ function normalizeStringArray(value: unknown) {
     : [];
 }
 
+function normalizeFrequencyBand(value: unknown): ShortFormSoundFrequencyBand | undefined {
+  return value === "low" || value === "mid" || value === "high" || value === "full-range" ? value : undefined;
+}
+
+function normalizeLiteralness(value: unknown): ShortFormSoundLiteralness | undefined {
+  return value === "literal" || value === "stylized" || value === "emotional-metaphor" ? value : undefined;
+}
+
 function normalizeNumber(value: unknown, min: number, max: number, fallback: number, digits = 0) {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
   if (!Number.isFinite(parsed)) return fallback;
@@ -257,10 +312,16 @@ function normalizeOptionalNumber(value: unknown, min: number, max: number, digit
   return Math.min(max, Math.max(min, rounded));
 }
 
-function normalizeSemanticTypes(value: unknown): ShortFormSoundSemanticType[] {
-  const allowed = new Set<ShortFormSoundSemanticType>(["impact", "riser", "click", "whoosh", "ambience"]);
-  const types = normalizeStringArray(value).filter((item): item is ShortFormSoundSemanticType => allowed.has(item as ShortFormSoundSemanticType));
+function normalizeLibrarySemanticTypes(value: unknown): ShortFormSoundLibrarySemanticType[] {
+  const allowed = new Set<ShortFormSoundLibrarySemanticType>(["impact", "riser", "click", "whoosh", "ambience"]);
+  const types = normalizeStringArray(value).filter((item): item is ShortFormSoundLibrarySemanticType => allowed.has(item as ShortFormSoundLibrarySemanticType));
   return types.length > 0 ? types : ["impact"];
+}
+
+function normalizeEventType(value: unknown): ShortFormSoundSemanticType {
+  return value === "riser" || value === "click" || value === "whoosh" || value === "ambience" || value === "music-riser" || value === "music-reverb-tail" || value === "mix-duck" || value === "mix-eq"
+    ? value
+    : "impact";
 }
 
 function normalizeTimingType(value: unknown): ShortFormSoundTimingType {
@@ -425,8 +486,12 @@ function normalizeLibraryEntry(candidate: Partial<ShortFormSoundLibraryEntry> | 
     id: normalizeString(candidate?.id, `sound-${index + 1}`),
     name: normalizeString(candidate?.name, `Sound ${index + 1}`),
     category: normalizeString(candidate?.category, "Impact"),
-    semanticTypes: normalizeSemanticTypes(candidate?.semanticTypes),
+    semanticTypes: normalizeLibrarySemanticTypes(candidate?.semanticTypes),
     tags: normalizeStringArray(candidate?.tags),
+    stylePalettes: normalizeStringArray(candidate?.stylePalettes),
+    frequencyBand: normalizeFrequencyBand(candidate?.frequencyBand),
+    layerRoles: normalizeStringArray(candidate?.layerRoles),
+    literalness: normalizeLiteralness(candidate?.literalness),
     timingType: normalizeTimingType(candidate?.timingType),
     defaultAnchor: normalizeAnchor(candidate?.defaultAnchor),
     defaultGainDb: normalizeNumber(candidate?.defaultGainDb, -36, 12, -6, 1),
@@ -470,6 +535,13 @@ function normalizePromptTemplate(value: unknown) {
     "- Keep cues tasteful and narration-supportive, but do not under-design the soundtrack.\n- Bias toward purposeful cue density where the edit supports it, especially across hook punctuation, transitions, reveals, motion accents, and major caption turns.",
   );
 
+  if (!normalized.includes("frequency-layered cue groups")) {
+    normalized = normalized.replace(
+      /\nArtifact requirements:/,
+      "\nUpdated sound-design planning rules:\n- Choose one coherent stylePalette first, then keep individual cues in that palette unless a beat intentionally breaks it.\n- For major transitions, impacts, risers, whooshes, and useful ambience, plan frequency-layered cue groups with shared groupId plus frequencyBand=\"low\"/\"mid\"/\"high\" and layerRole values like weight, body, motion, air, tick, sparkle, or texture.\n- Distinguish literalness=\"literal\", literalness=\"stylized\", and literalness=\"emotional-metaphor\"; emotional-metaphor cues can match the feeling/metaphor rather than literal visuals.\n- Plan music edits where useful with type=\"music-riser\", type=\"music-reverb-tail\", type=\"mix-duck\", or type=\"mix-eq\" control events and/or root music mix attrs.\n- Narration owns the mix: use ducking plus midrange EQ carving around speech, not only gain reduction.\n\nArtifact requirements:",
+    );
+  }
+
   const alreadyTopLevel = normalized.includes("{{soundDesignPath}}")
     || normalized.includes("Saved sound library JSON:")
     || normalized.includes("Artifact requirements:")
@@ -480,6 +552,13 @@ function normalizePromptTemplate(value: unknown) {
     if (legacyHintMatches >= 2) {
       normalized = buildTopLevelSoundDesignPromptTemplate(normalized);
     }
+  }
+
+  if (!normalized.includes("frequency-layered cue groups")) {
+    normalized = normalized.replace(
+      /\nArtifact requirements:/,
+      "\nUpdated sound-design planning rules:\n- Choose one coherent stylePalette first, then keep individual cues in that palette unless a beat intentionally breaks it.\n- For major transitions, impacts, risers, whooshes, and useful ambience, plan frequency-layered cue groups with shared groupId plus frequencyBand=\"low\"/\"mid\"/\"high\" and layerRole values like weight, body, motion, air, tick, sparkle, or texture.\n- Distinguish literalness=\"literal\", literalness=\"stylized\", and literalness=\"emotional-metaphor\"; emotional-metaphor cues can match the feeling/metaphor rather than literal visuals.\n- Plan music edits where useful with type=\"music-riser\", type=\"music-reverb-tail\", type=\"mix-duck\", or type=\"mix-eq\" control events and/or root music mix attrs.\n- Narration owns the mix: use ducking plus midrange EQ carving around speech, not only gain reduction.\n\nArtifact requirements:",
+    );
   }
 
   return normalized;
@@ -499,6 +578,12 @@ function normalizeSettings(candidate: Partial<ShortFormSoundDesignSettings> | nu
     revisionPromptTemplate: normalizeRevisionPromptTemplate(candidate?.revisionPromptTemplate),
     defaultDuckingDb: normalizeNumber(candidate?.defaultDuckingDb, -24, 0, -8, 1),
     maxConcurrentOneShots: normalizeNumber(candidate?.maxConcurrentOneShots, 1, 8, 2, 0),
+    musicDuckingDb: normalizeNumber(candidate?.musicDuckingDb, -24, 0, -6, 1),
+    musicEqCutDb: normalizeNumber(candidate?.musicEqCutDb, -18, 0, -4, 1),
+    musicEqFrequencyHz: normalizeNumber(candidate?.musicEqFrequencyHz, 120, 8000, 1800, 0),
+    musicEqQ: normalizeNumber(candidate?.musicEqQ, 0.1, 10, 1.1, 2),
+    musicLowCutHz: normalizeNumber(candidate?.musicLowCutHz, 0, 500, 60, 0),
+    musicHighCutHz: normalizeNumber(candidate?.musicHighCutHz, 0, 20000, 0, 0),
     library: Array.isArray(candidate?.library) && candidate.library.length > 0
       ? candidate.library.map((entry, index) => normalizeLibraryEntry(entry, index))
       : DEFAULT_SOUND_LIBRARY.map((entry, index) => normalizeLibraryEntry(entry, index)),
@@ -572,7 +657,7 @@ function normalizeTrackGroup(candidate: Partial<ShortFormSoundDesignTrackGroup> 
 }
 
 function normalizeArtifactEvent(candidate: Partial<ShortFormSoundDesignEvent> | null | undefined, index: number): ShortFormSoundDesignEvent {
-  const type = normalizeSemanticTypes([candidate?.type])[0];
+  const type = normalizeEventType(candidate?.type);
   return {
     id: normalizeString(candidate?.id, `evt-${index + 1}`),
     type,
@@ -588,6 +673,17 @@ function normalizeArtifactEvent(candidate: Partial<ShortFormSoundDesignEvent> | 
     notes: normalizeOptionalString(candidate?.notes),
     rationale: normalizeOptionalString(candidate?.rationale),
     overlap: candidate?.overlap === "allow" ? "allow" : candidate?.overlap === "avoid" ? "avoid" : undefined,
+    groupId: normalizeOptionalString(candidate?.groupId),
+    frequencyBand: normalizeFrequencyBand(candidate?.frequencyBand),
+    layerRole: normalizeOptionalString(candidate?.layerRole),
+    stylePalette: normalizeOptionalString(candidate?.stylePalette),
+    literalness: normalizeLiteralness(candidate?.literalness),
+    musicDuckingDb: normalizeOptionalNumber(candidate?.musicDuckingDb, -24, 0, 1),
+    musicEqCutDb: normalizeOptionalNumber(candidate?.musicEqCutDb, -18, 0, 1),
+    musicEqFrequencyHz: normalizeOptionalNumber(candidate?.musicEqFrequencyHz, 120, 8000, 0),
+    musicEqQ: normalizeOptionalNumber(candidate?.musicEqQ, 0.1, 10, 2),
+    musicLowCutHz: normalizeOptionalNumber(candidate?.musicLowCutHz, 0, 500, 0),
+    musicHighCutHz: normalizeOptionalNumber(candidate?.musicHighCutHz, 0, 20000, 0),
   };
 }
 
@@ -619,6 +715,12 @@ export function resolveSoundDesignArtifact(value: unknown, settings = getShortFo
     mix: {
       defaultDuckingDb: normalizeNumber(candidate.mix?.defaultDuckingDb, -24, 0, settings.defaultDuckingDb, 1),
       maxConcurrentOneShots: normalizeNumber(candidate.mix?.maxConcurrentOneShots, 1, 8, settings.maxConcurrentOneShots, 0),
+      musicDuckingDb: normalizeNumber(candidate.mix?.musicDuckingDb, -24, 0, settings.musicDuckingDb, 1),
+      musicEqCutDb: normalizeNumber(candidate.mix?.musicEqCutDb, -18, 0, settings.musicEqCutDb, 1),
+      musicEqFrequencyHz: normalizeNumber(candidate.mix?.musicEqFrequencyHz, 120, 8000, settings.musicEqFrequencyHz, 0),
+      musicEqQ: normalizeNumber(candidate.mix?.musicEqQ, 0.1, 10, settings.musicEqQ, 2),
+      musicLowCutHz: normalizeNumber(candidate.mix?.musicLowCutHz, 0, 500, settings.musicLowCutHz, 0),
+      musicHighCutHz: normalizeNumber(candidate.mix?.musicHighCutHz, 0, 20000, settings.musicHighCutHz, 0),
     },
     trackGroups,
     events: Array.isArray(candidate.events)
@@ -728,6 +830,12 @@ export function generateShortFormSoundDesign(projectId: string, options: {
     mix: {
       defaultDuckingDb: settings.defaultDuckingDb,
       maxConcurrentOneShots: settings.maxConcurrentOneShots,
+      musicDuckingDb: settings.musicDuckingDb,
+      musicEqCutDb: settings.musicEqCutDb,
+      musicEqFrequencyHz: settings.musicEqFrequencyHz,
+      musicEqQ: settings.musicEqQ,
+      musicLowCutHz: settings.musicLowCutHz,
+      musicHighCutHz: settings.musicHighCutHz,
     },
     trackGroups: buildDefaultTrackGroups(settings),
     events: [],

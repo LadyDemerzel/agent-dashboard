@@ -6,7 +6,9 @@ import {
   getShortFormSoundDesignSettings,
   getShortFormSoundLibraryDir,
   type ShortFormSoundAnchor,
+  type ShortFormSoundFrequencyBand,
   type ShortFormSoundLibraryEntry,
+  type ShortFormSoundLiteralness,
   type ShortFormSoundSemanticType,
   type ShortFormSoundTimingType,
 } from "@/lib/short-form-sound-design-settings";
@@ -36,6 +38,17 @@ export interface ShortFormSoundDesignEvent {
   rationale?: string;
   notes?: string;
   overlap?: "allow" | "avoid";
+  groupId?: string;
+  frequencyBand?: ShortFormSoundFrequencyBand;
+  layerRole?: string;
+  stylePalette?: string;
+  literalness?: ShortFormSoundLiteralness;
+  musicDuckingDb?: number;
+  musicEqCutDb?: number;
+  musicEqFrequencyHz?: number;
+  musicEqQ?: number;
+  musicLowCutHz?: number;
+  musicHighCutHz?: number;
 }
 
 export interface ShortFormResolvedSoundDesignEvent extends ShortFormSoundDesignEvent {
@@ -60,11 +73,23 @@ export interface ShortFormResolvedSoundDesignEvent extends ShortFormSoundDesignE
   resolutionReason?: string;
 }
 
+export interface ShortFormSoundDesignMixSettings {
+  defaultDuckingDb: number;
+  maxConcurrentOneShots: number;
+  musicDuckingDb: number;
+  musicEqCutDb: number;
+  musicEqFrequencyHz: number;
+  musicEqQ: number;
+  musicLowCutHz: number;
+  musicHighCutHz: number;
+}
+
 export interface ShortFormSoundDesignResolution {
   version: number;
   generatedAt: string;
   previewAudioRelativePath?: string;
   previewUpdatedAt?: string;
+  mixSettings?: ShortFormSoundDesignMixSettings;
   events: ShortFormResolvedSoundDesignEvent[];
   stats: {
     total: number;
@@ -81,6 +106,7 @@ export interface ShortFormSoundDesignDocument {
   status: string;
   updatedAt?: string;
   events: ShortFormSoundDesignEvent[];
+  mixSettings?: ShortFormSoundDesignMixSettings;
   resolution?: ShortFormSoundDesignResolution;
 }
 
@@ -167,6 +193,31 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number,
   return Math.min(max, Math.max(min, Math.round(parsed * factor) / factor));
 }
 
+function clampOptionalNumber(value: unknown, min: number, max: number, digits = 0) {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  if (!Number.isFinite(parsed)) return undefined;
+  const factor = 10 ** digits;
+  return Math.min(max, Math.max(min, Math.round(parsed * factor) / factor));
+}
+
+function normalizeFrequencyBand(value: unknown): ShortFormSoundFrequencyBand | undefined {
+  return value === "low" || value === "mid" || value === "high" || value === "full-range" ? value : undefined;
+}
+
+function normalizeLiteralness(value: unknown): ShortFormSoundLiteralness | undefined {
+  return value === "literal" || value === "stylized" || value === "emotional-metaphor" ? value : undefined;
+}
+
+function normalizeEventType(value: unknown): ShortFormSoundSemanticType {
+  return value === "riser" || value === "click" || value === "whoosh" || value === "ambience" || value === "music-riser" || value === "music-reverb-tail" || value === "mix-duck" || value === "mix-eq"
+    ? value
+    : "impact";
+}
+
+function isAssetBackedEventType(type: ShortFormSoundSemanticType): type is "impact" | "riser" | "click" | "whoosh" | "ambience" {
+  return type === "impact" || type === "riser" || type === "click" || type === "whoosh" || type === "ambience";
+}
+
 function safeReadJson(filePath: string) {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf-8"));
@@ -229,14 +280,42 @@ function parseAttributes(nodeSource: string) {
   return attributes;
 }
 
+export function parseShortFormSoundDesignRootAttributes(content: string) {
+  const xml = extractBody(content);
+  const rootMatch = xml.match(/<soundDesign\b[^>]*>/);
+  return rootMatch ? parseAttributes(rootMatch[0]) : {};
+}
+
+export function resolveShortFormSoundDesignMixSettings(content?: string, events: ShortFormSoundDesignEvent[] = []): ShortFormSoundDesignMixSettings {
+  const settings = getShortFormSoundDesignSettings();
+  const root = content ? parseShortFormSoundDesignRootAttributes(content) : {};
+  const base: ShortFormSoundDesignMixSettings = {
+    defaultDuckingDb: clampNumber(root.duckingDb, -24, 0, settings.defaultDuckingDb, 1),
+    maxConcurrentOneShots: clampNumber(root.maxConcurrentOneShots, 1, 8, settings.maxConcurrentOneShots, 0),
+    musicDuckingDb: clampNumber(root.musicDuckingDb, -24, 0, settings.musicDuckingDb, 1),
+    musicEqCutDb: clampNumber(root.musicEqCutDb, -18, 0, settings.musicEqCutDb, 1),
+    musicEqFrequencyHz: clampNumber(root.musicEqFrequencyHz, 120, 8000, settings.musicEqFrequencyHz, 0),
+    musicEqQ: clampNumber(root.musicEqQ, 0.1, 10, settings.musicEqQ, 2),
+    musicLowCutHz: clampNumber(root.musicLowCutHz, 0, 500, settings.musicLowCutHz, 0),
+    musicHighCutHz: clampNumber(root.musicHighCutHz, 0, 20000, settings.musicHighCutHz, 0),
+  };
+  for (const event of events) {
+    if (typeof event.musicDuckingDb === "number") base.musicDuckingDb = event.musicDuckingDb;
+    if (typeof event.musicEqCutDb === "number") base.musicEqCutDb = event.musicEqCutDb;
+    if (typeof event.musicEqFrequencyHz === "number") base.musicEqFrequencyHz = event.musicEqFrequencyHz;
+    if (typeof event.musicEqQ === "number") base.musicEqQ = event.musicEqQ;
+    if (typeof event.musicLowCutHz === "number") base.musicLowCutHz = event.musicLowCutHz;
+    if (typeof event.musicHighCutHz === "number") base.musicHighCutHz = event.musicHighCutHz;
+  }
+  return base;
+}
+
 export function parseShortFormSoundDesignXml(content: string): ShortFormSoundDesignEvent[] {
   const xml = extractBody(content);
   const eventMatches = xml.match(/<event\b[^>]*\/>/g) || [];
   return eventMatches.map((match, index) => {
     const attributes = parseAttributes(match);
-    const type = attributes.type === "riser" || attributes.type === "click" || attributes.type === "whoosh" || attributes.type === "ambience"
-      ? attributes.type
-      : "impact";
+    const type = normalizeEventType(attributes.type);
     const anchor = attributes.anchor === "scene-end"
       || attributes.anchor === "caption-start"
       || attributes.anchor === "caption-end"
@@ -260,6 +339,17 @@ export function parseShortFormSoundDesignXml(content: string): ShortFormSoundDes
       rationale: normalizeOptionalString(attributes.rationale),
       notes: normalizeOptionalString(attributes.notes),
       overlap,
+      groupId: normalizeOptionalString(attributes.groupId),
+      frequencyBand: normalizeFrequencyBand(attributes.frequencyBand),
+      layerRole: normalizeOptionalString(attributes.layerRole),
+      stylePalette: normalizeOptionalString(attributes.stylePalette),
+      literalness: normalizeLiteralness(attributes.literalness),
+      musicDuckingDb: clampOptionalNumber(attributes.musicDuckingDb, -24, 0, 1),
+      musicEqCutDb: clampOptionalNumber(attributes.musicEqCutDb, -18, 0, 1),
+      musicEqFrequencyHz: clampOptionalNumber(attributes.musicEqFrequencyHz, 120, 8000, 0),
+      musicEqQ: clampOptionalNumber(attributes.musicEqQ, 0.1, 10, 2),
+      musicLowCutHz: clampOptionalNumber(attributes.musicLowCutHz, 0, 500, 0),
+      musicHighCutHz: clampOptionalNumber(attributes.musicHighCutHz, 0, 20000, 0),
     };
   });
 }
@@ -274,8 +364,8 @@ export function buildDefaultShortFormSoundDesignDocument(projectId: string) {
     category: "sound-design",
   });
   const xml = [
-    "<soundDesign version=\"1\" duckingDb=\"-8\" maxConcurrentOneShots=\"2\">",
-    "  <event id=\"evt-1\" type=\"impact\" track=\"impacts\" anchor=\"scene-start\" sceneId=\"scene-1\" offsetMs=\"-40\" gainDb=\"-5\" fadeInMs=\"0\" fadeOutMs=\"220\" intensity=\"medium\" rationale=\"Opening punctuation\" />",
+    "<soundDesign version=\"1\" duckingDb=\"-8\" maxConcurrentOneShots=\"2\" musicDuckingDb=\"-6\" musicEqCutDb=\"-4\" musicEqFrequencyHz=\"1800\" musicEqQ=\"1.1\" musicLowCutHz=\"60\" musicHighCutHz=\"0\">",
+    "  <event id=\"evt-1\" type=\"impact\" track=\"impacts\" anchor=\"scene-start\" sceneId=\"scene-1\" offsetMs=\"-40\" gainDb=\"-5\" fadeInMs=\"0\" fadeOutMs=\"220\" intensity=\"medium\" groupId=\"open-low-mid-high\" frequencyBand=\"mid\" layerRole=\"body\" literalness=\"stylized\" rationale=\"Opening punctuation\" />",
     "</soundDesign>",
   ].join("\n");
   ensureDir(path.dirname(docPath));
@@ -308,6 +398,17 @@ function pushEventLine(lines: string[], event: ShortFormSoundDesignEvent) {
     ...(event.rationale ? [`rationale=\"${escapeXmlAttribute(event.rationale)}\"`] : []),
     ...(event.notes ? [`notes=\"${escapeXmlAttribute(event.notes)}\"`] : []),
     ...(event.overlap ? [`overlap=\"${event.overlap}\"`] : []),
+    ...(event.groupId ? [`groupId=\"${escapeXmlAttribute(event.groupId)}\"`] : []),
+    ...(event.frequencyBand ? [`frequencyBand=\"${event.frequencyBand}\"`] : []),
+    ...(event.layerRole ? [`layerRole=\"${escapeXmlAttribute(event.layerRole)}\"`] : []),
+    ...(event.stylePalette ? [`stylePalette=\"${escapeXmlAttribute(event.stylePalette)}\"`] : []),
+    ...(event.literalness ? [`literalness=\"${event.literalness}\"`] : []),
+    ...(typeof event.musicDuckingDb === "number" ? [`musicDuckingDb=\"${event.musicDuckingDb}\"`] : []),
+    ...(typeof event.musicEqCutDb === "number" ? [`musicEqCutDb=\"${event.musicEqCutDb}\"`] : []),
+    ...(typeof event.musicEqFrequencyHz === "number" ? [`musicEqFrequencyHz=\"${event.musicEqFrequencyHz}\"`] : []),
+    ...(typeof event.musicEqQ === "number" ? [`musicEqQ=\"${event.musicEqQ}\"`] : []),
+    ...(typeof event.musicLowCutHz === "number" ? [`musicLowCutHz=\"${event.musicLowCutHz}\"`] : []),
+    ...(typeof event.musicHighCutHz === "number" ? [`musicHighCutHz=\"${event.musicHighCutHz}\"`] : []),
   ];
   lines.push(`  <event ${attributes.join(" ")} />`);
 }
@@ -319,7 +420,7 @@ export function buildSuggestedShortFormSoundDesignDocument(
   const settings = getShortFormSoundDesignSettings();
   const scenes = getTimelineScenes(projectId);
   const captions = getTimelineCaptions(projectId);
-  const hasSemantic = (semanticType: ShortFormSoundSemanticType) => settings.library.some((entry) => entry.semanticTypes.includes(semanticType));
+  const hasSemantic = (semanticType: "impact" | "riser" | "click" | "whoosh" | "ambience") => settings.library.some((entry) => entry.semanticTypes.includes(semanticType));
   const events: ShortFormSoundDesignEvent[] = [];
 
   if (scenes[0]) {
@@ -336,6 +437,11 @@ export function buildSuggestedShortFormSoundDesignDocument(
       intensity: "medium",
       rationale: "Punch the opening beat without overpowering the narration.",
       overlap: "avoid",
+      groupId: "opening-layered-hit",
+      frequencyBand: "mid",
+      layerRole: "body",
+      stylePalette: "premium editorial",
+      literalness: "stylized",
     });
   }
 
@@ -352,6 +458,11 @@ export function buildSuggestedShortFormSoundDesignDocument(
       intensity: "low",
       rationale: "Low-level texture to keep the mix from feeling dry.",
       overlap: "allow",
+      groupId: "global-air-bed",
+      frequencyBand: "high",
+      layerRole: "air",
+      stylePalette: "premium editorial",
+      literalness: "emotional-metaphor",
     });
   }
 
@@ -369,6 +480,11 @@ export function buildSuggestedShortFormSoundDesignDocument(
       intensity: index === 0 ? "medium" : "low",
       rationale: `Carry momentum into ${scene.caption || `scene ${scene.number}`}.`,
       overlap: "avoid",
+      groupId: `transition-${index + 1}-layered`,
+      frequencyBand: index === 0 ? "mid" : "high",
+      layerRole: index === 0 ? "motion" : "air",
+      stylePalette: "premium editorial",
+      literalness: "stylized",
     });
   });
 
@@ -386,6 +502,10 @@ export function buildSuggestedShortFormSoundDesignDocument(
       intensity: "low",
       rationale: "Add a precise punctuation point on an early caption pivot.",
       overlap: "avoid",
+      frequencyBand: "high",
+      layerRole: "tick",
+      stylePalette: "premium editorial",
+      literalness: "stylized",
     });
   }
 
@@ -400,7 +520,7 @@ export function buildSuggestedShortFormSoundDesignDocument(
   });
 
   const lines = [
-    `<soundDesign version=\"1\" duckingDb=\"${settings.defaultDuckingDb}\" maxConcurrentOneShots=\"${settings.maxConcurrentOneShots}\">`,
+    `<soundDesign version=\"1\" duckingDb=\"${settings.defaultDuckingDb}\" maxConcurrentOneShots=\"${settings.maxConcurrentOneShots}\" musicDuckingDb=\"${settings.musicDuckingDb}\" musicEqCutDb=\"${settings.musicEqCutDb}\" musicEqFrequencyHz=\"${settings.musicEqFrequencyHz}\" musicEqQ=\"${settings.musicEqQ}\" musicLowCutHz=\"${settings.musicLowCutHz}\" musicHighCutHz=\"${settings.musicHighCutHz}\">`,
   ];
   events.forEach((event) => pushEventLine(lines, event));
   lines.push("</soundDesign>");
@@ -418,6 +538,7 @@ export function readShortFormSoundDesignDocument(projectId: string): ShortFormSo
       frontMatter: {},
       status: "draft",
       events: [],
+      mixSettings: resolveShortFormSoundDesignMixSettings(),
       resolution: readShortFormSoundDesignResolution(projectId),
     };
   }
@@ -433,6 +554,7 @@ export function readShortFormSoundDesignDocument(projectId: string): ShortFormSo
     status: normalizeString(parsed?.frontMatter?.status, "draft"),
     updatedAt: fs.statSync(docPath).mtime.toISOString(),
     events: parseShortFormSoundDesignXml(content),
+    mixSettings: resolveShortFormSoundDesignMixSettings(content, parseShortFormSoundDesignXml(content)),
     ...(resolution ? { resolution } : {}),
   };
 }
@@ -454,7 +576,7 @@ export function readShortFormSoundDesignResolution(projectId: string): ShortForm
     const item = event && typeof event === "object" && !Array.isArray(event) ? event as Record<string, unknown> : {};
     return {
       id: normalizeString(item.id),
-      type: item.type === "riser" || item.type === "click" || item.type === "whoosh" || item.type === "ambience" ? item.type : "impact",
+      type: normalizeEventType(item.type),
       track: normalizeString(item.track, "impacts"),
       anchor: item.anchor === "scene-end" || item.anchor === "caption-start" || item.anchor === "caption-end" || item.anchor === "global-start" || item.anchor === "global-end" ? item.anchor : "scene-start",
       sceneId: normalizeOptionalString(item.sceneId),
@@ -467,6 +589,17 @@ export function readShortFormSoundDesignResolution(projectId: string): ShortForm
       rationale: normalizeOptionalString(item.rationale),
       notes: normalizeOptionalString(item.notes),
       overlap: item.overlap === "allow" ? "allow" : item.overlap === "avoid" ? "avoid" : undefined,
+      groupId: normalizeOptionalString(item.groupId),
+      frequencyBand: normalizeFrequencyBand(item.frequencyBand),
+      layerRole: normalizeOptionalString(item.layerRole),
+      stylePalette: normalizeOptionalString(item.stylePalette),
+      literalness: normalizeLiteralness(item.literalness),
+      musicDuckingDb: clampOptionalNumber(item.musicDuckingDb, -24, 0, 1),
+      musicEqCutDb: clampOptionalNumber(item.musicEqCutDb, -18, 0, 1),
+      musicEqFrequencyHz: clampOptionalNumber(item.musicEqFrequencyHz, 120, 8000, 0),
+      musicEqQ: clampOptionalNumber(item.musicEqQ, 0.1, 10, 2),
+      musicLowCutHz: clampOptionalNumber(item.musicLowCutHz, 0, 500, 0),
+      musicHighCutHz: clampOptionalNumber(item.musicHighCutHz, 0, 20000, 0),
       assetId: normalizeOptionalString(item.assetId),
       assetName: normalizeOptionalString(item.assetName),
       assetRelativePath: normalizeOptionalString(item.assetRelativePath),
@@ -497,6 +630,18 @@ export function readShortFormSoundDesignResolution(projectId: string): ShortForm
     generatedAt: normalizeString(obj.generatedAt, new Date().toISOString()),
     previewAudioRelativePath: normalizeOptionalString(obj.previewAudioRelativePath),
     previewUpdatedAt: normalizeOptionalString(obj.previewUpdatedAt),
+    mixSettings: obj.mixSettings && typeof obj.mixSettings === "object" && !Array.isArray(obj.mixSettings)
+      ? {
+          defaultDuckingDb: clampNumber((obj.mixSettings as Record<string, unknown>).defaultDuckingDb, -24, 0, -8, 1),
+          maxConcurrentOneShots: clampNumber((obj.mixSettings as Record<string, unknown>).maxConcurrentOneShots, 1, 8, 2, 0),
+          musicDuckingDb: clampNumber((obj.mixSettings as Record<string, unknown>).musicDuckingDb, -24, 0, -6, 1),
+          musicEqCutDb: clampNumber((obj.mixSettings as Record<string, unknown>).musicEqCutDb, -18, 0, -4, 1),
+          musicEqFrequencyHz: clampNumber((obj.mixSettings as Record<string, unknown>).musicEqFrequencyHz, 120, 8000, 1800, 0),
+          musicEqQ: clampNumber((obj.mixSettings as Record<string, unknown>).musicEqQ, 0.1, 10, 1.1, 2),
+          musicLowCutHz: clampNumber((obj.mixSettings as Record<string, unknown>).musicLowCutHz, 0, 500, 60, 0),
+          musicHighCutHz: clampNumber((obj.mixSettings as Record<string, unknown>).musicHighCutHz, 0, 20000, 0, 0),
+        }
+      : undefined,
     events: normalizedEvents,
     stats: {
       total: typeof obj.stats === "object" && obj.stats && !Array.isArray(obj.stats) && typeof (obj.stats as Record<string, unknown>).total === "number"
@@ -549,13 +694,17 @@ function getNarrationDuration(projectId: string) {
 
 function getAssetCompatibility(event: ShortFormSoundDesignEvent, asset: ShortFormSoundLibraryEntry) {
   let score = 0;
-  if (asset.semanticTypes.includes(event.type)) score += 6;
+  if (isAssetBackedEventType(event.type) && asset.semanticTypes.includes(event.type)) score += 6;
   if (asset.timingType === "bed" && event.type === "ambience") score += 3;
   if (asset.timingType === "riser" && event.type === "riser") score += 3;
   if (asset.defaultAnchor === event.anchor) score += 2;
   const lowerTrack = event.track.toLowerCase();
   if (asset.category.toLowerCase().includes(lowerTrack)) score += 1;
   if ((event.intensity || "").length > 0 && asset.tags.some((tag) => tag.toLowerCase() === (event.intensity || "").toLowerCase())) score += 1;
+  if (event.frequencyBand && asset.frequencyBand === event.frequencyBand) score += 2;
+  if (event.layerRole && (asset.layerRoles || []).some((role) => role.toLowerCase() === event.layerRole!.toLowerCase())) score += 2;
+  if (event.stylePalette && (asset.stylePalettes || []).some((palette) => palette.toLowerCase() === event.stylePalette!.toLowerCase())) score += 1;
+  if (event.literalness && asset.literalness === event.literalness) score += 1;
   if (!asset.audioRelativePath) score -= 10;
   return score;
 }
@@ -614,6 +763,7 @@ export function resolveShortFormSoundDesign(projectId: string, overrides?: Short
   const scenes = getTimelineScenes(projectId);
   const captions = getTimelineCaptions(projectId);
   const duration = getNarrationDuration(projectId);
+  const mixSettings = resolveShortFormSoundDesignMixSettings(doc.content, doc.events);
   const existingById = new Map<string, ShortFormResolvedSoundDesignEvent>();
   (overrides || doc.resolution?.events || []).forEach((event) => {
     existingById.set(event.id, event);
@@ -621,6 +771,24 @@ export function resolveShortFormSoundDesign(projectId: string, overrides?: Short
 
   const resolvedEvents = doc.events.map((event) => {
     const prior = existingById.get(event.id);
+    if (!isAssetBackedEventType(event.type)) {
+      const start = resolveEventTime(projectId, event, scenes, captions);
+      return {
+        ...event,
+        resolvedStartSeconds: start,
+        resolvedGainDb: typeof event.gainDb === "number" ? event.gainDb : 0,
+        resolvedFadeInMs: typeof event.fadeInMs === "number" ? event.fadeInMs : 0,
+        resolvedFadeOutMs: typeof event.fadeOutMs === "number" ? event.fadeOutMs : 0,
+        duckingDb: mixSettings.defaultDuckingDb,
+        muted: prior?.muted === true,
+        solo: prior?.solo === true,
+        manualGainDb: prior?.manualGainDb,
+        manualNudgeMs: prior?.manualNudgeMs,
+        compatibleAssetIds: [],
+        status: "resolved",
+        resolutionReason: "music-or-mix-control-event",
+      } satisfies ShortFormResolvedSoundDesignEvent;
+    }
     const compatibleAssets = settings.library
       .filter((asset) => asset.audioRelativePath)
       .map((asset) => ({ asset, score: getAssetCompatibility(event, asset) }))
@@ -663,7 +831,7 @@ export function resolveShortFormSoundDesign(projectId: string, overrides?: Short
       resolvedGainDb: gainDb,
       resolvedFadeInMs: fadeInMs,
       resolvedFadeOutMs: fadeOutMs,
-      duckingDb: settings.defaultDuckingDb,
+      duckingDb: mixSettings.defaultDuckingDb,
       muted: prior?.muted === true,
       solo: prior?.solo === true,
       manualAssetId: prior?.manualAssetId,
@@ -682,6 +850,7 @@ export function resolveShortFormSoundDesign(projectId: string, overrides?: Short
     generatedAt: new Date().toISOString(),
     previewAudioRelativePath: doc.resolution?.previewAudioRelativePath,
     previewUpdatedAt: doc.resolution?.previewUpdatedAt,
+    mixSettings,
     events: resolvedEvents,
     stats: {
       total: resolvedEvents.length,
@@ -729,6 +898,32 @@ function ffmpegSupportsFilter(filterName: string) {
   return (result.stdout || "").includes(filterName);
 }
 
+function dbToVolume(db: number) {
+  return Math.pow(10, db / 20);
+}
+
+function buildMusicMixFilters(musicVolume: number | undefined, mixSettings: ShortFormSoundDesignMixSettings) {
+  const filters = [`volume=${Number.isFinite(musicVolume as number) ? Number(musicVolume).toFixed(3) : "0.160"}`];
+  if (mixSettings.musicLowCutHz > 0 && ffmpegSupportsFilter("highpass")) {
+    filters.push(`highpass=f=${Math.round(mixSettings.musicLowCutHz)}`);
+  }
+  if (mixSettings.musicHighCutHz > 0 && ffmpegSupportsFilter("lowpass")) {
+    filters.push(`lowpass=f=${Math.round(mixSettings.musicHighCutHz)}`);
+  }
+  if (mixSettings.musicEqCutDb < 0 && ffmpegSupportsFilter("equalizer")) {
+    filters.push(`equalizer=f=${Math.round(mixSettings.musicEqFrequencyHz)}:t=q:w=${mixSettings.musicEqQ.toFixed(2)}:g=${mixSettings.musicEqCutDb.toFixed(1)}`);
+  }
+  return filters;
+}
+
+function buildDuckedBackgroundFilters(inputLabel: string, narrationLabel: string, outputLabel: string, mixSettings: ShortFormSoundDesignMixSettings) {
+  if (ffmpegSupportsFilter("sidechaincompress")) {
+    const ratio = Math.max(2, Math.min(20, Math.abs(mixSettings.musicDuckingDb) * 1.4));
+    return `${inputLabel}${narrationLabel}sidechaincompress=threshold=0.04:ratio=${ratio.toFixed(1)}:attack=15:release=280:makeup=1${outputLabel}`;
+  }
+  return `${inputLabel}volume=${dbToVolume(mixSettings.musicDuckingDb).toFixed(5)}${outputLabel}`;
+}
+
 export function renderShortFormSoundDesignPreview(options: {
   projectId: string;
   narrationPath: string;
@@ -754,6 +949,7 @@ export function renderShortFormSoundDesignPreview(options: {
     persistAsDefault = outputFileName === "sound-design-preview.wav",
   } = options;
   const resolution = readShortFormSoundDesignResolution(projectId) || resolveShortFormSoundDesign(projectId);
+  const mixSettings = resolution.mixSettings || resolveShortFormSoundDesignMixSettings();
   const previewPath = getShortFormSoundDesignPreviewPath(projectId, outputFileName);
   const previewRelativePath = getShortFormSoundDesignPreviewRelativePath(projectId, outputFileName);
   ensureDir(path.dirname(previewPath));
@@ -779,7 +975,7 @@ export function renderShortFormSoundDesignPreview(options: {
 
   if (includeMusic && musicPath && fs.existsSync(musicPath)) {
     inputArgs.push("-i", musicPath);
-    filterLines.push(`[${inputIndex}:a]volume=${Number.isFinite(musicVolume as number) ? Number(musicVolume).toFixed(3) : "0.160"}[music]`);
+    filterLines.push(`[${inputIndex}:a]${buildMusicMixFilters(musicVolume, mixSettings).join(",")}[music]`);
     backgroundLabels.push("[music]");
     inputIndex += 1;
   }
@@ -834,12 +1030,7 @@ export function renderShortFormSoundDesignPreview(options: {
   }
 
   if (hasNarration && hasBackground) {
-    if (ffmpegSupportsFilter("sidechaincompress")) {
-      const threshold = 0.04;
-      filterLines.push(`${outputLabel}[narr]sidechaincompress=threshold=${threshold}:ratio=10:attack=15:release=280:makeup=1[duckedbg]`);
-    } else {
-      filterLines.push(`${outputLabel}volume=0.75[duckedbg]`);
-    }
+    filterLines.push(buildDuckedBackgroundFilters(outputLabel, "[narr]", "[duckedbg]", mixSettings));
     filterLines.push(`[narr][duckedbg]amix=inputs=2:normalize=0:weights='1 1'[mix]`);
     outputLabel = "[mix]";
   }

@@ -169,7 +169,7 @@ export interface Scene {
 
 export interface SoundDesignResolvedEventClient {
   id: string;
-  type: 'impact' | 'riser' | 'click' | 'whoosh' | 'ambience';
+  type: 'impact' | 'riser' | 'click' | 'whoosh' | 'ambience' | 'music-riser' | 'music-reverb-tail' | 'mix-duck' | 'mix-eq';
   track: string;
   anchor: string;
   sceneId?: string;
@@ -197,6 +197,17 @@ export interface SoundDesignResolvedEventClient {
   rationale?: string;
   notes?: string;
   overlap?: 'allow' | 'avoid';
+  groupId?: string;
+  frequencyBand?: 'low' | 'mid' | 'high' | 'full-range';
+  layerRole?: string;
+  stylePalette?: string;
+  literalness?: 'literal' | 'stylized' | 'emotional-metaphor';
+  musicDuckingDb?: number;
+  musicEqCutDb?: number;
+  musicEqFrequencyHz?: number;
+  musicEqQ?: number;
+  musicLowCutHz?: number;
+  musicHighCutHz?: number;
 }
 
 export interface SoundDesignSummaryClient extends StageDoc {
@@ -751,7 +762,7 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
               const item = asObject(event);
               return {
                 id: asString(item.id),
-                type: item.type === 'riser' || item.type === 'click' || item.type === 'whoosh' || item.type === 'ambience' ? item.type : 'impact',
+                type: item.type === 'riser' || item.type === 'click' || item.type === 'whoosh' || item.type === 'ambience' || item.type === 'music-riser' || item.type === 'music-reverb-tail' || item.type === 'mix-duck' || item.type === 'mix-eq' ? item.type : 'impact',
                 track: asString(item.track),
                 anchor: asString(item.anchor),
                 sceneId: asOptionalString(item.sceneId),
@@ -781,6 +792,17 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
                 rationale: asOptionalString(item.rationale),
                 notes: asOptionalString(item.notes),
                 overlap: item.overlap === 'allow' ? 'allow' : item.overlap === 'avoid' ? 'avoid' : undefined,
+                groupId: asOptionalString(item.groupId),
+                frequencyBand: item.frequencyBand === 'low' || item.frequencyBand === 'mid' || item.frequencyBand === 'high' || item.frequencyBand === 'full-range' ? item.frequencyBand : undefined,
+                layerRole: asOptionalString(item.layerRole),
+                stylePalette: asOptionalString(item.stylePalette),
+                literalness: item.literalness === 'literal' || item.literalness === 'stylized' || item.literalness === 'emotional-metaphor' ? item.literalness : undefined,
+                musicDuckingDb: typeof item.musicDuckingDb === 'number' ? item.musicDuckingDb : undefined,
+                musicEqCutDb: typeof item.musicEqCutDb === 'number' ? item.musicEqCutDb : undefined,
+                musicEqFrequencyHz: typeof item.musicEqFrequencyHz === 'number' ? item.musicEqFrequencyHz : undefined,
+                musicEqQ: typeof item.musicEqQ === 'number' ? item.musicEqQ : undefined,
+                musicLowCutHz: typeof item.musicLowCutHz === 'number' ? item.musicLowCutHz : undefined,
+                musicHighCutHz: typeof item.musicHighCutHz === 'number' ? item.musicHighCutHz : undefined,
               } as SoundDesignResolvedEventClient;
             })
           : [];

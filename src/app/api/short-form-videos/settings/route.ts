@@ -435,6 +435,24 @@ export async function PATCH(request: NextRequest) {
     if (typeof candidate.maxConcurrentOneShots !== "number" || Number.isNaN(candidate.maxConcurrentOneShots) || candidate.maxConcurrentOneShots < 1 || candidate.maxConcurrentOneShots > 8) {
       return NextResponse.json({ success: false, error: "Max concurrent one-shots must be between 1 and 8" }, { status: 400 });
     }
+    if (typeof candidate.musicDuckingDb !== "number" || Number.isNaN(candidate.musicDuckingDb) || candidate.musicDuckingDb < -24 || candidate.musicDuckingDb > 0) {
+      return NextResponse.json({ success: false, error: "Music ducking must be a number between -24 and 0 dB" }, { status: 400 });
+    }
+    if (typeof candidate.musicEqCutDb !== "number" || Number.isNaN(candidate.musicEqCutDb) || candidate.musicEqCutDb < -18 || candidate.musicEqCutDb > 0) {
+      return NextResponse.json({ success: false, error: "Music EQ cut must be a number between -18 and 0 dB" }, { status: 400 });
+    }
+    if (typeof candidate.musicEqFrequencyHz !== "number" || Number.isNaN(candidate.musicEqFrequencyHz) || candidate.musicEqFrequencyHz < 120 || candidate.musicEqFrequencyHz > 8000) {
+      return NextResponse.json({ success: false, error: "Music EQ frequency must be between 120 and 8000 Hz" }, { status: 400 });
+    }
+    if (typeof candidate.musicEqQ !== "number" || Number.isNaN(candidate.musicEqQ) || candidate.musicEqQ < 0.1 || candidate.musicEqQ > 10) {
+      return NextResponse.json({ success: false, error: "Music EQ Q must be between 0.1 and 10" }, { status: 400 });
+    }
+    if (typeof candidate.musicLowCutHz !== "number" || Number.isNaN(candidate.musicLowCutHz) || candidate.musicLowCutHz < 0 || candidate.musicLowCutHz > 500) {
+      return NextResponse.json({ success: false, error: "Music low-cut frequency must be between 0 and 500 Hz" }, { status: 400 });
+    }
+    if (typeof candidate.musicHighCutHz !== "number" || Number.isNaN(candidate.musicHighCutHz) || candidate.musicHighCutHz < 0 || candidate.musicHighCutHz > 20000) {
+      return NextResponse.json({ success: false, error: "Music high-cut frequency must be between 0 and 20000 Hz" }, { status: 400 });
+    }
     if (!Array.isArray(candidate.library)) {
       return NextResponse.json({ success: false, error: "Sound library must be an array" }, { status: 400 });
     }
@@ -477,6 +495,18 @@ export async function PATCH(request: NextRequest) {
       }
       if (typeof sound.defaultFadeOutMs !== "number" || Number.isNaN(sound.defaultFadeOutMs) || sound.defaultFadeOutMs < 0 || sound.defaultFadeOutMs > 10_000) {
         return NextResponse.json({ success: false, error: `Sound ${sound.name} must use a fade-out between 0 and 10000 ms` }, { status: 400 });
+      }
+      if (sound.stylePalettes !== undefined && !Array.isArray(sound.stylePalettes)) {
+        return NextResponse.json({ success: false, error: `Sound ${sound.name} style palettes must be an array` }, { status: 400 });
+      }
+      if (sound.frequencyBand !== undefined && !["low", "mid", "high", "full-range"].includes(sound.frequencyBand)) {
+        return NextResponse.json({ success: false, error: `Sound ${sound.name} has an invalid frequency band` }, { status: 400 });
+      }
+      if (sound.layerRoles !== undefined && !Array.isArray(sound.layerRoles)) {
+        return NextResponse.json({ success: false, error: `Sound ${sound.name} layer roles must be an array` }, { status: 400 });
+      }
+      if (sound.literalness !== undefined && !["literal", "stylized", "emotional-metaphor"].includes(sound.literalness)) {
+        return NextResponse.json({ success: false, error: `Sound ${sound.name} has an invalid literalness value` }, { status: 400 });
       }
       if (typeof sound.anchorRatio !== "number" || Number.isNaN(sound.anchorRatio) || sound.anchorRatio < 0 || sound.anchorRatio > 1) {
         return NextResponse.json({ success: false, error: `Sound ${sound.name} must use an anchor ratio between 0 and 1` }, { status: 400 });

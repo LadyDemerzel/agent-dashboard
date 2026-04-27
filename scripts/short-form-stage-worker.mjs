@@ -1344,6 +1344,65 @@ function ffmpegSupportsFilter(filterName) {
   return pattern.test(cachedFfmpegFilters || "");
 }
 
+
+function dbToVolume(db) {
+  return Math.pow(10, db / 20);
+}
+
+function normalizeMixNumber(value, min, max, fallback, digits = 0) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  const factor = 10 ** digits;
+  return Math.min(max, Math.max(min, Math.round(parsed * factor) / factor));
+}
+
+function resolveSoundDesignMixSettings(resolution) {
+  const raw = resolution && typeof resolution.mixSettings === "object" && !Array.isArray(resolution.mixSettings) ? resolution.mixSettings : {};
+  const events = Array.isArray(resolution?.events) ? resolution.events : [];
+  const settings = {
+    defaultDuckingDb: normalizeMixNumber(raw.defaultDuckingDb, -24, 0, -8, 1),
+    maxConcurrentOneShots: normalizeMixNumber(raw.maxConcurrentOneShots, 1, 8, 2, 0),
+    musicDuckingDb: normalizeMixNumber(raw.musicDuckingDb, -24, 0, -6, 1),
+    musicEqCutDb: normalizeMixNumber(raw.musicEqCutDb, -18, 0, -4, 1),
+    musicEqFrequencyHz: normalizeMixNumber(raw.musicEqFrequencyHz, 120, 8000, 1800, 0),
+    musicEqQ: normalizeMixNumber(raw.musicEqQ, 0.1, 10, 1.1, 2),
+    musicLowCutHz: normalizeMixNumber(raw.musicLowCutHz, 0, 500, 60, 0),
+    musicHighCutHz: normalizeMixNumber(raw.musicHighCutHz, 0, 20000, 0, 0),
+  };
+  for (const event of events) {
+    if (!event || typeof event !== "object") continue;
+    if (Number.isFinite(Number(event.musicDuckingDb))) settings.musicDuckingDb = normalizeMixNumber(event.musicDuckingDb, -24, 0, settings.musicDuckingDb, 1);
+    if (Number.isFinite(Number(event.musicEqCutDb))) settings.musicEqCutDb = normalizeMixNumber(event.musicEqCutDb, -18, 0, settings.musicEqCutDb, 1);
+    if (Number.isFinite(Number(event.musicEqFrequencyHz))) settings.musicEqFrequencyHz = normalizeMixNumber(event.musicEqFrequencyHz, 120, 8000, settings.musicEqFrequencyHz, 0);
+    if (Number.isFinite(Number(event.musicEqQ))) settings.musicEqQ = normalizeMixNumber(event.musicEqQ, 0.1, 10, settings.musicEqQ, 2);
+    if (Number.isFinite(Number(event.musicLowCutHz))) settings.musicLowCutHz = normalizeMixNumber(event.musicLowCutHz, 0, 500, settings.musicLowCutHz, 0);
+    if (Number.isFinite(Number(event.musicHighCutHz))) settings.musicHighCutHz = normalizeMixNumber(event.musicHighCutHz, 0, 20000, settings.musicHighCutHz, 0);
+  }
+  return settings;
+}
+
+function buildMusicMixFilters(musicVolume, mixSettings) {
+  const filters = [`volume=${Number.isFinite(Number(musicVolume)) ? Number(musicVolume).toFixed(3) : "0.160"}`];
+  if (mixSettings.musicLowCutHz > 0 && ffmpegSupportsFilter("highpass")) {
+    filters.push(`highpass=f=${Math.round(mixSettings.musicLowCutHz)}`);
+  }
+  if (mixSettings.musicHighCutHz > 0 && ffmpegSupportsFilter("lowpass")) {
+    filters.push(`lowpass=f=${Math.round(mixSettings.musicHighCutHz)}`);
+  }
+  if (mixSettings.musicEqCutDb < 0 && ffmpegSupportsFilter("equalizer")) {
+    filters.push(`equalizer=f=${Math.round(mixSettings.musicEqFrequencyHz)}:t=q:w=${mixSettings.musicEqQ.toFixed(2)}:g=${mixSettings.musicEqCutDb.toFixed(1)}`);
+  }
+  return filters;
+}
+
+function buildDuckedBackgroundFilter(inputLabel, narrationLabel, outputLabel, mixSettings) {
+  if (ffmpegSupportsFilter("sidechaincompress")) {
+    const ratio = Math.max(2, Math.min(20, Math.abs(mixSettings.musicDuckingDb) * 1.4));
+    return `${inputLabel}${narrationLabel}sidechaincompress=threshold=0.04:ratio=${ratio.toFixed(1)}:attack=15:release=280:makeup=1${outputLabel}`;
+  }
+  return `${inputLabel}volume=${dbToVolume(mixSettings.musicDuckingDb).toFixed(5)}${outputLabel}`;
+}
+
 async function waitForArtifactPaths(paths, requestedAtMs, timeoutMs, pollMs) {
   const isFreshSince = (filePath) => {
     if (!fs.existsSync(filePath)) return false;
@@ -2610,25 +2669,15 @@ function renderProjectSoundDesignMix({ projectId, narrationPath, musicPath, musi
   }
 
   const resolution = readProjectSoundDesignResolution(projectId);
-  const approvedPreviewRelativePath = normalizeString(
-    soundDesignPreviewRelativePath,
-    typeof resolution?.previewAudioRelativePath === "string" ? resolution.previewAudioRelativePath : "",
-  );
-  if (soundDesignDecision === "approved" && approvedPreviewRelativePath) {
-    const approvedPreviewPath = resolveProjectRelativePath(projectId, approvedPreviewRelativePath);
-    if (approvedPreviewPath && fs.existsSync(approvedPreviewPath)) {
-      return approvedPreviewPath;
-    }
-  }
+  const mixSettings = resolveSoundDesignMixSettings(resolution);
 
   const events = Array.isArray(resolution?.events)
     ? resolution.events.filter((event) => event && typeof event === "object" && event.status === "resolved" && event.assetRelativePath && !event.muted)
     : [];
-  if (!events.length) return null;
-
   const anySolo = events.some((event) => event.solo === true);
   const activeEvents = anySolo ? events.filter((event) => event.solo === true) : events;
-  if (!activeEvents.length) return null;
+  const hasMusicInput = Boolean(musicPath && fs.existsSync(musicPath));
+  if (!activeEvents.length && !hasMusicInput) return null;
 
   const mixDir = path.join(workDir, "sound-design");
   ensureDir(mixDir);
@@ -2640,7 +2689,7 @@ function renderProjectSoundDesignMix({ projectId, narrationPath, musicPath, musi
 
   if (musicPath && fs.existsSync(musicPath)) {
     inputArgs.push("-i", musicPath);
-    filterLines.push(`[${inputIndex}:a]volume=${Number.isFinite(musicVolume) ? Number(musicVolume).toFixed(3) : "0.160"}[music]`);
+    filterLines.push(`[${inputIndex}:a]${buildMusicMixFilters(musicVolume, mixSettings).join(",")}[music]`);
     backgroundLabels.push("[music]");
     inputIndex += 1;
   }
@@ -2674,11 +2723,7 @@ function renderProjectSoundDesignMix({ projectId, narrationPath, musicPath, musi
 
   if (!backgroundLabels.length) return null;
   filterLines.push(`${backgroundLabels.join("")}amix=inputs=${backgroundLabels.length}:normalize=0:dropout_transition=0[bgraw]`);
-  if (ffmpegSupportsFilter("sidechaincompress")) {
-    filterLines.push(`[bgraw][narr]sidechaincompress=threshold=0.04:ratio=10:attack=15:release=280:makeup=1[duckedbg]`);
-  } else {
-    filterLines.push(`[bgraw]volume=0.75[duckedbg]`);
-  }
+  filterLines.push(buildDuckedBackgroundFilter("[bgraw]", "[narr]", "[duckedbg]", mixSettings));
   filterLines.push(`[narr][duckedbg]amix=inputs=2:normalize=0:weights='1 1'[mix]`);
 
   runCommand("ffmpeg", [
