@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { Badge } from "@/components/ui/badge";
+import { RefreshIconButton } from "@/components/RefreshIconButton";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -5828,13 +5829,14 @@ export function ShortFormVideoSettingsView({
               onReset={() => resetSection(pageActionSectionId)}
             />
           ) : null}
-          <Button
-            variant="outline"
+          <RefreshIconButton
             onClick={() => void loadSettings()}
             disabled={pageReloadDisabled}
-          >
-            Reload page state
-          </Button>
+            refreshing={loading}
+            tooltip="Reload page state"
+            refreshingTooltip="Reloading page state…"
+            label="Reload page state"
+          />
         </>
       }
       preContent={

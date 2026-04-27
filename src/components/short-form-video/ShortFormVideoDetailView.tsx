@@ -6,6 +6,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
 import { DiffViewer } from "@/components/DiffViewer";
+import { RefreshIconButton } from "@/components/RefreshIconButton";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -1750,13 +1751,14 @@ function XMLScriptSection({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap justify-end gap-2">
-        <Button
-          variant="outline"
+        <RefreshIconButton
           onClick={() => void load()}
           disabled={refreshing}
-        >
-          {refreshing ? "Refreshing…" : "Refresh XML workflow"}
-        </Button>
+          refreshing={refreshing}
+          tooltip="Refresh XML workflow"
+          refreshingTooltip="Refreshing XML workflow…"
+          label="Refresh XML workflow"
+        />
       </div>
       <Card id="narration-audio" className="space-y-4 p-5">
         <WorkflowSectionHeader
@@ -5962,13 +5964,14 @@ export function ShortFormVideoDetailView({
       description={pageMeta.description}
       status={currentItem.status}
       actions={
-        <Button
-          variant="outline"
+        <RefreshIconButton
           onClick={() => void refreshProject()}
           disabled={refreshing}
-        >
-          {refreshing ? "Refreshing…" : "Refresh"}
-        </Button>
+          refreshing={refreshing}
+          tooltip="Refresh workflow page"
+          refreshingTooltip="Refreshing workflow page…"
+          label="Refresh workflow page"
+        />
       }
       preContent={
         <>
