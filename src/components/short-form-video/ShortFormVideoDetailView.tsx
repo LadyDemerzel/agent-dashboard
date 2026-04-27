@@ -3774,10 +3774,12 @@ function SoundDesignSection({
   project,
   refresh,
   mode,
+  onSoundDesignPendingChange,
 }: {
   project: Project;
   refresh: () => Promise<unknown>;
   mode: "plan" | "generate";
+  onSoundDesignPendingChange?: (pending: boolean) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(project.soundDesign.content || "");
@@ -4061,8 +4063,12 @@ function SoundDesignSection({
   }
 
   async function runAction(action: "generate" | "resolve" | "preview") {
+    const shouldMarkPlanPending = action === "generate";
     setSaving(true);
     setActionError(null);
+    if (shouldMarkPlanPending) {
+      onSoundDesignPendingChange?.(true);
+    }
 
     try {
       if (action === "preview") {
@@ -4096,6 +4102,9 @@ function SoundDesignSection({
         err instanceof Error ? err.message : "Failed to update sound design",
       );
     } finally {
+      if (shouldMarkPlanPending) {
+        onSoundDesignPendingChange?.(false);
+      }
       setSaving(false);
     }
   }
@@ -5775,6 +5784,24 @@ export function ShortFormVideoDetailView({
     }
   }
 
+  const setSoundDesignPending = useCallback((pending: boolean) => {
+    setProject((current) => {
+      if (!current) return current;
+      const pendingStages = pending
+        ? Array.from(new Set([...current.pendingStages, "sound-design" as const]))
+        : current.pendingStages.filter((stage) => stage !== "sound-design");
+
+      return {
+        ...current,
+        pendingStages,
+        soundDesign: {
+          ...current.soundDesign,
+          pending,
+        },
+      };
+    });
+  }, []);
+
   const detailItems = useMemo(
     () => getDetailRouteItems(projectId, project),
     [project, projectId],
@@ -5941,6 +5968,7 @@ export function ShortFormVideoDetailView({
             project={currentProject}
             refresh={refreshProject}
             mode="plan"
+            onSoundDesignPendingChange={setSoundDesignPending}
           />
         );
       case "generate-sound-design":
@@ -5949,6 +5977,7 @@ export function ShortFormVideoDetailView({
             project={currentProject}
             refresh={refreshProject}
             mode="generate"
+            onSoundDesignPendingChange={setSoundDesignPending}
           />
         );
       case "final-video":

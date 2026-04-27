@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 import { spawnSync } from "child_process";
-import { getShortFormProject, updateProjectMeta } from "@/lib/short-form-videos";
+import { getShortFormProject, updateLatestStageRequest, updateProjectMeta } from "@/lib/short-form-videos";
 import {
   buildDefaultShortFormSoundDesignDocument,
   getShortFormSoundDesignPath,
@@ -111,6 +111,13 @@ export async function POST(
     preferredModels: [DEFAULT_RELIABLE_MODEL, DEFAULT_RETRY_MODEL].filter(Boolean),
   }, null, 2), "utf-8");
 
+  updateLatestStageRequest(id, "sound-design", {
+    requestedAt,
+    runId,
+    action: project.soundDesign.exists ? "revise" : "generate",
+    mode: project.soundDesign.exists ? "revise" : "generate",
+    ...(notes ? { notes } : {}),
+  });
   updateProjectMeta(id, { pendingSoundDesign: true });
 
   const result = spawnSync(process.execPath, [WORKER_PATH, jobPath], {

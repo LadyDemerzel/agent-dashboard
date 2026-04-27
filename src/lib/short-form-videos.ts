@@ -20,6 +20,7 @@ import {
 import {
   getShortFormSoundDesignPreviewRelativePath,
   getShortFormSoundDesignPreviewRelativePathForMode,
+  getShortFormSoundDesignWorkDir,
   readShortFormSoundDesignDocument,
   type ShortFormSoundDesignResolution,
 } from "@/lib/short-form-sound-design";
@@ -1734,6 +1735,9 @@ function hasFreshStageArtifact(projectId: string, stage: ShortFormStageKey, doc:
       const mediaUpdated = hasFreshSceneImageMedia(projectId, manifest.data, requestedAtMs);
       return stageDocUpdated && manifestUpdated && mediaUpdated && manifest.data.length > 0;
     }
+    case "sound-design": {
+      return stageDocUpdated && hasMeaningfulStageOutput(stage, doc);
+    }
     case "video": {
       const videoArtifactPath = getVideoArtifactPath(projectId);
       const videoUpdated = videoArtifactPath ? hasFreshFileAtPath(videoArtifactPath, requestedAtMs) : false;
@@ -1919,6 +1923,89 @@ function findRelevantWorkflowRun(
   return undefined;
 }
 
+function findRelevantSoundDesignRun(
+  projectId: string,
+  requestedAt?: string,
+  runId?: string,
+): StageAgentRunSummary | undefined {
+  const runsDir = path.join(getShortFormSoundDesignWorkDir(projectId), "runs");
+  if (!fs.existsSync(runsDir)) return undefined;
+
+  const requestedAtMs = requestedAt ? Date.parse(requestedAt) : Number.NaN;
+  const statusFiles = fs
+    .readdirSync(runsDir)
+    .filter((entry) => entry.endsWith(".status.json"))
+    .map((entry) => {
+      const fullPath = path.join(runsDir, entry);
+      let mtimeMs = 0;
+      try {
+        mtimeMs = fs.statSync(fullPath).mtimeMs;
+      } catch {
+        mtimeMs = 0;
+      }
+      return { entry, fullPath, mtimeMs };
+    })
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  for (const candidate of statusFiles) {
+    let raw = "";
+    try {
+      raw = fs.readFileSync(candidate.fullPath, "utf-8");
+    } catch {
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as {
+        runId?: string;
+        projectId?: string;
+        status?: "running" | "completed" | "failed";
+        startedAt?: string;
+        finishedAt?: string;
+        errorMessage?: string;
+        attempts?: Array<{
+          startedAt?: string;
+          finishedAt?: string;
+          error?: string;
+          spawnResult?: { sessionId?: string; id?: string; runId?: string };
+        }>;
+      };
+
+      if (parsed.projectId !== projectId) continue;
+      if (runId && parsed.runId !== runId) continue;
+
+      const runStartedAtMs = parsed.startedAt ? Date.parse(parsed.startedAt) : Number.NaN;
+      if (!runId && Number.isFinite(requestedAtMs) && Number.isFinite(runStartedAtMs) && runStartedAtMs < requestedAtMs - 60_000) {
+        continue;
+      }
+
+      const attempts = Array.isArray(parsed.attempts) ? parsed.attempts : [];
+      const latestAttempt = attempts[attempts.length - 1];
+      const errorAttempt = [...attempts].reverse().find((attempt) => typeof attempt.error === "string" && attempt.error.trim());
+      const sessionId = latestAttempt?.spawnResult?.sessionId || latestAttempt?.spawnResult?.id || latestAttempt?.spawnResult?.runId;
+      const lastEventAt = parsed.finishedAt || latestAttempt?.finishedAt || latestAttempt?.startedAt || parsed.startedAt;
+      const status = parsed.status === "completed" ? "verified" : parsed.status;
+
+      return {
+        runId: parsed.runId,
+        source: "workflow-run",
+        status,
+        sessionId,
+        startedAt: parsed.startedAt || latestAttempt?.startedAt,
+        failedAt: parsed.status === "failed" ? parsed.finishedAt : undefined,
+        completedAt: parsed.status === "completed" ? parsed.finishedAt : parsed.status === "failed" ? parsed.finishedAt : undefined,
+        lastEventAt,
+        errorMessage: parsed.errorMessage || errorAttempt?.error,
+        completionReason: parsed.status,
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  return undefined;
+}
+
 function findRelevantAgentRun(stage: ShortFormStageKey, filePath: string, requestedAt?: string): StageAgentRunSummary | undefined {
   const sessionsDir = path.join(OPENCLAW_DIR, "agents", AGENT_FOR_STAGE[stage], "sessions");
   if (!fs.existsSync(sessionsDir)) return undefined;
@@ -2055,7 +2142,9 @@ function deriveStageRevisionState(
     return undefined;
   }
 
-  const workflowRun = findRelevantWorkflowRun(projectId, stage, requestedAt, latestRequest?.runId);
+  const workflowRun = stage === "sound-design"
+    ? findRelevantSoundDesignRun(projectId, requestedAt, latestRequest?.runId)
+    : findRelevantWorkflowRun(projectId, stage, requestedAt, latestRequest?.runId);
   const agentRun = workflowRun || findRelevantAgentRun(stage, filePath, requestedAt);
   const now = Date.now();
   const lastEventMs = agentRun?.lastEventAt ? Date.parse(agentRun.lastEventAt) : Number.NaN;
@@ -2485,8 +2574,16 @@ function getVideoStage(projectId: string, options?: { pending?: boolean }) {
   };
 }
 
-function getSoundDesignStage(projectId: string): SoundDesignStageSummary {
+function getSoundDesignStage(projectId: string, options?: { pending?: boolean }): SoundDesignStageSummary {
   const doc = readShortFormSoundDesignDocument(projectId);
+  const stageDoc: StageDocumentSummary = {
+    exists: doc.content.trim().length > 0,
+    status: doc.status,
+    content: doc.content,
+    updatedAt: doc.updatedAt,
+    openThreads: getOpenThreadCountForFile(doc.path),
+  };
+  stageDoc.revision = deriveStageRevisionState(projectId, "sound-design", stageDoc, options);
   const previewPath = doc.resolution?.previewAudioRelativePath || getShortFormSoundDesignPreviewRelativePath(projectId);
   const previewAbsolutePath = previewPath ? path.join(getProjectDir(projectId), previewPath) : undefined;
   const previewExists = previewAbsolutePath ? fs.existsSync(previewAbsolutePath) : false;
@@ -2514,11 +2611,7 @@ function getSoundDesignStage(projectId: string): SoundDesignStageSummary {
   }
 
   return {
-    exists: doc.content.trim().length > 0,
-    status: doc.status,
-    content: doc.content,
-    updatedAt: doc.updatedAt,
-    openThreads: getOpenThreadCountForFile(doc.path),
+    ...stageDoc,
     ...(previewExists && previewPath ? {
       previewAudioPath: previewPath,
       previewAudioUrl: toMediaUrl(projectId, previewPath, getProjectMediaVersion(projectId, previewPath)),
@@ -2600,6 +2693,10 @@ function reconcilePendingStages(
 
   const latestSceneImageRequest = meta.latestStageRequests?.["scene-images"];
   const sceneImageArtifactsFresh = hasFreshStageArtifact(projectId, "scene-images", state.sceneImages, latestSceneImageRequest?.requestedAt);
+  const latestSoundDesignRequest = meta.latestStageRequests?.["sound-design"];
+  const soundDesignArtifactFresh = latestSoundDesignRequest
+    ? hasFreshStageArtifact(projectId, "sound-design", state.soundDesign, latestSoundDesignRequest.requestedAt)
+    : state.soundDesign.exists;
 
   if (
     meta.pendingSceneImages &&
@@ -2611,7 +2708,7 @@ function reconcilePendingStages(
 
   if (
     meta.pendingSoundDesign &&
-    ((state.soundDesign.exists && !state.soundDesign.revision?.isPending) || state.soundDesign.revision?.isFailed)
+    ((soundDesignArtifactFresh && !state.soundDesign.revision?.isPending) || state.soundDesign.revision?.isFailed)
   ) {
     updates.pendingSoundDesign = false;
   }
@@ -2674,8 +2771,7 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
     textScriptMaxIterationsOverride: meta.textScriptMaxIterationsOverride,
   };
   const sceneImages = { ...getSceneImagesStage(projectId, { pending: Boolean(meta.pendingSceneImages) }), pending: Boolean(meta.pendingSceneImages) };
-  const soundDesign = getSoundDesignStage(projectId);
-  const video = { ...getVideoStage(projectId, { pending: Boolean(meta.pendingVideo) }), pending: Boolean(meta.pendingVideo) };
+  const soundDesign = getSoundDesignStage(projectId, { pending: Boolean(meta.pendingSoundDesign) });  const video = { ...getVideoStage(projectId, { pending: Boolean(meta.pendingVideo) }), pending: Boolean(meta.pendingVideo) };
 
   const nextMeta = reconcilePendingStages(projectId, meta, {
     hooks: hooksResult,
