@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { usePolling } from '@/components/usePolling';
 import { ShortFormSecondaryShell } from '@/components/short-form-video/ShortFormSecondaryShell';
 import {
@@ -11,6 +11,10 @@ import {
   normalizeShortFormProject,
   type ShortFormProjectClient as Project,
 } from '@/lib/short-form-video-client';
+import {
+  SHORT_FORM_PROJECT_OPTIMISTIC_UPDATE_EVENT,
+  type ShortFormProjectOptimisticUpdateDetail,
+} from '@/lib/short-form-project-events';
 
 interface ApiResponse<T> {
   success: boolean;
@@ -37,6 +41,36 @@ export function ShortFormVideoDetailShell({
       setProject(normalizeShortFormProject(payload.data));
     },
   });
+
+  useEffect(() => {
+    function handleOptimisticUpdate(event: Event) {
+      const detail = (event as CustomEvent<ShortFormProjectOptimisticUpdateDetail>).detail;
+      if (!detail || detail.projectId !== projectId) return;
+
+      setProject((current) => {
+        if (!current) return current;
+
+        const nextPendingStages = typeof detail.soundDesignPending === 'boolean'
+          ? detail.soundDesignPending
+            ? Array.from(new Set([...current.pendingStages, 'sound-design' as const]))
+            : current.pendingStages.filter((stage) => stage !== 'sound-design')
+          : current.pendingStages;
+
+        return {
+          ...current,
+          pendingStages: nextPendingStages,
+          soundDesign: {
+            ...current.soundDesign,
+            ...(typeof detail.soundDesignPending === 'boolean' ? { pending: detail.soundDesignPending } : {}),
+            ...(typeof detail.soundDesignStatus === 'string' ? { status: detail.soundDesignStatus } : {}),
+          },
+        };
+      });
+    }
+
+    window.addEventListener(SHORT_FORM_PROJECT_OPTIMISTIC_UPDATE_EVENT, handleOptimisticUpdate);
+    return () => window.removeEventListener(SHORT_FORM_PROJECT_OPTIMISTIC_UPDATE_EVENT, handleOptimisticUpdate);
+  }, [projectId]);
 
   const detailItems = useMemo<DetailRouteSectionItem[]>(
     () => getDetailRouteItems(projectId, project),

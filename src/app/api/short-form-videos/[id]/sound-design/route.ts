@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
-import { spawnSync } from "child_process";
+import { spawn } from "child_process";
 import { getShortFormProject, updateLatestStageRequest, updateProjectMeta } from "@/lib/short-form-videos";
 import {
   buildDefaultShortFormSoundDesignDocument,
@@ -26,6 +26,67 @@ const DEFAULT_RETRY_MODEL = process.env.SHORT_FORM_RETRY_MODEL || "openrouter/an
 
 function ensureDir(dirPath: string) {
   fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function writeRunFailureStatus(jobPath: string, payload: Record<string, unknown>) {
+  const statusPath = jobPath.replace(/\.job\.json$/, ".status.json");
+  let existing: Record<string, unknown> = {};
+  if (fs.existsSync(statusPath)) {
+    try {
+      existing = JSON.parse(fs.readFileSync(statusPath, "utf-8")) as Record<string, unknown>;
+    } catch {
+      existing = {};
+    }
+  }
+
+  fs.writeFileSync(statusPath, JSON.stringify({
+    ...existing,
+    ...payload,
+    status: "failed",
+    finishedAt: new Date().toISOString(),
+  }, null, 2), "utf-8");
+}
+
+function launchSoundDesignWorker(projectId: string, jobPath: string) {
+  const child = spawn(process.execPath, [WORKER_PATH, jobPath], {
+    cwd: REPO_ROOT,
+    stdio: "ignore",
+  });
+
+  child.once("error", (error) => {
+    writeRunFailureStatus(jobPath, {
+      projectId,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    updateProjectMeta(projectId, { pendingSoundDesign: false });
+  });
+
+  child.once("exit", (code, signal) => {
+    updateProjectMeta(projectId, { pendingSoundDesign: false });
+
+    if (code === 0) {
+      try {
+        resolveShortFormSoundDesign(projectId);
+        updateProjectMeta(projectId, {
+          soundDesignDecision: undefined,
+          soundDesignSkipReason: undefined,
+        });
+      } catch (error) {
+        writeRunFailureStatus(jobPath, {
+          projectId,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+
+    writeRunFailureStatus(jobPath, {
+      projectId,
+      errorMessage: signal
+        ? `Sound-design worker exited from signal ${signal}`
+        : `Sound-design worker exited with code ${code ?? "unknown"}`,
+    });
+  });
 }
 
 export async function GET(
@@ -120,33 +181,26 @@ export async function POST(
   });
   updateProjectMeta(id, { pendingSoundDesign: true });
 
-  const result = spawnSync(process.execPath, [WORKER_PATH, jobPath], {
-    cwd: REPO_ROOT,
-    encoding: "utf-8",
-    maxBuffer: 20 * 1024 * 1024,
-  });
-
-  updateProjectMeta(id, { pendingSoundDesign: false });
-
-  if (result.status !== 0) {
+  try {
+    launchSoundDesignWorker(id, jobPath);
+  } catch (error) {
+    updateProjectMeta(id, { pendingSoundDesign: false });
     return NextResponse.json({
       success: false,
-      error: result.stderr?.trim() || result.stdout?.trim() || "Sound-design generation failed",
+      error: error instanceof Error ? error.message : "Failed to start sound-design generation",
     }, { status: 500 });
   }
 
-  const resolution = resolveShortFormSoundDesign(id);
-  updateProjectMeta(id, { soundDesignDecision: undefined, soundDesignSkipReason: undefined });
   return NextResponse.json({
     success: true,
     data: {
       ...readShortFormSoundDesignDocument(id),
-      resolution,
       runId,
       requestedAt,
-      message: notes ? "Sound-design regeneration finished." : "Sound-design generation finished.",
+      pending: true,
+      message: notes ? "Sound-design regeneration started." : "Sound-design generation started.",
     },
-  });
+  }, { status: 202 });
 }
 
 export async function PATCH(

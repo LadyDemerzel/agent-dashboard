@@ -47,6 +47,7 @@ import {
   type ShortFormDetailRouteSection,
 } from "@/lib/short-form-video-navigation";
 import { getDetailRouteItems } from "@/lib/short-form-secondary-nav";
+import { dispatchShortFormProjectOptimisticUpdate } from "@/lib/short-form-project-events";
 
 interface ApiResponse<T> {
   success: boolean;
@@ -3786,9 +3787,11 @@ function SoundDesignSection({
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [savingOverrides, setSavingOverrides] = useState(false);
+  const [savingPlanStatus, setSavingPlanStatus] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [overrideError, setOverrideError] = useState<string | null>(null);
   const [decisionError, setDecisionError] = useState<string | null>(null);
+  const [planStatusError, setPlanStatusError] = useState<string | null>(null);
   const [savingDecision, setSavingDecision] = useState(false);
   const [skipReason, setSkipReason] = useState(
     project.soundDesignSkipReason || "",
@@ -3906,7 +3909,7 @@ function SoundDesignSection({
     resolution?.previewUpdatedAt,
   ]);
 
-  const busy = saving || savingOverrides || savingDecision;
+  const busy = saving || savingOverrides || savingDecision || savingPlanStatus;
   const overridesDirty = useMemo(
     () =>
       serializeSoundDesignOverrides(eventDrafts) !==
@@ -4029,6 +4032,13 @@ function SoundDesignSection({
     : overridesDirty
       ? "needs review"
       : soundDesignStageStatus(project);
+  const planSoundDesignStatus = project.soundDesign.pending
+    ? "working"
+    : project.soundDesign.exists
+      ? project.soundDesign.status || "needs review"
+      : approved(project.sceneImages.status)
+        ? "ready"
+        : "draft";
 
   function updateEventDraft(
     eventId: string,
@@ -4098,13 +4108,13 @@ function SoundDesignSection({
       setEditing(false);
       await refresh();
     } catch (err) {
+      if (shouldMarkPlanPending) {
+        onSoundDesignPendingChange?.(false);
+      }
       setActionError(
         err instanceof Error ? err.message : "Failed to update sound design",
       );
     } finally {
-      if (shouldMarkPlanPending) {
-        onSoundDesignPendingChange?.(false);
-      }
       setSaving(false);
     }
   }
@@ -4130,6 +4140,38 @@ function SoundDesignSection({
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function approvePlanSoundDesign() {
+    setSavingPlanStatus(true);
+    setPlanStatusError(null);
+
+    try {
+      await parseJsonResponse(
+        await fetch(`/api/short-form-videos/${project.id}/workflow/sound-design`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: "approved",
+            comment: "Approved Plan Sound Design in dashboard",
+            updatedBy: "ittai",
+          }),
+        }),
+        "Failed to approve Plan Sound Design",
+      );
+      dispatchShortFormProjectOptimisticUpdate({
+        projectId: project.id,
+        soundDesignPending: false,
+        soundDesignStatus: "approved",
+      });
+      await refresh();
+    } catch (err) {
+      setPlanStatusError(
+        err instanceof Error ? err.message : "Failed to approve Plan Sound Design",
+      );
+    } finally {
+      setSavingPlanStatus(false);
     }
   }
 
@@ -4309,6 +4351,15 @@ function SoundDesignSection({
                 ? "Re-plan sound design"
                 : "Plan sound design"}
           </Button>
+          {project.soundDesign.exists && planSoundDesignStatus === "needs review" ? (
+            <Button
+              variant="secondary"
+              onClick={() => void approvePlanSoundDesign()}
+              disabled={busy || project.soundDesign.pending}
+            >
+              {savingPlanStatus ? "Approving…" : "Approve Plan Sound Design"}
+            </Button>
+          ) : null}
           <Link
             href={buildShortFormSettingsHref("sound-library", {
               hash: "sound-library",
@@ -4331,7 +4382,7 @@ function SoundDesignSection({
                 Optional guidance for the XML planning pass. Audio rendering and event overrides live on Generate Sound Design.
               </p>
             </div>
-            <StatusBadge status={soundDesignStatus} compact />
+            <StatusBadge status={planSoundDesignStatus} compact />
           </div>
           <Textarea
             value={notes}
@@ -4350,6 +4401,10 @@ function SoundDesignSection({
 
         {actionError ? (
           <ValidationNotice title="Sound design failed" message={actionError} />
+        ) : null}
+
+        {planStatusError ? (
+          <ValidationNotice title="Plan Sound Design status failed" message={planStatusError} />
         ) : null}
 
         <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
@@ -5785,6 +5840,11 @@ export function ShortFormVideoDetailView({
   }
 
   const setSoundDesignPending = useCallback((pending: boolean) => {
+    dispatchShortFormProjectOptimisticUpdate({
+      projectId,
+      soundDesignPending: pending,
+    });
+
     setProject((current) => {
       if (!current) return current;
       const pendingStages = pending
@@ -5800,7 +5860,7 @@ export function ShortFormVideoDetailView({
         },
       };
     });
-  }, []);
+  }, [projectId]);
 
   const detailItems = useMemo(
     () => getDetailRouteItems(projectId, project),
