@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import useSWR from 'swr';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -15,6 +16,7 @@ import {
   getYoutubePhaseStatus,
   type VideoArtifacts,
 } from '@/lib/youtube-workflow';
+import { apiEnvelopeFetcher, realtimeSWRConfig } from '@/lib/swr-fetcher';
 
 interface ImageItem {
   name: string;
@@ -210,13 +212,27 @@ function TabContentSkeleton({ label }: { label: string }) {
 export default function YouTubeVideoDetailPage() {
   const [id, setId] = useState('');
   const [video, setVideo] = useState<Video | null>(null);
-  const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<ImageItem | null>(null);
   const [activeTab, setActiveTab] = useState<WorkflowContentTab>('research');
   const [mountedTabs, setMountedTabs] = useState<Set<WorkflowContentTab>>(() => new Set(['research']));
   const [isTabSwitching, setIsTabSwitching] = useState(false);
   const [pendingTab, setPendingTab] = useState<WorkflowContentTab | null>(null);
+  const {
+    data: videoPayload,
+    isLoading,
+    mutate: refreshVideo,
+  } = useSWR(id ? `/api/youtube/${id}` : null, apiEnvelopeFetcher<Video>, {
+    ...realtimeSWRConfig,
+    refreshInterval: 5000,
+  });
+  const loading = !id || (isLoading && !video);
+
+  useEffect(() => {
+    if (videoPayload?.success && videoPayload.data) {
+      setVideo(videoPayload.data);
+    }
+  }, [videoPayload]);
 
   useEffect(() => {
     const pathId = window.location.pathname.split('/').filter(Boolean).pop() || '';
@@ -229,11 +245,6 @@ export default function YouTubeVideoDetailPage() {
     setActiveTab(initialTab);
     setMountedTabs(new Set([initialTab]));
 
-    if (pathId) {
-      fetchVideo(pathId);
-    } else {
-      setLoading(false);
-    }
   }, []);
 
   useEffect(() => {
@@ -319,20 +330,6 @@ export default function YouTubeVideoDetailPage() {
     }, 0);
   }
 
-  async function fetchVideo(videoId: string = id) {
-    try {
-      const res = await fetch(`/api/youtube/${videoId}`);
-      const data = await res.json();
-      if (data.success) {
-        setVideo(data.data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch video:', err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function triggerPhase(phase: string) {
     setTriggering(phase);
     try {
@@ -340,7 +337,7 @@ export default function YouTubeVideoDetailPage() {
       const data = await res.json();
       if (data.success) {
         alert(`${phase} task started!`);
-        setTimeout(fetchVideo, 2000);
+        setTimeout(() => void refreshVideo(), 2000);
       } else {
         alert(data.error);
       }

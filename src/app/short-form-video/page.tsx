@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import useSWR from 'swr';
 import Link from 'next/link';
 import { Card } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -13,6 +14,7 @@ import {
   normalizeShortFormProjectRow,
   type ShortFormProjectRowClient as ProjectRow,
 } from '@/lib/short-form-video-client';
+import { apiEnvelopeFetcher, realtimeSWRConfig } from '@/lib/swr-fetcher';
 
 const CURRENT_STAGE_LABELS: Record<string, string> = {
   topic: 'Topic',
@@ -75,26 +77,19 @@ function tableStatus(project: ProjectRow) {
 
 export default function ShortFormVideoPage() {
   const router = useRouter();
-  const [projects, setProjects] = useState<ProjectRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [topic, setTopic] = useState('');
-
-  useEffect(() => {
-    fetchProjects();
-  }, []);
-
-  async function fetchProjects() {
-    try {
-      const res = await fetch('/api/short-form-videos');
-      const data = await res.json();
-      if (data.success) {
-        setProjects(Array.isArray(data.data) ? data.data.map(normalizeShortFormProjectRow) : []);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
+  const {
+    data: projectsPayload,
+    isLoading: loading,
+    mutate: refreshProjects,
+  } = useSWR('/api/short-form-videos', apiEnvelopeFetcher<ProjectRow[]>, {
+    ...realtimeSWRConfig,
+    refreshInterval: 5000,
+  });
+  const projects = Array.isArray(projectsPayload?.data)
+    ? projectsPayload.data.map(normalizeShortFormProjectRow)
+    : [];
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -107,6 +102,7 @@ export default function ShortFormVideoPage() {
       });
       const data = await res.json();
       if (data.success && data.data?.id) {
+        await refreshProjects();
         router.push(`/short-form-video/${data.data.id}/topic`);
       }
     } finally {

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { usePolling } from "@/components/usePolling";
+import useSWR from "swr";
+import { jsonFetcher, realtimeSWRConfig } from "@/lib/swr-fetcher";
 import { AGENTS } from "@/lib/agents";
 import { AgentCardClient } from "@/components/AgentCardClient";
 import { DeliverableList } from "@/components/DeliverableList";
@@ -43,75 +43,55 @@ interface DashboardData {
   sessionStatus: AgentStatusResponse;
 }
 
-type InitialLoadState = "loading" | "error" | "ready";
-
 const DASHBOARD_FETCH_TIMEOUT_MS = 10000;
 
+async function dashboardFetcher(url: string): Promise<DashboardData> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), DASHBOARD_FETCH_TIMEOUT_MS);
+  try {
+    return await jsonFetcher<DashboardData>(url, { signal: controller.signal });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 export default function Dashboard() {
-  const [initialData, setInitialData] = useState<DashboardData | null>(null);
-  const [initialLoadState, setInitialLoadState] = useState<InitialLoadState>("loading");
-  const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
+  const {
+    data: initialData,
+    error: dashboardError,
+    isLoading: dashboardLoading,
+    mutate: refreshDashboard,
+  } = useSWR<DashboardData>("/api/dashboard", dashboardFetcher, {
+    ...realtimeSWRConfig,
+    refreshInterval: 10000,
+  });
 
-  const loadDashboard = useCallback(async () => {
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), DASHBOARD_FETCH_TIMEOUT_MS);
+  const { data: liveStatus } = useSWR<AgentStatusResponse>("/api/agents/status", jsonFetcher, {
+    ...realtimeSWRConfig,
+    refreshInterval: 3000,
+  });
 
-    setInitialLoadState("loading");
-    setLoadErrorMessage(null);
-
-    try {
-      const res = await fetch("/api/dashboard", {
-        cache: "no-store",
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        throw new Error(`Dashboard request failed (${res.status})`);
-      }
-
-      const data: DashboardData = await res.json();
-      setInitialData(data);
-      setInitialLoadState("ready");
-    } catch (error) {
-      setInitialData(null);
-      setInitialLoadState("error");
-      setLoadErrorMessage(
-        error instanceof DOMException && error.name === "AbortError"
-          ? "The dashboard took too long to load."
-          : "We couldn’t load dashboard data right now."
-      );
-    } finally {
-      window.clearTimeout(timeoutId);
-    }
-  }, []);
-
-  // Fetch initial data on mount
-  useEffect(() => {
-    void loadDashboard();
-  }, [loadDashboard]);
-
-  // Poll for real-time status updates every 3 seconds
-  const { data: liveStatus } = usePolling<AgentStatusResponse>("/api/agents/status", 3000);
-
-  if (initialLoadState === "loading") {
+  if (dashboardLoading && !initialData) {
     return <PageLoadingShell />;
   }
 
-  if (initialLoadState === "error" || !initialData) {
+  if (dashboardError || !initialData) {
     return (
       <div className="p-4 sm:p-6 lg:p-8">
         <Card className="max-w-2xl">
           <CardHeader>
             <CardTitle>Dashboard unavailable</CardTitle>
             <CardDescription>
-              {loadErrorMessage ?? "We couldn’t load dashboard data right now."}
+              {dashboardError instanceof DOMException && dashboardError.name === "AbortError"
+                ? "The dashboard took too long to load."
+                : "We couldn’t load dashboard data right now."}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-muted-foreground">
               Check your local API/server status, then try loading the dashboard again.
             </p>
-            <Button onClick={() => void loadDashboard()}>Retry</Button>
+            <Button onClick={() => void refreshDashboard()}>Retry</Button>
           </CardContent>
         </Card>
       </div>

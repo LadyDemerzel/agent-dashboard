@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
+import useSWR from "swr";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
@@ -19,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { OrbitLoader, Skeleton } from "@/components/ui/loading";
 import { TabTransition } from "@/components/ui/tab-transition";
+import { jsonFetcher, realtimeSWRConfig } from "@/lib/swr-fetcher";
 import {
   DialogOverlay,
   DialogContent,
@@ -66,7 +68,6 @@ export function DeliverableDetailClient({
   const [selectedRange, setSelectedRange] = useState<{ startLine: number; endLine: number } | null>(null);
   const [isCreatingThread, setIsCreatingThread] = useState(false);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [selectedStatus, setSelectedStatus] = useState(deliverable.status);
   const [showFeedbackWarning, setShowFeedbackWarning] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -115,59 +116,40 @@ export function DeliverableDetailClient({
   const [versions, setVersions] = useState<Array<{ version: number; timestamp: string; updatedBy: string; comment?: string }>>([]);
   const [currentVersion, setCurrentVersion] = useState(0);
   const [compareVersion, setCompareVersion] = useState<number | undefined>(undefined);
-  const [diffData, setDiffData] = useState<DiffResult | null>(null);
-  const [diffLoading, setDiffLoading] = useState(false);
-  const diffAbortRef = useRef<AbortController | null>(null);
+  const {
+    data: versionsPayload,
+    mutate: fetchVersions,
+  } = useSWR<{
+    versions?: Array<{ version: number; timestamp: string; updatedBy: string; comment?: string }>;
+    currentVersion?: number;
+  }>(`/api/deliverables/${deliverable.id}/versions`, jsonFetcher, realtimeSWRConfig);
 
-  const fetchVersions = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/deliverables/${deliverable.id}/versions`);
-      if (res.ok) {
-        const data = await res.json();
-        setVersions(data.versions || []);
-        if (data.currentVersion) {
-          setCurrentVersion(data.currentVersion);
-          if (data.versions?.length >= 2) setCompareVersion(data.currentVersion - 1);
-        }
-      }
-    } catch { /* ignore */ }
-  }, [deliverable.id]);
-
-  const loadDiff = useCallback(async (from: number, to: number) => {
-    if (diffAbortRef.current) diffAbortRef.current.abort();
-    const controller = new AbortController();
-    diffAbortRef.current = controller;
-    setDiffLoading(true);
-    try {
-      const res = await fetch(`/api/deliverables/${deliverable.id}/diff?from=${from}&to=${to}`, { signal: controller.signal });
-      if (res.ok) setDiffData(await res.json());
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return;
-    } finally {
-      setDiffLoading(false);
-    }
-  }, [deliverable.id]);
-
-  useEffect(() => { fetchVersions(); }, [fetchVersions]);
   useEffect(() => {
-    if (viewMode === "changes" && currentVersion && compareVersion) loadDiff(compareVersion, currentVersion);
-  }, [viewMode, currentVersion, compareVersion, loadDiff]);
-
-  const fetchThreads = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/deliverables/${deliverable.id}/feedback`);
-      if (res.ok) {
-        const data = await res.json();
-        setThreads(data.threads);
-      }
-    } catch (error) {
-      console.error("Failed to fetch feedback threads:", error);
-    } finally {
-      setLoading(false);
+    if (!versionsPayload) return;
+    setVersions(versionsPayload.versions || []);
+    if (versionsPayload.currentVersion) {
+      setCurrentVersion(versionsPayload.currentVersion);
+      if ((versionsPayload.versions?.length ?? 0) >= 2) setCompareVersion(versionsPayload.currentVersion - 1);
     }
-  }, [deliverable.id]);
+  }, [versionsPayload]);
 
-  useEffect(() => { fetchThreads(); }, [fetchThreads]);
+  const diffKey = viewMode === "changes" && currentVersion && compareVersion
+    ? `/api/deliverables/${deliverable.id}/diff?from=${compareVersion}&to=${currentVersion}`
+    : null;
+  const { data: diffData = null, isLoading: diffLoading } = useSWR<DiffResult>(diffKey, jsonFetcher, realtimeSWRConfig);
+
+  const {
+    data: threadsPayload,
+    isLoading: loading,
+    mutate: fetchThreads,
+  } = useSWR<{ threads: FeedbackThreadType[] }>(`/api/deliverables/${deliverable.id}/feedback`, jsonFetcher, {
+    ...realtimeSWRConfig,
+    refreshInterval: 5000,
+  });
+
+  useEffect(() => {
+    if (threadsPayload) setThreads(threadsPayload.threads || []);
+  }, [threadsPayload]);
 
   const handleLineRangeSelect = useCallback((startLine: number, endLine: number) => {
     setSelectedRange({ startLine, endLine });

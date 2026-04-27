@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import useSWR from "swr";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -17,6 +18,7 @@ import {
 } from "@/components/short-form-video/WorkflowShared";
 import { CaptionStylePreview } from "@/components/short-form-video/CaptionStylePreview";
 import { useShortFormSettingsShellNav } from "@/components/short-form-video/ShortFormVideoSettingsShell";
+import { apiDataFetcher, realtimeSWRConfig } from "@/lib/swr-fetcher";
 import { usePageScrollRestoration } from "@/components/usePageScrollRestoration";
 import { type ShortFormSettingsRouteSection } from "@/lib/short-form-video-navigation";
 import {
@@ -470,6 +472,8 @@ interface SettingsResponse {
   };
   error?: string;
 }
+
+type SettingsData = NonNullable<SettingsResponse["data"]>;
 
 interface StyleTestResponse {
   success: boolean;
@@ -2129,90 +2133,67 @@ export function ShortFormVideoSettingsView({
     }
   }, [selectedAnimationPresetId, videoRender]);
 
-  const loadSettings = useCallback(
-    async (options?: { background?: boolean }) => {
+  const hasAppliedSettingsRef = useRef(false);
+  const applySettings = useCallback(
+    (data: SettingsData, options?: { background?: boolean }) => {
+      setDefinitions(data.definitions);
+      setPrompts(data.prompts);
+      setInitialPrompts(data.prompts);
+      setImageStyles(data.imageStyles);
+      setInitialImageStyles(data.imageStyles);
+      setVideoRender(data.videoRender);
+      setInitialVideoRender(data.videoRender);
+      setBackgroundVideos(data.backgroundVideos);
+      setInitialBackgroundVideos(data.backgroundVideos);
+      setTextScriptSettings(data.textScript);
+      setInitialTextScriptSettings(data.textScript);
+      setXmlVisualPlanningSettings(data.xmlVisualPlanning);
+      setInitialXmlVisualPlanningSettings(data.xmlVisualPlanning);
+      setSoundDesignSettings(data.soundDesign);
+      setInitialSoundDesignSettings(data.soundDesign);
+      setSelectedStyleId(
+        (current) =>
+          current ||
+          data.imageStyles.defaultStyleId ||
+          data.imageStyles.styles[0]?.id ||
+          null,
+      );
+      setSelectedVoiceId(
+        (current) =>
+          current ||
+          data.videoRender.defaultVoiceId ||
+          data.videoRender.voices[0]?.id ||
+          null,
+      );
+      setSelectedMusicId(
+        (current) =>
+          current ||
+          data.videoRender.defaultMusicTrackId ||
+          data.videoRender.musicTracks[0]?.id ||
+          null,
+      );
+      setSelectedSoundId(
+        (current) => current || data.soundDesign.library[0]?.id || null,
+      );
+      setSelectedCaptionStyleId(
+        (current) =>
+          current ||
+          data.videoRender.defaultCaptionStyleId ||
+          data.videoRender.captionStyles[0]?.id ||
+          null,
+      );
+      setSelectedAnimationPresetId(
+        (current) =>
+          current || data.videoRender.animationPresets[0]?.id || null,
+      );
+      setStyleTestsById(buildStyleTestsById(data.imageStyles.styles));
       if (!options?.background) {
-        setLoading(true);
-        setError(null);
+        setSectionFeedback(createEmptySectionFeedback());
       }
-
-      try {
-        const data = await parseResponse(
-          await fetch("/api/short-form-videos/settings", { cache: "no-store" }),
-        );
-        setDefinitions(data.definitions);
-        setPrompts(data.prompts);
-        setInitialPrompts(data.prompts);
-        setImageStyles(data.imageStyles);
-        setInitialImageStyles(data.imageStyles);
-        setVideoRender(data.videoRender);
-        setInitialVideoRender(data.videoRender);
-        setBackgroundVideos(data.backgroundVideos);
-        setInitialBackgroundVideos(data.backgroundVideos);
-        setTextScriptSettings(data.textScript);
-        setInitialTextScriptSettings(data.textScript);
-        setXmlVisualPlanningSettings(data.xmlVisualPlanning);
-        setInitialXmlVisualPlanningSettings(data.xmlVisualPlanning);
-        setSoundDesignSettings(data.soundDesign);
-        setInitialSoundDesignSettings(data.soundDesign);
-        setSelectedStyleId(
-          (current) =>
-            current ||
-            data.imageStyles.defaultStyleId ||
-            data.imageStyles.styles[0]?.id ||
-            null,
-        );
-        setSelectedVoiceId(
-          (current) =>
-            current ||
-            data.videoRender.defaultVoiceId ||
-            data.videoRender.voices[0]?.id ||
-            null,
-        );
-        setSelectedMusicId(
-          (current) =>
-            current ||
-            data.videoRender.defaultMusicTrackId ||
-            data.videoRender.musicTracks[0]?.id ||
-            null,
-        );
-        setSelectedSoundId(
-          (current) => current || data.soundDesign.library[0]?.id || null,
-        );
-        setSelectedCaptionStyleId(
-          (current) =>
-            current ||
-            data.videoRender.defaultCaptionStyleId ||
-            data.videoRender.captionStyles[0]?.id ||
-            null,
-        );
-        setSelectedAnimationPresetId(
-          (current) =>
-            current || data.videoRender.animationPresets[0]?.id || null,
-        );
-        setStyleTestsById(buildStyleTestsById(data.imageStyles.styles));
-        if (!options?.background) {
-          setSectionFeedback(createEmptySectionFeedback());
-        }
-        setError(null);
-      } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to load short-form workflow settings",
-        );
-      } finally {
-        if (!options?.background) {
-          setLoading(false);
-        }
-      }
+      setError(null);
     },
     [],
   );
-
-  useEffect(() => {
-    void loadSettings();
-  }, [loadSettings]);
 
   const promptDefinitionsByKey = useMemo(
     () =>
@@ -2704,6 +2685,65 @@ export function ShortFormVideoSettingsView({
     Boolean(selectedSoundUpload?.isUploading) ||
     backgroundVideoUpload.isUploading;
 
+  const {
+    data: settingsData,
+    error: settingsLoadError,
+    mutate: mutateSettings,
+  } = useSWR<SettingsData>("/api/short-form-videos/settings", apiDataFetcher, {
+    ...realtimeSWRConfig,
+    refreshInterval: autoRefreshPaused ? 0 : 5000,
+    revalidateOnFocus: !autoRefreshPaused,
+  });
+
+  const loadSettings = useCallback(
+    async (options?: { background?: boolean }) => {
+      if (!options?.background) {
+        setLoading(true);
+        setError(null);
+      }
+
+      try {
+        const data = await mutateSettings();
+        if (data) {
+          applySettings(data, {
+            background: options?.background ?? hasAppliedSettingsRef.current,
+          });
+          hasAppliedSettingsRef.current = true;
+        }
+        return data;
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load short-form workflow settings",
+        );
+        return undefined;
+      } finally {
+        if (!options?.background) {
+          setLoading(false);
+        }
+      }
+    },
+    [applySettings, mutateSettings],
+  );
+
+  useEffect(() => {
+    if (!settingsData) return;
+    applySettings(settingsData, { background: hasAppliedSettingsRef.current });
+    hasAppliedSettingsRef.current = true;
+    setLoading(false);
+  }, [applySettings, settingsData]);
+
+  useEffect(() => {
+    if (!settingsLoadError) return;
+    setError(
+      settingsLoadError instanceof Error
+        ? settingsLoadError.message
+        : "Failed to load short-form workflow settings",
+    );
+    setLoading(false);
+  }, [settingsLoadError]);
+
   const dirtySectionIds = useMemo(
     () =>
       Object.entries(dirtyBySection)
@@ -2750,14 +2790,6 @@ export function ShortFormVideoSettingsView({
     Boolean(selectedVoiceUpload?.isUploading) ||
     Boolean(selectedSoundUpload?.isUploading) ||
     backgroundVideoUpload.isUploading;
-
-  useEffect(() => {
-    if (loading || autoRefreshPaused) return;
-    const id = window.setInterval(() => {
-      void loadSettings({ background: true });
-    }, 5000);
-    return () => window.clearInterval(id);
-  }, [autoRefreshPaused, loadSettings, loading]);
 
   useEffect(() => {
     if (!settingsShellNav) return;

@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import useSWR from 'swr';
 import Link from 'next/link';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { OrbitLoader, Skeleton } from '@/components/ui/loading';
+import { apiEnvelopeFetcher, realtimeSWRConfig } from '@/lib/swr-fetcher';
 
 interface Video {
   id: string;
@@ -18,28 +20,17 @@ interface Video {
 }
 
 export default function YouTubeVideosPage() {
-  const [videos, setVideos] = useState<Video[]>([]);
-  const [loading, setLoading] = useState(true);
   const [newTopic, setNewTopic] = useState('');
   const [creating, setCreating] = useState(false);
-
-  useEffect(() => {
-    fetchVideos();
-  }, []);
-
-  async function fetchVideos() {
-    try {
-      const res = await fetch('/api/youtube');
-      const data = await res.json();
-      if (data.success) {
-        setVideos(data.data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch videos:', err);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const {
+    data: videosPayload,
+    isLoading: loading,
+    mutate: refreshVideos,
+  } = useSWR('/api/youtube', apiEnvelopeFetcher<Video[]>, {
+    ...realtimeSWRConfig,
+    refreshInterval: 5000,
+  });
+  const videos = videosPayload?.success && Array.isArray(videosPayload.data) ? videosPayload.data : [];
 
   async function createVideo(e: React.FormEvent) {
     e.preventDefault();
@@ -55,7 +46,7 @@ export default function YouTubeVideosPage() {
       const data = await res.json();
       if (data.success) {
         setNewTopic('');
-        fetchVideos();
+        await refreshVideos();
       } else {
         alert(data.error);
       }

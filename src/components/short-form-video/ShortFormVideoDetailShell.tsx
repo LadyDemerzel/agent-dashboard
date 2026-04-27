@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { usePolling } from '@/components/usePolling';
+import useSWR from 'swr';
+import { apiEnvelopeFetcher, realtimeSWRConfig } from '@/lib/swr-fetcher';
 import { ShortFormSecondaryShell } from '@/components/short-form-video/ShortFormSecondaryShell';
 import {
   getDetailRouteItems,
@@ -38,17 +39,22 @@ export function ShortFormVideoDetailShell({
 }) {
   const [project, setProject] = useState<Project | null>(initialProject);
 
-  usePolling<ApiResponse<Project>>(projectId ? `/api/short-form-videos/${projectId}` : null, {
-    intervalMs: 5000,
-    enabled: Boolean(projectId),
-    onData: (payload) => {
-      if (!payload.success || !payload.data) return;
-      const normalized = normalizeShortFormProject(payload.data);
-      setProject((current) =>
-        shortFormProjectChanged(current, normalized) ? normalized : current
-      );
+  const { data: projectPayload } = useSWR<ApiResponse<Project>>(
+    projectId ? `/api/short-form-videos/${projectId}` : null,
+    apiEnvelopeFetcher,
+    {
+      ...realtimeSWRConfig,
+      refreshInterval: 5000,
     },
-  });
+  );
+
+  useEffect(() => {
+    if (!projectPayload?.success || !projectPayload.data) return;
+    const normalized = normalizeShortFormProject(projectPayload.data);
+    setProject((current) =>
+      shortFormProjectChanged(current, normalized) ? normalized : current
+    );
+  }, [projectPayload]);
 
   useEffect(() => {
     function handleOptimisticUpdate(event: Event) {

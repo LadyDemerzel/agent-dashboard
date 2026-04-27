@@ -1,6 +1,7 @@
 "use client";
 
-import { usePolling } from "./usePolling";
+import useSWR from "swr";
+import { jsonFetcher, realtimeSWRConfig } from "@/lib/swr-fetcher";
 
 interface AgentStatusData {
   status: "idle" | "working" | "review" | "blocked";
@@ -63,7 +64,10 @@ export function AgentStatus({
   showTask = false,
   size = "md",
 }: AgentStatusProps) {
-  const { data } = usePolling<AgentStatusResponse>("/api/agents/status", 5000);
+  const { data } = useSWR<AgentStatusResponse>("/api/agents/status", jsonFetcher, {
+    ...realtimeSWRConfig,
+    refreshInterval: 5000,
+  });
 
   const statusData = data?.[agentId] || { status: "idle" as const };
   const style = STATUS_STYLES[statusData.status] || STATUS_STYLES.idle;

@@ -13,7 +13,8 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { OrbitLoader, Skeleton } from "@/components/ui/loading";
 import { StatusBadge } from "@/components/StatusBadge";
-import { usePolling } from "@/components/usePolling";
+import useSWR from "swr";
+import { apiEnvelopeFetcher, realtimeSWRConfig } from "@/lib/swr-fetcher";
 import {
   PipelinePanel,
   type PipelineStep,
@@ -1393,8 +1394,6 @@ function XMLScriptSection({
   onProjectRefresh: () => Promise<unknown>;
 }) {
   const [doc, setDoc] = useState<XmlScriptDoc | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -1446,42 +1445,57 @@ function XMLScriptSection({
     null,
   );
   const shouldPoll = Boolean(
-    project.id &&
-    (loading || doc?.pending || doc?.pipeline?.status === "running"),
+    project.id && (doc?.pending || doc?.pipeline?.status === "running"),
   );
+  const {
+    data: xmlScriptPayload,
+    error: xmlScriptLoadError,
+    isLoading,
+    isValidating,
+    mutate: reloadXmlScript,
+  } = useSWR<ApiResponse<XmlScriptDoc>>(
+    project.id ? `/api/short-form-videos/${project.id}/xml-script` : null,
+    apiEnvelopeFetcher,
+    {
+      ...realtimeSWRConfig,
+      refreshInterval: shouldPoll ? 4000 : 0,
+    },
+  );
+  const loading = isLoading && !doc;
+  const refreshing = isValidating && Boolean(doc);
+
+  const applyXmlScriptPayload = useCallback((payload: ApiResponse<XmlScriptDoc>) => {
+    setDoc(payload.data || null);
+    setDraft(payload.data?.content || "");
+    setError(null);
+  }, []);
+
+  useEffect(() => {
+    if (!xmlScriptPayload) return;
+    applyXmlScriptPayload(xmlScriptPayload);
+  }, [applyXmlScriptPayload, xmlScriptPayload]);
+
+  useEffect(() => {
+    if (!xmlScriptLoadError) return;
+    setError(
+      xmlScriptLoadError instanceof Error
+        ? xmlScriptLoadError.message
+        : "Failed to load XML script",
+    );
+  }, [xmlScriptLoadError]);
 
   const load = useCallback(async () => {
     try {
-      setRefreshing(true);
-      const payload = await parseJsonResponse<XmlScriptDoc>(
-        await fetch(`/api/short-form-videos/${project.id}/xml-script`, {
-          cache: "no-store",
-        }),
-        "Failed to load XML script",
-      );
-      setDoc(payload.data || null);
-      setDraft(payload.data?.content || "");
-      setError(null);
+      const payload = await reloadXmlScript();
+      if (payload) applyXmlScriptPayload(payload);
+      return payload;
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to load XML script",
       );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      return undefined;
     }
-  }, [project.id]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-  useEffect(() => {
-    if (!shouldPoll) return;
-    const timer = window.setInterval(() => {
-      void load();
-    }, 4000);
-    return () => window.clearInterval(timer);
-  }, [load, shouldPoll]);
+  }, [applyXmlScriptPayload, reloadXmlScript]);
 
   useEffect(() => {
     setProjectCaptionMaxWordsOverride(
@@ -1507,62 +1521,44 @@ function XMLScriptSection({
     );
   }, [project.pauseRemovalSilenceThresholdDbOverride]);
 
+  const { data: workflowSettingsPayload } = useSWR<ApiResponse<WorkflowSettingsResponse>>(
+    "/api/short-form-videos/settings",
+    apiEnvelopeFetcher,
+    realtimeSWRConfig,
+  );
+
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadVoiceOptions() {
-      try {
-        const payload = await parseJsonResponse<WorkflowSettingsResponse>(
-          await fetch("/api/short-form-videos/settings", { cache: "no-store" }),
-          "Failed to load voice settings",
-        );
-        const nextVoices = Array.isArray(payload.data?.videoRender?.voices)
-          ? payload.data.videoRender.voices.filter(
-              (voice): voice is VoiceOption =>
-                Boolean(
-                  voice &&
-                  typeof voice.id === "string" &&
-                  typeof voice.name === "string",
-                ),
-            )
-          : [];
-        if (!cancelled) {
-          setVoiceOptions(nextVoices);
-          setDefaultVoiceId(payload.data?.videoRender?.defaultVoiceId || "");
-          setDefaultCaptionMaxWords(
-            typeof payload.data?.videoRender?.captionMaxWords === "number"
-              ? payload.data.videoRender.captionMaxWords
-              : null,
-          );
-          setDefaultPauseRemovalMinSilenceDurationSeconds(
-            typeof payload.data?.videoRender?.pauseRemoval
-              ?.minSilenceDurationSeconds === "number"
-              ? payload.data.videoRender.pauseRemoval.minSilenceDurationSeconds
-              : null,
-          );
-          setDefaultPauseRemovalSilenceThresholdDb(
-            typeof payload.data?.videoRender?.pauseRemoval
-              ?.silenceThresholdDb === "number"
-              ? payload.data.videoRender.pauseRemoval.silenceThresholdDb
-              : null,
-          );
-        }
-      } catch {
-        if (!cancelled) {
-          setVoiceOptions([]);
-          setDefaultVoiceId("");
-          setDefaultCaptionMaxWords(null);
-          setDefaultPauseRemovalMinSilenceDurationSeconds(null);
-          setDefaultPauseRemovalSilenceThresholdDb(null);
-        }
-      }
-    }
-
-    void loadVoiceOptions();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (!workflowSettingsPayload) return;
+    const nextVoices = Array.isArray(workflowSettingsPayload.data?.videoRender?.voices)
+      ? workflowSettingsPayload.data.videoRender.voices.filter(
+          (voice): voice is VoiceOption =>
+            Boolean(
+              voice &&
+              typeof voice.id === "string" &&
+              typeof voice.name === "string",
+            ),
+        )
+      : [];
+    setVoiceOptions(nextVoices);
+    setDefaultVoiceId(workflowSettingsPayload.data?.videoRender?.defaultVoiceId || "");
+    setDefaultCaptionMaxWords(
+      typeof workflowSettingsPayload.data?.videoRender?.captionMaxWords === "number"
+        ? workflowSettingsPayload.data.videoRender.captionMaxWords
+        : null,
+    );
+    setDefaultPauseRemovalMinSilenceDurationSeconds(
+      typeof workflowSettingsPayload.data?.videoRender?.pauseRemoval
+        ?.minSilenceDurationSeconds === "number"
+        ? workflowSettingsPayload.data.videoRender.pauseRemoval.minSilenceDurationSeconds
+        : null,
+    );
+    setDefaultPauseRemovalSilenceThresholdDb(
+      typeof workflowSettingsPayload.data?.videoRender?.pauseRemoval
+        ?.silenceThresholdDb === "number"
+        ? workflowSettingsPayload.data.videoRender.pauseRemoval.silenceThresholdDb
+        : null,
+    );
+  }, [workflowSettingsPayload]);
 
   async function saveManual(status?: string) {
     setSaving(true);
@@ -2748,27 +2744,16 @@ function TextScriptHistoryPanel({
     );
   }, [project.script.textScriptMaxIterationsOverride]);
 
+  const { data: textScriptSettingsPayload } = useSWR<ApiResponse<WorkflowSettingsResponse>>(
+    "/api/short-form-videos/settings",
+    apiEnvelopeFetcher,
+    realtimeSWRConfig,
+  );
+
   useEffect(() => {
-    let cancelled = false;
-    async function loadDefaults() {
-      try {
-        const payload = await parseJsonResponse<WorkflowSettingsResponse>(
-          await fetch("/api/short-form-videos/settings"),
-          "Failed to load text-script settings",
-        );
-        const value = payload.data?.textScript?.defaultMaxIterations;
-        if (!cancelled && typeof value === "number") {
-          setDefaultMaxIterations(value);
-        }
-      } catch {
-        if (!cancelled) setDefaultMaxIterations(null);
-      }
-    }
-    void loadDefaults();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    const value = textScriptSettingsPayload?.data?.textScript?.defaultMaxIterations;
+    setDefaultMaxIterations(typeof value === "number" ? value : null);
+  }, [textScriptSettingsPayload]);
 
   const selectedRun = useMemo(
     () => runs.find((run) => run.runId === selectedRunId) || latestRun,
@@ -3255,58 +3240,41 @@ function SceneImagesSection({
     Record<string, "preview" | "raw">
   >({});
 
+  const { data: imageSettingsPayload } = useSWR<ApiResponse<WorkflowSettingsResponse>>(
+    "/api/short-form-videos/settings",
+    apiEnvelopeFetcher,
+    realtimeSWRConfig,
+  );
+
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadStyleOptions() {
-      try {
-        const payload = await parseJsonResponse<WorkflowSettingsResponse>(
-          await fetch("/api/short-form-videos/settings"),
-          "Failed to load image style settings",
-        );
-        const nextStyles = Array.isArray(payload.data?.imageStyles?.styles)
-          ? payload.data?.imageStyles?.styles.filter(
-              (style): style is ImageStyleOption =>
-                Boolean(
-                  style &&
-                  typeof style.id === "string" &&
-                  typeof style.name === "string",
-                ),
-            )
-          : [];
-        const nextBackgrounds = Array.isArray(
-          payload.data?.backgroundVideos?.backgrounds,
+    const nextStyles = Array.isArray(imageSettingsPayload?.data?.imageStyles?.styles)
+      ? imageSettingsPayload.data.imageStyles.styles.filter(
+          (style): style is ImageStyleOption =>
+            Boolean(
+              style &&
+              typeof style.id === "string" &&
+              typeof style.name === "string",
+            ),
         )
-          ? payload.data.backgroundVideos.backgrounds.filter(
-              (background): background is BackgroundVideoOption =>
-                Boolean(
-                  background &&
-                  typeof background.id === "string" &&
-                  typeof background.name === "string",
-                ),
-            )
-          : [];
-        if (!cancelled) {
-          setStyleOptions(nextStyles);
-          setBackgroundOptions(nextBackgrounds);
-          setDefaultBackgroundVideoId(
-            payload.data?.backgroundVideos?.defaultBackgroundVideoId || "",
-          );
-        }
-      } catch {
-        if (!cancelled) {
-          setStyleOptions([]);
-          setBackgroundOptions([]);
-          setDefaultBackgroundVideoId("");
-        }
-      }
-    }
-
-    void loadStyleOptions();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      : [];
+    const nextBackgrounds = Array.isArray(
+      imageSettingsPayload?.data?.backgroundVideos?.backgrounds,
+    )
+      ? imageSettingsPayload.data.backgroundVideos.backgrounds.filter(
+          (background): background is BackgroundVideoOption =>
+            Boolean(
+              background &&
+              typeof background.id === "string" &&
+              typeof background.name === "string",
+            ),
+        )
+      : [];
+    setStyleOptions(nextStyles);
+    setBackgroundOptions(nextBackgrounds);
+    setDefaultBackgroundVideoId(
+      imageSettingsPayload?.data?.backgroundVideos?.defaultBackgroundVideoId || "",
+    );
+  }, [imageSettingsPayload]);
 
   useEffect(() => {
     setSceneTabById((current) => {
@@ -3804,42 +3772,25 @@ function SoundDesignSection({
     setSkipReason(project.soundDesignSkipReason || "");
   }, [project.soundDesignSkipReason]);
 
+  const { data: soundSettingsPayload } = useSWR<ApiResponse<WorkflowSettingsResponse>>(
+    "/api/short-form-videos/settings",
+    apiEnvelopeFetcher,
+    realtimeSWRConfig,
+  );
+
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadSoundLibrary() {
-      try {
-        const payload = await parseJsonResponse<WorkflowSettingsResponse>(
-          await fetch("/api/short-form-videos/settings"),
-          "Failed to load workflow settings",
-        );
-        const nextLibrary = Array.isArray(payload.data?.soundDesign?.library)
-          ? payload.data.soundDesign.library.filter(
-              (asset): asset is SoundLibraryOption =>
-                Boolean(
-                  asset &&
-                  typeof asset.id === "string" &&
-                  typeof asset.name === "string",
-                ),
-            )
-          : [];
-        if (!cancelled) {
-          setSoundLibrary(
-            nextLibrary.filter((asset) => Boolean(asset.audioRelativePath)),
-          );
-        }
-      } catch {
-        if (!cancelled) {
-          setSoundLibrary([]);
-        }
-      }
-    }
-
-    void loadSoundLibrary();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    const nextLibrary = Array.isArray(soundSettingsPayload?.data?.soundDesign?.library)
+      ? soundSettingsPayload.data.soundDesign.library.filter(
+          (asset): asset is SoundLibraryOption =>
+            Boolean(
+              asset &&
+              typeof asset.id === "string" &&
+              typeof asset.name === "string",
+            ),
+        )
+      : [];
+    setSoundLibrary(nextLibrary.filter((asset) => Boolean(asset.audioRelativePath)));
+  }, [soundSettingsPayload]);
 
   const previewAudioUrl = project.soundDesign.previewAudioUrl
     ? appendPreviewRefreshParam(
@@ -5171,86 +5122,64 @@ function VideoSection({
   );
   const [chromaKeyError, setChromaKeyError] = useState<string | null>(null);
 
+  const { data: videoSettingsPayload } = useSWR<ApiResponse<WorkflowSettingsResponse>>(
+    "/api/short-form-videos/settings",
+    apiEnvelopeFetcher,
+    realtimeSWRConfig,
+  );
+
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadOptions() {
-      try {
-        const payload = await parseJsonResponse<WorkflowSettingsResponse>(
-          await fetch("/api/short-form-videos/settings"),
-          "Failed to load workflow settings",
-        );
-        const nextVoices = Array.isArray(payload.data?.videoRender?.voices)
-          ? payload.data.videoRender.voices.filter(
-              (voice): voice is VoiceOption =>
-                Boolean(
-                  voice &&
-                  typeof voice.id === "string" &&
-                  typeof voice.name === "string",
-                ),
-            )
-          : [];
-        const nextMusic = Array.isArray(payload.data?.videoRender?.musicTracks)
-          ? payload.data.videoRender.musicTracks.filter(
-              (track): track is MusicOption =>
-                Boolean(
-                  track &&
-                  typeof track.id === "string" &&
-                  typeof track.name === "string",
-                ),
-            )
-          : [];
-        const nextCaptionStyles = Array.isArray(
-          payload.data?.videoRender?.captionStyles,
+    const nextVoices = Array.isArray(videoSettingsPayload?.data?.videoRender?.voices)
+      ? videoSettingsPayload.data.videoRender.voices.filter(
+          (voice): voice is VoiceOption =>
+            Boolean(
+              voice &&
+              typeof voice.id === "string" &&
+              typeof voice.name === "string",
+            ),
         )
-          ? payload.data.videoRender.captionStyles.filter(
-              (style): style is CaptionStyleOption =>
-                Boolean(
-                  style &&
-                  typeof style.id === "string" &&
-                  typeof style.name === "string",
-                ),
-            )
-          : [];
-        if (!cancelled) {
-          setVoiceOptions(nextVoices);
-          setMusicOptions(nextMusic);
-          setCaptionStyleOptions(nextCaptionStyles);
-          setDefaultVoiceId(payload.data?.videoRender?.defaultVoiceId || "");
-          setDefaultMusicId(
-            payload.data?.videoRender?.defaultMusicTrackId || "",
-          );
-          setDefaultCaptionStyleId(
-            payload.data?.videoRender?.defaultCaptionStyleId || "",
-          );
-          setDefaultChromaKeyEnabled(
-            Boolean(payload.data?.videoRender?.chromaKeyEnabledByDefault),
-          );
-          setMusicVolume(
-            typeof payload.data?.videoRender?.musicVolume === "number"
-              ? payload.data.videoRender.musicVolume
-              : 0.38,
-          );
-        }
-      } catch {
-        if (!cancelled) {
-          setVoiceOptions([]);
-          setMusicOptions([]);
-          setCaptionStyleOptions([]);
-          setDefaultVoiceId("");
-          setDefaultMusicId("");
-          setDefaultCaptionStyleId("");
-          setDefaultChromaKeyEnabled(false);
-          setMusicVolume(0.38);
-        }
-      }
-    }
-
-    void loadOptions();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      : [];
+    const nextMusic = Array.isArray(videoSettingsPayload?.data?.videoRender?.musicTracks)
+      ? videoSettingsPayload.data.videoRender.musicTracks.filter(
+          (track): track is MusicOption =>
+            Boolean(
+              track &&
+              typeof track.id === "string" &&
+              typeof track.name === "string",
+            ),
+        )
+      : [];
+    const nextCaptionStyles = Array.isArray(
+      videoSettingsPayload?.data?.videoRender?.captionStyles,
+    )
+      ? videoSettingsPayload.data.videoRender.captionStyles.filter(
+          (style): style is CaptionStyleOption =>
+            Boolean(
+              style &&
+              typeof style.id === "string" &&
+              typeof style.name === "string",
+            ),
+        )
+      : [];
+    setVoiceOptions(nextVoices);
+    setMusicOptions(nextMusic);
+    setCaptionStyleOptions(nextCaptionStyles);
+    setDefaultVoiceId(videoSettingsPayload?.data?.videoRender?.defaultVoiceId || "");
+    setDefaultMusicId(
+      videoSettingsPayload?.data?.videoRender?.defaultMusicTrackId || "",
+    );
+    setDefaultCaptionStyleId(
+      videoSettingsPayload?.data?.videoRender?.defaultCaptionStyleId || "",
+    );
+    setDefaultChromaKeyEnabled(
+      Boolean(videoSettingsPayload?.data?.videoRender?.chromaKeyEnabledByDefault),
+    );
+    setMusicVolume(
+      typeof videoSettingsPayload?.data?.videoRender?.musicVolume === "number"
+        ? videoSettingsPayload.data.videoRender.musicVolume
+        : 0.38,
+    );
+  }, [videoSettingsPayload]);
 
   async function saveProjectMusic(musicId: string) {
     setSavingMusic(true);
@@ -5728,29 +5657,33 @@ export function ShortFormVideoDetailView({
       project?.video.pipeline?.status === "running" ||
       savingTopic),
   );
+  const projectKey = projectId ? `/api/short-form-videos/${projectId}` : null;
   const {
-    loading,
-    refreshing,
+    data: projectPayload,
     error: pollingError,
-    refetch,
-  } = usePolling<ApiResponse<Project>>(
-    projectId ? `/api/short-form-videos/${projectId}` : null,
-    {
-      intervalMs: 4000,
-      enabled: shouldPoll,
-      onData: (payload) => {
-        if (!payload.success || !payload.data) {
-          setPageError(payload.error || "Failed to load short-form workflow");
-          return;
-        }
-        const normalized = normalizeShortFormProject(payload.data);
-        setPageError(null);
-        setProject((current) =>
-          shortFormProjectChanged(current, normalized) ? normalized : current,
-        );
-      },
-    },
-  );
+    isLoading,
+    isValidating,
+    mutate: refetchProject,
+  } = useSWR<ApiResponse<Project>>(projectKey, apiEnvelopeFetcher, {
+    ...realtimeSWRConfig,
+    refreshInterval: shouldPoll ? 4000 : 0,
+  });
+  const loading = isLoading && !project;
+  const refreshing = isValidating && Boolean(project);
+  const pollingErrorMessage = pollingError instanceof Error ? pollingError.message : null;
+
+  useEffect(() => {
+    if (!projectPayload) return;
+    if (!projectPayload.success || !projectPayload.data) {
+      setPageError(projectPayload.error || "Failed to load short-form workflow");
+      return;
+    }
+    const normalized = normalizeShortFormProject(projectPayload.data);
+    setPageError(null);
+    setProject((current) =>
+      shortFormProjectChanged(current, normalized) ? normalized : current,
+    );
+  }, [projectPayload]);
 
   usePageScrollRestoration(
     projectId ? `short-form-video-detail:${projectId}:${activeSection}` : null,
@@ -5763,7 +5696,7 @@ export function ShortFormVideoDetailView({
   }, [project, topicDirty]);
 
   const refreshProject = useCallback(async () => {
-    const payload = await refetch();
+    const payload = await refetchProject();
     if (payload && payload.success && payload.data) {
       const normalized = normalizeShortFormProject(payload.data);
       setPageError(null);
@@ -5779,7 +5712,7 @@ export function ShortFormVideoDetailView({
     }
 
     throw new Error("Failed to refresh short-form workflow");
-  }, [refetch]);
+  }, [refetchProject]);
 
   async function saveTopicAndGenerateHooks() {
     if (!project) return;
@@ -5852,7 +5785,7 @@ export function ShortFormVideoDetailView({
   const pageMeta = DETAIL_PAGE_META[activeSection];
   const pageIdentity = getShortFormProjectIdentity(project);
 
-  if (!project && !pageError && !pollingError) {
+  if (!project && !pageError && !pollingErrorMessage) {
     return (
       <div className="space-y-6 p-4 sm:p-6 lg:p-8">
         <Skeleton className="h-4 w-36" />
@@ -5874,11 +5807,11 @@ export function ShortFormVideoDetailView({
             This short-form workflow could not be loaded.
           </p>
         </div>
-        {pageError || pollingError ? (
+        {pageError || pollingErrorMessage ? (
           <div className="max-w-xl">
             <ValidationNotice
               title="Workflow load failed"
-              message={pageError || pollingError || "Unknown error"}
+              message={pageError || pollingErrorMessage || "Unknown error"}
             />
           </div>
         ) : null}
@@ -6046,10 +5979,10 @@ export function ShortFormVideoDetailView({
       preContent={
         <>
           {preContentPendingNotice}
-          {pageError || pollingError ? (
+          {pageError || pollingErrorMessage ? (
             <ValidationNotice
               title="Workflow sync issue"
-              message={pageError || pollingError || "Unknown error"}
+              message={pageError || pollingErrorMessage || "Unknown error"}
             />
           ) : null}
         </>

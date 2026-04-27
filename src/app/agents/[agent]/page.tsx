@@ -1,8 +1,9 @@
 "use client";
 
 import { notFound } from "next/navigation";
-import { use, useEffect, useState } from "react";
-import { usePolling } from "@/components/usePolling";
+import { use } from "react";
+import useSWR from "swr";
+import { jsonFetcher, realtimeSWRConfig } from "@/lib/swr-fetcher";
 import { AgentFilesEditor } from "@/components/AgentFilesEditor";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -63,29 +64,18 @@ export default function AgentDetailPage({
   params: Promise<{ agent: string }>;
 }) {
   const { agent: agentId } = use(params);
-  const [initialData, setInitialData] = useState<AgentDetailData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const {
+    data: initialData,
+    error,
+    isLoading,
+  } = useSWR<AgentDetailData>(`/api/agents/${agentId}`, jsonFetcher, realtimeSWRConfig);
 
-  useEffect(() => {
-    fetch(`/api/agents/${agentId}`, { cache: "no-store" })
-      .then((res) => {
-        if (!res.ok) throw new Error("Not found");
-        return res.json();
-      })
-      .then((data) => {
-        setInitialData(data);
-        setLoading(false);
-      })
-      .catch(() => {
-        setError(true);
-        setLoading(false);
-      });
-  }, [agentId]);
+  const { data: liveStatus } = useSWR<AgentStatusResponse>("/api/agents/status", jsonFetcher, {
+    ...realtimeSWRConfig,
+    refreshInterval: 3000,
+  });
 
-  const { data: liveStatus } = usePolling<AgentStatusResponse>("/api/agents/status", 3000);
-
-  if (loading) {
+  if (isLoading && !initialData) {
     return (
       <div className="p-4 sm:p-6 lg:p-8 space-y-6">
         <Skeleton className="h-4 w-28" />

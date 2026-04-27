@@ -35,6 +35,22 @@ Decision guideline:
 - If yes, use it with minimal modification.
 - If not, make the smallest reasonable change necessary.
 
+### 3) Standardize data fetching with SWR
+The dashboard should feel as realtime as possible without every component reinventing fetch/polling logic.
+
+Rules:
+- Always poll and auto-update data when possible so pages, sidebars, status badges, feedback threads, workflow state, and settings stay fresh.
+- Use SWR/useSWR for polling and non-polling client-side HTTP GET/data-fetching requests.
+- Prefer `refreshInterval`, `revalidateOnFocus`, `keepPreviousData`, and sensible `dedupingInterval` settings instead of custom polling hooks or route-local intervals.
+- Preserve stale data during revalidation to avoid flicker.
+- Use shared fetch helpers from `src/lib/swr-fetcher.ts` for API JSON/envelope handling.
+- For POST/PATCH/DELETE mutations, plain `fetch` is okay, but call the relevant SWR `mutate` after success so the UI refreshes from the canonical cache.
+- Keep server components, route handlers, and server-only Node/OpenClaw integrations on normal server-side APIs; SWR is for client-side data fetching.
+
+Decision guideline:
+- First ask: “Can this client-side read be a SWR key?”
+- If yes, use SWR instead of `useEffect + fetch` or custom polling.
+
 ## Reusable Component Policy
 
 Agents must actively look for existing reusable components before creating new ones.

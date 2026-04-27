@@ -1,7 +1,8 @@
 'use client';
 
-import { createContext, useContext, useMemo, useState } from 'react';
-import { usePolling } from '@/components/usePolling';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import useSWR from 'swr';
+import { jsonFetcher, realtimeSWRConfig } from '@/lib/swr-fetcher';
 import { ShortFormSecondaryShell } from '@/components/short-form-video/ShortFormSecondaryShell';
 import {
   getShortFormSettingsNavItems,
@@ -57,14 +58,19 @@ export function ShortFormVideoSettingsShell({
   const [dirtySectionIds, setDirtySectionIds] = useState<string[]>(initialSummary.dirtySectionIds || []);
   const [summaryOverrides, setSummaryOverrides] = useState<Partial<ShortFormSettingsNavSummary>>({});
 
-  usePolling<SettingsSummaryResponse>('/api/short-form-videos/settings', {
-    intervalMs: 8000,
-    enabled: true,
-    onData: (payload) => {
-      const next = normalizeSummary(payload);
-      if (next) setSummary(next);
+  const { data: settingsSummaryPayload } = useSWR<SettingsSummaryResponse>(
+    '/api/short-form-videos/settings',
+    jsonFetcher,
+    {
+      ...realtimeSWRConfig,
+      refreshInterval: 8000,
     },
-  });
+  );
+
+  useEffect(() => {
+    const next = normalizeSummary(settingsSummaryPayload);
+    if (next) setSummary(next);
+  }, [settingsSummaryPayload]);
 
   const navSummary = useMemo<ShortFormSettingsNavSummary>(
     () => ({

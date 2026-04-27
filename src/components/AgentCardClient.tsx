@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePolling } from "./usePolling";
+import useSWR from "swr";
+import { jsonFetcher, realtimeSWRConfig } from "@/lib/swr-fetcher";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -54,7 +55,10 @@ export function AgentCardClient({
   lastActivity,
   description,
 }: AgentCardProps) {
-  const { data } = usePolling<AgentStatusResponse>("/api/agents/status", 3000);
+  const { data } = useSWR<AgentStatusResponse>("/api/agents/status", jsonFetcher, {
+    ...realtimeSWRConfig,
+    refreshInterval: 3000,
+  });
 
   // Use polled data if available, fall back to initial props
   const statusData = data?.[id];

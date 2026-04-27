@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
+import useSWR from "swr";
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -18,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { OrbitLoader, Skeleton } from "@/components/ui/loading";
 import { TabTransition } from "@/components/ui/tab-transition";
+import { jsonFetcher, realtimeSWRConfig } from "@/lib/swr-fetcher";
 import {
   DialogOverlay,
   DialogContent,
@@ -57,7 +59,6 @@ export function ResearchDetailClient({ file, content, statusLog }: ResearchDetai
   const [selectedRange, setSelectedRange] = useState<{ startLine: number; endLine: number } | null>(null);
   const [isCreatingThread, setIsCreatingThread] = useState(false);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [selectedStatus, setSelectedStatus] = useState(file.status);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
@@ -71,53 +72,40 @@ export function ResearchDetailClient({ file, content, statusLog }: ResearchDetai
   const [versions, setVersions] = useState<Array<{ version: number; timestamp: string; updatedBy: string; comment?: string }>>([]);
   const [currentVersion, setCurrentVersion] = useState(0);
   const [compareVersion, setCompareVersion] = useState<number | undefined>(undefined);
-  const [diffData, setDiffData] = useState<DiffResult | null>(null);
-  const [diffLoading, setDiffLoading] = useState(false);
-  const diffAbortRef = useRef<AbortController | null>(null);
+  const {
+    data: versionsPayload,
+    mutate: fetchVersions,
+  } = useSWR<{
+    versions?: Array<{ version: number; timestamp: string; updatedBy: string; comment?: string }>;
+    currentVersion?: number;
+  }>(`/api/research/${file.id}/versions`, jsonFetcher, realtimeSWRConfig);
 
-  const fetchVersions = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/research/${file.id}/versions`);
-      if (res.ok) {
-        const data = await res.json();
-        setVersions(data.versions || []);
-        if (data.currentVersion) {
-          setCurrentVersion(data.currentVersion);
-          if (data.versions?.length >= 2) setCompareVersion(data.currentVersion - 1);
-        }
-      }
-    } catch { /* ignore */ }
-  }, [file.id]);
-
-  const loadDiff = useCallback(async (from: number, to: number) => {
-    if (diffAbortRef.current) diffAbortRef.current.abort();
-    const controller = new AbortController();
-    diffAbortRef.current = controller;
-    setDiffLoading(true);
-    try {
-      const res = await fetch(`/api/research/${file.id}/diff?from=${from}&to=${to}`, { signal: controller.signal });
-      if (res.ok) setDiffData(await res.json());
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return;
-    } finally {
-      setDiffLoading(false);
-    }
-  }, [file.id]);
-
-  useEffect(() => { fetchVersions(); }, [fetchVersions]);
   useEffect(() => {
-    if (viewMode === "changes" && currentVersion && compareVersion) loadDiff(compareVersion, currentVersion);
-  }, [viewMode, currentVersion, compareVersion, loadDiff]);
+    if (!versionsPayload) return;
+    setVersions(versionsPayload.versions || []);
+    if (versionsPayload.currentVersion) {
+      setCurrentVersion(versionsPayload.currentVersion);
+      if ((versionsPayload.versions?.length ?? 0) >= 2) setCompareVersion(versionsPayload.currentVersion - 1);
+    }
+  }, [versionsPayload]);
 
-  const fetchThreads = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/research/${file.id}/feedback/threads`);
-      if (res.ok) { const data = await res.json(); setThreads(data.threads); }
-    } catch (error) { console.error("Failed to fetch feedback threads:", error); }
-    finally { setLoading(false); }
-  }, [file.id]);
+  const diffKey = viewMode === "changes" && currentVersion && compareVersion
+    ? `/api/research/${file.id}/diff?from=${compareVersion}&to=${currentVersion}`
+    : null;
+  const { data: diffData = null, isLoading: diffLoading } = useSWR<DiffResult>(diffKey, jsonFetcher, realtimeSWRConfig);
 
-  useEffect(() => { fetchThreads(); }, [fetchThreads]);
+  const {
+    data: threadsPayload,
+    isLoading: loading,
+    mutate: fetchThreads,
+  } = useSWR<{ threads: FeedbackThreadType[] }>(`/api/research/${file.id}/feedback/threads`, jsonFetcher, {
+    ...realtimeSWRConfig,
+    refreshInterval: 5000,
+  });
+
+  useEffect(() => {
+    if (threadsPayload) setThreads(threadsPayload.threads || []);
+  }, [threadsPayload]);
 
   const handleLineRangeSelect = useCallback((startLine: number, endLine: number) => {
     setSelectedRange({ startLine, endLine }); setIsCreatingThread(false);
