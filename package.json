@@ -17,6 +17,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "diff": "^8.0.3",
+    "lucide-react": "^1.11.0",
     "next": "16.1.6",
     "openclaw": "^2026.2.19-2",
     "react": "19.2.3",

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -79,7 +80,11 @@ export function WorkflowArtifactActionButton({
 
   if (!hasArtifact) {
     return (
-      <Button onClick={() => void onInitialRun()} disabled={isDisabled}>
+      <Button
+        onClick={() => void onInitialRun()}
+        disabled={isDisabled}
+        className="cursor-pointer"
+      >
         {loading ? loadingLabel : initialLabel}
       </Button>
     );
@@ -92,7 +97,7 @@ export function WorkflowArtifactActionButton({
           type="button"
           onClick={() => void onCleanRerun()}
           disabled={isDisabled}
-          className="rounded-r-none"
+          className="cursor-pointer rounded-r-none"
         >
           {loading ? loadingLabel : rerunLabel}
         </Button>
@@ -103,9 +108,9 @@ export function WorkflowArtifactActionButton({
           aria-haspopup="dialog"
           onClick={() => setOpen((value) => !value)}
           disabled={isDisabled}
-          className="rounded-l-none border-l border-primary-foreground/20 px-3"
+          className="cursor-pointer rounded-l-none border-l border-primary-foreground/20 px-3"
         >
-          <span aria-hidden="true">⌄</span>
+          <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0" />
         </Button>
       </div>
       {open ? (
@@ -113,7 +118,7 @@ export function WorkflowArtifactActionButton({
           ref={panelRef}
           role="dialog"
           aria-label={`${rerunLabel} revision notes`}
-          className="absolute left-0 top-full z-20 mt-2 w-[min(22rem,calc(100vw-2rem))] space-y-3 p-3 shadow-lg"
+          className="absolute left-0 top-full z-20 mt-2 w-[min(22rem,calc(100vw-2rem))] space-y-3 border-border/80 bg-secondary p-3 shadow-2xl shadow-black/50"
         >
           <div className="space-y-2">
             <Label htmlFor={textareaId} className="sr-only">
@@ -130,7 +135,7 @@ export function WorkflowArtifactActionButton({
           </div>
           <Button
             type="button"
-            className="w-full"
+            className="w-full cursor-pointer"
             onClick={() => void submitRevisionNotes()}
             disabled={isDisabled || !notes.trim()}
           >
