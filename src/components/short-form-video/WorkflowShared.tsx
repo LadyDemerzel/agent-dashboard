@@ -1,9 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { OrbitLoader } from "@/components/ui/loading";
 import { Select } from "@/components/ui/select";
@@ -218,43 +216,6 @@ export function StaleArtifactNotice({
   );
 }
 
-export function AutoRefreshBanner({
-  activeStages,
-  refreshing,
-}: {
-  activeStages: string[];
-  refreshing: boolean;
-}) {
-  if (activeStages.length === 0 && !refreshing) return null;
-
-  return (
-    <Card className="border-emerald-500/20 bg-emerald-500/5 p-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-sm font-medium text-foreground">
-            {activeStages.length > 0
-              ? "Auto-refresh is on while background jobs run."
-              : "Refreshing workflow state…"}
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {activeStages.length > 0
-              ? "The dashboard is polling for new outputs so pending stages update automatically without a manual refresh."
-              : "Checking for the latest workflow updates."}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {activeStages.map((stage) => (
-            <Badge key={stage} variant="success" className="capitalize">
-              {stage}
-            </Badge>
-          ))}
-          {refreshing ? <Badge variant="secondary">Refreshing…</Badge> : null}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
 export function StageReviewControls({
   status,
   note,
@@ -333,7 +294,6 @@ export function StageReviewControls({
         <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-muted-foreground">
           Waiting for the latest{" "}
           {status === "requested changes" ? "revision" : "generation"} to land.
-          This section will refresh automatically.
         </div>
       ) : null}
     </div>

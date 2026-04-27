@@ -18,6 +18,9 @@ export function usePolling<T>(
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const dataRef = useRef<T | null>(null);
+  const inFlightRef = useRef<Promise<T | null> | null>(null);
+  const urlRef = useRef(url);
   const onDataRef = useRef(onData);
 
   useEffect(() => {
@@ -26,30 +29,52 @@ export function usePolling<T>(
 
   const fetchData = useCallback(async () => {
     if (!url) return null;
+    if (inFlightRef.current) return inFlightRef.current;
 
-    const hasData = data !== null;
+    const requestUrl = url;
+    const hasData = dataRef.current !== null;
     if (hasData) {
       setRefreshing(true);
     } else {
       setLoading(true);
     }
 
-    try {
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as T;
-      setData(json);
-      setError(null);
-      onDataRef.current?.(json);
-      return json;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Fetch failed");
-      return null;
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [data, url]);
+    const request = (async () => {
+      try {
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = (await res.json()) as T;
+        if (urlRef.current !== requestUrl) return null;
+        dataRef.current = json;
+        setData(json);
+        setError(null);
+        onDataRef.current?.(json);
+        return json;
+      } catch (err) {
+        if (urlRef.current === requestUrl) {
+          setError(err instanceof Error ? err.message : "Fetch failed");
+        }
+        return null;
+      } finally {
+        if (urlRef.current === requestUrl) {
+          inFlightRef.current = null;
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
+    })();
+
+    inFlightRef.current = request;
+    return request;
+  }, [url]);
+
+  useEffect(() => {
+    urlRef.current = url;
+    dataRef.current = null;
+    inFlightRef.current = null;
+    setData(null);
+    setError(null);
+  }, [url]);
 
   useEffect(() => {
     if (!url || !enabled) return;

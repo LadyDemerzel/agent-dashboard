@@ -20,7 +20,6 @@ import {
 } from "@/components/short-form-video/PipelinePanel";
 import { SyntaxHighlightedCode } from "@/components/short-form-video/SyntaxHighlightedCode";
 import {
-  AutoRefreshBanner,
   PendingNotice,
   RevisionRequestNotice,
   StageReviewControls,
@@ -207,11 +206,9 @@ type StageKey =
   | "sound-design"
   | "video";
 
-function stageLabel(stage: StageKey | "hooks") {
-  if (stage === "scene-images") return "Generate Visuals";
-  if (stage === "sound-design") return "Plan Sound Design";
-  if (stage === "hooks") return "Hook";
-  return stage.charAt(0).toUpperCase() + stage.slice(1);
+function shortFormProjectChanged(current: Project | null, next: Project) {
+  if (!current) return true;
+  return JSON.stringify(current) !== JSON.stringify(next);
 }
 
 const DETAIL_PAGE_META: Record<
@@ -921,7 +918,7 @@ ${option.text}`)
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
             {project.hooks.pending
-              ? "Hook generation is running. The dashboard will refresh automatically when new options are written."
+              ? "Hook generation is running. New options will appear here when they are ready."
               : "No hooks yet. Generate the first batch once the topic is set, or add one manually below."}
           </p>
           <Button
@@ -933,10 +930,7 @@ ${option.text}`)
               : "Generate hooks"}
           </Button>
           {project.hooks.pending ? (
-            <PendingNotice
-              label="Waiting for Scribe to write hook options"
-              hint="This section polls automatically, so new hooks should appear here without a manual refresh."
-            />
+            <PendingNotice label="Waiting for Scribe to write hook options" />
           ) : null}
         </div>
       ) : null}
@@ -1145,10 +1139,7 @@ ${option.text}`)
                     : "Generate more hooks"}
                 </Button>
                 {project.hooks.pending ? (
-                  <PendingNotice
-                    label="Generating additional hook options"
-                    hint="You can keep this page open — it will refresh automatically while the new batch is being written."
-                  />
+                  <PendingNotice label="Generating additional hook options" />
                 ) : null}
               </div>
             </>
@@ -2578,10 +2569,7 @@ function StageReviewSection({
             </div>
           ) : null}
           {doc.pending ? (
-            <PendingNotice
-              label={`Waiting for ${title.toLowerCase()} output`}
-              hint="This page keeps polling while the background job runs."
-            />
+            <PendingNotice label={`Waiting for ${title.toLowerCase()} output`} />
           ) : null}
           {showExtraWhenEmpty ? extra : null}
         </div>
@@ -3662,10 +3650,6 @@ function SceneImagesSection({
                             <OrbitLoader
                               label={`Rendering visual ${scene.number}`}
                             />
-                            <p className="text-xs text-muted-foreground">
-                              This slot updates automatically when the new image
-                              lands.
-                            </p>
                           </div>
                         </div>
                       ) : hasRenderableMedia ? (
@@ -4392,13 +4376,6 @@ function SoundDesignSection({
           />
         </div>
 
-        {project.soundDesign.pending ? (
-          <PendingNotice
-            label="Planning sound design"
-            hint="The dashboard keeps polling while the Plan Sound Design XML artifact finishes."
-          />
-        ) : null}
-
         {actionError ? (
           <ValidationNotice title="Sound design failed" message={actionError} />
         ) : null}
@@ -4545,10 +4522,7 @@ function SoundDesignSection({
       </div>
 
       {project.soundDesign.pending ? (
-        <PendingNotice
-          label="Planning or rendering sound design"
-          hint="The dashboard keeps polling while the Plan Sound Design XML or Generate Sound Design preview mix finishes."
-        />
+        <PendingNotice label="Planning or rendering sound design" />
       ) : null}
 
       {actionError ? (
@@ -5769,8 +5743,11 @@ export function ShortFormVideoDetailView({
           setPageError(payload.error || "Failed to load short-form workflow");
           return;
         }
+        const normalized = normalizeShortFormProject(payload.data);
         setPageError(null);
-        setProject(normalizeShortFormProject(payload.data));
+        setProject((current) =>
+          shortFormProjectChanged(current, normalized) ? normalized : current,
+        );
       },
     },
   );
@@ -5790,7 +5767,9 @@ export function ShortFormVideoDetailView({
     if (payload && payload.success && payload.data) {
       const normalized = normalizeShortFormProject(payload.data);
       setPageError(null);
-      setProject(normalized);
+      setProject((current) =>
+        shortFormProjectChanged(current, normalized) ? normalized : current,
+      );
       return normalized;
     }
 
@@ -5870,7 +5849,6 @@ export function ShortFormVideoDetailView({
     detailItems.find((item) => item.id === activeSection) || detailItems[0];
   const fallbackItem =
     [...detailItems].reverse().find((item) => item.available) || detailItems[0];
-  const activeStages = project ? project.pendingStages.map(stageLabel) : [];
   const pageMeta = DETAIL_PAGE_META[activeSection];
   const pageIdentity = getShortFormProjectIdentity(project);
 
@@ -5909,6 +5887,10 @@ export function ShortFormVideoDetailView({
   }
 
   const currentProject = project;
+  const preContentPendingNotice =
+    activeSection === "plan-sound-design" && currentProject.soundDesign.pending ? (
+      <PendingNotice label="Planning sound design" />
+    ) : null;
 
   function renderActiveSection() {
     if (!currentItem.available) {
@@ -5960,10 +5942,7 @@ export function ShortFormVideoDetailView({
               </Button>
             </div>
             {savingTopic ? (
-              <PendingNotice
-                label="Saving topic and starting hook generation"
-                hint="The page will keep polling while the next background step starts."
-              />
+              <PendingNotice label="Saving topic and starting hook generation" />
             ) : null}
           </section>
         );
@@ -6066,10 +6045,7 @@ export function ShortFormVideoDetailView({
       }
       preContent={
         <>
-          <AutoRefreshBanner
-            activeStages={activeStages}
-            refreshing={refreshing}
-          />
+          {preContentPendingNotice}
           {pageError || pollingError ? (
             <ValidationNotice
               title="Workflow sync issue"

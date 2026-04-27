@@ -22,6 +22,11 @@ interface ApiResponse<T> {
   error?: string;
 }
 
+function shortFormProjectChanged(current: Project | null, next: Project) {
+  if (!current) return true;
+  return JSON.stringify(current) !== JSON.stringify(next);
+}
+
 export function ShortFormVideoDetailShell({
   projectId,
   initialProject,
@@ -38,7 +43,10 @@ export function ShortFormVideoDetailShell({
     enabled: Boolean(projectId),
     onData: (payload) => {
       if (!payload.success || !payload.data) return;
-      setProject(normalizeShortFormProject(payload.data));
+      const normalized = normalizeShortFormProject(payload.data);
+      setProject((current) =>
+        shortFormProjectChanged(current, normalized) ? normalized : current
+      );
     },
   });
 
