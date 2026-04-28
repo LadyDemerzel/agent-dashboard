@@ -1775,7 +1775,7 @@ function XMLScriptSection({
         <ValidationNotice title="XML workflow issue" message={error} />
       ) : null}
       {section === "generate-narration-audio" ? (
-        <Card id="generate-narration-audio" className="space-y-4 p-5">
+        <div id="generate-narration-audio" className="space-y-4">
         {voiceError ? (
           <ValidationNotice
             title="Narration voice issue"
@@ -2033,11 +2033,11 @@ function XMLScriptSection({
             ) : null}
           </div>
         ) : null}
-        </Card>
+        </div>
       ) : null}
 
       {section === "plan-captions" ? (
-        <Card id="plan-captions" className="space-y-4 p-5">
+        <div id="plan-captions" className="space-y-4">
         {captionMaxWordsError ? (
           <ValidationNotice
             title="Caption settings issue"
@@ -2183,11 +2183,11 @@ function XMLScriptSection({
             </div>
           )}
         </div>
-        </Card>
+        </div>
       ) : null}
 
       {section === "plan-visuals" ? (
-        <Card id="plan-visuals" className="space-y-4 p-5">
+        <div id="plan-visuals" className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           <WorkflowArtifactActionButton
             hasArtifact={Boolean(doc?.exists)}
@@ -2286,7 +2286,7 @@ function XMLScriptSection({
             approved.
           </div>
         )}
-        </Card>
+        </div>
       ) : null}
     </div>
   );
