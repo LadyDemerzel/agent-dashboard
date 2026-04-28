@@ -291,6 +291,11 @@ function approved(status?: string) {
   return status === "approved" || status === "published";
 }
 
+function needsReviewStatus(status?: string) {
+  const normalized = status?.trim().toLowerCase().replace(/[-_]+/g, " ");
+  return normalized === "needs review" || normalized === "review";
+}
+
 function soundDesignStageStatus(project: Project) {
   if (project.soundDesign.pending) return "working";
 
@@ -2273,6 +2278,7 @@ function StageReviewSection({
   triggerDisabledReason,
   collapseDocumentByDefault = false,
   showExtraWhenEmpty = false,
+  simplifiedReviewActions = false,
 }: {
   projectId: string;
   title: string;
@@ -2290,11 +2296,13 @@ function StageReviewSection({
   triggerDisabledReason?: React.ReactNode;
   collapseDocumentByDefault?: boolean;
   showExtraWhenEmpty?: boolean;
+  simplifiedReviewActions?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(doc.content);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [approving, setApproving] = useState(false);
   const [status, setStatus] = useState(doc.status || "draft");
   const [actionError, setActionError] = useState<string | null>(null);
   const [documentExpanded, setDocumentExpanded] = useState(
@@ -2405,6 +2413,40 @@ function StageReviewSection({
     }
   }
 
+  async function approveStage() {
+    setSaving(true);
+    setApproving(true);
+    setActionError(null);
+
+    try {
+      await parseJsonResponse(
+        await fetch(`/api/short-form-videos/${projectId}/workflow/${stage}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: "approved",
+            comment: `Approved ${title} in dashboard`,
+            updatedBy: "ittai",
+          }),
+        }),
+        `Failed to approve ${title.toLowerCase()}`,
+      );
+
+      setStatus("approved");
+      setNote("");
+      await onRefresh();
+    } catch (err) {
+      setActionError(
+        err instanceof Error
+          ? err.message
+          : `Failed to approve ${title.toLowerCase()}`,
+      );
+    } finally {
+      setApproving(false);
+      setSaving(false);
+    }
+  }
+
   const revision = doc.revision;
   const showRevisionPending = Boolean(revision?.isPending);
   const showRevisionWarning = Boolean(revision?.isFailed || revision?.warning);
@@ -2414,6 +2456,16 @@ function StageReviewSection({
       ? `Retry ${title.toLowerCase()} generation`
       : `Retry ${title.toLowerCase()} revision`;
   const canCollapseDocument = collapseDocumentByDefault && doc.exists;
+  const showSimplifiedReviewActions = simplifiedReviewActions && doc.exists;
+  const showApproveAction =
+    showSimplifiedReviewActions && needsReviewStatus(status || doc.status);
+
+  function toggleDocumentEdit() {
+    if (canCollapseDocument && !documentExpanded) {
+      setDocumentExpanded(true);
+    }
+    setEditing((value) => !value);
+  }
 
   async function retryLatestRun() {
     setSaving(true);
@@ -2538,6 +2590,24 @@ function StageReviewSection({
                 triggerStageAction("revise", { notes })
               }
             />
+            {showApproveAction ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void approveStage()}
+                disabled={saving || doc.pending}
+              >
+                {approving ? "Approving…" : "Approve"}
+              </Button>
+            ) : null}
+            {showSimplifiedReviewActions ? (
+              <EditIconButton
+                editing={editing}
+                onClick={toggleDocumentEdit}
+                tooltip="Edit document"
+                editingTooltip="Cancel document edit"
+              />
+            ) : null}
             {triggerDisabledReason ? (
               <div className="text-xs text-amber-200">
                 {triggerDisabledReason}
@@ -2545,18 +2615,26 @@ function StageReviewSection({
             ) : null}
           </div>
 
-          <StageReviewControls
-            status={status}
-            note={note}
-            saving={saving}
-            pending={doc.pending}
-            editing={editing}
-            showEditButton={!canCollapseDocument}
-            onStatusChange={setStatus}
-            onNoteChange={setNote}
-            onApply={() => void applyStatus()}
-            onToggleEdit={() => setEditing((value) => !value)}
-          />
+          {showSimplifiedReviewActions && doc.pending ? (
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-muted-foreground">
+              Waiting for the latest workflow run to land.
+            </div>
+          ) : null}
+
+          {!showSimplifiedReviewActions ? (
+            <StageReviewControls
+              status={status}
+              note={note}
+              saving={saving}
+              pending={doc.pending}
+              editing={editing}
+              showEditButton={!canCollapseDocument}
+              onStatusChange={setStatus}
+              onNoteChange={setNote}
+              onApply={() => void applyStatus()}
+              onToggleEdit={toggleDocumentEdit}
+            />
+          ) : null}
 
           {showStaleArtifactNotice ? (
             <StaleArtifactNotice
@@ -2583,10 +2661,10 @@ function StageReviewSection({
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {documentExpanded ? (
+                  {documentExpanded && !showSimplifiedReviewActions ? (
                     <EditIconButton
                       editing={editing}
-                      onClick={() => setEditing((value) => !value)}
+                      onClick={toggleDocumentEdit}
                       tooltip="Edit document"
                       editingTooltip="Cancel document edit"
                     />
@@ -3365,6 +3443,7 @@ function SceneImagesSection({
       triggerDescription={`This should create green-screen scene plates using the selected image style${project.selectedImageStyleName ? ` (${project.selectedImageStyleName})` : ""}${project.selectedBackgroundVideoName ? ` and prepare preview compositing against ${project.selectedBackgroundVideoName}` : ""}.`}
       onRefresh={refresh}
       collapseDocumentByDefault
+      simplifiedReviewActions
       extra={
         <div className="space-y-4">
           {error ? (
@@ -5298,6 +5377,7 @@ function VideoSection({
           : undefined
       }
       collapseDocumentByDefault
+      simplifiedReviewActions
       extra={
         <div className="space-y-4">
           <div
@@ -5886,6 +5966,7 @@ export function ShortFormVideoDetailView({
             triggerLabel="Generate research"
             triggerDescription="This should create a research deliverable tailored to the selected hook."
             onRefresh={refreshProject}
+            simplifiedReviewActions
           />
         );
       case "text-script":
@@ -5901,6 +5982,7 @@ export function ShortFormVideoDetailView({
             triggerLabel="Generate text script"
             triggerDescription="This should create the plain narration script only. The following pages handle narration audio, captions, and visuals planning."
             onRefresh={refreshProject}
+            simplifiedReviewActions
             extra={
               <TextScriptHistoryPanel
                 project={currentProject}
