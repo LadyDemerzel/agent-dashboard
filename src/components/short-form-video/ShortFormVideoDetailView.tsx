@@ -2218,12 +2218,6 @@ function XMLScriptSection({
               Approve XML script
             </Button>
           ) : null}
-          <EditIconButton
-            editing={editing}
-            onClick={() => void setEditing((current) => !current)}
-            tooltip="Edit XML script"
-            editingTooltip="Cancel XML edit"
-          />
           <StatusBadge
             status={
               visualsStatus === "running" ? "working" : doc?.status || "draft"
@@ -2247,6 +2241,17 @@ function XMLScriptSection({
         {loading && !doc ? <OrbitLoader label="Loading XML script" /> : null}
         {editing ? (
           <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-medium text-foreground">
+                Generated XML script
+              </h3>
+              <EditIconButton
+                editing={editing}
+                onClick={() => void setEditing((current) => !current)}
+                tooltip="Edit XML script"
+                editingTooltip="Cancel XML edit"
+              />
+            </div>
             <Textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -2268,17 +2273,22 @@ function XMLScriptSection({
             </div>
           </div>
         ) : doc?.content ? (
-          <details open className="rounded-lg border border-border bg-background/60 p-4">
-            <summary className="cursor-pointer text-sm font-medium text-foreground">
-              Generated XML script
-            </summary>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Expanded by default so the XML artifact is immediately visible for review.
-            </p>
+          <div className="rounded-lg border border-border bg-background/60 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-medium text-foreground">
+                Generated XML script
+              </h3>
+              <EditIconButton
+                editing={editing}
+                onClick={() => void setEditing((current) => !current)}
+                tooltip="Edit XML script"
+                editingTooltip="Cancel XML edit"
+              />
+            </div>
             <div className="mt-4">
               <MarkdownOrCode content={doc.content} mode="xml" />
             </div>
-          </details>
+          </div>
         ) : (
           <div className="text-sm text-muted-foreground">
             No XML script yet. Run Plan Visuals after the text script is
@@ -2585,7 +2595,7 @@ function StageReviewSection({
             saving={saving}
             pending={doc.pending}
             editing={editing}
-            showEditButton={!canCollapseDocument || documentExpanded}
+            showEditButton={!canCollapseDocument}
             onStatusChange={setStatus}
             onNoteChange={setNote}
             onApply={() => void applyStatus()}
@@ -2616,20 +2626,30 @@ function StageReviewSection({
                       : "Collapsed by default to keep the workflow compact."}
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    if (documentExpanded && editing) {
-                      setEditing(false);
-                      setDraft(doc.content);
-                    }
-                    setDocumentExpanded((value) => !value);
-                  }}
-                >
-                  {documentExpanded ? "Collapse document" : "Expand document"}
-                </Button>
+                <div className="flex items-center gap-2">
+                  {documentExpanded ? (
+                    <EditIconButton
+                      editing={editing}
+                      onClick={() => setEditing((value) => !value)}
+                      tooltip="Edit document"
+                      editingTooltip="Cancel document edit"
+                    />
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (documentExpanded && editing) {
+                        setEditing(false);
+                        setDraft(doc.content);
+                      }
+                      setDocumentExpanded((value) => !value);
+                    }}
+                  >
+                    {documentExpanded ? "Collapse document" : "Expand document"}
+                  </Button>
+                </div>
               </div>
 
               {documentExpanded ? (
@@ -4327,17 +4347,12 @@ function SoundDesignSection({
           <ValidationNotice title="Plan Sound Design status failed" message={planStatusError} />
         ) : null}
 
-        <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
+        {editing ? (
+          <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+            <div className="flex items-center justify-between gap-3">
               <h3 className="text-sm font-medium text-foreground">
-                Sound-design XML
+                Sound Design Plan XML
               </h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Inspect, copy, or edit the generated XML plan before resolving assets or rendering audio.
-              </p>
-            </div>
-            {project.soundDesign.content ? (
               <EditIconButton
                 editing={editing}
                 onClick={() => setEditing((current) => !current)}
@@ -4345,52 +4360,53 @@ function SoundDesignSection({
                 tooltip="Edit sound-design XML"
                 editingTooltip="Cancel sound-design XML edit"
               />
-            ) : null}
-          </div>
-
-          {editing ? (
-            <>
-              <Textarea
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                className="min-h-[320px] font-mono text-xs"
-              />
-              <div className="flex gap-2">
-                <Button onClick={() => void saveDraft()} disabled={busy}>
-                  Save XML
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setEditing(false);
-                    setDraft(project.soundDesign.content || "");
-                  }}
-                >
-                  Discard
-                </Button>
-              </div>
-            </>
-          ) : project.soundDesign.content ? (
-            <details
-              open
-              className="rounded-lg border border-border/70 bg-background/40 p-4"
-            >
-              <summary className="cursor-pointer text-sm font-medium text-foreground">
-                Current XML plan
-              </summary>
-              <div className="mt-4">
-                <MarkdownOrCode
-                  content={project.soundDesign.content}
-                  mode="xml"
-                />
-              </div>
-            </details>
-          ) : (
-            <div className="text-sm text-muted-foreground">
-              No Plan Sound Design XML yet. Finish Plan Visuals, approve Generate Visuals, then create the planning artifact here.
             </div>
-          )}
-        </div>
+            <Textarea
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              className="min-h-[320px] font-mono text-xs"
+            />
+            <div className="flex gap-2">
+              <Button onClick={() => void saveDraft()} disabled={busy}>
+                Save XML
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setEditing(false);
+                  setDraft(project.soundDesign.content || "");
+                }}
+              >
+                Discard
+              </Button>
+            </div>
+          </div>
+        ) : project.soundDesign.content ? (
+          <div className="rounded-lg border border-border bg-background/60 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-medium text-foreground">
+                Sound Design Plan XML
+              </h3>
+              <EditIconButton
+                editing={editing}
+                onClick={() => setEditing((current) => !current)}
+                disabled={busy}
+                tooltip="Edit sound-design XML"
+                editingTooltip="Cancel sound-design XML edit"
+              />
+            </div>
+            <div className="mt-4">
+              <MarkdownOrCode
+                content={project.soundDesign.content}
+                mode="xml"
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="text-sm text-muted-foreground">
+            No Plan Sound Design XML yet. Finish Plan Visuals, approve Generate Visuals, then create the planning artifact here.
+          </div>
+        )}
       </section>
     );
   }
@@ -4484,7 +4500,7 @@ function SoundDesignSection({
 
       {!project.soundDesign.content ? (
         <ValidationNotice
-          title="Sound-design XML is not ready"
+          title="Sound Design Plan XML is not ready"
           message="Plan Sound Design first, then return here to resolve assets, render audio, and tune overrides."
         />
       ) : null}
