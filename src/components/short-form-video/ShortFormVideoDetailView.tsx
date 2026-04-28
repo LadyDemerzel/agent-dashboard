@@ -2119,49 +2119,24 @@ function XMLScriptSection({
             }
           />
         ) : null}
-        <div className="rounded-lg border border-border bg-background/60 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-medium text-foreground">
-                Deterministic captions JSON
-              </h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {captionsStep?.summary ||
-                  "Caption planning output appears here after the deterministic caption pass completes."}
-              </p>
+        {captionsJsonDetail ? (
+          <details className="rounded-lg border border-border bg-background/60 p-4">
+            <summary className="cursor-pointer text-sm font-medium text-foreground">
+              View caption JSON
+            </summary>
+            <div className="mt-3">
+              <MarkdownOrCode
+                content={captionsJsonDetail.content}
+                mode="json"
+              />
             </div>
-            <StatusBadge
-              status={
-                captionsStatus === "running"
-                  ? "working"
-                  : captionsStatus === "completed"
-                    ? "completed"
-                    : captionsStatus === "failed"
-                      ? "failed"
-                      : "draft"
-              }
-              compact
-            />
+          </details>
+        ) : (
+          <div className="rounded-lg border border-border bg-background/60 p-4 text-sm text-muted-foreground">
+            No caption JSON yet. Run Plan Captions after Narration Audio
+            finishes.
           </div>
-          {captionsJsonDetail ? (
-            <details className="mt-4 rounded-md border border-border bg-background/70 p-3">
-              <summary className="cursor-pointer text-sm font-medium text-foreground">
-                View caption JSON
-              </summary>
-              <div className="mt-3">
-                <MarkdownOrCode
-                  content={captionsJsonDetail.content}
-                  mode="json"
-                />
-              </div>
-            </details>
-          ) : (
-            <div className="mt-4 text-sm text-muted-foreground">
-              No caption JSON yet. Run Plan Captions after Narration Audio
-              finishes.
-            </div>
-          )}
-        </div>
+        )}
         </div>
       ) : null}
 
