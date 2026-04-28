@@ -2068,8 +2068,8 @@ function XMLScriptSection({
               </p>
             </div>
             <Link
-              href={buildShortFormSettingsHref("music", {
-                hash: "music-library",
+              href={buildShortFormSettingsHref("captions", {
+                hash: "caption-styles",
               })}
               target="_blank"
               rel="noreferrer"

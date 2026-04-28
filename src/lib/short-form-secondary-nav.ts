@@ -76,8 +76,11 @@ function getDetailSectionStatus(project: Project | null, sectionId: DetailSectio
       return getDetailSectionStatus(project, 'generate-narration-audio') === 'approved' ? 'ready' : 'draft';
     }
     case 'plan-visuals': {
-      if (project.xmlScript.pending) return 'working';
+      const visualsStep = project.xmlScript.pipeline?.steps.find((step) => step.id === 'xml');
+      if (visualsStep?.status === 'failed') return 'failed';
+      if (visualsStep?.status === 'active') return 'working';
       if (project.xmlScript.exists) return project.xmlScript.status || 'needs review';
+      if (visualsStep?.status === 'completed') return 'needs review';
       return getDetailSectionStatus(project, 'plan-captions') === 'approved' ? 'ready' : 'draft';
     }
     case 'scene-images':

@@ -28,16 +28,22 @@ const CURRENT_STAGE_LABELS: Record<string, string> = {
 
 function xmlWorkflowStageLabel(project: ProjectRow) {
   const pipelineSteps = project.xmlScript.pipeline?.steps || [];
+  const visualsStep = pipelineSteps.find((step) => step.id === 'xml');
+  const visualsStarted =
+    Boolean(visualsStep && visualsStep.status !== 'pending') ||
+    Boolean(project.xmlScript.status && project.xmlScript.status !== 'draft');
   const narrationSteps = pipelineSteps.filter(
     (step) => step.id === 'narration' || step.id === 'silence-removal' || step.id === 'alignment',
   );
   const narrationComplete =
     Boolean(project.xmlScript.audioUrl) ||
     (narrationSteps.length > 0 && narrationSteps.every((step) => step.status === 'completed'));
+  const captionsStep = pipelineSteps.find((step) => step.id === 'captions');
   const captionsComplete =
     (project.xmlScript.captionsCount || 0) > 0 ||
-    pipelineSteps.some((step) => step.id === 'captions' && step.status === 'completed');
+    captionsStep?.status === 'completed';
 
+  if (visualsStarted) return 'Plan Visuals';
   if (!narrationComplete) return 'Generate Narration Audio';
   if (!captionsComplete) return 'Plan Captions';
   return 'Plan Visuals';

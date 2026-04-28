@@ -876,7 +876,9 @@ export function normalizeShortFormProjectRow(value: unknown): ShortFormProjectRo
       status: project.xmlScript.status,
       pending: asBoolean(xmlScript.pending),
       audioUrl: project.xmlScript.audioUrl,
-      captionsCount: project.xmlScript.captions?.length || 0,
+      captionsCount: typeof xmlScript.captionsCount === 'number' && Number.isFinite(xmlScript.captionsCount)
+        ? xmlScript.captionsCount
+        : project.xmlScript.captions?.length || 0,
       pipeline: project.xmlScript.pipeline,
     },
     sceneImages: { status: project.sceneImages.status, sceneCount, pending: asBoolean(sceneImagesBase.pending) },

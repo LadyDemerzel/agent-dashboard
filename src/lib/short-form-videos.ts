@@ -375,6 +375,16 @@ export interface ShortFormProjectRow {
   xmlScript: {
     status: string;
     pending?: boolean;
+    audioUrl?: string;
+    captionsCount?: number;
+    pipeline?: {
+      status: string;
+      steps: Array<{
+        id: string;
+        label: string;
+        status: string;
+      }>;
+    };
   };
   sceneImages: {
     status: string;
@@ -2639,7 +2649,13 @@ function inferCurrentStage(project: {
   if (soundDesignHandoff.canProceedToFinalVideo) return "video";
   if (project.soundDesign.pending || sceneImagesApproved || project.soundDesign.exists) return "sound-design";
   if (project.sceneImages.scenes.length > 0) return "scene-images";
-  if (project.xmlScript.exists) return "xml-script";
+  if (
+    project.xmlScript.exists ||
+    project.xmlScript.audioUrl ||
+    project.xmlScript.originalAudioUrl ||
+    (project.xmlScript.captions?.length || 0) > 0 ||
+    project.xmlScript.pipeline?.steps.some((step) => step.status === "active")
+  ) return "xml-script";
   if (project.script.exists) return "script";
   if (project.research.exists) return "research";
   if (project.selectedHookText) return "hook";
@@ -2931,6 +2947,18 @@ export function listShortFormProjectRows(): ShortFormProjectRow[] {
         xmlScript: {
           status: project.xmlScript.status,
           pending: project.xmlScript.pending,
+          audioUrl: project.xmlScript.audioUrl,
+          captionsCount: project.xmlScript.captions?.length || 0,
+          pipeline: project.xmlScript.pipeline
+            ? {
+                status: project.xmlScript.pipeline.status,
+                steps: project.xmlScript.pipeline.steps.map((step) => ({
+                  id: step.id,
+                  label: step.label,
+                  status: step.status,
+                })),
+              }
+            : undefined,
         },
         sceneImages: {
           status: project.sceneImages.status,
