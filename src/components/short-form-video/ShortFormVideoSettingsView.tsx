@@ -5811,6 +5811,14 @@ export function ShortFormVideoSettingsView({
       status={pageStatus}
       actions={
         <>
+          <RefreshIconButton
+            onClick={() => void loadSettings()}
+            disabled={pageReloadDisabled}
+            refreshing={loading}
+            tooltip="Reload page state"
+            refreshingTooltip="Reloading page state…"
+            label="Reload page state"
+          />
           <Badge variant="outline">{pageMeta.summaryLabel}</Badge>
           {pageActionSectionId ? (
             <SectionActions
@@ -5829,14 +5837,6 @@ export function ShortFormVideoSettingsView({
               onReset={() => resetSection(pageActionSectionId)}
             />
           ) : null}
-          <RefreshIconButton
-            onClick={() => void loadSettings()}
-            disabled={pageReloadDisabled}
-            refreshing={loading}
-            tooltip="Reload page state"
-            refreshingTooltip="Reloading page state…"
-            label="Reload page state"
-          />
         </>
       }
       preContent={

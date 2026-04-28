@@ -15,7 +15,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { OrbitLoader, Skeleton } from "@/components/ui/loading";
 import { StatusBadge } from "@/components/StatusBadge";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import { apiEnvelopeFetcher, realtimeSWRConfig } from "@/lib/swr-fetcher";
 import {
   PipelinePanel,
@@ -1463,8 +1463,6 @@ function XMLScriptSection({
     data: xmlScriptPayload,
     error: xmlScriptLoadError,
     isLoading,
-    isValidating,
-    mutate: reloadXmlScript,
   } = useSWR<ApiResponse<XmlScriptDoc>>(
     project.id ? `/api/short-form-videos/${project.id}/xml-script` : null,
     apiEnvelopeFetcher,
@@ -1474,7 +1472,6 @@ function XMLScriptSection({
     },
   );
   const loading = isLoading && !doc;
-  const refreshing = isValidating && Boolean(doc);
 
   const applyXmlScriptPayload = useCallback((payload: ApiResponse<XmlScriptDoc>) => {
     setDoc(payload.data || null);
@@ -1495,19 +1492,6 @@ function XMLScriptSection({
         : "Failed to load XML script",
     );
   }, [xmlScriptLoadError]);
-
-  const load = useCallback(async () => {
-    try {
-      const payload = await reloadXmlScript();
-      if (payload) applyXmlScriptPayload(payload);
-      return payload;
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load XML script",
-      );
-      return undefined;
-    }
-  }, [applyXmlScriptPayload, reloadXmlScript]);
 
   useEffect(() => {
     setProjectCaptionMaxWordsOverride(
@@ -1761,16 +1745,6 @@ function XMLScriptSection({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap justify-end gap-2">
-        <RefreshIconButton
-          onClick={() => void load()}
-          disabled={refreshing}
-          refreshing={refreshing}
-          tooltip="Refresh XML workflow"
-          refreshingTooltip="Refreshing XML workflow…"
-          label="Refresh XML workflow"
-        />
-      </div>
       {error ? (
         <ValidationNotice title="XML workflow issue" message={error} />
       ) : null}
@@ -2209,16 +2183,6 @@ function XMLScriptSection({
               Approve XML script
             </Button>
           ) : null}
-          <StatusBadge
-            status={
-              visualsStatus === "running" ? "working" : doc?.status || "draft"
-            }
-            compact
-          />
-        </div>
-        <div className="rounded-lg border border-border bg-background/60 p-4 text-xs text-muted-foreground">
-          Supported XML schema: <code>&lt;assets&gt;</code> defines reusable green-screen image assets, and{" "}
-          <code>&lt;timeline&gt;</code> defines timed visual entries only. Captions live in a separate deterministic JSON artifact.
         </div>
         {visualsStatus === "running" ? (
           <PendingNotice
@@ -5644,6 +5608,8 @@ export function ShortFormVideoDetailView({
   const [topicDirty, setTopicDirty] = useState(false);
   const [savingTopic, setSavingTopic] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+  const { mutate: mutateCache } = useSWRConfig();
 
   const shouldPoll = Boolean(
     projectId &&
@@ -5711,6 +5677,33 @@ export function ShortFormVideoDetailView({
 
     throw new Error("Failed to refresh short-form workflow");
   }, [refetchProject]);
+
+  const isXmlWorkflowSection =
+    activeSection === "generate-narration-audio" ||
+    activeSection === "plan-captions" ||
+    activeSection === "plan-visuals";
+
+  const refreshActivePage = useCallback(async () => {
+    setManualRefreshing(true);
+    try {
+      if (isXmlWorkflowSection && projectId) {
+        const results = await Promise.allSettled([
+          refreshProject(),
+          mutateCache(`/api/short-form-videos/${projectId}/xml-script`),
+        ]);
+        const rejected = results.find(
+          (result): result is PromiseRejectedResult =>
+            result.status === "rejected",
+        );
+        if (rejected) throw rejected.reason;
+        return;
+      }
+
+      await refreshProject();
+    } finally {
+      setManualRefreshing(false);
+    }
+  }, [isXmlWorkflowSection, mutateCache, projectId, refreshProject]);
 
   async function saveTopicAndGenerateHooks() {
     if (!project) return;
@@ -5782,11 +5775,6 @@ export function ShortFormVideoDetailView({
     [...detailItems].reverse().find((item) => item.available) || detailItems[0];
   const pageMeta = DETAIL_PAGE_META[activeSection];
   const pageIdentity = getShortFormProjectIdentity(project);
-  const isXmlWorkflowSection =
-    activeSection === "generate-narration-audio" ||
-    activeSection === "plan-captions" ||
-    activeSection === "plan-visuals";
-
   if (!project && !pageError && !pollingErrorMessage) {
     return (
       <div className="space-y-6 p-4 sm:p-6 lg:p-8">
@@ -5855,15 +5843,15 @@ export function ShortFormVideoDetailView({
       case "topic":
         return (
           <section className="space-y-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center">
-              <Input
+            <div className="flex flex-col gap-3 md:flex-row md:items-start">
+              <Textarea
                 value={topic}
                 onChange={(e) => {
                   setTopic(e.target.value);
                   setTopicDirty(true);
                 }}
                 placeholder="Enter the short-form video topic"
-                className="flex-1"
+                className="min-h-28 flex-1 resize-y"
               />
               <Button
                 onClick={() => void saveTopicAndGenerateHooks()}
@@ -5973,16 +5961,14 @@ export function ShortFormVideoDetailView({
       description={pageMeta.description}
       status={currentItem.status}
       actions={
-        isXmlWorkflowSection ? undefined : (
-          <RefreshIconButton
-            onClick={() => void refreshProject()}
-            disabled={refreshing}
-            refreshing={refreshing}
-            tooltip="Refresh workflow page"
-            refreshingTooltip="Refreshing workflow page…"
-            label="Refresh workflow page"
-          />
-        )
+        <RefreshIconButton
+          onClick={() => void refreshActivePage()}
+          disabled={refreshing || manualRefreshing}
+          refreshing={refreshing || manualRefreshing}
+          tooltip="Refresh workflow page"
+          refreshingTooltip="Refreshing workflow page…"
+          label="Refresh workflow page"
+        />
       }
       preContent={
         <>
