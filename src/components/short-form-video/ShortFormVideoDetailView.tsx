@@ -4020,6 +4020,8 @@ function SoundDesignSection({
   const soundDesignDecision = handoff.decision;
   const soundDesignReadyForVideo = handoff.canProceedToFinalVideo;
   const canApproveForVideo = Boolean(handoff.canApprove && !overridesDirty);
+  const showApproveSoundDesignAction =
+    canApproveForVideo && soundDesignDecision !== "approved";
   const canSkipForVideo = Boolean(
     skipReason.trim() || project.soundDesignSkipReason,
   );
@@ -4463,6 +4465,16 @@ function SoundDesignSection({
         >
           Render preview mix
         </Button>
+        {showApproveSoundDesignAction ? (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => void saveSoundDesignDecision("approved")}
+            disabled={busy || !canApproveForVideo}
+          >
+            {savingDecision ? "Approving…" : "Approve"}
+          </Button>
+        ) : null}
         <Link
           href={buildShortFormSettingsHref("sound-library", {
             hash: "sound-library",
@@ -4509,7 +4521,7 @@ function SoundDesignSection({
           </div>
         </div>
         <p className="mt-4 text-xs text-muted-foreground">
-          Resolve the XML plan, render preview audio, tune event overrides, then mark the selected mix ready for Final Video or skip sound design explicitly.
+          Resolve the XML plan, render preview audio, tune event overrides, then approve the selected mix for Final Video.
         </p>
       </div>
 
@@ -4528,7 +4540,7 @@ function SoundDesignSection({
       ) : null}
       {decisionError ? (
         <ValidationNotice
-          title="Final-render handoff failed"
+          title="Generate Sound Design approval failed"
           message={decisionError}
         />
       ) : null}
@@ -4539,107 +4551,6 @@ function SoundDesignSection({
           message="Plan Sound Design first, then return here to resolve assets, render audio, and tune overrides."
         />
       ) : null}
-
-      <div className="rounded-lg border border-border bg-background/60 p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-sm font-medium text-foreground">
-                Final-render handoff
-              </h3>
-              <StatusBadge
-                status={
-                  soundDesignReadyForVideo
-                    ? handoff.status
-                    : canApproveForVideo
-                      ? "ready"
-                      : project.soundDesign.exists
-                        ? "needs review"
-                        : "blocked"
-                }
-                compact
-              />
-            </div>
-            <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-              Approve this stage after listening to the mix you want Final Video
-              to inherit. If a project should ship without sound design, skip it
-              explicitly and explain why.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant={
-                soundDesignDecision === "approved" ? "success" : "secondary"
-              }
-              onClick={() => void saveSoundDesignDecision("approved")}
-              disabled={!canApproveForVideo || busy}
-            >
-              {savingDecision && soundDesignDecision !== "approved"
-                ? "Saving…"
-                : soundDesignDecision === "approved"
-                  ? "Ready for Final Video"
-                  : "Mark ready"}
-            </Button>
-            <Button
-              variant={
-                soundDesignDecision === "skipped" ? "warning" : "outline"
-              }
-              onClick={() => void saveSoundDesignDecision("skipped")}
-              disabled={busy || !canSkipForVideo}
-            >
-              {savingDecision && soundDesignDecision === "skipped"
-                ? "Saving…"
-                : soundDesignDecision === "skipped"
-                  ? "Skipped for Final Video"
-                  : "Skip sound design"}
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => void saveSoundDesignDecision(null)}
-              disabled={!soundDesignReadyForVideo || busy}
-            >
-              Clear handoff
-            </Button>
-          </div>
-        </div>
-        <Textarea
-          value={skipReason}
-          onChange={(event) => setSkipReason(event.target.value)}
-          className="mt-4 min-h-[84px]"
-          placeholder="If you intentionally want no sound design in the final render, add a short reason here before skipping."
-        />
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
-          <div className="rounded-lg border border-border/70 bg-background/40 p-3 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">Current handoff</span>
-            <p className="mt-1">
-              {soundDesignDecision === "approved" && soundDesignReadyForVideo
-                ? "Approved for Final Video."
-                : soundDesignDecision === "skipped" && soundDesignReadyForVideo
-                  ? "Skipped intentionally for Final Video."
-                  : handoff.gateReason || "Waiting for a decision."}
-            </p>
-          </div>
-          <div className="rounded-lg border border-border/70 bg-background/40 p-3 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">Approval rule</span>
-            <p className="mt-1">
-              {canApproveForVideo
-                ? "Preview exists, all events resolve, and no unsaved overrides remain."
-                : overridesDirty
-                  ? "Save override edits before approving."
-                  : handoff.gateReason ||
-                    "Render a preview and resolve every event before approving."}
-            </p>
-          </div>
-          <div className="rounded-lg border border-border/70 bg-background/40 p-3 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">Skip path</span>
-            <p className="mt-1">
-              {canSkipForVideo
-                ? `Ready to skip${skipReason.trim() ? ` with reason: ${skipReason.trim()}` : project.soundDesignSkipReason ? ` with saved reason: ${project.soundDesignSkipReason}` : ""}`
-                : "Add a short reason to make the skip explicit."}
-            </p>
-          </div>
-        </div>
-      </div>
 
       <div className="rounded-lg border border-border bg-background/60 p-4">
         <div>
