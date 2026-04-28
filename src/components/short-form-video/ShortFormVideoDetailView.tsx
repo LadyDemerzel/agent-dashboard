@@ -2120,7 +2120,7 @@ function XMLScriptSection({
           />
         ) : null}
         {captionsJsonDetail ? (
-          <details className="rounded-lg border border-border bg-background/60 p-4">
+          <details open className="rounded-lg border border-border bg-background/60 p-4">
             <summary className="cursor-pointer text-sm font-medium text-foreground">
               View caption JSON
             </summary>

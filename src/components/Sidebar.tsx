@@ -157,7 +157,7 @@ export function Sidebar() {
       >
         <SidebarFrame className="shadow-2xl shadow-black/30 md:shadow-none">
           <SidebarHeader className={cn(mainCollapsed ? 'md:hidden' : 'md:px-3')}>
-            <div className="rounded-xl bg-sidebar-accent/60 p-3">
+            <div className="px-3 py-2">
               <p className="text-sm font-semibold tracking-tight text-sidebar-foreground">Agent Dashboard</p>
             </div>
           </SidebarHeader>

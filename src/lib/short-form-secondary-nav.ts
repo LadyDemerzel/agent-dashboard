@@ -17,6 +17,7 @@ export function routeHasShortFormSecondaryNav(pathname: string) {
 export interface ShortFormSecondaryNavItem {
   href: string;
   label: string;
+  group?: string;
   status?: string;
   caption?: string;
   meta?: string;
@@ -135,6 +136,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'topic',
       href: buildShortFormDetailHref(projectId, 'topic'),
       label: 'Topic',
+      group: 'WRITING',
       caption: 'Start the project and trigger hook generation.',
       meta: project?.topic ? 'Topic saved' : 'Needs topic',
       status: getDetailSectionStatus(project, 'topic'),
@@ -144,6 +146,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'hook',
       href: buildShortFormDetailHref(projectId, 'hook'),
       label: 'Hook',
+      group: 'WRITING',
       caption: 'Generate, review, and select the hook that drives the rest of the workflow.',
       meta: project?.selectedHookText ? 'Hook selected' : 'Waiting for topic',
       status: getDetailSectionStatus(project, 'hook'),
@@ -155,6 +158,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'research',
       href: buildShortFormDetailHref(projectId, 'research'),
       label: 'Research',
+      group: 'WRITING',
       caption: 'Review Oracle research tied to the selected hook.',
       meta: project?.selectedHookText ? 'Hook approved' : 'Needs hook selection',
       status: getDetailSectionStatus(project, 'research'),
@@ -166,6 +170,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'text-script',
       href: buildShortFormDetailHref(projectId, 'text-script'),
       label: 'Text Script',
+      group: 'WRITING',
       caption: 'Write and approve the plain narration script before XML planning starts.',
       meta: approved(project?.research.status) ? 'Research approved' : 'Needs approved research',
       status: getDetailSectionStatus(project, 'script'),
@@ -177,6 +182,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'generate-narration-audio',
       href: buildShortFormDetailHref(projectId, 'generate-narration-audio'),
       label: 'Generate Narration Audio',
+      group: 'NARRATION',
       caption: 'Generate narration audio, remove pauses, and force-align the processed WAV.',
       meta: approved(project?.script.status) ? 'Text script approved' : 'Needs approved text script',
       status: getDetailSectionStatus(project, 'generate-narration-audio'),
@@ -188,6 +194,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'plan-captions',
       href: buildShortFormDetailHref(projectId, 'plan-captions'),
       label: 'Plan Captions',
+      group: 'NARRATION',
       caption: 'Generate deterministic caption JSON from the latest alignment.',
       meta: narrationStatus === 'approved' ? 'Narration aligned' : 'Needs narration audio',
       status: getDetailSectionStatus(project, 'plan-captions'),
@@ -199,6 +206,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'plan-visuals',
       href: buildShortFormDetailHref(projectId, 'plan-visuals'),
       label: 'Plan Visuals',
+      group: 'VISUALS',
       caption: 'Write the XML asset and timeline plan from approved narration timing and captions.',
       meta: captionsStatus === 'approved' ? 'Captions planned' : 'Needs caption plan',
       status: getDetailSectionStatus(project, 'plan-visuals'),
@@ -210,6 +218,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'generate-visuals',
       href: buildShortFormDetailHref(projectId, 'generate-visuals'),
       label: 'Generate Visuals',
+      group: 'VISUALS',
       caption: 'Generate, review, and approve scene images from the XML plan.',
       meta: approved(project?.xmlScript.status) ? 'XML approved' : 'Needs approved XML',
       status: getDetailSectionStatus(project, 'scene-images'),
@@ -221,6 +230,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'plan-sound-design',
       href: buildShortFormDetailHref(projectId, 'plan-sound-design'),
       label: 'Plan Sound Design',
+      group: 'SOUND DESIGN',
       caption: 'Generate and review the Plan Sound Design XML artifact.',
       meta: approved(project?.sceneImages.status) ? 'Generate Visuals approved' : 'Needs approved generated visuals',
       status: getDetailSectionStatus(project, 'plan-sound-design'),
@@ -232,6 +242,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'generate-sound-design',
       href: buildShortFormDetailHref(projectId, 'generate-sound-design'),
       label: 'Generate Sound Design',
+      group: 'SOUND DESIGN',
       caption: 'Resolve assets, render audio, tune event overrides, and hand off for final render.',
       meta: project?.soundDesign.exists ? 'XML plan ready' : 'Needs Plan Sound Design XML',
       status: getDetailSectionStatus(project, 'generate-sound-design'),
@@ -243,6 +254,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'final-video',
       href: buildShortFormDetailHref(projectId, 'final-video'),
       label: 'Final Video',
+      group: 'RENDER',
       caption: 'Render and review the finished short-form export.',
       meta: approved(project?.sceneImages.status) ? 'Ready after handoff' : 'Needs approved generated visuals',
       status: getDetailSectionStatus(project, 'video'),

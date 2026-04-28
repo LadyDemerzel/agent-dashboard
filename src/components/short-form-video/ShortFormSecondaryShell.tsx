@@ -33,6 +33,21 @@ function NavItemCard({ item }: { item: ShortFormSecondaryNavItem }) {
   );
 }
 
+function groupNavItems(items: ShortFormSecondaryNavItem[], fallbackLabel: string) {
+  return items.reduce<Array<{ label: string; items: ShortFormSecondaryNavItem[] }>>((groups, item) => {
+    const label = item.group || fallbackLabel;
+    const previousGroup = groups[groups.length - 1];
+
+    if (previousGroup?.label === label) {
+      previousGroup.items.push(item);
+      return groups;
+    }
+
+    groups.push({ label, items: [item] });
+    return groups;
+  }, []);
+}
+
 function SecondarySidebarBody({
   title,
   items,
@@ -43,7 +58,8 @@ function SecondarySidebarBody({
   onNavigate: () => void;
 }) {
   const pathname = usePathname() || '/';
-  const groupLabel = title.toLowerCase().includes('settings') ? 'Settings' : 'Workflow';
+  const fallbackGroupLabel = title.toLowerCase().includes('settings') ? 'Settings' : 'WRITING';
+  const groups = useMemo(() => groupNavItems(items, fallbackGroupLabel), [fallbackGroupLabel, items]);
 
   return (
     <Sidebar className="h-full border-r border-sidebar-border bg-sidebar">
@@ -54,35 +70,37 @@ function SecondarySidebarBody({
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>{groupLabel}</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {items.map((item) => {
-                const active = pathname === item.href;
-                const itemContent = <NavItemCard item={item} />;
+        {groups.map((group, groupIndex) => (
+          <SidebarGroup key={`${group.label}-${groupIndex}`}>
+            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => {
+                  const active = pathname === item.href;
+                  const itemContent = <NavItemCard item={item} />;
 
-                if (item.locked) {
+                  if (item.locked) {
+                    return (
+                      <SidebarMenuItem key={item.href}>
+                        <div className="flex min-h-11 w-full items-center rounded-xl px-3 py-3 text-left text-muted-foreground opacity-65">
+                          {itemContent}
+                        </div>
+                      </SidebarMenuItem>
+                    );
+                  }
+
                   return (
                     <SidebarMenuItem key={item.href}>
-                      <div className="flex min-h-11 w-full items-center rounded-xl px-3 py-3 text-left text-muted-foreground opacity-65">
+                      <SidebarMenuLink href={item.href} isActive={active} onClick={onNavigate} className="h-auto items-center py-3">
                         {itemContent}
-                      </div>
+                      </SidebarMenuLink>
                     </SidebarMenuItem>
                   );
-                }
-
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuLink href={item.href} isActive={active} onClick={onNavigate} className="h-auto items-center py-3">
-                      {itemContent}
-                    </SidebarMenuLink>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
     </Sidebar>
   );
@@ -97,11 +115,11 @@ export function ShortFormSecondarySidebar({
 
   return (
     <>
-      {shortFormMobileOpen ? <div className="fixed inset-0 top-[var(--app-shell-header-height)] z-30 bg-black/50 md:hidden" onClick={closeShortFormSidebar} /> : null}
+      {shortFormMobileOpen ? <div className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={closeShortFormSidebar} /> : null}
 
       <div
         className={cn(
-          'fixed bottom-0 left-0 top-[var(--app-shell-header-height)] z-30 w-[17rem] min-h-[calc(100dvh-var(--app-shell-header-height))] transition-transform duration-200 md:hidden',
+          'fixed inset-y-0 left-0 z-50 w-[17rem] transition-transform duration-200 md:hidden',
           shortFormMobileOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
