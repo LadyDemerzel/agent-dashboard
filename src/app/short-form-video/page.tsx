@@ -21,11 +21,27 @@ const CURRENT_STAGE_LABELS: Record<string, string> = {
   hook: 'Hook selected',
   research: 'Research',
   script: 'Script',
-  'xml-script': 'Plan Visuals',
   'scene-images': 'Generate Visuals',
   'sound-design': 'Plan Sound Design',
   video: 'Final Video',
 };
+
+function xmlWorkflowStageLabel(project: ProjectRow) {
+  const pipelineSteps = project.xmlScript.pipeline?.steps || [];
+  const narrationSteps = pipelineSteps.filter(
+    (step) => step.id === 'narration' || step.id === 'silence-removal' || step.id === 'alignment',
+  );
+  const narrationComplete =
+    Boolean(project.xmlScript.audioUrl) ||
+    (narrationSteps.length > 0 && narrationSteps.every((step) => step.status === 'completed'));
+  const captionsComplete =
+    (project.xmlScript.captionsCount || 0) > 0 ||
+    pipelineSteps.some((step) => step.id === 'captions' && step.status === 'completed');
+
+  if (!narrationComplete) return 'Generate Narration Audio';
+  if (!captionsComplete) return 'Plan Captions';
+  return 'Plan Visuals';
+}
 
 function stageLabel(project: ProjectRow) {
   if (project.video.pending) return 'Final Video';
@@ -35,6 +51,7 @@ function stageLabel(project: ProjectRow) {
   if (project.currentStage === 'sound-design') {
     return project.soundDesign.eventCount > 0 ? 'Generate Sound Design' : 'Plan Sound Design';
   }
+  if (project.currentStage === 'xml-script') return xmlWorkflowStageLabel(project);
   return CURRENT_STAGE_LABELS[project.currentStage] || 'Topic';
 }
 
@@ -116,7 +133,7 @@ export default function ShortFormVideoPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Short-Form Video</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Create and review hook, research, script, Plan Visuals, Generate Visuals, Plan Sound Design, Generate Sound Design, and Final Video projects.
+            Create and review hook, research, script, narration audio, captions, visuals, sound design, and final video projects.
           </p>
         </div>
         <Link href="/short-form-video/settings/prompts" className={buttonVariants({ variant: 'outline' })}>

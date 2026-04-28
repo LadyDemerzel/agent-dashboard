@@ -239,10 +239,20 @@ const DETAIL_PAGE_META: Record<
     description:
       "Scribe writes the approved plain narration script first. This page stays text-only so XML planning remains a separate review step.",
   },
+  "generate-narration-audio": {
+    title: "Generate Narration Audio",
+    description:
+      "Generate the original narration WAV, remove pauses, and force-align the processed narration for downstream timing.",
+  },
+  "plan-captions": {
+    title: "Plan Captions",
+    description:
+      "Generate deterministic caption JSON from the existing transcript and forced alignment.",
+  },
   "plan-visuals": {
     title: "Plan Visuals",
     description:
-      "Keep narration audio, captions, and visuals planning together in one focused step.",
+      "Write the XML asset and timeline plan from approved narration timing and caption artifacts.",
   },
   "generate-visuals": {
     title: "Generate Visuals",
@@ -262,7 +272,7 @@ const DETAIL_PAGE_META: Record<
   "final-video": {
     title: "Final Video",
     description:
-      "After generated visuals are approved, the dashboard renders the final short-form video directly through the xml-scene-video workflow by reusing the narration and forced-alignment artifacts already produced during Plan Visuals, plus background video, optional chroma-key compositing, saved music, subtitle burn-in, and any explicit XML camera motion.",
+      "After generated visuals are approved, the dashboard renders the final short-form video directly through the xml-scene-video workflow by reusing the narration and forced-alignment artifacts already produced during Generate Narration Audio, plus background video, optional chroma-key compositing, saved music, subtitle burn-in, and any explicit XML camera motion.",
   },
 };
 
@@ -614,7 +624,7 @@ function VideoPipelinePanel({ project }: { project: Project }) {
   return (
     <PipelinePanel
       title="Final-video pipeline"
-      description="This shows the actual persisted final-video artifacts, including whether narration/alignment were reused from Plan Visuals or regenerated, plus the timing path the renderer actually used."
+      description="This shows the actual persisted final-video artifacts, including whether narration/alignment were reused from Generate Narration Audio or regenerated, plus the timing path the renderer actually used."
       status={pipeline.status}
       warning={pipeline.warning}
       steps={pipeline.steps}
@@ -1389,9 +1399,11 @@ function VisualCaptionTimeline({
 
 function XMLScriptSection({
   project,
+  section,
   onProjectRefresh,
 }: {
   project: Project;
+  section: "generate-narration-audio" | "plan-captions" | "plan-visuals";
   onProjectRefresh: () => Promise<unknown>;
 }) {
   const [doc, setDoc] = useState<XmlScriptDoc | null>(null);
@@ -1759,23 +1771,11 @@ function XMLScriptSection({
           label="Refresh XML workflow"
         />
       </div>
-      <Card id="narration-audio" className="space-y-4 p-5">
-        <WorkflowSectionHeader
-          title="Narration Audio"
-          description="Generate the original narration WAV, remove pauses from it, then force-align the silence-removed version. Final Video reuses those exact downstream artifacts instead of regenerating them."
-          status={
-            narrationStatus === "running"
-              ? "working"
-              : narrationStatus === "completed"
-                ? "approved"
-                : narrationStatus === "failed"
-                  ? "failed"
-                  : "draft"
-          }
-        />
-        {error ? (
-          <ValidationNotice title="XML workflow issue" message={error} />
-        ) : null}
+      {error ? (
+        <ValidationNotice title="XML workflow issue" message={error} />
+      ) : null}
+      {section === "generate-narration-audio" ? (
+        <Card id="generate-narration-audio" className="space-y-4 p-5">
         {voiceError ? (
           <ValidationNotice
             title="Narration voice issue"
@@ -2033,22 +2033,11 @@ function XMLScriptSection({
             ) : null}
           </div>
         ) : null}
-      </Card>
+        </Card>
+      ) : null}
 
-      <Card id="plan-captions" className="space-y-4 p-5">
-        <WorkflowSectionHeader
-          title="Plan Captions"
-          description="Generate the deterministic caption JSON from the existing transcript + forced alignment. This reruns independently without regenerating narration audio."
-          status={
-            captionsStatus === "running"
-              ? "working"
-              : captionsStatus === "completed"
-                ? "approved"
-                : captionsStatus === "failed"
-                  ? "failed"
-                  : "draft"
-          }
-        />
+      {section === "plan-captions" ? (
+        <Card id="plan-captions" className="space-y-4 p-5">
         {captionMaxWordsError ? (
           <ValidationNotice
             title="Caption settings issue"
@@ -2194,9 +2183,11 @@ function XMLScriptSection({
             </div>
           )}
         </div>
-      </Card>
+        </Card>
+      ) : null}
 
-      <Card id="plan-visuals" className="space-y-4 p-5">
+      {section === "plan-visuals" ? (
+        <Card id="plan-visuals" className="space-y-4 p-5">
         <div className="flex flex-wrap items-center gap-2">
           <WorkflowArtifactActionButton
             hasArtifact={Boolean(doc?.exists)}
@@ -2295,7 +2286,8 @@ function XMLScriptSection({
             approved.
           </div>
         )}
-      </Card>
+        </Card>
+      ) : null}
     </div>
   );
 }
@@ -2845,7 +2837,7 @@ function TextScriptHistoryPanel({
     ? compareIteration
       ? `Showing the full draft for iteration ${selectedIteration.number}. Diffing against iteration ${compareIteration.number} below.`
       : `Showing the full saved draft for iteration ${selectedIteration.number}. No comparison selected.`
-    : "This plain script becomes the narration source of truth. The Plan Visuals step below will generate the original AI audio, remove pauses from it, run forced alignment on the processed narration, then generate deterministic captions JSON and the visuals-only XML.";
+    : "This plain script becomes the narration source of truth. The next workflow pages generate narration audio, plan deterministic captions, then write the visuals-only XML.";
 
   const diff = useMemo(() => {
     if (
@@ -2908,7 +2900,7 @@ function TextScriptHistoryPanel({
       {!body && !selectedIterationBody ? (
         <ValidationNotice
           title="Text script missing"
-          message="This section should contain only the approved narration text. The Plan Visuals step will generate original narration audio, pause removal, forced alignment, deterministic captions JSON, and visuals from it."
+          message="This section should contain only the approved narration text. The following workflow pages generate narration audio, pause removal, forced alignment, deterministic captions JSON, and visuals from it."
         />
       ) : null}
 
@@ -5324,12 +5316,12 @@ function VideoSection({
       projectId={project.id}
       title="Video"
       stage="video"
-      description="After generated visuals are approved, the dashboard renders the final short-form video directly through the xml-scene-video workflow by reusing the narration + forced-alignment artifacts already produced during the Plan Visuals step, plus a full-duration looping background video track, optional chroma-key compositing, saved background music, ASS/libass subtitle burn-in, and per-visual XML camera motion that applies only to the image layer when explicitly set in the XML."
+      description="After generated visuals are approved, the dashboard renders the final short-form video directly through the xml-scene-video workflow by reusing the narration + forced-alignment artifacts already produced during Generate Narration Audio, plus a full-duration looping background video track, optional chroma-key compositing, saved background music, ASS/libass subtitle burn-in, and per-visual XML camera motion that applies only to the image layer when explicitly set in the XML."
       doc={project.video}
       mode="markdown"
       emptyText="No video yet. Generate the final video after approving generated visuals and resolving the Generate Sound Design handoff."
       triggerLabel="Generate final video"
-      triggerDescription={`The video should be rendered from the XML <script> and approved scene assets by reusing the saved XML-step narration/alignment artifacts${activeVoiceLabel ? ` (voice source currently shown as ${activeVoiceLabel} in Plan Visuals)` : ""}${activeMusicLabel ? `, soundtrack preset ${activeMusicLabel}` : ""}${activeCaptionStyleLabel ? `, caption style ${activeCaptionStyleLabel}` : ""}${project.selectedBackgroundVideoName ? `, the looping background video ${project.selectedBackgroundVideoName}` : ""}, with chroma key currently ${activeChromaKeyLabel} via ${activeChromaKeySourceLabel}, plus the saved music mix volume (${Math.round(musicVolume * 100)}%) and the deterministic ASS/libass caption path unless explicitly overridden.`}
+      triggerDescription={`The video should be rendered from the XML <script> and approved scene assets by reusing the saved XML-step narration/alignment artifacts${activeVoiceLabel ? ` (voice source currently shown as ${activeVoiceLabel} in Generate Narration Audio)` : ""}${activeMusicLabel ? `, soundtrack preset ${activeMusicLabel}` : ""}${activeCaptionStyleLabel ? `, caption style ${activeCaptionStyleLabel}` : ""}${project.selectedBackgroundVideoName ? `, the looping background video ${project.selectedBackgroundVideoName}` : ""}, with chroma key currently ${activeChromaKeyLabel} via ${activeChromaKeySourceLabel}, plus the saved music mix volume (${Math.round(musicVolume * 100)}%) and the deterministic ASS/libass caption path unless explicitly overridden.`}
       onRefresh={refresh}
       triggerPayload={{
         chromaKeyEnabledOverride: project.chromaKeyEnabledOverride ?? null,
@@ -5419,14 +5411,14 @@ function VideoSection({
                 <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
                   Final Video does not pick or regenerate its own voice anymore.
                   It reuses the processed narration WAV and forced alignment
-                  already created in the Plan Visuals step.
+                  already created in the Generate Narration Audio step.
                 </p>
               </div>
               <Link
-                href={buildShortFormDetailHref(project.id, "plan-visuals")}
+                href={buildShortFormDetailHref(project.id, "generate-narration-audio")}
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
-                Jump to Plan Visuals ↑
+                Jump to Generate Narration Audio ↑
               </Link>
             </div>
             <div className="mt-3 text-xs text-muted-foreground">
@@ -5790,6 +5782,10 @@ export function ShortFormVideoDetailView({
     [...detailItems].reverse().find((item) => item.available) || detailItems[0];
   const pageMeta = DETAIL_PAGE_META[activeSection];
   const pageIdentity = getShortFormProjectIdentity(project);
+  const isXmlWorkflowSection =
+    activeSection === "generate-narration-audio" ||
+    activeSection === "plan-captions" ||
+    activeSection === "plan-visuals";
 
   if (!project && !pageError && !pollingErrorMessage) {
     return (
@@ -5915,7 +5911,7 @@ export function ShortFormVideoDetailView({
             mode="text"
             emptyText="No text script yet. Generate it after approving the research."
             triggerLabel="Generate text script"
-            triggerDescription="This should create the plain narration script only. The Plan Visuals page later handles narration audio, captions, and visuals planning."
+            triggerDescription="This should create the plain narration script only. The following pages handle narration audio, captions, and visuals planning."
             onRefresh={refreshProject}
             extra={
               <TextScriptHistoryPanel
@@ -5926,10 +5922,13 @@ export function ShortFormVideoDetailView({
             showExtraWhenEmpty
           />
         );
+      case "generate-narration-audio":
+      case "plan-captions":
       case "plan-visuals":
         return (
           <XMLScriptSection
             project={currentProject}
+            section={activeSection}
             onProjectRefresh={refreshProject}
           />
         );
@@ -5974,14 +5973,16 @@ export function ShortFormVideoDetailView({
       description={pageMeta.description}
       status={currentItem.status}
       actions={
-        <RefreshIconButton
-          onClick={() => void refreshProject()}
-          disabled={refreshing}
-          refreshing={refreshing}
-          tooltip="Refresh workflow page"
-          refreshingTooltip="Refreshing workflow page…"
-          label="Refresh workflow page"
-        />
+        isXmlWorkflowSection ? undefined : (
+          <RefreshIconButton
+            onClick={() => void refreshProject()}
+            disabled={refreshing}
+            refreshing={refreshing}
+            tooltip="Refresh workflow page"
+            refreshingTooltip="Refreshing workflow page…"
+            label="Refresh workflow page"
+          />
+        )
       }
       preContent={
         <>

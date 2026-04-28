@@ -288,7 +288,13 @@ export interface ShortFormProjectRowClient {
   hooks: { selectedHookText?: string; pending?: boolean };
   research: { status: string; pending?: boolean };
   script: { status: string; pending?: boolean; textScriptLatestRunId?: string; textScriptMaxIterationsOverride?: number };
-  xmlScript: { status: string; pending?: boolean };
+  xmlScript: {
+    status: string;
+    pending?: boolean;
+    audioUrl?: string;
+    captionsCount?: number;
+    pipeline?: XmlPipelineClient;
+  };
   sceneImages: { status: string; sceneCount: number; pending?: boolean };
   soundDesign: { status: string; eventCount: number; pending?: boolean };
   video: { status: string; videoUrl?: string; pending?: boolean };
@@ -866,7 +872,13 @@ export function normalizeShortFormProjectRow(value: unknown): ShortFormProjectRo
       textScriptLatestRunId: project.script.textScriptLatestRunId,
       textScriptMaxIterationsOverride: project.script.textScriptMaxIterationsOverride,
     },
-    xmlScript: { status: project.xmlScript.status, pending: asBoolean(xmlScript.pending) },
+    xmlScript: {
+      status: project.xmlScript.status,
+      pending: asBoolean(xmlScript.pending),
+      audioUrl: project.xmlScript.audioUrl,
+      captionsCount: project.xmlScript.captions?.length || 0,
+      pipeline: project.xmlScript.pipeline,
+    },
     sceneImages: { status: project.sceneImages.status, sceneCount, pending: asBoolean(sceneImagesBase.pending) },
     soundDesign: {
       status: asString(soundDesignBase.status, project.soundDesign.status),

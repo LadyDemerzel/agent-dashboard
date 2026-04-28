@@ -24,7 +24,7 @@ export interface ShortFormSecondaryNavItem {
   dirty?: boolean;
 }
 
-type DetailSectionId = 'topic' | 'hook' | 'research' | 'script' | 'narration-audio' | 'plan-captions' | 'plan-visuals' | 'scene-images' | 'plan-sound-design' | 'generate-sound-design' | 'video';
+type DetailSectionId = 'topic' | 'hook' | 'research' | 'script' | 'generate-narration-audio' | 'plan-captions' | 'plan-visuals' | 'scene-images' | 'plan-sound-design' | 'generate-sound-design' | 'video';
 
 export interface DetailRouteSectionItem extends ShortFormSecondaryNavItem {
   id: ShortFormDetailRouteSection;
@@ -45,7 +45,7 @@ function soundDesignStageStatus(project: Project) {
   return approved(project.sceneImages.status) ? 'ready' : (project.soundDesign.status || 'draft');
 }
 
-function getDetailSectionStatus(project: Project | null, sectionId: DetailSectionId) {
+function getDetailSectionStatus(project: Project | null, sectionId: DetailSectionId): string {
   if (!project) return 'draft';
 
   switch (sectionId) {
@@ -57,13 +57,14 @@ function getDetailSectionStatus(project: Project | null, sectionId: DetailSectio
       return project.research.pending ? 'working' : project.research.status || 'draft';
     case 'script':
       return project.script.pending ? 'working' : project.script.status || 'draft';
-    case 'narration-audio': {
+    case 'generate-narration-audio': {
       const narrationSteps = project.xmlScript.pipeline?.steps.filter(
         (step) => step.id === 'narration' || step.id === 'silence-removal' || step.id === 'alignment'
       ) || [];
       if (narrationSteps.some((step) => step.status === 'failed')) return 'failed';
       if (narrationSteps.some((step) => step.status === 'active')) return 'working';
       if (narrationSteps.length > 0 && narrationSteps.every((step) => step.status === 'completed')) return 'approved';
+      if (project.xmlScript.audioUrl) return 'approved';
       return approved(project.script.status) ? 'ready' : 'draft';
     }
     case 'plan-captions': {
@@ -71,10 +72,14 @@ function getDetailSectionStatus(project: Project | null, sectionId: DetailSectio
       if (captionsStep?.status === 'failed') return 'failed';
       if (captionsStep?.status === 'active') return 'working';
       if (captionsStep?.status === 'completed') return 'approved';
-      return approved(project.script.status) ? 'ready' : 'draft';
+      if (project.xmlScript.captions?.length) return 'approved';
+      return getDetailSectionStatus(project, 'generate-narration-audio') === 'approved' ? 'ready' : 'draft';
     }
-    case 'plan-visuals':
-      return project.xmlScript.pending ? 'working' : project.xmlScript.status || (approved(project.script.status) ? 'ready' : 'draft');
+    case 'plan-visuals': {
+      if (project.xmlScript.pending) return 'working';
+      if (project.xmlScript.exists) return project.xmlScript.status || 'needs review';
+      return getDetailSectionStatus(project, 'plan-captions') === 'approved' ? 'ready' : 'draft';
+    }
     case 'scene-images':
       return project.sceneImages.pending ? 'working' : project.sceneImages.status || 'draft';
     case 'plan-sound-design':
@@ -101,20 +106,22 @@ function getDetailSectionStatus(project: Project | null, sectionId: DetailSectio
   }
 }
 
-function getXmlScriptSectionStatus(project: Project | null) {
-  if (!project) return 'draft';
-  const narrationStatus = getDetailSectionStatus(project, 'narration-audio');
-  const captionsStatus = getDetailSectionStatus(project, 'plan-captions');
-  const visualsStatus = getDetailSectionStatus(project, 'plan-visuals');
-  if ([narrationStatus, captionsStatus, visualsStatus].includes('failed')) return 'failed';
-  if ([narrationStatus, captionsStatus, visualsStatus].includes('working')) return 'working';
-  return visualsStatus;
-}
-
 export function getDetailRouteItems(projectId: string, project: Project | null): DetailRouteSectionItem[] {
   const showHook = project ? project.topic.trim().length > 0 : false;
   const showResearch = project ? Boolean(project.selectedHookText) : false;
   const showScript = project ? approved(project.research.status) : false;
+  const narrationStatus = getDetailSectionStatus(project, 'generate-narration-audio');
+  const captionsStatus = getDetailSectionStatus(project, 'plan-captions');
+  const showNarrationAudio = showScript;
+  const hasCaptionArtifact = project
+    ? Boolean(project.xmlScript.captions?.length || project.xmlScript.pipeline?.steps.some((step) => step.id === 'captions'))
+    : false;
+  const showPlanCaptions = project
+    ? showScript && (narrationStatus === 'approved' || hasCaptionArtifact)
+    : false;
+  const showPlanVisuals = project
+    ? showScript && (captionsStatus === 'approved' || project.xmlScript.exists || project.xmlScript.status === 'approved')
+    : false;
   const showSceneImages = project ? approved(project.xmlScript.status) : false;
   const showPlanSoundDesign = project ? approved(project.sceneImages.status) : false;
   const showGenerateSoundDesign = project ? Boolean(project.soundDesign.exists) : false;
@@ -164,15 +171,37 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       unlockHint: 'Approve the research first to unlock the text script.',
     },
     {
+      id: 'generate-narration-audio',
+      href: buildShortFormDetailHref(projectId, 'generate-narration-audio'),
+      label: 'Generate Narration Audio',
+      caption: 'Generate narration audio, remove pauses, and force-align the processed WAV.',
+      meta: approved(project?.script.status) ? 'Text script approved' : 'Needs approved text script',
+      status: getDetailSectionStatus(project, 'generate-narration-audio'),
+      available: showNarrationAudio,
+      locked: !showNarrationAudio,
+      unlockHint: 'Approve the text script first to generate narration audio.',
+    },
+    {
+      id: 'plan-captions',
+      href: buildShortFormDetailHref(projectId, 'plan-captions'),
+      label: 'Plan Captions',
+      caption: 'Generate deterministic caption JSON from the latest alignment.',
+      meta: narrationStatus === 'approved' ? 'Narration aligned' : 'Needs narration audio',
+      status: getDetailSectionStatus(project, 'plan-captions'),
+      available: showPlanCaptions,
+      locked: !showPlanCaptions,
+      unlockHint: 'Generate and align narration audio first to unlock captions.',
+    },
+    {
       id: 'plan-visuals',
       href: buildShortFormDetailHref(projectId, 'plan-visuals'),
       label: 'Plan Visuals',
-      caption: 'Keep narration audio, captions, and visuals planning together in one focused step.',
-      meta: approved(project?.script.status) ? 'Script approved' : 'Needs approved text script',
-      status: getXmlScriptSectionStatus(project),
-      available: showScript,
-      locked: !showScript,
-      unlockHint: 'Approve the text script first to unlock plan visuals.',
+      caption: 'Write the XML asset and timeline plan from approved narration timing and captions.',
+      meta: captionsStatus === 'approved' ? 'Captions planned' : 'Needs caption plan',
+      status: getDetailSectionStatus(project, 'plan-visuals'),
+      available: showPlanVisuals,
+      locked: !showPlanVisuals,
+      unlockHint: 'Plan captions first to unlock visual planning.',
     },
     {
       id: 'generate-visuals',

@@ -27,6 +27,8 @@ const SHORT_FORM_DETAIL_LABELS: Record<ShortFormDetailRouteSection, string> = {
   hook: 'Hook',
   research: 'Research',
   'text-script': 'Text Script',
+  'generate-narration-audio': 'Generate Narration Audio',
+  'plan-captions': 'Plan Captions',
   'plan-visuals': 'Plan Visuals',
   'generate-visuals': 'Generate Visuals',
   'plan-sound-design': 'Plan Sound Design',

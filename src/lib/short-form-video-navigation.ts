@@ -3,6 +3,8 @@ export const SHORT_FORM_DETAIL_SECTIONS = [
   'hook',
   'research',
   'text-script',
+  'generate-narration-audio',
+  'plan-captions',
   'plan-visuals',
   'generate-visuals',
   'plan-sound-design',
@@ -14,6 +16,7 @@ export type ShortFormDetailRouteSection = (typeof SHORT_FORM_DETAIL_SECTIONS)[nu
 
 export const LEGACY_SHORT_FORM_DETAIL_SECTION_REDIRECTS: Record<string, ShortFormDetailRouteSection> = {
   visuals: 'generate-visuals',
+  'narration-audio': 'generate-narration-audio',
   'sound-design': 'plan-sound-design',
 };
 
