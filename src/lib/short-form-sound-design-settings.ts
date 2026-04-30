@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { getShortFormVideoRenderSettings } from "@/lib/short-form-video-render-settings";
 
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
 const SHORT_FORM_VIDEOS_DIR = path.join(
@@ -18,10 +19,14 @@ const DEFAULT_PLANNING_BRIEF_TEMPLATE = [
   "Create a tasteful but confidently designed sound-design plan for this short-form video.",
   "Choose one coherent style palette before individual cues (clean tech, gritty athletic, cinematic trailer, organic/nature, glitch/digital, playful UI, etc.) and keep the palette coherent unless a beat intentionally breaks it.",
   "Use the saved sound-design library when choosing semantic sound cues, including style palette, frequency band, layer role, and literalness metadata when present.",
+  "Modern short-form design should lean on crisp clicks, ticks, taps, button-like UI accents, and micro-transient details more often than generic whooshes. Use whooshes secondarily, not as the default transition sound.",
+  "Plan meaningful risers and uplifters before anticipation, transitions, and payoff beats. Layer short click/tick accents with risers so the mix has movement instead of a flat bed.",
+  "Target a denser editorial pass: roughly one click/tick/micro-accent every 1.5-3 seconds during active narration or visual changes, plus risers around section turns and reveals. Avoid firing on every word; do hit phrase pivots, UI-like emphasis points, micro beats, and transitions.",
   "Bias away from under-designing. Plan richer, more frequent sound effects where the edit supports them, especially on transitions, reveals, movement, visual timing changes, and strong narration turns.",
   "For major transitions, impacts, risers, whooshes, and useful ambience, plan frequency-layered cue groups: low weight/rumble, mid body/motion, and high air/tick/sparkle/texture. Give related layers the same groupId.",
   "Distinguish literal, stylized, and emotional-metaphor cues. Use emotional realism when the sound should match the feeling or metaphor rather than the visible object.",
   "Plan music transitions where useful: reverse-beat/tail risers, reverb tails on final beats, suckbacks under transitions, and impacts/slams on payoff beats.",
+  "Use multiple music segments when the video has distinct beats or mood changes. Choose saved music trackIds from the music library, timestamp each segment, and use fades/gain so the soundtrack changes mood/pacing professionally instead of one static loop.",
   "Narration owns the mix. Plan music ducking plus midrange EQ carving around speech; do not rely only on lowering gain.",
   "Keep narration clear and well-supported, but do not default to sparse minimal coverage.",
   "Captions, transcript, forced alignment, and visual timing are input context only. Do not time effects to caption boundaries by default.",
@@ -61,6 +66,9 @@ function buildTopLevelSoundDesignPromptTemplate(planningBriefTemplate: string) {
     "Saved sound library JSON:",
     "{{soundLibraryJson}}",
     "",
+    "Saved music library JSON:",
+    "{{musicLibraryJson}}",
+    "",
     "Dashboard planning instructions for this project:",
     planningBriefTemplate,
     "",
@@ -69,12 +77,16 @@ function buildTopLevelSoundDesignPromptTemplate(planningBriefTemplate: string) {
     "- After the front matter, write raw <sound_design> XML only.",
     "- Use one <sound_design version=\"2\" duckingDb=\"...\" maxConcurrentOneShots=\"...\" musicDuckingDb=\"...\" musicEqCutDb=\"...\" musicEqFrequencyHz=\"...\" musicEqQ=\"...\"> root element.",
     "- Inside it, group layered audio lanes with <track id=\"...\" role=\"...\"> elements containing self-closing <effect /> cues.",
+    "- Optional music structure: add <music_segments> before/after the SFX tracks, with self-closing <segment id=\"...\" trackId=\"saved-music-id\" start=\"seconds\" end=\"seconds\" gainDb=\"...\" fadeInMs=\"...\" fadeOutMs=\"...\" mood=\"...\" pacing=\"...\" rationale=\"...\" /> entries. Use absolute timestamps only.",
     "- Every effect must include id, type, and start=\"seconds\". Include end=\"seconds\" or duration=\"seconds\" for beds/risers/tails when useful.",
-    "- Optional effect attrs: description, searchQuery, category, priority, gainDb, fadeInMs, fadeOutMs, groupId, frequencyBand, layerRole, stylePalette, literalness, rationale, overlap, musicDuckingDb, musicEqCutDb, musicEqFrequencyHz, musicEqQ, musicLowCutHz, musicHighCutHz.",
+    "- Optional effect attrs: assetId, description, searchQuery, category, priority, gainDb, fadeInMs, fadeOutMs, groupId, frequencyBand, layerRole, stylePalette, literalness, rationale, overlap, musicDuckingDb, musicEqCutDb, musicEqFrequencyHz, musicEqQ, musicLowCutHz, musicHighCutHz.",
     "- Placement must be timestamp-only. Use captions, transcript, word-level forced alignment, and visual timing data to choose sounds and timestamps, but do not emit anchors, sceneId, captionId, caption tags, scene references, or caption-boundary timing properties in the XML.",
     "- Keep cues tasteful and narration-supportive, but do not under-design the soundtrack.",
     "- Bias toward purposeful cue density where the edit supports it, especially across hook punctuation, transitions, reveals, motion accents, and strong narration turns.",
+    "- Prefer click/tick/tap/micro-accent SFX for modern emphasis and timing detail. Use risers/uplifters for anticipation and transitions. Generic whooshes are secondary and should not dominate the plan.",
+    "- Include enough click/riser coverage that the generated mix will not feel flat: micro accents on narration turns and UI-like emphasis points, risers into section turns/payoffs, and layered groups at larger beats.",
     "- Use the saved library as the allowed source palette when choosing cue types and event intent; metadata can guide palette coherence and low/mid/high layered cue groups.",
+    "- Use saved music trackIds for music segments when multiple moods/pacing sections would make the soundtrack feel more produced than one static bed.",
     "- Write the updated artifact back to {{soundDesignPath}}, then read it back and verify the file exists and contains a <sound_design> root with <track> and <effect> entries.",
   ].join("\n");
 }
@@ -331,8 +343,11 @@ function normalizeLibrarySemanticTypes(value: unknown): ShortFormSoundLibrarySem
 }
 
 function normalizeEventType(value: unknown): ShortFormSoundSemanticType {
-  return value === "riser" || value === "click" || value === "whoosh" || value === "ambience" || value === "music-riser" || value === "music-reverb-tail" || value === "mix-duck" || value === "mix-eq"
-    ? value
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : value;
+  if (normalized === "music-ducking" || normalized === "music-duck" || normalized === "ducking" || normalized === "near-silence") return "mix-duck";
+  if (normalized === "music-eq" || normalized === "eq-carve") return "mix-eq";
+  return normalized === "riser" || normalized === "click" || normalized === "whoosh" || normalized === "ambience" || normalized === "music-riser" || normalized === "music-reverb-tail" || normalized === "mix-duck" || normalized === "mix-eq"
+    ? normalized
     : "impact";
 }
 
@@ -570,6 +585,27 @@ function normalizePromptTemplate(value: unknown) {
     );
   }
 
+  if (!normalized.includes("Prefer click/tick/tap/micro-accent")) {
+    normalized = normalized.replace(
+      /\nArtifact requirements:/,
+      "\nModern editorial density rules:\n- Prefer click/tick/tap/micro-accent SFX for modern emphasis and timing detail; whooshes are secondary and should not dominate.\n- Target roughly one purposeful click/tick/micro-accent every 1.5-3 seconds during active narration or visual changes, plus risers/uplifters into anticipation, transitions, and payoff beats.\n- Layer clicks with risers around section turns so the mix has movement and does not feel flat.\n\nArtifact requirements:",
+    );
+  }
+
+  if (!normalized.includes("Saved music library JSON:")) {
+    normalized = normalized.replace(
+      "Saved sound library JSON:\n{{soundLibraryJson}}",
+      "Saved sound library JSON:\n{{soundLibraryJson}}\n\nSaved music library JSON:\n{{musicLibraryJson}}",
+    );
+  }
+
+  if (!normalized.includes("<music_segments>")) {
+    normalized = normalized.replace(
+      "- Inside it, group layered audio lanes with <track id=\"...\" role=\"...\"> elements containing self-closing <effect /> cues.",
+      "- Inside it, group layered audio lanes with <track id=\"...\" role=\"...\"> elements containing self-closing <effect /> cues.\n- Optional music structure: add <music_segments> with self-closing <segment id=\"...\" trackId=\"saved-music-id\" start=\"seconds\" end=\"seconds\" gainDb=\"...\" fadeInMs=\"...\" fadeOutMs=\"...\" mood=\"...\" pacing=\"...\" rationale=\"...\" /> entries. Use absolute timestamps only.",
+    );
+  }
+
   const alreadyTopLevel = normalized.includes("{{soundDesignPath}}")
     || normalized.includes("Saved sound library JSON:")
     || normalized.includes("Artifact requirements:")
@@ -602,6 +638,27 @@ function normalizePromptTemplate(value: unknown) {
     normalized = normalized.replace(
       /\nArtifact requirements:/,
       "\nUpdated sound-design planning rules:\n- Choose one coherent stylePalette first, then keep individual cues in that palette unless a beat intentionally breaks it.\n- For major transitions, impacts, risers, whooshes, and useful ambience, plan frequency-layered cue groups with shared groupId plus frequencyBand=\"low\"/\"mid\"/\"high\" and layerRole values like weight, body, motion, air, tick, sparkle, or texture.\n- Distinguish literalness=\"literal\", literalness=\"stylized\", and literalness=\"emotional-metaphor\"; emotional-metaphor cues can match the feeling/metaphor rather than literal visuals.\n- Plan music edits where useful with type=\"music-riser\", type=\"music-reverb-tail\", type=\"mix-duck\", or type=\"mix-eq\" control events and/or root music mix attrs.\n- Narration owns the mix: use ducking plus midrange EQ carving around speech, not only gain reduction.\n\nArtifact requirements:",
+    );
+  }
+
+  if (!normalized.includes("Prefer click/tick/tap/micro-accent")) {
+    normalized = normalized.replace(
+      /\nArtifact requirements:/,
+      "\nModern editorial density rules:\n- Prefer click/tick/tap/micro-accent SFX for modern emphasis and timing detail; whooshes are secondary and should not dominate.\n- Target roughly one purposeful click/tick/micro-accent every 1.5-3 seconds during active narration or visual changes, plus risers/uplifters into anticipation, transitions, and payoff beats.\n- Layer clicks with risers around section turns so the mix has movement and does not feel flat.\n\nArtifact requirements:",
+    );
+  }
+
+  if (!normalized.includes("Saved music library JSON:")) {
+    normalized = normalized.replace(
+      "Saved sound library JSON:\n{{soundLibraryJson}}",
+      "Saved sound library JSON:\n{{soundLibraryJson}}\n\nSaved music library JSON:\n{{musicLibraryJson}}",
+    );
+  }
+
+  if (!normalized.includes("<music_segments>")) {
+    normalized = normalized.replace(
+      "- Inside it, group layered audio lanes with <track id=\"...\" role=\"...\"> elements containing self-closing <effect /> cues.",
+      "- Inside it, group layered audio lanes with <track id=\"...\" role=\"...\"> elements containing self-closing <effect /> cues.\n- Optional music structure: add <music_segments> with self-closing <segment id=\"...\" trackId=\"saved-music-id\" start=\"seconds\" end=\"seconds\" gainDb=\"...\" fadeInMs=\"...\" fadeOutMs=\"...\" mood=\"...\" pacing=\"...\" rationale=\"...\" /> entries. Use absolute timestamps only.",
     );
   }
 
@@ -845,6 +902,18 @@ function buildPromptSoundLibraryJson(library: ShortFormSoundLibraryEntry[]) {
   }), null, 2);
 }
 
+function buildPromptMusicLibraryJson() {
+  const settings = getShortFormVideoRenderSettings();
+  return JSON.stringify(settings.musicTracks.map((track) => ({
+    id: track.id,
+    name: track.name,
+    notes: track.notes,
+    prompt: track.prompt,
+    generatedDurationSeconds: track.generatedDurationSeconds,
+    hasSavedAudio: Boolean(track.generatedAudioRelativePath),
+  })), null, 2);
+}
+
 export function buildShortFormSoundDesignPrompt(projectId: string, options: {
   topic?: string;
   selectedHook?: string;
@@ -878,6 +947,7 @@ export function buildShortFormSoundDesignPrompt(projectId: string, options: {
     captionPlanPath,
     sceneManifestPath,
     soundLibraryJson: buildPromptSoundLibraryJson(settings.library),
+    musicLibraryJson: buildPromptMusicLibraryJson(),
   });
 }
 

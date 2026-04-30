@@ -167,6 +167,27 @@ export interface Scene {
   status?: 'completed' | 'in-progress';
 }
 
+export interface SoundDesignMusicSegmentClient {
+  id: string;
+  trackId?: string;
+  musicTrackId?: string;
+  musicTrackName?: string;
+  musicRelativePath?: string;
+  startSeconds: number;
+  endSeconds?: number;
+  durationSeconds?: number;
+  resolvedStartSeconds: number;
+  resolvedEndSeconds: number;
+  resolvedGainDb: number;
+  resolvedFadeInMs: number;
+  resolvedFadeOutMs: number;
+  mood?: string;
+  pacing?: string;
+  rationale?: string;
+  status: 'resolved' | 'unresolved';
+  resolutionReason?: string;
+}
+
 export interface SoundDesignResolvedEventClient {
   id: string;
   type: 'impact' | 'riser' | 'click' | 'whoosh' | 'ambience' | 'music-riser' | 'music-reverb-tail' | 'mix-duck' | 'mix-eq';
@@ -220,6 +241,7 @@ export interface SoundDesignSummaryClient extends StageDoc {
     generatedAt: string;
     previewAudioRelativePath?: string;
     previewUpdatedAt?: string;
+    musicSegments?: SoundDesignMusicSegmentClient[];
     events: SoundDesignResolvedEventClient[];
     stats: {
       total: number;
@@ -764,6 +786,31 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
       })(),
       resolution: (() => {
         const resolution = asObject(soundDesignObj.resolution);
+        const musicSegments = Array.isArray(resolution.musicSegments)
+          ? resolution.musicSegments.map((segment) => {
+              const item = asObject(segment);
+              return {
+                id: asString(item.id),
+                trackId: asOptionalString(item.trackId),
+                musicTrackId: asOptionalString(item.musicTrackId),
+                musicTrackName: asOptionalString(item.musicTrackName),
+                musicRelativePath: asOptionalString(item.musicRelativePath),
+                startSeconds: typeof item.startSeconds === 'number' ? item.startSeconds : 0,
+                endSeconds: typeof item.endSeconds === 'number' ? item.endSeconds : undefined,
+                durationSeconds: typeof item.durationSeconds === 'number' ? item.durationSeconds : undefined,
+                resolvedStartSeconds: typeof item.resolvedStartSeconds === 'number' ? item.resolvedStartSeconds : 0,
+                resolvedEndSeconds: typeof item.resolvedEndSeconds === 'number' ? item.resolvedEndSeconds : 0,
+                resolvedGainDb: typeof item.resolvedGainDb === 'number' ? item.resolvedGainDb : 0,
+                resolvedFadeInMs: typeof item.resolvedFadeInMs === 'number' ? item.resolvedFadeInMs : 0,
+                resolvedFadeOutMs: typeof item.resolvedFadeOutMs === 'number' ? item.resolvedFadeOutMs : 0,
+                mood: asOptionalString(item.mood),
+                pacing: asOptionalString(item.pacing),
+                rationale: asOptionalString(item.rationale),
+                status: item.status === 'resolved' ? 'resolved' : 'unresolved',
+                resolutionReason: asOptionalString(item.resolutionReason),
+              } as SoundDesignMusicSegmentClient;
+            })
+          : [];
         const events = Array.isArray(resolution.events)
           ? resolution.events.map((event) => {
               const item = asObject(event);
@@ -821,6 +868,7 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
           generatedAt: asString(resolution.generatedAt),
           previewAudioRelativePath: asOptionalString(resolution.previewAudioRelativePath),
           previewUpdatedAt: asOptionalString(resolution.previewUpdatedAt),
+          musicSegments: musicSegments.length > 0 ? musicSegments : undefined,
           events,
           stats: {
             total: typeof asObject(resolution.stats).total === 'number' ? Number(asObject(resolution.stats).total) : events.length,

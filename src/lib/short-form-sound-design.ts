@@ -11,6 +11,7 @@ import {
   type ShortFormSoundSemanticType,
   type ShortFormSoundTimingType,
 } from "@/lib/short-form-sound-design-settings";
+import { getShortFormMusicLibraryDir, getShortFormVideoRenderSettings } from "@/lib/short-form-video-render-settings";
 
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
 const SHORT_FORM_VIDEOS_DIR = path.join(
@@ -80,6 +81,33 @@ export interface ShortFormResolvedSoundDesignEvent extends ShortFormSoundDesignE
   resolutionReason?: string;
 }
 
+export interface ShortFormSoundDesignMusicSegment {
+  id: string;
+  trackId?: string;
+  startSeconds: number;
+  endSeconds?: number;
+  durationSeconds?: number;
+  gainDb?: number;
+  fadeInMs?: number;
+  fadeOutMs?: number;
+  mood?: string;
+  pacing?: string;
+  rationale?: string;
+}
+
+export interface ShortFormResolvedSoundDesignMusicSegment extends ShortFormSoundDesignMusicSegment {
+  musicTrackId?: string;
+  musicTrackName?: string;
+  musicRelativePath?: string;
+  resolvedStartSeconds: number;
+  resolvedEndSeconds: number;
+  resolvedGainDb: number;
+  resolvedFadeInMs: number;
+  resolvedFadeOutMs: number;
+  status: "resolved" | "unresolved";
+  resolutionReason?: string;
+}
+
 export interface ShortFormSoundDesignMixSettings {
   defaultDuckingDb: number;
   maxConcurrentOneShots: number;
@@ -97,6 +125,7 @@ export interface ShortFormSoundDesignResolution {
   previewAudioRelativePath?: string;
   previewUpdatedAt?: string;
   mixSettings?: ShortFormSoundDesignMixSettings;
+  musicSegments?: ShortFormResolvedSoundDesignMusicSegment[];
   events: ShortFormResolvedSoundDesignEvent[];
   stats: {
     total: number;
@@ -223,8 +252,11 @@ function normalizeLiteralness(value: unknown): ShortFormSoundLiteralness | undef
 }
 
 function normalizeEventType(value: unknown): ShortFormSoundSemanticType {
-  return value === "riser" || value === "click" || value === "whoosh" || value === "ambience" || value === "music-riser" || value === "music-reverb-tail" || value === "mix-duck" || value === "mix-eq"
-    ? value
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : value;
+  if (normalized === "music-ducking" || normalized === "music-duck" || normalized === "ducking" || normalized === "near-silence") return "mix-duck";
+  if (normalized === "music-eq" || normalized === "eq-carve") return "mix-eq";
+  return normalized === "riser" || normalized === "click" || normalized === "whoosh" || normalized === "ambience" || normalized === "music-riser" || normalized === "music-reverb-tail" || normalized === "mix-duck" || normalized === "mix-eq"
+    ? normalized
     : "impact";
 }
 
@@ -390,6 +422,44 @@ export function resolveShortFormSoundDesignMixSettings(content?: string, events:
     if (typeof strongestEqCutEvent.musicEqQ === "number") base.musicEqQ = strongestEqCutEvent.musicEqQ;
   }
   return base;
+}
+
+function parseMusicSegmentNode(nodeSource: string, index: number): ShortFormSoundDesignMusicSegment {
+  const attributes = parseAttributes(nodeSource);
+  const startSeconds = clampNumber(attributes.start ?? attributes.startSeconds, 0, 10_000, 0, 3);
+  const endSeconds = clampOptionalNumber(attributes.end ?? attributes.endSeconds, 0, 10_000, 3);
+  const durationSeconds = clampOptionalNumber(attributes.duration ?? attributes.durationSeconds, 0.01, 10_000, 3);
+  return {
+    id: normalizeString(attributes.id, `music-segment-${index + 1}`),
+    trackId: normalizeOptionalString(attributes.trackId || attributes.musicTrackId || attributes.assetId),
+    startSeconds,
+    ...(typeof endSeconds === "number" ? { endSeconds: Math.max(startSeconds, endSeconds) } : {}),
+    ...(typeof durationSeconds === "number" ? { durationSeconds } : {}),
+    gainDb: clampOptionalNumber(attributes.gainDb, -36, 12, 1),
+    fadeInMs: clampOptionalNumber(attributes.fadeInMs, 0, 10_000, 0),
+    fadeOutMs: clampOptionalNumber(attributes.fadeOutMs, 0, 10_000, 0),
+    mood: normalizeOptionalString(attributes.mood),
+    pacing: normalizeOptionalString(attributes.pacing),
+    rationale: normalizeOptionalString(attributes.rationale || attributes.notes),
+  };
+}
+
+export function parseShortFormSoundDesignMusicSegments(content: string): ShortFormSoundDesignMusicSegment[] {
+  const xml = extractBody(content);
+  const matches = [
+    ...(xml.match(/<segment\b[^>]*\/>/g) || []),
+    ...(xml.match(/<music_segment\b[^>]*\/>/g) || []),
+    ...(xml.match(/<music\b(?!_segments\b)[^>]*\/>/g) || []),
+  ];
+  const seen = new Set<string>();
+  return matches
+    .map((match, index) => parseMusicSegmentNode(match, index))
+    .filter((segment) => {
+      const key = `${segment.id}:${segment.startSeconds}:${segment.trackId || ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 export function parseShortFormSoundDesignXml(content: string): ShortFormSoundDesignEvent[] {
@@ -731,6 +801,39 @@ export function writeShortFormSoundDesignDocument(projectId: string, content: st
   return readShortFormSoundDesignDocument(projectId);
 }
 
+function normalizeResolvedMusicSegment(item: unknown, index: number): ShortFormResolvedSoundDesignMusicSegment {
+  const obj = item && typeof item === "object" && !Array.isArray(item) ? item as Record<string, unknown> : {};
+  const start = clampNumber(obj.startSeconds ?? obj.resolvedStartSeconds, 0, 10_000, 0, 3);
+  const end = typeof obj.resolvedEndSeconds === "number" && Number.isFinite(obj.resolvedEndSeconds)
+    ? clampNumber(obj.resolvedEndSeconds, 0, 10_000, obj.resolvedEndSeconds, 3)
+    : typeof obj.endSeconds === "number" && Number.isFinite(obj.endSeconds)
+      ? clampNumber(obj.endSeconds, 0, 10_000, obj.endSeconds, 3)
+      : start + Math.max(0.05, clampNumber(obj.durationSeconds, 0.05, 10_000, 12, 3));
+  return {
+    id: normalizeString(obj.id, `music-segment-${index + 1}`),
+    trackId: normalizeOptionalString(obj.trackId),
+    musicTrackId: normalizeOptionalString(obj.musicTrackId || obj.trackId),
+    musicTrackName: normalizeOptionalString(obj.musicTrackName),
+    musicRelativePath: normalizeOptionalString(obj.musicRelativePath),
+    startSeconds: start,
+    endSeconds: typeof obj.endSeconds === "number" ? clampNumber(obj.endSeconds, 0, 10_000, end, 3) : undefined,
+    durationSeconds: typeof obj.durationSeconds === "number" ? clampNumber(obj.durationSeconds, 0.05, 10_000, obj.durationSeconds, 3) : undefined,
+    gainDb: typeof obj.gainDb === "number" ? clampNumber(obj.gainDb, -36, 12, obj.gainDb, 1) : undefined,
+    fadeInMs: typeof obj.fadeInMs === "number" ? clampNumber(obj.fadeInMs, 0, 10_000, obj.fadeInMs, 0) : undefined,
+    fadeOutMs: typeof obj.fadeOutMs === "number" ? clampNumber(obj.fadeOutMs, 0, 10_000, obj.fadeOutMs, 0) : undefined,
+    mood: normalizeOptionalString(obj.mood),
+    pacing: normalizeOptionalString(obj.pacing),
+    rationale: normalizeOptionalString(obj.rationale),
+    resolvedStartSeconds: start,
+    resolvedEndSeconds: Math.max(start + 0.05, end),
+    resolvedGainDb: clampNumber(obj.resolvedGainDb ?? obj.gainDb, -36, 12, 0, 1),
+    resolvedFadeInMs: clampNumber(obj.resolvedFadeInMs ?? obj.fadeInMs, 0, 10_000, 500, 0),
+    resolvedFadeOutMs: clampNumber(obj.resolvedFadeOutMs ?? obj.fadeOutMs, 0, 10_000, 700, 0),
+    status: obj.status === "resolved" ? "resolved" : "unresolved",
+    resolutionReason: normalizeOptionalString(obj.resolutionReason),
+  };
+}
+
 export function readShortFormSoundDesignResolution(projectId: string): ShortFormSoundDesignResolution | undefined {
   const resolutionPath = getShortFormSoundDesignResolutionPath(projectId);
   const raw = safeReadJson(resolutionPath);
@@ -812,6 +915,9 @@ export function readShortFormSoundDesignResolution(projectId: string): ShortForm
           musicLowCutHz: clampNumber((obj.mixSettings as Record<string, unknown>).musicLowCutHz, 0, 500, 60, 0),
           musicHighCutHz: clampNumber((obj.mixSettings as Record<string, unknown>).musicHighCutHz, 0, 20000, 0, 0),
         }
+      : undefined,
+    musicSegments: Array.isArray(obj.musicSegments)
+      ? obj.musicSegments.map((segment, index) => normalizeResolvedMusicSegment(segment, index))
       : undefined,
     events: normalizedEvents,
     stats: {
@@ -999,6 +1105,71 @@ function enforceMaxConcurrentOneShots(
   });
 }
 
+function stableHash(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash >>> 0);
+}
+
+function selectCompatibleAsset(
+  event: ShortFormSoundDesignEvent,
+  compatibleAssets: Array<{ asset: ShortFormSoundLibraryEntry; score: number }>,
+) {
+  if (compatibleAssets.length === 0) return undefined;
+  const topScore = compatibleAssets[0]!.score;
+  const eventType = event.type;
+  const semanticCandidates = isAssetBackedEventType(eventType)
+    ? compatibleAssets.filter((item) => item.asset.semanticTypes.includes(eventType) && item.score >= topScore - 3)
+    : [];
+  const candidates = semanticCandidates.length >= 2
+    ? semanticCandidates
+    : compatibleAssets.filter((item) => item.score >= topScore - 2);
+  const pool = candidates.length > 0 ? candidates : compatibleAssets;
+  return pool[stableHash(`${event.type}:${event.id}:${event.startSeconds}:${event.frequencyBand || ""}:${event.layerRole || ""}`) % pool.length]?.asset;
+}
+
+function resolveShortFormSoundDesignMusicSegments(content: string): ShortFormResolvedSoundDesignMusicSegment[] {
+  const plannedSegments = parseShortFormSoundDesignMusicSegments(content);
+  if (plannedSegments.length === 0) return [];
+  const settings = getShortFormVideoRenderSettings();
+  const musicTracks = settings.musicTracks;
+  const defaultTrack = settings.defaultMusicTrackId
+    ? musicTracks.find((track) => track.id === settings.defaultMusicTrackId)
+    : undefined;
+  const fallbackTrack = defaultTrack || musicTracks[0];
+  return plannedSegments.map((segment, index) => {
+    const track = segment.trackId
+      ? musicTracks.find((candidate) => candidate.id === segment.trackId || candidate.name.toLowerCase() === segment.trackId!.toLowerCase())
+      : fallbackTrack;
+    const sourceDuration = typeof track?.generatedDurationSeconds === "number" && track.generatedDurationSeconds > 0
+      ? track.generatedDurationSeconds
+      : track?.previewDurationSeconds || 12;
+    const end = typeof segment.endSeconds === "number"
+      ? Math.max(segment.startSeconds + 0.05, segment.endSeconds)
+      : segment.startSeconds + Math.max(0.05, segment.durationSeconds || sourceDuration || 12);
+    return {
+      ...segment,
+      musicTrackId: track?.id,
+      musicTrackName: track?.name,
+      musicRelativePath: track?.generatedAudioRelativePath,
+      resolvedStartSeconds: segment.startSeconds,
+      resolvedEndSeconds: end,
+      resolvedGainDb: typeof segment.gainDb === "number" ? segment.gainDb : 0,
+      resolvedFadeInMs: typeof segment.fadeInMs === "number" ? segment.fadeInMs : index === 0 ? 350 : 700,
+      resolvedFadeOutMs: typeof segment.fadeOutMs === "number" ? segment.fadeOutMs : 900,
+      status: track?.generatedAudioRelativePath ? "resolved" : "unresolved",
+      resolutionReason: track?.generatedAudioRelativePath
+        ? "saved-music-segment-match"
+        : track
+          ? `Music track ${track.id} has no generated audio file.`
+          : "No saved music track matched this segment.",
+    } satisfies ShortFormResolvedSoundDesignMusicSegment;
+  });
+}
+
 export function resolveShortFormSoundDesign(projectId: string, overrides?: ShortFormResolvedSoundDesignEvent[]) {
   const settings = getShortFormSoundDesignSettings();
   const doc = readShortFormSoundDesignDocument(projectId);
@@ -1037,7 +1208,7 @@ export function resolveShortFormSoundDesign(projectId: string, overrides?: Short
       .sort((left, right) => right.score - left.score);
     const manualAsset = prior?.manualAssetId ? settings.library.find((asset) => asset.id === prior.manualAssetId) : undefined;
     const requestedAsset = event.assetId ? settings.library.find((asset) => asset.id === event.assetId) : undefined;
-    const asset = manualAsset || requestedAsset || compatibleAssets[0]?.asset;
+    const asset = manualAsset || requestedAsset || selectCompatibleAsset(event, compatibleAssets);
     const assetDuration = asset ? getAssetDurationSeconds(asset) : undefined;
     const assetAnchorOffsetSeconds = assetDuration ? assetDuration * (asset?.anchorRatio || 0) : 0;
     const baseStart = resolveEventTime(projectId, event, scenes, captions);
@@ -1098,6 +1269,7 @@ export function resolveShortFormSoundDesign(projectId: string, overrides?: Short
   });
 
   resolvedEvents = enforceMaxConcurrentOneShots(resolvedEvents, mixSettings.maxConcurrentOneShots);
+  const resolvedMusicSegments = resolveShortFormSoundDesignMusicSegments(doc.content);
 
   const resolution: ShortFormSoundDesignResolution = {
     version: 2,
@@ -1105,6 +1277,7 @@ export function resolveShortFormSoundDesign(projectId: string, overrides?: Short
     previewAudioRelativePath: doc.resolution?.previewAudioRelativePath,
     previewUpdatedAt: doc.resolution?.previewUpdatedAt,
     mixSettings,
+    ...(resolvedMusicSegments.length > 0 ? { musicSegments: resolvedMusicSegments } : {}),
     events: resolvedEvents,
     stats: {
       total: resolvedEvents.length,
@@ -1228,7 +1401,38 @@ export function renderShortFormSoundDesignPreview(options: {
     inputIndex += 1;
   }
 
-  if (includeMusic && musicPath && fs.existsSync(musicPath)) {
+  const activeMusicSegments = includeMusic
+    ? (resolution.musicSegments || []).filter((segment) => segment.status === "resolved" && segment.musicRelativePath)
+    : [];
+
+  if (includeMusic && activeMusicSegments.length > 0) {
+    for (const segment of activeMusicSegments) {
+      const relativePath = segment.musicRelativePath;
+      if (!relativePath) continue;
+      const absolutePath = path.join(getShortFormMusicLibraryDir(), relativePath);
+      if (!fs.existsSync(absolutePath)) continue;
+      const startSeconds = Math.max(0, segment.resolvedStartSeconds);
+      const desiredDuration = Math.max(0.05, segment.resolvedEndSeconds - startSeconds);
+      const sourceDuration = getAudioDurationSeconds(absolutePath) || desiredDuration;
+      if (desiredDuration > sourceDuration + 0.02) inputArgs.push("-stream_loop", "-1");
+      inputArgs.push("-i", absolutePath);
+      const segmentVolume = (Number.isFinite(musicVolume as number) ? Number(musicVolume) : 0.16) * dbToVolume(segment.resolvedGainDb || 0);
+      const fadeInSeconds = Math.max(0, (segment.resolvedFadeInMs || 0) / 1000);
+      const fadeOutSeconds = Math.max(0, (segment.resolvedFadeOutMs || 0) / 1000);
+      const delayMs = Math.max(0, Math.round(startSeconds * 1000));
+      const filters = [
+        `atrim=0:${desiredDuration.toFixed(3)}`,
+        ...buildMusicMixFilters(segmentVolume, mixSettings),
+        ...(fadeInSeconds > 0 ? [`afade=t=in:st=0:d=${Math.min(fadeInSeconds, desiredDuration).toFixed(3)}`] : []),
+        ...(fadeOutSeconds > 0 && desiredDuration > 0.05 ? [`afade=t=out:st=${Math.max(0, desiredDuration - fadeOutSeconds).toFixed(3)}:d=${Math.min(fadeOutSeconds, desiredDuration).toFixed(3)}`] : []),
+        `adelay=${delayMs}|${delayMs}`,
+      ];
+      const label = `music${inputIndex}`;
+      filterLines.push(`[${inputIndex}:a]${filters.join(",")}[${label}]`);
+      musicLabels.push(`[${label}]`);
+      inputIndex += 1;
+    }
+  } else if (includeMusic && musicPath && fs.existsSync(musicPath)) {
     inputArgs.push("-i", musicPath);
     filterLines.push(`[${inputIndex}:a]${buildMusicMixFilters(musicVolume, mixSettings).join(",")}[music]`);
     musicLabels.push("[music]");
@@ -1269,7 +1473,10 @@ export function renderShortFormSoundDesignPreview(options: {
   const hasNarration = includeNarration;
   const backgroundLabels: string[] = [];
   if (musicLabels.length > 0) {
-    const musicLabel = musicLabels[0]!;
+    const musicLabel = musicLabels.length > 1 ? "[musicraw]" : musicLabels[0]!;
+    if (musicLabels.length > 1) {
+      filterLines.push(`${musicLabels.join("")}amix=inputs=${musicLabels.length}:normalize=0:dropout_transition=0${musicLabel}`);
+    }
     if (hasNarration) {
       filterLines.push(buildDuckedBackgroundFilters(musicLabel, "[narr]", "[duckedmusic]", mixSettings.musicDuckingDb));
       backgroundLabels.push("[duckedmusic]");

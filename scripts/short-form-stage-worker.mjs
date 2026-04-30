@@ -2692,7 +2692,16 @@ function renderProjectSoundDesignMix({ projectId, narrationPath, musicPath, musi
     : [];
   const anySolo = events.some((event) => event.solo === true);
   const activeEvents = anySolo ? events.filter((event) => event.solo === true) : events;
-  const hasMusicInput = Boolean(musicPath && fs.existsSync(musicPath));
+  const rawMusicSegments = Array.isArray(resolution?.musicSegments)
+    ? resolution.musicSegments.filter((segment) => segment && typeof segment === "object" && segment.status === "resolved" && segment.musicRelativePath)
+    : [];
+  const musicSegments = rawMusicSegments
+    .map((segment) => {
+      const absolutePath = resolveMusicLibraryAbsolutePath(segment.musicRelativePath);
+      return { ...segment, absolutePath };
+    })
+    .filter((segment) => fs.existsSync(segment.absolutePath));
+  const hasMusicInput = musicSegments.length > 0 || Boolean(musicPath && fs.existsSync(musicPath));
   if (!activeEvents.length && !hasMusicInput) return null;
 
   const mixDir = path.join(workDir, "sound-design");
@@ -2704,7 +2713,31 @@ function renderProjectSoundDesignMix({ projectId, narrationPath, musicPath, musi
   const sfxLabels = [];
   let inputIndex = 1;
 
-  if (musicPath && fs.existsSync(musicPath)) {
+  if (musicSegments.length > 0) {
+    for (const segment of musicSegments) {
+      const startSeconds = Number.isFinite(Number(segment.resolvedStartSeconds)) ? Math.max(0, Number(segment.resolvedStartSeconds)) : 0;
+      const endSeconds = Number.isFinite(Number(segment.resolvedEndSeconds)) ? Math.max(startSeconds + 0.05, Number(segment.resolvedEndSeconds)) : startSeconds + 12;
+      const desiredDuration = Math.max(0.05, endSeconds - startSeconds);
+      const sourceDuration = getMediaDurationSeconds(segment.absolutePath);
+      if (desiredDuration > sourceDuration + 0.02) inputArgs.push("-stream_loop", "-1");
+      inputArgs.push("-i", segment.absolutePath);
+      const segmentVolume = (Number.isFinite(Number(musicVolume)) ? Number(musicVolume) : 0.16) * dbToVolume(Number.isFinite(Number(segment.resolvedGainDb)) ? Number(segment.resolvedGainDb) : 0);
+      const fadeInSeconds = Math.max(0, (Number(segment.resolvedFadeInMs) || 0) / 1000);
+      const fadeOutSeconds = Math.max(0, (Number(segment.resolvedFadeOutMs) || 0) / 1000);
+      const delayMs = Math.max(0, Math.round(startSeconds * 1000));
+      const filters = [
+        `atrim=0:${desiredDuration.toFixed(3)}`,
+        ...buildMusicMixFilters(segmentVolume, mixSettings),
+        ...(fadeInSeconds > 0 ? [`afade=t=in:st=0:d=${Math.min(fadeInSeconds, desiredDuration).toFixed(3)}`] : []),
+        ...(fadeOutSeconds > 0 && desiredDuration > 0.05 ? [`afade=t=out:st=${Math.max(0, desiredDuration - fadeOutSeconds).toFixed(3)}:d=${Math.min(fadeOutSeconds, desiredDuration).toFixed(3)}`] : []),
+        `adelay=${delayMs}|${delayMs}`,
+      ];
+      const label = `music${inputIndex}`;
+      filterLines.push(`[${inputIndex}:a]${filters.join(",")}[${label}]`);
+      musicLabels.push(`[${label}]`);
+      inputIndex += 1;
+    }
+  } else if (musicPath && fs.existsSync(musicPath)) {
     inputArgs.push("-i", musicPath);
     filterLines.push(`[${inputIndex}:a]${buildMusicMixFilters(musicVolume, mixSettings).join(",")}[music]`);
     musicLabels.push("[music]");
@@ -2740,7 +2773,11 @@ function renderProjectSoundDesignMix({ projectId, narrationPath, musicPath, musi
 
   const backgroundLabels = [];
   if (musicLabels.length) {
-    filterLines.push(buildDuckedBackgroundFilter(musicLabels[0], "[narr]", "[duckedmusic]", mixSettings.musicDuckingDb));
+    const musicLabel = musicLabels.length > 1 ? "[musicraw]" : musicLabels[0];
+    if (musicLabels.length > 1) {
+      filterLines.push(`${musicLabels.join("")}amix=inputs=${musicLabels.length}:normalize=0:dropout_transition=0${musicLabel}`);
+    }
+    filterLines.push(buildDuckedBackgroundFilter(musicLabel, "[narr]", "[duckedmusic]", mixSettings.musicDuckingDb));
     backgroundLabels.push("[duckedmusic]");
   }
   if (sfxLabels.length) {

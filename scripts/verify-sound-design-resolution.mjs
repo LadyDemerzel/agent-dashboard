@@ -28,10 +28,19 @@ const resolution = JSON.parse(fs.readFileSync(resolutionPath, "utf-8"));
 const events = Array.isArray(resolution.events) ? resolution.events : [];
 const assetCounts = new Map();
 const typeCounts = new Map();
+const assetTypes = new Map();
 for (const event of events) {
   typeCounts.set(event.type, (typeCounts.get(event.type) || 0) + 1);
   assetCounts.set(event.assetId || "<none>", (assetCounts.get(event.assetId || "<none>") || 0) + 1);
+  if (event.assetId) {
+    const set = assetTypes.get(event.type) || new Set();
+    set.add(event.assetId);
+    assetTypes.set(event.type, set);
+  }
 }
+const musicSegments = Array.isArray(resolution.musicSegments) ? resolution.musicSegments : [];
+const resolvedMusicSegments = musicSegments.filter((segment) => segment?.status === "resolved" && segment.musicRelativePath);
+const distinctMusicTracks = new Set(resolvedMusicSegments.map((segment) => segment.musicTrackId || segment.trackId || segment.musicRelativePath).filter(Boolean));
 
 const maxConcurrentOneShots = Math.max(1, Math.round(Number(resolution.mixSettings?.maxConcurrentOneShots) || 2));
 const activeOneShots = events.filter((event) =>
@@ -65,6 +74,10 @@ const distinctAssets = assetCounts.size;
 const allSameAsset = events.length > 1 && distinctAssets === 1;
 const allImpact = events.length > 1 && typeCounts.size === 1 && typeCounts.has("impact");
 const exceedsConcurrency = observedMaxConcurrent > maxConcurrentOneShots;
+const clickCount = typeCounts.get("click") || 0;
+const riserCount = typeCounts.get("riser") || 0;
+const distinctClickAssets = assetTypes.get("click")?.size || 0;
+const distinctRiserAssets = assetTypes.get("riser")?.size || 0;
 
 console.log(JSON.stringify({
   projectId,
@@ -74,6 +87,11 @@ console.log(JSON.stringify({
   muted: events.filter((event) => event.muted).length,
   typeCounts: Object.fromEntries([...typeCounts].sort()),
   assetCounts: Object.fromEntries([...assetCounts].sort()),
+  distinctClickAssets,
+  distinctRiserAssets,
+  musicSegments: musicSegments.length,
+  resolvedMusicSegments: resolvedMusicSegments.length,
+  distinctMusicTracks: distinctMusicTracks.size,
   maxConcurrentOneShots,
   observedMaxConcurrent,
 }, null, 2));
@@ -93,4 +111,26 @@ if (allSameAsset) {
 if (exceedsConcurrency) {
   console.error(`Observed ${observedMaxConcurrent} concurrent one-shot cues, exceeding limit ${maxConcurrentOneShots}.`);
   process.exit(1);
+}
+if (projectId === "project-20260401192941") {
+  if (clickCount < 20) {
+    console.error(`Expected dense click coverage for ${projectId}; observed only ${clickCount} click events.`);
+    process.exit(1);
+  }
+  if (riserCount < 6) {
+    console.error(`Expected more riser coverage for ${projectId}; observed only ${riserCount} riser events.`);
+    process.exit(1);
+  }
+  if (distinctClickAssets < 3) {
+    console.error(`Expected varied click assets for ${projectId}; observed ${distinctClickAssets}.`);
+    process.exit(1);
+  }
+  if (distinctRiserAssets < 3) {
+    console.error(`Expected varied riser assets for ${projectId}; observed ${distinctRiserAssets}.`);
+    process.exit(1);
+  }
+  if (resolvedMusicSegments.length < 3 || distinctMusicTracks.size < 3) {
+    console.error(`Expected resolved multi-music segments for ${projectId}; observed ${resolvedMusicSegments.length} segments across ${distinctMusicTracks.size} tracks.`);
+    process.exit(1);
+  }
 }
