@@ -484,9 +484,7 @@ export async function PATCH(request: NextRequest) {
       if (!["point", "bed", "riser"].includes(sound.timingType)) {
         return NextResponse.json({ success: false, error: `Sound ${sound.name} must use a valid timing type` }, { status: 400 });
       }
-      if (!["scene-start", "scene-end", "caption-start", "caption-end", "global-start", "global-end"].includes(sound.defaultAnchor)) {
-        return NextResponse.json({ success: false, error: `Sound ${sound.name} must use a valid default anchor` }, { status: 400 });
-      }
+      // defaultAnchor is legacy metadata only; new sound-design placement is timestamp-based.
       if (typeof sound.defaultGainDb !== "number" || Number.isNaN(sound.defaultGainDb) || sound.defaultGainDb < -36 || sound.defaultGainDb > 12) {
         return NextResponse.json({ success: false, error: `Sound ${sound.name} must use a default gain between -36 and 12 dB` }, { status: 400 });
       }

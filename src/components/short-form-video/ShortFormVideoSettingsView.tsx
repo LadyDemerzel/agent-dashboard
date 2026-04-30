@@ -1450,7 +1450,7 @@ function WaveformPreview({
         "Overview",
         hasRealWaveform && timingType === "point"
           ? "Drag anywhere, point sounds snap to nearby peaks."
-          : "Drag or click to place the anchor.",
+          : "Drag or click to place the source sync point.",
         "h-20",
       )}
       {hasRealWaveform
@@ -1459,7 +1459,7 @@ function WaveformPreview({
             "detail",
             detailStartIndex,
             "Fine trim",
-            "Zoomed around the current anchor for tighter placement.",
+            "Zoomed around the current sync point for tighter placement.",
             "h-24",
           )
         : null}
@@ -1585,7 +1585,7 @@ function WaveformPreview({
                 size="sm"
                 onClick={() => onSeekAudio(anchorSeconds)}
               >
-                Preview anchor
+                Preview sync point
               </Button>
             ) : null}
           </div>
@@ -3417,7 +3417,7 @@ export function ShortFormVideoSettingsView({
                     <li>The planning prompt and revision prompt above.</li>
                     <li>The ducking, music EQ carve, and concurrency limits above.</li>
                     <li>
-                      Each library entry’s semantic types, palette metadata, low/mid/high layer metadata, anchors, gain, fades,
+                      Each library entry’s semantic types, palette metadata, low/mid/high layer metadata, source sync points, gain, fades,
                       recommended uses, and avoid notes.
                     </li>
                   </ul>
@@ -3757,7 +3757,7 @@ export function ShortFormVideoSettingsView({
                         <p className="text-xs text-muted-foreground">
                           Duplicate variants without reuploading audio, and step
                           through the filtered queue while tuning metadata and
-                          anchors.
+                          source sync points.
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -3926,27 +3926,9 @@ export function ShortFormVideoSettingsView({
                           <option value="riser">Riser</option>
                         </Select>
                       </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Default anchor
-                        </label>
-                        <Select
-                          value={selectedSound.defaultAnchor}
-                          onChange={(event) =>
-                            updateSelectedSound((sound) => ({
-                              ...sound,
-                              defaultAnchor: event.target
-                                .value as SoundLibraryEntry["defaultAnchor"],
-                            }))
-                          }
-                        >
-                          <option value="scene-start">Scene start</option>
-                          <option value="scene-end">Scene end</option>
-                          <option value="caption-start">Caption start</option>
-                          <option value="caption-end">Caption end</option>
-                          <option value="global-start">Global start</option>
-                          <option value="global-end">Global end</option>
-                        </Select>
+                      <div className="space-y-2 rounded-md border border-border/70 bg-background/50 p-3 text-xs text-muted-foreground">
+                        <div className="font-medium uppercase tracking-wide text-foreground">Timestamp placement</div>
+                        <p>Sound-design XML places effects with absolute start/end/duration timestamps. Captions and visual timing are planning context only.</p>
                       </div>
                     </div>
 
@@ -4262,7 +4244,7 @@ export function ShortFormVideoSettingsView({
                           </h3>
                           <p className="mt-1 text-xs text-muted-foreground">
                             Upload once here, save the library, and project
-                            Plan Sound Design passes can resolve XML events against
+                            Plan Sound Design passes can resolve timestamped XML effects against
                             this exact stored file.
                           </p>
                         </div>
@@ -4281,7 +4263,7 @@ export function ShortFormVideoSettingsView({
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                           <span className="font-medium uppercase tracking-wide text-muted-foreground">
-                            Waveform anchor
+                            Waveform sync point
                           </span>
                           <span className="text-muted-foreground">
                             {Math.round((selectedSound.anchorRatio || 0) * 100)}
@@ -4306,7 +4288,7 @@ export function ShortFormVideoSettingsView({
                           }
                         />
                         <p className="text-xs text-muted-foreground">
-                          This anchor gives the resolver a direct reference
+                          This source sync point gives the resolver a direct reference
                           point inside the source sound. Drag the marker to the
                           real transient or entry, then use the playhead and
                           fine-trim strip to tighten point-based assets.

@@ -5,6 +5,7 @@ import {
   IconTooltipButton,
   type IconTooltipButtonProps,
 } from "@/components/IconTooltipButton";
+import { cn } from "@/lib/utils";
 
 export interface EditIconButtonProps
   extends Omit<IconTooltipButtonProps, "icon" | "tooltip" | "label"> {
@@ -21,6 +22,7 @@ export function EditIconButton({
   editingTooltip = "Cancel edit",
   label,
   editingLabel,
+  className,
   ...props
 }: EditIconButtonProps) {
   const tooltipText = editing ? editingTooltip : tooltip;
@@ -33,6 +35,7 @@ export function EditIconButton({
       tooltip={tooltipText}
       label={labelText}
       aria-pressed={editing || undefined}
+      className={cn("cursor-pointer disabled:cursor-not-allowed", className)}
     />
   );
 }

@@ -3,6 +3,27 @@
 import { useEffect, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
+import {
+  AudioLines,
+  Captions,
+  Clapperboard,
+  FileText,
+  GalleryVerticalEnd,
+  Image,
+  Images,
+  Layers,
+  Lightbulb,
+  ListMusic,
+  MessageSquareText,
+  Mic2,
+  Music,
+  Palette,
+  Search,
+  Type,
+  Volume2,
+  WandSparkles,
+  type LucideIcon,
+} from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useAppShellChrome, type AppShellSecondarySidebarConfig } from '@/components/app-shell-chrome';
 import {
@@ -16,18 +37,49 @@ import {
   SidebarMenuItem,
   SidebarMenuLink,
 } from '@/components/ui/sidebar';
-import type { ShortFormSecondaryNavItem } from '@/lib/short-form-secondary-nav';
+import type {
+  ShortFormSecondaryNavIcon,
+  ShortFormSecondaryNavItem,
+} from '@/lib/short-form-secondary-nav';
 import { cn } from '@/lib/utils';
 
+const NAV_ICON_CLASS = 'mt-0.5 h-4 w-4 shrink-0';
+
+const SHORT_FORM_NAV_ICONS: Record<ShortFormSecondaryNavIcon, LucideIcon> = {
+  topic: Lightbulb,
+  hook: WandSparkles,
+  research: Search,
+  'text-script': FileText,
+  narration: Mic2,
+  captions: Captions,
+  'plan-visuals': Image,
+  'generate-visuals': Images,
+  'plan-sound-design': ListMusic,
+  'generate-sound-design': Volume2,
+  'final-video': Clapperboard,
+  prompts: MessageSquareText,
+  audio: AudioLines,
+  'sound-library': Layers,
+  images: Palette,
+  'settings-captions': Type,
+  backgrounds: GalleryVerticalEnd,
+  music: Music,
+};
+
 function NavItemCard({ item }: { item: ShortFormSecondaryNavItem }) {
+  const Icon = item.icon ? SHORT_FORM_NAV_ICONS[item.icon] : null;
+
   return (
-    <div className="min-w-0 flex-1">
-      <div className="flex min-w-0 items-center justify-between gap-2.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-sm font-medium">{item.label}</span>
-          {item.dirty ? <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" aria-label="Unsaved changes" /> : null}
+    <div className="flex min-w-0 flex-1 items-start gap-2.5">
+      {Icon ? <Icon aria-hidden="true" className={NAV_ICON_CLASS} /> : null}
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center justify-between gap-2.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-sm font-medium">{item.label}</span>
+            {item.dirty ? <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" aria-label="Unsaved changes" /> : null}
+          </div>
+          {item.status ? <StatusBadge status={item.status} compact className="shrink-0" /> : null}
         </div>
-        {item.status ? <StatusBadge status={item.status} compact className="shrink-0" /> : null}
       </div>
     </div>
   );

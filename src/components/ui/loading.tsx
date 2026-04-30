@@ -44,7 +44,6 @@ export function PageLoadingShell() {
           </div>
         </div>
 
-        <OrbitLoader label="Loading dashboard" />
       </div>
     </div>
   );

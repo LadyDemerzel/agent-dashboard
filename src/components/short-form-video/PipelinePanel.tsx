@@ -27,7 +27,7 @@ export interface PipelineStep {
 
 export interface PipelinePanelProps {
   title: string;
-  description: string;
+  description?: string;
   status: 'running' | 'completed' | 'failed' | 'idle';
   warning?: string;
   steps: PipelineStep[];
@@ -176,7 +176,7 @@ export function PipelinePanel({
           <h3 className="text-sm font-medium text-foreground">{title}</h3>
           <StatusBadge status={statusForPipeline(status)} />
         </div>
-        <p className="text-xs text-muted-foreground">{description}</p>
+        {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
         {metadata ? <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">{metadata}</div> : null}
         {warning ? <ValidationNotice title={`${title} warning`} message={warning} className="mt-3" /> : null}
       </div>

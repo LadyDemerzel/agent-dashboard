@@ -71,22 +71,118 @@ body {
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
-/* Typography plugin styles for markdown rendering */
+/* Typography styles for rendered markdown. Tailwind Preflight resets
+   headings/lists/spacing, so keep common markdown semantics visible here. */
 .prose {
   color: var(--foreground);
   max-width: 65ch;
+  line-height: 1.7;
+}
+
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose > :last-child {
+  margin-bottom: 0;
 }
 
 .prose h1,
 .prose h2,
 .prose h3,
+.prose h4,
+.prose h5,
+.prose h6,
 .prose strong {
   color: var(--foreground);
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4,
+.prose h5,
+.prose h6 {
+  font-weight: 700;
+  line-height: 1.25;
+  margin-top: 1.6em;
+  margin-bottom: 0.65em;
+}
+
+.prose h1 {
+  font-size: 1.875rem;
+}
+
+.prose h2 {
+  font-size: 1.5rem;
+}
+
+.prose h3 {
+  font-size: 1.25rem;
+}
+
+.prose h4 {
+  font-size: 1.125rem;
+}
+
+.prose h5,
+.prose h6 {
+  font-size: 1rem;
+}
+
+.prose p,
+.prose ul,
+.prose ol {
+  margin-top: 0.85em;
+  margin-bottom: 0.85em;
+}
+
+.prose ul,
+.prose ol {
+  padding-left: 1.625em;
+}
+
+.prose ul {
+  list-style-type: disc;
+}
+
+.prose ol {
+  list-style-type: decimal;
+}
+
+.prose li {
+  margin-top: 0.35em;
+  margin-bottom: 0.35em;
+  padding-left: 0.25em;
+}
+
+.prose li > p {
+  margin-top: 0.35em;
+  margin-bottom: 0.35em;
+}
+
+.prose ul ul,
+.prose ol ul {
+  list-style-type: circle;
+}
+
+.prose ol ol,
+.prose ul ol {
+  list-style-type: lower-alpha;
+}
+
+.prose strong {
+  font-weight: 700;
+}
+
+.prose em {
+  font-style: italic;
 }
 
 .prose a {
   color: #60a5fa;
   text-decoration: underline;
+  text-underline-offset: 2px;
   font-weight: 500;
 }
 
@@ -126,6 +222,11 @@ body {
   margin-bottom: 1.25em;
   font-style: italic;
   color: var(--muted-foreground);
+}
+
+.prose blockquote p {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
 }
 
 .prose hr {

@@ -5,7 +5,6 @@ import { extractBody, generateFrontMatter, parseFrontMatter } from "@/lib/frontm
 import {
   getShortFormSoundDesignSettings,
   getShortFormSoundLibraryDir,
-  type ShortFormSoundAnchor,
   type ShortFormSoundFrequencyBand,
   type ShortFormSoundLibraryEntry,
   type ShortFormSoundLiteralness,
@@ -27,17 +26,25 @@ export interface ShortFormSoundDesignEvent {
   id: string;
   type: ShortFormSoundSemanticType;
   track: string;
-  anchor: ShortFormSoundAnchor;
+  assetId?: string;
+  startSeconds: number;
+  endSeconds?: number;
+  durationSeconds?: number;
+  description?: string;
+  searchQuery?: string;
+  category?: string;
+  priority?: "must-have" | "nice-to-have" | "optional";
+  anchor?: string;
   sceneId?: string;
   captionId?: string;
-  offsetMs: number;
+  offsetMs?: number;
   gainDb?: number;
   fadeInMs?: number;
   fadeOutMs?: number;
   intensity?: string;
   rationale?: string;
   notes?: string;
-  overlap?: "allow" | "avoid";
+  overlap?: "allow" | "avoid" | "layered";
   groupId?: string;
   frequencyBand?: ShortFormSoundFrequencyBand;
   layerRole?: string;
@@ -124,6 +131,13 @@ interface TimelineCaption {
   text: string;
   start: number;
   end: number;
+}
+
+interface TimelineVisual {
+  id: string;
+  label: string;
+  start: number;
+  end?: number;
 }
 
 function ensureDir(dirPath: string) {
@@ -218,6 +232,32 @@ function isAssetBackedEventType(type: ShortFormSoundSemanticType): type is "impa
   return type === "impact" || type === "riser" || type === "click" || type === "whoosh" || type === "ambience";
 }
 
+function normalizeKey(value: unknown) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function findSoundLibraryAssetByReference(reference: unknown, library = getShortFormSoundDesignSettings().library) {
+  const normalized = normalizeKey(reference);
+  if (!normalized) return undefined;
+  return library.find((asset) => asset.id.toLowerCase() === normalized)
+    || library.find((asset) => asset.name.toLowerCase() === normalized)
+    || library.find((asset) => asset.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") === normalized);
+}
+
+function resolveEventTypeAndAsset(attributes: Record<string, string>) {
+  const library = getShortFormSoundDesignSettings().library;
+  const semanticType = normalizeEventType(attributes.type);
+  const explicitAsset = findSoundLibraryAssetByReference(attributes.assetId, library);
+  const typeAsset = explicitAsset || findSoundLibraryAssetByReference(attributes.type, library);
+  const assetSemanticType = typeAsset?.semanticTypes.find((type) => isAssetBackedEventType(type));
+  return {
+    type: typeAsset && semanticType === "impact" && attributes.type !== "impact"
+      ? assetSemanticType || semanticType
+      : semanticType,
+    assetId: typeAsset?.id,
+  };
+}
+
 function safeReadJson(filePath: string) {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf-8"));
@@ -269,6 +309,28 @@ function getTimelineCaptions(projectId: string): TimelineCaption[] {
     : [];
 }
 
+
+function getTimelineVisuals(projectId: string): TimelineVisual[] {
+  const xmlScriptPath = path.join(getProjectDir(projectId), "xml-script.md");
+  if (!fs.existsSync(xmlScriptPath)) return [];
+  const xml = extractBody(fs.readFileSync(xmlScriptPath, "utf-8"));
+  const visualMatches = xml.match(/<visual\b[^>]*(?:\/>|>[\s\S]*?<\/visual>)/g) || [];
+  return visualMatches
+    .map((match, index): TimelineVisual | null => {
+      const attributes = parseAttributes(match);
+      const start = clampOptionalNumber(attributes.start, 0, 10_000, 3);
+      if (typeof start !== "number") return null;
+      const end = clampOptionalNumber(attributes.end, 0, 10_000, 3);
+      return {
+        id: normalizeString(attributes.id, `visual-${index + 1}`),
+        label: normalizeString(attributes.label, `Visual ${index + 1}`),
+        start,
+        ...(typeof end === "number" ? { end } : {}),
+      };
+    })
+    .filter((visual): visual is TimelineVisual => Boolean(visual));
+}
+
 function parseAttributes(nodeSource: string) {
   const attributes: Record<string, string> = {};
   const regex = /(\w+)="([^"]*)"/g;
@@ -280,9 +342,18 @@ function parseAttributes(nodeSource: string) {
   return attributes;
 }
 
+function parseOpeningTagAttributes(nodeSource: string, tagName: string) {
+  const openingTag = nodeSource.match(new RegExp(`<${tagName}\\b[^>]*>`))?.[0] || nodeSource;
+  return parseAttributes(openingTag);
+}
+
+function normalizeOverlap(value: unknown): "allow" | "avoid" | "layered" | undefined {
+  return value === "allow" || value === "avoid" || value === "layered" ? value : undefined;
+}
+
 export function parseShortFormSoundDesignRootAttributes(content: string) {
   const xml = extractBody(content);
-  const rootMatch = xml.match(/<soundDesign\b[^>]*>/);
+  const rootMatch = xml.match(/<(?:soundDesign|sound_design)\b[^>]*>/);
   return rootMatch ? parseAttributes(rootMatch[0]) : {};
 }
 
@@ -299,23 +370,87 @@ export function resolveShortFormSoundDesignMixSettings(content?: string, events:
     musicLowCutHz: clampNumber(root.musicLowCutHz, 0, 500, settings.musicLowCutHz, 0),
     musicHighCutHz: clampNumber(root.musicHighCutHz, 0, 20000, settings.musicHighCutHz, 0),
   };
+  // Per-effect music controls are aggregate mix intentions, not sequenced automation.
+  // Resolve them deterministically by choosing conservative values: strongest duck/cut,
+  // narrowest high/low pass range, and EQ frequency/Q from the event with the strongest cut.
+  let strongestEqCutEvent: ShortFormSoundDesignEvent | undefined;
   for (const event of events) {
-    if (typeof event.musicDuckingDb === "number") base.musicDuckingDb = event.musicDuckingDb;
-    if (typeof event.musicEqCutDb === "number") base.musicEqCutDb = event.musicEqCutDb;
-    if (typeof event.musicEqFrequencyHz === "number") base.musicEqFrequencyHz = event.musicEqFrequencyHz;
-    if (typeof event.musicEqQ === "number") base.musicEqQ = event.musicEqQ;
-    if (typeof event.musicLowCutHz === "number") base.musicLowCutHz = event.musicLowCutHz;
-    if (typeof event.musicHighCutHz === "number") base.musicHighCutHz = event.musicHighCutHz;
+    if (typeof event.musicDuckingDb === "number") base.musicDuckingDb = Math.min(base.musicDuckingDb, event.musicDuckingDb);
+    if (typeof event.musicEqCutDb === "number" && event.musicEqCutDb < base.musicEqCutDb) {
+      base.musicEqCutDb = event.musicEqCutDb;
+      strongestEqCutEvent = event;
+    }
+    if (typeof event.musicLowCutHz === "number") base.musicLowCutHz = Math.max(base.musicLowCutHz, event.musicLowCutHz);
+    if (typeof event.musicHighCutHz === "number" && event.musicHighCutHz > 0) {
+      base.musicHighCutHz = base.musicHighCutHz > 0 ? Math.min(base.musicHighCutHz, event.musicHighCutHz) : event.musicHighCutHz;
+    }
+  }
+  if (strongestEqCutEvent) {
+    if (typeof strongestEqCutEvent.musicEqFrequencyHz === "number") base.musicEqFrequencyHz = strongestEqCutEvent.musicEqFrequencyHz;
+    if (typeof strongestEqCutEvent.musicEqQ === "number") base.musicEqQ = strongestEqCutEvent.musicEqQ;
   }
   return base;
 }
 
 export function parseShortFormSoundDesignXml(content: string): ShortFormSoundDesignEvent[] {
   const xml = extractBody(content);
+  const events: ShortFormSoundDesignEvent[] = [];
+  const trackMatches = xml.match(/<track\b[^>]*(?:\/>|>[\s\S]*?<\/track>)/g) || [];
+
+  trackMatches.forEach((trackMatch, trackIndex) => {
+    const trackAttrs = parseOpeningTagAttributes(trackMatch, "track");
+    const trackId = normalizeString(trackAttrs.id || trackAttrs.name, `track-${trackIndex + 1}`);
+    const effectMatches = trackMatch.match(/<effect\b[^>]*\/>/g) || [];
+    effectMatches.forEach((effectMatch, effectIndex) => {
+      const attributes = parseAttributes(effectMatch);
+      const { type, assetId } = resolveEventTypeAndAsset(attributes);
+      const startSeconds = clampNumber(attributes.start ?? attributes.startSeconds, 0, 10_000, 0, 3);
+      const endSeconds = clampOptionalNumber(attributes.end ?? attributes.endSeconds, 0, 10_000, 3);
+      const durationSeconds = clampOptionalNumber(attributes.duration ?? attributes.durationSeconds, 0.01, 10_000, 3);
+      const overlap = normalizeOverlap(attributes.overlap);
+      const priority = attributes.priority === "nice-to-have" || attributes.priority === "optional" ? attributes.priority : attributes.priority === "must-have" ? "must-have" : undefined;
+      events.push({
+        id: normalizeString(attributes.id, `fx-${trackIndex + 1}-${effectIndex + 1}`),
+        type,
+        track: trackId,
+        assetId,
+        startSeconds,
+        ...(typeof endSeconds === "number" ? { endSeconds: Math.max(startSeconds, endSeconds) } : {}),
+        ...(typeof durationSeconds === "number" ? { durationSeconds } : {}),
+        description: normalizeOptionalString(attributes.description),
+        searchQuery: normalizeOptionalString(attributes.searchQuery || attributes.query),
+        category: normalizeOptionalString(attributes.category || trackAttrs.category),
+        priority,
+        gainDb: attributes.gainDb !== undefined ? clampNumber(attributes.gainDb, -36, 12, 0, 1) : undefined,
+        fadeInMs: attributes.fadeInMs !== undefined ? clampNumber(attributes.fadeInMs, 0, 10_000, 0, 0) : undefined,
+        fadeOutMs: attributes.fadeOutMs !== undefined ? clampNumber(attributes.fadeOutMs, 0, 10_000, 0, 0) : undefined,
+        intensity: normalizeOptionalString(attributes.intensity),
+        rationale: normalizeOptionalString(attributes.rationale),
+        notes: normalizeOptionalString(attributes.notes),
+        overlap,
+        groupId: normalizeOptionalString(attributes.groupId),
+        frequencyBand: normalizeFrequencyBand(attributes.frequencyBand),
+        layerRole: normalizeOptionalString(attributes.layerRole || attributes.role),
+        stylePalette: normalizeOptionalString(attributes.stylePalette),
+        literalness: normalizeLiteralness(attributes.literalness),
+        musicDuckingDb: clampOptionalNumber(attributes.musicDuckingDb, -24, 0, 1),
+        musicEqCutDb: clampOptionalNumber(attributes.musicEqCutDb, -18, 0, 1),
+        musicEqFrequencyHz: clampOptionalNumber(attributes.musicEqFrequencyHz, 120, 8000, 0),
+        musicEqQ: clampOptionalNumber(attributes.musicEqQ, 0.1, 10, 2),
+        musicLowCutHz: clampOptionalNumber(attributes.musicLowCutHz, 0, 500, 0),
+        musicHighCutHz: clampOptionalNumber(attributes.musicHighCutHz, 0, 20000, 0),
+      });
+    });
+  });
+
+  if (events.length > 0) return events;
+
+  // Legacy compatibility: older artifacts used flat <event /> tags anchored to scenes/captions.
+  // New artifacts must use <track><effect start=...> with timestamp placement only.
   const eventMatches = xml.match(/<event\b[^>]*\/>/g) || [];
   return eventMatches.map((match, index) => {
     const attributes = parseAttributes(match);
-    const type = normalizeEventType(attributes.type);
+    const { type, assetId } = resolveEventTypeAndAsset(attributes);
     const anchor = attributes.anchor === "scene-end"
       || attributes.anchor === "caption-start"
       || attributes.anchor === "caption-end"
@@ -323,11 +458,13 @@ export function parseShortFormSoundDesignXml(content: string): ShortFormSoundDes
       || attributes.anchor === "global-end"
       ? attributes.anchor
       : "scene-start";
-    const overlap = attributes.overlap === "allow" ? "allow" : attributes.overlap === "avoid" ? "avoid" : undefined;
+    const overlap = normalizeOverlap(attributes.overlap);
     return {
       id: normalizeString(attributes.id, `evt-${index + 1}`),
       type,
       track: normalizeString(attributes.track, type === "ambience" ? "ambience" : type === "riser" || type === "whoosh" ? "transitions" : "impacts"),
+      assetId,
+      startSeconds: 0,
       anchor,
       sceneId: normalizeOptionalString(attributes.sceneId),
       captionId: normalizeOptionalString(attributes.captionId),
@@ -354,6 +491,7 @@ export function parseShortFormSoundDesignXml(content: string): ShortFormSoundDes
   });
 }
 
+
 export function buildDefaultShortFormSoundDesignDocument(projectId: string) {
   const docPath = getShortFormSoundDesignPath(projectId);
   const frontMatter = generateFrontMatter({
@@ -364,9 +502,11 @@ export function buildDefaultShortFormSoundDesignDocument(projectId: string) {
     category: "sound-design",
   });
   const xml = [
-    "<soundDesign version=\"1\" duckingDb=\"-8\" maxConcurrentOneShots=\"2\" musicDuckingDb=\"-6\" musicEqCutDb=\"-4\" musicEqFrequencyHz=\"1800\" musicEqQ=\"1.1\" musicLowCutHz=\"60\" musicHighCutHz=\"0\">",
-    "  <event id=\"evt-1\" type=\"impact\" track=\"impacts\" anchor=\"scene-start\" sceneId=\"scene-1\" offsetMs=\"-40\" gainDb=\"-5\" fadeInMs=\"0\" fadeOutMs=\"220\" intensity=\"medium\" groupId=\"open-low-mid-high\" frequencyBand=\"mid\" layerRole=\"body\" literalness=\"stylized\" rationale=\"Opening punctuation\" />",
-    "</soundDesign>",
+    "<sound_design version=\"2\" duckingDb=\"-8\" maxConcurrentOneShots=\"2\" musicDuckingDb=\"-6\" musicEqCutDb=\"-4\" musicEqFrequencyHz=\"1800\" musicEqQ=\"1.1\" musicLowCutHz=\"60\" musicHighCutHz=\"0\">",
+    "  <track id=\"impacts\" role=\"punctuation\" gainDb=\"0\">",
+    "    <effect id=\"fx-opening-hit\" type=\"impact\" start=\"0.00\" duration=\"0.60\" gainDb=\"-5\" fadeInMs=\"0\" fadeOutMs=\"220\" intensity=\"medium\" groupId=\"open-low-mid-high\" frequencyBand=\"mid\" layerRole=\"body\" literalness=\"stylized\" searchQuery=\"premium editorial soft opening hit\" rationale=\"Opening punctuation timed by absolute timestamp.\" />",
+    "  </track>",
+    "</sound_design>",
   ].join("\n");
   ensureDir(path.dirname(docPath));
   const content = `${frontMatter}\n${xml}\n`;
@@ -382,15 +522,17 @@ function escapeXmlAttribute(value: string) {
     .replace(/>/g, "&gt;");
 }
 
-function pushEventLine(lines: string[], event: ShortFormSoundDesignEvent) {
-  const attributes = [
+function buildEffectAttributes(event: ShortFormSoundDesignEvent) {
+  return [
     `id=\"${escapeXmlAttribute(event.id)}\"`,
     `type=\"${escapeXmlAttribute(event.type)}\"`,
-    `track=\"${escapeXmlAttribute(event.track)}\"`,
-    `anchor=\"${escapeXmlAttribute(event.anchor)}\"`,
-    ...(event.sceneId ? [`sceneId=\"${escapeXmlAttribute(event.sceneId)}\"`] : []),
-    ...(event.captionId ? [`captionId=\"${escapeXmlAttribute(event.captionId)}\"`] : []),
-    `offsetMs=\"${Math.round(event.offsetMs)}\"`,
+    `start=\"${event.startSeconds.toFixed(3)}\"`,
+    ...(typeof event.endSeconds === "number" ? [`end=\"${event.endSeconds.toFixed(3)}\"`] : []),
+    ...(typeof event.durationSeconds === "number" ? [`duration=\"${event.durationSeconds.toFixed(3)}\"`] : []),
+    ...(event.description ? [`description=\"${escapeXmlAttribute(event.description)}\"`] : []),
+    ...(event.searchQuery ? [`searchQuery=\"${escapeXmlAttribute(event.searchQuery)}\"`] : []),
+    ...(event.category ? [`category=\"${escapeXmlAttribute(event.category)}\"`] : []),
+    ...(event.priority ? [`priority=\"${event.priority}\"`] : []),
     ...(typeof event.gainDb === "number" ? [`gainDb=\"${event.gainDb}\"`] : []),
     ...(typeof event.fadeInMs === "number" ? [`fadeInMs=\"${Math.round(event.fadeInMs)}\"`] : []),
     ...(typeof event.fadeOutMs === "number" ? [`fadeOutMs=\"${Math.round(event.fadeOutMs)}\"`] : []),
@@ -410,102 +552,120 @@ function pushEventLine(lines: string[], event: ShortFormSoundDesignEvent) {
     ...(typeof event.musicLowCutHz === "number" ? [`musicLowCutHz=\"${event.musicLowCutHz}\"`] : []),
     ...(typeof event.musicHighCutHz === "number" ? [`musicHighCutHz=\"${event.musicHighCutHz}\"`] : []),
   ];
-  lines.push(`  <event ${attributes.join(" ")} />`);
 }
+
+function pushTrackLines(lines: string[], track: string, events: ShortFormSoundDesignEvent[]) {
+  lines.push(`  <track id=\"${escapeXmlAttribute(track)}\">`);
+  events.forEach((event) => {
+    lines.push(`    <effect ${buildEffectAttributes(event).join(" ")} />`);
+  });
+  lines.push("  </track>");
+}
+
 
 export function buildSuggestedShortFormSoundDesignDocument(
   projectId: string,
   options?: { topic?: string; selectedHook?: string; notes?: string }
 ) {
   const settings = getShortFormSoundDesignSettings();
-  const scenes = getTimelineScenes(projectId);
+  const visuals = getTimelineVisuals(projectId);
   const captions = getTimelineCaptions(projectId);
+  const duration = getNarrationDuration(projectId);
   const hasSemantic = (semanticType: "impact" | "riser" | "click" | "whoosh" | "ambience") => settings.library.some((entry) => entry.semanticTypes.includes(semanticType));
   const events: ShortFormSoundDesignEvent[] = [];
+  const firstVisual = visuals[0];
 
-  if (scenes[0]) {
-    events.push({
-      id: "evt-impact-open",
-      type: "impact",
-      track: "impacts",
-      anchor: "scene-start",
-      sceneId: scenes[0].id,
-      offsetMs: -40,
-      gainDb: -5,
-      fadeInMs: 0,
-      fadeOutMs: 220,
-      intensity: "medium",
-      rationale: "Punch the opening beat without overpowering the narration.",
-      overlap: "avoid",
-      groupId: "opening-layered-hit",
-      frequencyBand: "mid",
-      layerRole: "body",
-      stylePalette: "premium editorial",
-      literalness: "stylized",
-    });
-  }
+  events.push({
+    id: "fx-opening-hit",
+    type: "impact",
+    track: "impacts",
+    startSeconds: Math.max(0, firstVisual?.start ?? captions[0]?.start ?? 0),
+    durationSeconds: 0.6,
+    gainDb: -5,
+    fadeInMs: 0,
+    fadeOutMs: 220,
+    intensity: "medium",
+    description: "Opening punctuation hit",
+    searchQuery: "premium editorial soft opening hit",
+    rationale: "Punch the opening timestamp without tying the cue to a caption boundary.",
+    overlap: "avoid",
+    groupId: "opening-layered-hit",
+    frequencyBand: "mid",
+    layerRole: "body",
+    stylePalette: "premium editorial",
+    literalness: "stylized",
+    priority: "must-have",
+  });
 
-  if (hasSemantic("ambience") && (scenes.length > 1 || captions.length > 3)) {
+  if (hasSemantic("ambience") && duration > 3) {
     events.push({
-      id: "evt-ambience-bed",
+      id: "fx-ambience-bed",
       type: "ambience",
       track: "ambience",
-      anchor: "global-start",
-      offsetMs: 0,
+      startSeconds: 0,
+      endSeconds: duration || Math.max(4, visuals.at(-1)?.end || 4),
       gainDb: -18,
       fadeInMs: 240,
       fadeOutMs: 420,
       intensity: "low",
-      rationale: "Low-level texture to keep the mix from feeling dry.",
+      description: "Low-level editorial air bed",
+      searchQuery: "subtle premium air texture ambience bed",
+      rationale: "Low-level texture to keep the mix from feeling dry across the full timed edit.",
       overlap: "allow",
       groupId: "global-air-bed",
       frequencyBand: "high",
       layerRole: "air",
       stylePalette: "premium editorial",
       literalness: "emotional-metaphor",
+      priority: "nice-to-have",
     });
   }
 
-  scenes.slice(1, 4).forEach((scene, index) => {
+  visuals.slice(1, 4).forEach((visual, index) => {
     events.push({
-      id: `evt-transition-${index + 1}`,
+      id: `fx-transition-${index + 1}`,
       type: hasSemantic("whoosh") ? "whoosh" : "riser",
       track: "transitions",
-      anchor: "scene-start",
-      sceneId: scene.id,
-      offsetMs: -60,
+      startSeconds: Math.max(0, visual.start - 0.08),
+      durationSeconds: 0.7,
       gainDb: -8,
       fadeInMs: 20,
       fadeOutMs: 180,
       intensity: index === 0 ? "medium" : "low",
-      rationale: `Carry momentum into ${scene.caption || `scene ${scene.number}`}.`,
+      description: `Transition into ${visual.label}`,
+      searchQuery: "clean editorial transition whoosh riser",
+      rationale: `Carry momentum into the visual beat at ${visual.start.toFixed(2)}s (${visual.label}).`,
       overlap: "avoid",
       groupId: `transition-${index + 1}-layered`,
       frequencyBand: index === 0 ? "mid" : "high",
       layerRole: index === 0 ? "motion" : "air",
       stylePalette: "premium editorial",
       literalness: "stylized",
+      priority: "nice-to-have",
     });
   });
 
   if (captions[1] && hasSemantic("click")) {
+    const pivotTime = captions[1].start + Math.min(0.18, Math.max(0, (captions[1].end - captions[1].start) / 3));
     events.push({
-      id: "evt-click-pivot",
+      id: "fx-early-pivot-click",
       type: "click",
       track: "details",
-      anchor: "caption-start",
-      captionId: captions[1].id,
-      offsetMs: 0,
+      startSeconds: pivotTime,
+      durationSeconds: 0.25,
       gainDb: -10,
       fadeInMs: 0,
       fadeOutMs: 120,
       intensity: "low",
-      rationale: "Add a precise punctuation point on an early caption pivot.",
+      description: "Small early argument pivot tick",
+      searchQuery: "subtle clean UI tick punctuation",
+      rationale: "Add a precise punctuation point near an early narration pivot; timestamp can sit inside the caption span, not on its boundary.",
       overlap: "avoid",
       frequencyBand: "high",
       layerRole: "tick",
       stylePalette: "premium editorial",
       literalness: "stylized",
+      priority: "optional",
     });
   }
 
@@ -520,13 +680,18 @@ export function buildSuggestedShortFormSoundDesignDocument(
   });
 
   const lines = [
-    `<soundDesign version=\"1\" duckingDb=\"${settings.defaultDuckingDb}\" maxConcurrentOneShots=\"${settings.maxConcurrentOneShots}\" musicDuckingDb=\"${settings.musicDuckingDb}\" musicEqCutDb=\"${settings.musicEqCutDb}\" musicEqFrequencyHz=\"${settings.musicEqFrequencyHz}\" musicEqQ=\"${settings.musicEqQ}\" musicLowCutHz=\"${settings.musicLowCutHz}\" musicHighCutHz=\"${settings.musicHighCutHz}\">`,
+    `<sound_design version=\"2\" duckingDb=\"${settings.defaultDuckingDb}\" maxConcurrentOneShots=\"${settings.maxConcurrentOneShots}\" musicDuckingDb=\"${settings.musicDuckingDb}\" musicEqCutDb=\"${settings.musicEqCutDb}\" musicEqFrequencyHz=\"${settings.musicEqFrequencyHz}\" musicEqQ=\"${settings.musicEqQ}\" musicLowCutHz=\"${settings.musicLowCutHz}\" musicHighCutHz=\"${settings.musicHighCutHz}\">`,
   ];
-  events.forEach((event) => pushEventLine(lines, event));
-  lines.push("</soundDesign>");
+  const byTrack = new Map<string, ShortFormSoundDesignEvent[]>();
+  events.forEach((event) => {
+    byTrack.set(event.track, [...(byTrack.get(event.track) || []), event]);
+  });
+  byTrack.forEach((trackEvents, track) => pushTrackLines(lines, track, trackEvents));
+  lines.push("</sound_design>");
 
   return `${frontMatter}\n${lines.join("\n")}\n`;
 }
+
 
 export function readShortFormSoundDesignDocument(projectId: string): ShortFormSoundDesignDocument {
   const docPath = getShortFormSoundDesignPath(projectId);
@@ -578,17 +743,23 @@ export function readShortFormSoundDesignResolution(projectId: string): ShortForm
       id: normalizeString(item.id),
       type: normalizeEventType(item.type),
       track: normalizeString(item.track, "impacts"),
-      anchor: item.anchor === "scene-end" || item.anchor === "caption-start" || item.anchor === "caption-end" || item.anchor === "global-start" || item.anchor === "global-end" ? item.anchor : "scene-start",
+      startSeconds: clampNumber(item.startSeconds ?? item.resolvedStartSeconds, 0, 10_000, 0, 3),
+      endSeconds: typeof item.endSeconds === "number" && Number.isFinite(item.endSeconds) ? clampNumber(item.endSeconds, 0, 10_000, item.endSeconds, 3) : undefined,
+      description: normalizeOptionalString(item.description),
+      searchQuery: normalizeOptionalString(item.searchQuery),
+      category: normalizeOptionalString(item.category),
+      priority: item.priority === "must-have" || item.priority === "nice-to-have" || item.priority === "optional" ? item.priority : undefined,
+      anchor: normalizeOptionalString(item.anchor),
       sceneId: normalizeOptionalString(item.sceneId),
       captionId: normalizeOptionalString(item.captionId),
-      offsetMs: clampNumber(item.offsetMs, -20_000, 20_000, 0, 0),
+      offsetMs: typeof item.offsetMs === "number" && Number.isFinite(item.offsetMs) ? clampNumber(item.offsetMs, -20_000, 20_000, 0, 0) : undefined,
       gainDb: typeof item.gainDb === "number" && Number.isFinite(item.gainDb) ? item.gainDb : undefined,
       fadeInMs: typeof item.fadeInMs === "number" && Number.isFinite(item.fadeInMs) ? item.fadeInMs : undefined,
       fadeOutMs: typeof item.fadeOutMs === "number" && Number.isFinite(item.fadeOutMs) ? item.fadeOutMs : undefined,
       intensity: normalizeOptionalString(item.intensity),
       rationale: normalizeOptionalString(item.rationale),
       notes: normalizeOptionalString(item.notes),
-      overlap: item.overlap === "allow" ? "allow" : item.overlap === "avoid" ? "avoid" : undefined,
+      overlap: normalizeOverlap(item.overlap),
       groupId: normalizeOptionalString(item.groupId),
       frequencyBand: normalizeFrequencyBand(item.frequencyBand),
       layerRole: normalizeOptionalString(item.layerRole),
@@ -694,10 +865,10 @@ function getNarrationDuration(projectId: string) {
 
 function getAssetCompatibility(event: ShortFormSoundDesignEvent, asset: ShortFormSoundLibraryEntry) {
   let score = 0;
+  if (event.assetId && asset.id === event.assetId) score += 100;
   if (isAssetBackedEventType(event.type) && asset.semanticTypes.includes(event.type)) score += 6;
   if (asset.timingType === "bed" && event.type === "ambience") score += 3;
   if (asset.timingType === "riser" && event.type === "riser") score += 3;
-  if (asset.defaultAnchor === event.anchor) score += 2;
   const lowerTrack = event.track.toLowerCase();
   if (asset.category.toLowerCase().includes(lowerTrack)) score += 1;
   if ((event.intensity || "").length > 0 && asset.tags.some((tag) => tag.toLowerCase() === (event.intensity || "").toLowerCase())) score += 1;
@@ -720,6 +891,11 @@ function getAssetDurationSeconds(asset: ShortFormSoundLibraryEntry) {
 }
 
 function resolveEventTime(projectId: string, event: ShortFormSoundDesignEvent, scenes: TimelineScene[], captions: TimelineCaption[]) {
+  if (!event.anchor) {
+    return Math.max(0, event.startSeconds);
+  }
+
+  // Legacy compatibility for old scene/caption-anchored <event /> artifacts. New XML uses absolute timestamps.
   let anchorTime = 0;
   if (event.anchor === "caption-start" || event.anchor === "caption-end") {
     anchorTime = findCaptionAnchorTime(event, captions);
@@ -730,7 +906,7 @@ function resolveEventTime(projectId: string, event: ShortFormSoundDesignEvent, s
   } else {
     anchorTime = findSceneAnchorTime(event, scenes);
   }
-  return Math.max(0, anchorTime + event.offsetMs / 1000);
+  return Math.max(0, anchorTime + (event.offsetMs || 0) / 1000);
 }
 
 function resolveBedEventEnd(options: {
@@ -743,6 +919,12 @@ function resolveBedEventEnd(options: {
 }) {
   const { event, start, duration, assetDuration, scenes, captions } = options;
   const fallbackEnd = Math.min(duration || start + assetDuration, start + assetDuration);
+
+  if (!event.anchor) {
+    if (typeof event.endSeconds === "number") return Math.max(start, event.endSeconds);
+    if (typeof event.durationSeconds === "number") return start + event.durationSeconds;
+    return start + assetDuration;
+  }
 
   if (event.anchor === "global-start" || event.anchor === "global-end") {
     return duration > 0 ? Math.max(start, duration) : start + assetDuration;
@@ -757,6 +939,66 @@ function resolveBedEventEnd(options: {
   return typeof scene?.endTime === "number" ? Math.max(start, scene.endTime) : fallbackEnd;
 }
 
+function priorityRank(event: ShortFormResolvedSoundDesignEvent) {
+  if (event.priority === "must-have") return 3;
+  if (event.priority === "nice-to-have") return 2;
+  if (event.priority === "optional") return 0;
+  return 1;
+}
+
+function oneShotWindow(event: ShortFormResolvedSoundDesignEvent) {
+  const start = Math.max(0, event.resolvedStartSeconds);
+  const end = typeof event.resolvedEndSeconds === "number"
+    ? Math.max(start + 0.01, event.resolvedEndSeconds)
+    : start + Math.max(0.05, event.durationSeconds || 0.6);
+  return { start, end };
+}
+
+function windowsOverlap(left: { start: number; end: number }, right: { start: number; end: number }) {
+  return left.start < right.end + 0.001 && left.end > right.start - 0.001;
+}
+
+function enforceMaxConcurrentOneShots(
+  events: ShortFormResolvedSoundDesignEvent[],
+  maxConcurrentOneShots: number,
+) {
+  const limit = Math.max(1, Math.round(maxConcurrentOneShots));
+  const candidates = events
+    .filter((event) => event.status === "resolved" && !event.muted && event.timingType !== "bed" && event.assetRelativePath)
+    .map((event, index) => ({ event, index, window: oneShotWindow(event) }))
+    .sort((left, right) => {
+      const priorityDelta = priorityRank(right.event) - priorityRank(left.event);
+      if (priorityDelta !== 0) return priorityDelta;
+      const gainDelta = right.event.resolvedGainDb - left.event.resolvedGainDb;
+      if (gainDelta !== 0) return gainDelta;
+      const timeDelta = left.window.start - right.window.start;
+      if (timeDelta !== 0) return timeDelta;
+      return left.event.id.localeCompare(right.event.id);
+    });
+
+  const kept: typeof candidates = [];
+  const mutedIds = new Set<string>();
+  for (const candidate of candidates) {
+    const overlappingKept = kept.filter((keptCandidate) => windowsOverlap(candidate.window, keptCandidate.window));
+    if (overlappingKept.length >= limit) {
+      mutedIds.add(candidate.event.id);
+      continue;
+    }
+    kept.push(candidate);
+  }
+
+  if (mutedIds.size === 0) return events;
+  return events.map((event) => {
+    if (!mutedIds.has(event.id)) return event;
+    const reason = `auto-muted: maxConcurrentOneShots=${limit} would be exceeded by overlapping one-shot cues; lower-ranked event dropped from mix after priority/gain/time ordering`;
+    return {
+      ...event,
+      muted: true,
+      resolutionReason: event.resolutionReason ? `${event.resolutionReason}; ${reason}` : reason,
+    };
+  });
+}
+
 export function resolveShortFormSoundDesign(projectId: string, overrides?: ShortFormResolvedSoundDesignEvent[]) {
   const settings = getShortFormSoundDesignSettings();
   const doc = readShortFormSoundDesignDocument(projectId);
@@ -769,7 +1011,7 @@ export function resolveShortFormSoundDesign(projectId: string, overrides?: Short
     existingById.set(event.id, event);
   });
 
-  const resolvedEvents = doc.events.map((event) => {
+  let resolvedEvents: ShortFormResolvedSoundDesignEvent[] = doc.events.map((event) => {
     const prior = existingById.get(event.id);
     if (!isAssetBackedEventType(event.type)) {
       const start = resolveEventTime(projectId, event, scenes, captions);
@@ -794,7 +1036,8 @@ export function resolveShortFormSoundDesign(projectId: string, overrides?: Short
       .map((asset) => ({ asset, score: getAssetCompatibility(event, asset) }))
       .sort((left, right) => right.score - left.score);
     const manualAsset = prior?.manualAssetId ? settings.library.find((asset) => asset.id === prior.manualAssetId) : undefined;
-    const asset = manualAsset || compatibleAssets[0]?.asset;
+    const requestedAsset = event.assetId ? settings.library.find((asset) => asset.id === event.assetId) : undefined;
+    const asset = manualAsset || requestedAsset || compatibleAssets[0]?.asset;
     const assetDuration = asset ? getAssetDurationSeconds(asset) : undefined;
     const assetAnchorOffsetSeconds = assetDuration ? assetDuration * (asset?.anchorRatio || 0) : 0;
     const baseStart = resolveEventTime(projectId, event, scenes, captions);
@@ -806,18 +1049,25 @@ export function resolveShortFormSoundDesign(projectId: string, overrides?: Short
       : typeof event.gainDb === "number"
         ? event.gainDb
         : asset?.defaultGainDb || 0;
-    const end = asset && asset.timingType === "bed"
-      ? resolveBedEventEnd({
-          event,
-          start,
-          duration,
-          assetDuration: getAssetDurationSeconds(asset),
-          scenes,
-          captions,
-        })
-      : assetDuration
-        ? start + assetDuration
+    const explicitEnd = typeof event.endSeconds === "number"
+      ? Math.max(start, event.endSeconds)
+      : typeof event.durationSeconds === "number"
+        ? start + event.durationSeconds
         : undefined;
+    const end = typeof explicitEnd === "number"
+      ? explicitEnd
+      : asset && asset.timingType === "bed"
+        ? resolveBedEventEnd({
+            event,
+            start,
+            duration,
+            assetDuration: getAssetDurationSeconds(asset),
+            scenes,
+            captions,
+          })
+        : assetDuration
+          ? start + assetDuration
+          : undefined;
 
     return {
       ...event,
@@ -827,7 +1077,7 @@ export function resolveShortFormSoundDesign(projectId: string, overrides?: Short
       timingType: asset?.timingType,
       resolvedStartSeconds: start,
       ...(typeof end === "number" ? { resolvedEndSeconds: Math.max(start, end) } : {}),
-      ...(typeof assetDuration === "number" ? { durationSeconds: assetDuration } : {}),
+      ...(typeof event.durationSeconds === "number" ? { durationSeconds: event.durationSeconds } : typeof assetDuration === "number" ? { durationSeconds: assetDuration } : {}),
       resolvedGainDb: gainDb,
       resolvedFadeInMs: fadeInMs,
       resolvedFadeOutMs: fadeOutMs,
@@ -840,13 +1090,17 @@ export function resolveShortFormSoundDesign(projectId: string, overrides?: Short
       compatibleAssetIds: compatibleAssets.filter((item) => item.score > -4).map((item) => item.asset.id),
       status: asset?.audioRelativePath ? "resolved" : "unresolved",
       resolutionReason: asset?.audioRelativePath
-        ? (manualAsset ? "manual-asset-selection" : compatibleAssets[0] ? "semantic-library-match" : "fallback")
-        : "No uploaded sound asset matched this semantic event.",
+        ? (manualAsset ? "manual-asset-selection" : requestedAsset ? "requested-asset-match" : compatibleAssets[0] ? "semantic-library-match" : "fallback")
+        : requestedAsset
+          ? `Requested sound asset ${requestedAsset.id} has no uploaded audio file.`
+          : "No uploaded sound asset matched this semantic event.",
     } satisfies ShortFormResolvedSoundDesignEvent;
   });
 
+  resolvedEvents = enforceMaxConcurrentOneShots(resolvedEvents, mixSettings.maxConcurrentOneShots);
+
   const resolution: ShortFormSoundDesignResolution = {
-    version: 1,
+    version: 2,
     generatedAt: new Date().toISOString(),
     previewAudioRelativePath: doc.resolution?.previewAudioRelativePath,
     previewUpdatedAt: doc.resolution?.previewUpdatedAt,
@@ -916,12 +1170,12 @@ function buildMusicMixFilters(musicVolume: number | undefined, mixSettings: Shor
   return filters;
 }
 
-function buildDuckedBackgroundFilters(inputLabel: string, narrationLabel: string, outputLabel: string, mixSettings: ShortFormSoundDesignMixSettings) {
+function buildDuckedBackgroundFilters(inputLabel: string, narrationLabel: string, outputLabel: string, duckingDb: number) {
   if (ffmpegSupportsFilter("sidechaincompress")) {
-    const ratio = Math.max(2, Math.min(20, Math.abs(mixSettings.musicDuckingDb) * 1.4));
+    const ratio = Math.max(2, Math.min(20, Math.abs(duckingDb) * 1.4));
     return `${inputLabel}${narrationLabel}sidechaincompress=threshold=0.04:ratio=${ratio.toFixed(1)}:attack=15:release=280:makeup=1${outputLabel}`;
   }
-  return `${inputLabel}volume=${dbToVolume(mixSettings.musicDuckingDb).toFixed(5)}${outputLabel}`;
+  return `${inputLabel}volume=${dbToVolume(duckingDb).toFixed(5)}${outputLabel}`;
 }
 
 export function renderShortFormSoundDesignPreview(options: {
@@ -964,7 +1218,8 @@ export function renderShortFormSoundDesignPreview(options: {
     .filter((event) => !onlyTrack || event.track === onlyTrack);
   const inputArgs = ["-y"];
   const filterLines: string[] = [];
-  const backgroundLabels: string[] = [];
+  const musicLabels: string[] = [];
+  const sfxLabels: string[] = [];
   let inputIndex = 0;
 
   if (includeNarration) {
@@ -976,7 +1231,7 @@ export function renderShortFormSoundDesignPreview(options: {
   if (includeMusic && musicPath && fs.existsSync(musicPath)) {
     inputArgs.push("-i", musicPath);
     filterLines.push(`[${inputIndex}:a]${buildMusicMixFilters(musicVolume, mixSettings).join(",")}[music]`);
-    backgroundLabels.push("[music]");
+    musicLabels.push("[music]");
     inputIndex += 1;
   }
 
@@ -1006,12 +1261,34 @@ export function renderShortFormSoundDesignPreview(options: {
       ];
       const label = `evt${inputIndex}`;
       filterLines.push(`[${inputIndex}:a]${filters.join(",")}[${label}]`);
-      backgroundLabels.push(`[${label}]`);
+      sfxLabels.push(`[${label}]`);
       inputIndex += 1;
     }
   }
 
   const hasNarration = includeNarration;
+  const backgroundLabels: string[] = [];
+  if (musicLabels.length > 0) {
+    const musicLabel = musicLabels[0]!;
+    if (hasNarration) {
+      filterLines.push(buildDuckedBackgroundFilters(musicLabel, "[narr]", "[duckedmusic]", mixSettings.musicDuckingDb));
+      backgroundLabels.push("[duckedmusic]");
+    } else {
+      backgroundLabels.push(musicLabel);
+    }
+  }
+  if (sfxLabels.length > 0) {
+    const sfxLabel = sfxLabels.length > 1 ? "[sfxraw]" : sfxLabels[0]!;
+    if (sfxLabels.length > 1) {
+      filterLines.push(`${sfxLabels.join("")}amix=inputs=${sfxLabels.length}:normalize=0:dropout_transition=0${sfxLabel}`);
+    }
+    if (hasNarration) {
+      filterLines.push(buildDuckedBackgroundFilters(sfxLabel, "[narr]", "[duckedsfx]", mixSettings.defaultDuckingDb));
+      backgroundLabels.push("[duckedsfx]");
+    } else {
+      backgroundLabels.push(sfxLabel);
+    }
+  }
   const hasBackground = backgroundLabels.length > 0;
   if (!hasNarration && !hasBackground) {
     throw new Error(onlyTrack
@@ -1020,19 +1297,16 @@ export function renderShortFormSoundDesignPreview(options: {
   }
 
   let outputLabel = hasNarration ? "[narr]" : backgroundLabels[0] || "";
-  if (hasBackground) {
+  if (hasNarration && hasBackground) {
+    filterLines.push(`[narr]${backgroundLabels.join("")}amix=inputs=${backgroundLabels.length + 1}:normalize=0:weights='${[1, ...backgroundLabels.map(() => 1)].join(" ")}'[mix]`);
+    outputLabel = "[mix]";
+  } else if (hasBackground) {
     if (backgroundLabels.length > 1) {
       filterLines.push(`${backgroundLabels.join("")}amix=inputs=${backgroundLabels.length}:normalize=0:dropout_transition=0[bgraw]`);
       outputLabel = "[bgraw]";
     } else {
       outputLabel = backgroundLabels[0]!;
     }
-  }
-
-  if (hasNarration && hasBackground) {
-    filterLines.push(buildDuckedBackgroundFilters(outputLabel, "[narr]", "[duckedbg]", mixSettings));
-    filterLines.push(`[narr][duckedbg]amix=inputs=2:normalize=0:weights='1 1'[mix]`);
-    outputLabel = "[mix]";
   }
 
   const ffmpegArgs = [

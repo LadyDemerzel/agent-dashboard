@@ -1369,14 +1369,30 @@ function resolveSoundDesignMixSettings(resolution) {
     musicLowCutHz: normalizeMixNumber(raw.musicLowCutHz, 0, 500, 60, 0),
     musicHighCutHz: normalizeMixNumber(raw.musicHighCutHz, 0, 20000, 0, 0),
   };
+  let strongestEqCutEvent = null;
   for (const event of events) {
     if (!event || typeof event !== "object") continue;
-    if (Number.isFinite(Number(event.musicDuckingDb))) settings.musicDuckingDb = normalizeMixNumber(event.musicDuckingDb, -24, 0, settings.musicDuckingDb, 1);
-    if (Number.isFinite(Number(event.musicEqCutDb))) settings.musicEqCutDb = normalizeMixNumber(event.musicEqCutDb, -18, 0, settings.musicEqCutDb, 1);
-    if (Number.isFinite(Number(event.musicEqFrequencyHz))) settings.musicEqFrequencyHz = normalizeMixNumber(event.musicEqFrequencyHz, 120, 8000, settings.musicEqFrequencyHz, 0);
-    if (Number.isFinite(Number(event.musicEqQ))) settings.musicEqQ = normalizeMixNumber(event.musicEqQ, 0.1, 10, settings.musicEqQ, 2);
-    if (Number.isFinite(Number(event.musicLowCutHz))) settings.musicLowCutHz = normalizeMixNumber(event.musicLowCutHz, 0, 500, settings.musicLowCutHz, 0);
-    if (Number.isFinite(Number(event.musicHighCutHz))) settings.musicHighCutHz = normalizeMixNumber(event.musicHighCutHz, 0, 20000, settings.musicHighCutHz, 0);
+    if (Number.isFinite(Number(event.musicDuckingDb))) {
+      settings.musicDuckingDb = Math.min(settings.musicDuckingDb, normalizeMixNumber(event.musicDuckingDb, -24, 0, settings.musicDuckingDb, 1));
+    }
+    if (Number.isFinite(Number(event.musicEqCutDb))) {
+      const cut = normalizeMixNumber(event.musicEqCutDb, -18, 0, settings.musicEqCutDb, 1);
+      if (cut < settings.musicEqCutDb) {
+        settings.musicEqCutDb = cut;
+        strongestEqCutEvent = event;
+      }
+    }
+    if (Number.isFinite(Number(event.musicLowCutHz))) {
+      settings.musicLowCutHz = Math.max(settings.musicLowCutHz, normalizeMixNumber(event.musicLowCutHz, 0, 500, settings.musicLowCutHz, 0));
+    }
+    if (Number.isFinite(Number(event.musicHighCutHz))) {
+      const highCut = normalizeMixNumber(event.musicHighCutHz, 0, 20000, settings.musicHighCutHz, 0);
+      if (highCut > 0) settings.musicHighCutHz = settings.musicHighCutHz > 0 ? Math.min(settings.musicHighCutHz, highCut) : highCut;
+    }
+  }
+  if (strongestEqCutEvent) {
+    if (Number.isFinite(Number(strongestEqCutEvent.musicEqFrequencyHz))) settings.musicEqFrequencyHz = normalizeMixNumber(strongestEqCutEvent.musicEqFrequencyHz, 120, 8000, settings.musicEqFrequencyHz, 0);
+    if (Number.isFinite(Number(strongestEqCutEvent.musicEqQ))) settings.musicEqQ = normalizeMixNumber(strongestEqCutEvent.musicEqQ, 0.1, 10, settings.musicEqQ, 2);
   }
   return settings;
 }
@@ -1395,12 +1411,12 @@ function buildMusicMixFilters(musicVolume, mixSettings) {
   return filters;
 }
 
-function buildDuckedBackgroundFilter(inputLabel, narrationLabel, outputLabel, mixSettings) {
+function buildDuckedBackgroundFilter(inputLabel, narrationLabel, outputLabel, duckingDb) {
   if (ffmpegSupportsFilter("sidechaincompress")) {
-    const ratio = Math.max(2, Math.min(20, Math.abs(mixSettings.musicDuckingDb) * 1.4));
+    const ratio = Math.max(2, Math.min(20, Math.abs(duckingDb) * 1.4));
     return `${inputLabel}${narrationLabel}sidechaincompress=threshold=0.04:ratio=${ratio.toFixed(1)}:attack=15:release=280:makeup=1${outputLabel}`;
   }
-  return `${inputLabel}volume=${dbToVolume(mixSettings.musicDuckingDb).toFixed(5)}${outputLabel}`;
+  return `${inputLabel}volume=${dbToVolume(duckingDb).toFixed(5)}${outputLabel}`;
 }
 
 async function waitForArtifactPaths(paths, requestedAtMs, timeoutMs, pollMs) {
@@ -2684,13 +2700,14 @@ function renderProjectSoundDesignMix({ projectId, narrationPath, musicPath, musi
   const mixPath = path.join(mixDir, "sound-design-mix.wav");
   const inputArgs = ["-y", "-i", narrationPath];
   const filterLines = ["[0:a]volume=1.0[narr]"];
-  const backgroundLabels = [];
+  const musicLabels = [];
+  const sfxLabels = [];
   let inputIndex = 1;
 
   if (musicPath && fs.existsSync(musicPath)) {
     inputArgs.push("-i", musicPath);
     filterLines.push(`[${inputIndex}:a]${buildMusicMixFilters(musicVolume, mixSettings).join(",")}[music]`);
-    backgroundLabels.push("[music]");
+    musicLabels.push("[music]");
     inputIndex += 1;
   }
 
@@ -2717,14 +2734,25 @@ function renderProjectSoundDesignMix({ projectId, narrationPath, musicPath, musi
     ];
     const label = `sfx${inputIndex}`;
     filterLines.push(`[${inputIndex}:a]${filters.join(",")}[${label}]`);
-    backgroundLabels.push(`[${label}]`);
+    sfxLabels.push(`[${label}]`);
     inputIndex += 1;
   }
 
+  const backgroundLabels = [];
+  if (musicLabels.length) {
+    filterLines.push(buildDuckedBackgroundFilter(musicLabels[0], "[narr]", "[duckedmusic]", mixSettings.musicDuckingDb));
+    backgroundLabels.push("[duckedmusic]");
+  }
+  if (sfxLabels.length) {
+    const sfxLabel = sfxLabels.length > 1 ? "[sfxraw]" : sfxLabels[0];
+    if (sfxLabels.length > 1) {
+      filterLines.push(`${sfxLabels.join("")}amix=inputs=${sfxLabels.length}:normalize=0:dropout_transition=0${sfxLabel}`);
+    }
+    filterLines.push(buildDuckedBackgroundFilter(sfxLabel, "[narr]", "[duckedsfx]", mixSettings.defaultDuckingDb));
+    backgroundLabels.push("[duckedsfx]");
+  }
   if (!backgroundLabels.length) return null;
-  filterLines.push(`${backgroundLabels.join("")}amix=inputs=${backgroundLabels.length}:normalize=0:dropout_transition=0[bgraw]`);
-  filterLines.push(buildDuckedBackgroundFilter("[bgraw]", "[narr]", "[duckedbg]", mixSettings));
-  filterLines.push(`[narr][duckedbg]amix=inputs=2:normalize=0:weights='1 1'[mix]`);
+  filterLines.push(`[narr]${backgroundLabels.join("")}amix=inputs=${backgroundLabels.length + 1}:normalize=0:weights='${[1, ...backgroundLabels.map(() => 1)].join(" ")}'[mix]`);
 
   runCommand("ffmpeg", [
     ...inputArgs,

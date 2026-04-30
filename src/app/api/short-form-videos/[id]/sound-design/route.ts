@@ -129,7 +129,7 @@ export async function POST(
     return NextResponse.json({ success: false, error: "XML visuals plan is missing. Run Plan Visuals first." }, { status: 400 });
   }
   if (!fs.existsSync(captionPlanPath)) {
-    return NextResponse.json({ success: false, error: "Caption timing is missing. Run XML Script first so sound design can anchor to captions." }, { status: 400 });
+    return NextResponse.json({ success: false, error: "Caption timing is missing. Run XML Script first so sound design can use transcript/alignment context for timestamp planning." }, { status: 400 });
   }
 
   if (!fs.existsSync(getShortFormSoundDesignPath(id))) {

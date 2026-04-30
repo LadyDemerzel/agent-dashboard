@@ -18,16 +18,17 @@ const DEFAULT_PLANNING_BRIEF_TEMPLATE = [
   "Create a tasteful but confidently designed sound-design plan for this short-form video.",
   "Choose one coherent style palette before individual cues (clean tech, gritty athletic, cinematic trailer, organic/nature, glitch/digital, playful UI, etc.) and keep the palette coherent unless a beat intentionally breaks it.",
   "Use the saved sound-design library when choosing semantic sound cues, including style palette, frequency band, layer role, and literalness metadata when present.",
-  "Bias away from under-designing. Plan richer, more frequent sound effects where the edit supports them, especially on transitions, reveals, movement, scene changes, and strong caption beats.",
+  "Bias away from under-designing. Plan richer, more frequent sound effects where the edit supports them, especially on transitions, reveals, movement, visual timing changes, and strong narration turns.",
   "For major transitions, impacts, risers, whooshes, and useful ambience, plan frequency-layered cue groups: low weight/rumble, mid body/motion, and high air/tick/sparkle/texture. Give related layers the same groupId.",
   "Distinguish literal, stylized, and emotional-metaphor cues. Use emotional realism when the sound should match the feeling or metaphor rather than the visible object.",
   "Plan music transitions where useful: reverse-beat/tail risers, reverb tails on final beats, suckbacks under transitions, and impacts/slams on payoff beats.",
   "Narration owns the mix. Plan music ducking plus midrange EQ carving around speech; do not rely only on lowering gain.",
   "Keep narration clear and well-supported, but do not default to sparse minimal coverage.",
-  "Return compact XML inside <soundDesign> with self-closing <event /> tags.",
+  "Captions, transcript, forced alignment, and visual timing are input context only. Do not time effects to caption boundaries by default.",
+  "Return compact timestamp-only XML inside <sound_design> with layered <track> tags and self-closing <effect /> tags.",
 ].join("\n");
 
-const DEFAULT_REVISION_PROMPT_TEMPLATE = "Revision notes: {{revisionNotes}}";
+const DEFAULT_REVISION_PROMPT_TEMPLATE = "Revision notes: {{revisionNotes}}\nKeep the revised sound-design XML timestamp-only: no anchors, sceneId, captionId, scene references, or caption-boundary timing properties.";
 
 const LEGACY_PROMPT_HINTS = [
   "Create a tasteful sound-design plan for this short-form video.",
@@ -35,7 +36,7 @@ const LEGACY_PROMPT_HINTS = [
   "Use the saved sound-design library when choosing semantic sound cues.",
   "Prefer restraint, clarity, and timing that supports the narration.",
   "Keep narration clear and well-supported, but do not default to sparse minimal coverage.",
-  "Return compact XML inside <soundDesign> with self-closing <event /> tags.",
+  "Return compact timestamp-only XML inside <sound_design> with layered <track> tags and self-closing <effect /> tags.",
 ];
 
 function buildTopLevelSoundDesignPromptTemplate(planningBriefTemplate: string) {
@@ -54,7 +55,8 @@ function buildTopLevelSoundDesignPromptTemplate(planningBriefTemplate: string) {
     "Inputs you must read before writing:",
     "- XML script artifact: {{xmlScriptPath}}",
     "- Caption timing JSON: {{captionPlanPath}}",
-    "- Scene manifest JSON: {{sceneManifestPath}}",
+    "- Visual timing manifest JSON: {{sceneManifestPath}}",
+    "- Word-level forced alignment data, if present under the XML script work directory",
     "",
     "Saved sound library JSON:",
     "{{soundLibraryJson}}",
@@ -64,14 +66,16 @@ function buildTopLevelSoundDesignPromptTemplate(planningBriefTemplate: string) {
     "",
     "Artifact requirements:",
     "- Write YAML front matter first with title, status: needs review, date, agent: Scribe, and category: sound-design.",
-    "- After the front matter, write raw <soundDesign> XML only.",
-    "- Use one <soundDesign version=\"1\" duckingDb=\"...\" maxConcurrentOneShots=\"...\" musicDuckingDb=\"...\" musicEqCutDb=\"...\" musicEqFrequencyHz=\"...\" musicEqQ=\"...\"> root element.",
-    "- Inside it, return only self-closing <event /> tags for timed cues.",
-    "- Every event must include id, type, track, anchor, and the relevant sceneId or captionId when timing depends on them. Optional attrs include groupId, frequencyBand, layerRole, stylePalette, literalness, musicDuckingDb, musicEqCutDb, musicEqFrequencyHz, musicEqQ, musicLowCutHz, and musicHighCutHz.",
+    "- After the front matter, write raw <sound_design> XML only.",
+    "- Use one <sound_design version=\"2\" duckingDb=\"...\" maxConcurrentOneShots=\"...\" musicDuckingDb=\"...\" musicEqCutDb=\"...\" musicEqFrequencyHz=\"...\" musicEqQ=\"...\"> root element.",
+    "- Inside it, group layered audio lanes with <track id=\"...\" role=\"...\"> elements containing self-closing <effect /> cues.",
+    "- Every effect must include id, type, and start=\"seconds\". Include end=\"seconds\" or duration=\"seconds\" for beds/risers/tails when useful.",
+    "- Optional effect attrs: description, searchQuery, category, priority, gainDb, fadeInMs, fadeOutMs, groupId, frequencyBand, layerRole, stylePalette, literalness, rationale, overlap, musicDuckingDb, musicEqCutDb, musicEqFrequencyHz, musicEqQ, musicLowCutHz, musicHighCutHz.",
+    "- Placement must be timestamp-only. Use captions, transcript, word-level forced alignment, and visual timing data to choose sounds and timestamps, but do not emit anchors, sceneId, captionId, caption tags, scene references, or caption-boundary timing properties in the XML.",
     "- Keep cues tasteful and narration-supportive, but do not under-design the soundtrack.",
-    "- Bias toward purposeful cue density where the edit supports it, especially across hook punctuation, transitions, reveals, motion accents, and major caption turns.",
+    "- Bias toward purposeful cue density where the edit supports it, especially across hook punctuation, transitions, reveals, motion accents, and strong narration turns.",
     "- Use the saved library as the allowed source palette when choosing cue types and event intent; metadata can guide palette coherence and low/mid/high layered cue groups.",
-    "- Write the updated artifact back to {{soundDesignPath}}, then read it back and verify the file exists and contains a <soundDesign> root.",
+    "- Write the updated artifact back to {{soundDesignPath}}, then read it back and verify the file exists and contains a <sound_design> root with <track> and <effect> entries.",
   ].join("\n");
 }
 
@@ -115,8 +119,8 @@ const DEFAULT_SOUND_LIBRARY: ShortFormSoundLibraryEntry[] = [
     defaultGainDb: -7,
     defaultFadeInMs: 0,
     defaultFadeOutMs: 240,
-    recommendedUses: "Scene transitions and motion accents.",
-    avoidUses: "Avoid on static scenes or every sentence.",
+    recommendedUses: "Visual transitions and motion accents.",
+    avoidUses: "Avoid on static visuals or every sentence.",
     notes: "Starter slot. Upload a real asset and save the library.",
     license: "Internal",
     createdAt: "2026-04-21T00:00:00.000Z",
@@ -206,24 +210,32 @@ export interface ShortFormSoundDesignTrackGroup {
   notes?: string;
 }
 
-export type ShortFormSoundDesignAnchor = ShortFormSoundAnchor;
 export type ShortFormSoundDesignTiming = ShortFormSoundTimingType;
 
 export interface ShortFormSoundDesignEvent {
   id: string;
   type: ShortFormSoundSemanticType;
+  assetId?: string;
   trackGroupId?: string;
   track?: string;
-  anchor: ShortFormSoundDesignAnchor;
+  startSeconds: number;
+  endSeconds?: number;
+  durationSeconds?: number;
+  description?: string;
+  searchQuery?: string;
+  category?: string;
+  priority?: "must-have" | "nice-to-have" | "optional";
+  /** Legacy-only fields accepted for existing v1 artifacts. Do not emit for new sound-design XML. */
+  anchor?: string;
   sceneId?: string;
   captionId?: string;
-  offsetMs: number;
+  offsetMs?: number;
   gainDb?: number;
   fadeInMs?: number;
   fadeOutMs?: number;
   notes?: string;
   rationale?: string;
-  overlap?: "allow" | "avoid";
+  overlap?: "allow" | "avoid" | "layered";
   groupId?: string;
   frequencyBand?: ShortFormSoundFrequencyBand;
   layerRole?: string;
@@ -528,12 +540,28 @@ function normalizePromptTemplate(value: unknown) {
   );
   normalized = normalized.replace(
     "Prefer restraint, clarity, and timing that supports the narration.",
-    "Bias away from under-designing. Plan richer, more frequent sound effects where the edit supports them, especially on transitions, reveals, movement, scene changes, and strong caption beats. Keep narration clear and well-supported, but do not default to sparse minimal coverage.",
+    "Bias away from under-designing. Plan richer, more frequent sound effects where the edit supports them, especially on transitions, reveals, movement, visual timing changes, and strong narration turns. Keep narration clear and well-supported, but do not default to sparse minimal coverage.",
   );
   normalized = normalized.replace(
     "- Keep cues tasteful, sparse, and narration-supportive. Prefer fewer better events over dense layering.",
-    "- Keep cues tasteful and narration-supportive, but do not under-design the soundtrack.\n- Bias toward purposeful cue density where the edit supports it, especially across hook punctuation, transitions, reveals, motion accents, and major caption turns.",
+    "- Keep cues tasteful and narration-supportive, but do not under-design the soundtrack.\n- Bias toward purposeful cue density where the edit supports it, especially across hook punctuation, transitions, reveals, motion accents, and major narration/visual turns.",
   );
+
+  normalized = normalized
+    .replaceAll("<soundDesign>", "<sound_design>")
+    .replaceAll("<soundDesign", "<sound_design")
+    .replaceAll("</soundDesign>", "</sound_design>")
+    .replaceAll("self-closing <event /> tags", "layered <track> tags with self-closing <effect /> tags")
+    .replaceAll("scene changes, and strong caption beats", "visual timing changes, and strong narration turns")
+    .replaceAll("scene changes, and strong caption turns", "visual timing changes, and strong narration turns")
+    .replaceAll("major caption turns", "major narration/visual turns");
+
+  if (!normalized.includes("timestamp-only") && normalized.includes("Artifact requirements:")) {
+    normalized = normalized.replace(
+      /\nArtifact requirements:/,
+      "\nTimestamp-only placement rules:\n- Use captions, transcript, word-level forced alignment, and visual timing as inputs, then place every cue with absolute timestamps only.\n- New XML must use <sound_design version=\"2\"><track><effect start=\"...\" end=\"...\" or duration=\"...\" /></track></sound_design>.\n- Do not emit anchors, sceneId, captionId, scene references, caption tags, or caption-boundary timing properties.\n\nArtifact requirements:",
+    );
+  }
 
   if (!normalized.includes("frequency-layered cue groups")) {
     normalized = normalized.replace(
@@ -554,6 +582,22 @@ function normalizePromptTemplate(value: unknown) {
     }
   }
 
+  normalized = normalized
+    .replaceAll("<soundDesign>", "<sound_design>")
+    .replaceAll("<soundDesign", "<sound_design")
+    .replaceAll("</soundDesign>", "</sound_design>")
+    .replaceAll("self-closing <event /> tags", "layered <track> tags with self-closing <effect /> tags")
+    .replaceAll("scene changes, and strong caption beats", "visual timing changes, and strong narration turns")
+    .replaceAll("scene changes, and strong caption turns", "visual timing changes, and strong narration turns")
+    .replaceAll("major caption turns", "major narration/visual turns");
+
+  if (!normalized.includes("timestamp-only") && normalized.includes("Artifact requirements:")) {
+    normalized = normalized.replace(
+      /\nArtifact requirements:/,
+      "\nTimestamp-only placement rules:\n- Use captions, transcript, word-level forced alignment, and visual timing as inputs, then place every cue with absolute timestamps only.\n- New XML must use <sound_design version=\"2\"><track><effect start=\"...\" end=\"...\" or duration=\"...\" /></track></sound_design>.\n- Do not emit anchors, sceneId, captionId, scene references, caption tags, or caption-boundary timing properties.\n\nArtifact requirements:",
+    );
+  }
+
   if (!normalized.includes("frequency-layered cue groups")) {
     normalized = normalized.replace(
       /\nArtifact requirements:/,
@@ -569,7 +613,10 @@ function normalizeRevisionPromptTemplate(value: unknown) {
     return DEFAULT_REVISION_PROMPT_TEMPLATE;
   }
 
-  return value.replace(/\r/g, "").trim();
+  const normalized = value.replace(/\r/g, "").trim();
+  return normalized.includes("timestamp-only")
+    ? normalized
+    : `${normalized}\nKeep the revised sound-design XML timestamp-only: no anchors, sceneId, captionId, scene references, or caption-boundary timing properties.`;
 }
 
 function normalizeSettings(candidate: Partial<ShortFormSoundDesignSettings> | null | undefined): ShortFormSoundDesignSettings {
@@ -663,16 +710,24 @@ function normalizeArtifactEvent(candidate: Partial<ShortFormSoundDesignEvent> | 
     type,
     trackGroupId: normalizeOptionalString(candidate?.trackGroupId),
     track: normalizeOptionalString(candidate?.track) || (type === "ambience" ? "ambience" : type === "riser" || type === "whoosh" ? "transitions" : "impacts"),
-    anchor: normalizeAnchor(candidate?.anchor),
+    assetId: normalizeString(candidate?.assetId, "") || undefined,
+    startSeconds: normalizeNumber(candidate?.startSeconds, 0, 10_000, 0, 3),
+    endSeconds: normalizeOptionalNumber(candidate?.endSeconds, 0, 10_000, 3),
+    durationSeconds: normalizeOptionalNumber(candidate?.durationSeconds, 0.01, 10_000, 3),
+    description: normalizeOptionalString(candidate?.description),
+    searchQuery: normalizeOptionalString(candidate?.searchQuery),
+    category: normalizeOptionalString(candidate?.category),
+    priority: candidate?.priority === "must-have" || candidate?.priority === "nice-to-have" || candidate?.priority === "optional" ? candidate.priority : undefined,
+    anchor: normalizeOptionalString(candidate?.anchor),
     sceneId: normalizeOptionalString(candidate?.sceneId),
     captionId: normalizeOptionalString(candidate?.captionId),
-    offsetMs: normalizeNumber(candidate?.offsetMs, -20_000, 20_000, 0, 0),
+    offsetMs: normalizeOptionalNumber(candidate?.offsetMs, -20_000, 20_000, 0),
     gainDb: normalizeOptionalNumber(candidate?.gainDb, -36, 12, 1),
     fadeInMs: normalizeOptionalNumber(candidate?.fadeInMs, 0, 10_000, 0),
     fadeOutMs: normalizeOptionalNumber(candidate?.fadeOutMs, 0, 10_000, 0),
     notes: normalizeOptionalString(candidate?.notes),
     rationale: normalizeOptionalString(candidate?.rationale),
-    overlap: candidate?.overlap === "allow" ? "allow" : candidate?.overlap === "avoid" ? "avoid" : undefined,
+    overlap: candidate?.overlap === "allow" || candidate?.overlap === "avoid" || candidate?.overlap === "layered" ? candidate.overlap : undefined,
     groupId: normalizeOptionalString(candidate?.groupId),
     frequencyBand: normalizeFrequencyBand(candidate?.frequencyBand),
     layerRole: normalizeOptionalString(candidate?.layerRole),
@@ -777,6 +832,19 @@ export function renderShortFormSoundDesignPrompt(template: string, values: Recor
   return withConditionalRevisionNotesBlock.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "");
 }
 
+function buildPromptSoundLibraryJson(library: ShortFormSoundLibraryEntry[]) {
+  return JSON.stringify(library.map((entry) => {
+    const rest: Record<string, unknown> = { ...entry };
+    delete rest.defaultAnchor;
+    const anchorRatio = typeof rest.anchorRatio === "number" ? rest.anchorRatio : undefined;
+    delete rest.anchorRatio;
+    return {
+      ...rest,
+      ...(typeof anchorRatio === "number" ? { sourceSyncPointRatio: anchorRatio } : {}),
+    };
+  }), null, 2);
+}
+
 export function buildShortFormSoundDesignPrompt(projectId: string, options: {
   topic?: string;
   selectedHook?: string;
@@ -809,7 +877,7 @@ export function buildShortFormSoundDesignPrompt(projectId: string, options: {
     xmlScriptPath,
     captionPlanPath,
     sceneManifestPath,
-    soundLibraryJson: JSON.stringify(settings.library, null, 2),
+    soundLibraryJson: buildPromptSoundLibraryJson(settings.library),
   });
 }
 

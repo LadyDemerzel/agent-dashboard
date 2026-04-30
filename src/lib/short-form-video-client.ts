@@ -171,10 +171,11 @@ export interface SoundDesignResolvedEventClient {
   id: string;
   type: 'impact' | 'riser' | 'click' | 'whoosh' | 'ambience' | 'music-riser' | 'music-reverb-tail' | 'mix-duck' | 'mix-eq';
   track: string;
-  anchor: string;
+  /** Legacy-only; current sound-design XML uses timestamp placement. */
+  anchor?: string;
   sceneId?: string;
   captionId?: string;
-  offsetMs: number;
+  offsetMs?: number;
   assetId?: string;
   assetName?: string;
   assetRelativePath?: string;
@@ -770,10 +771,10 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
                 id: asString(item.id),
                 type: item.type === 'riser' || item.type === 'click' || item.type === 'whoosh' || item.type === 'ambience' || item.type === 'music-riser' || item.type === 'music-reverb-tail' || item.type === 'mix-duck' || item.type === 'mix-eq' ? item.type : 'impact',
                 track: asString(item.track),
-                anchor: asString(item.anchor),
+                anchor: asOptionalString(item.anchor),
                 sceneId: asOptionalString(item.sceneId),
                 captionId: asOptionalString(item.captionId),
-                offsetMs: typeof item.offsetMs === 'number' ? item.offsetMs : 0,
+                offsetMs: typeof item.offsetMs === 'number' ? item.offsetMs : undefined,
                 assetId: asOptionalString(item.assetId),
                 assetName: asOptionalString(item.assetName),
                 assetRelativePath: asOptionalString(item.assetRelativePath),

@@ -302,9 +302,13 @@ function buildStageTask(
       `Topic: ${project.topic || "Untitled short-form video"}`,
       project.selectedHookText ? `Selected hook: ${project.selectedHookText}` : "Selected hook: none approved yet.",
       requestContext.notes ? `Requested changes: ${requestContext.notes}` : "Requested changes: none.",
-      `Use the approved XML/script context from ${xmlScriptPath} when timing cues.`,
+      `Use the approved XML/script context from ${xmlScriptPath}, caption timing, word-level forced alignment when present, and visual timing data when choosing cue timestamps.`,
       "Keep the plan tasteful and aligned to narration pacing, but bias away from under-designing.",
-      "Plan richer, more frequent sound effects where the edit supports them, especially on transitions, reveals, motion accents, scene changes, and strong caption turns.",
+      "Plan richer, more frequent sound effects where the edit supports them, especially on transitions, reveals, motion accents, visual timing changes, and strong narration turns.",
+      'Output timestamp-only multi-track XML: <sound_design><track><effect type="semantic-type" start="..." end="..." or duration="..." /></track></sound_design>.',
+      'Use semantic type values when possible: impact, riser, click, whoosh, ambience, music-riser, music-reverb-tail, mix-duck, or mix-eq. If you need an exact saved sound, keep type semantic and add assetId="saved-library-id"; type="saved-library-id" is accepted only for backward compatibility.',
+      "Supported overlap values are allow, avoid, and layered. Root maxConcurrentOneShots limits simultaneous non-bed SFX; lower-priority overlaps may be auto-muted.",
+      "Do not emit anchors, sceneId, captionId, scene references, caption tags, or caption-boundary timing properties. Captions are context only.",
       "Write the updated artifact back to the same sound-design path.",
     ].join("\n");
   } else {

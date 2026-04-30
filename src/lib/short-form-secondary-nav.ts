@@ -14,9 +14,30 @@ export function routeHasShortFormSecondaryNav(pathname: string) {
   return /^\/short-form-video\/[^/]+\/[^/]+$/.test(pathname);
 }
 
+export type ShortFormSecondaryNavIcon =
+  | 'topic'
+  | 'hook'
+  | 'research'
+  | 'text-script'
+  | 'narration'
+  | 'captions'
+  | 'plan-visuals'
+  | 'generate-visuals'
+  | 'plan-sound-design'
+  | 'generate-sound-design'
+  | 'final-video'
+  | 'prompts'
+  | 'audio'
+  | 'sound-library'
+  | 'images'
+  | 'settings-captions'
+  | 'backgrounds'
+  | 'music';
+
 export interface ShortFormSecondaryNavItem {
   href: string;
   label: string;
+  icon?: ShortFormSecondaryNavIcon;
   group?: string;
   status?: string;
   caption?: string;
@@ -136,6 +157,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'topic',
       href: buildShortFormDetailHref(projectId, 'topic'),
       label: 'Topic',
+      icon: 'topic',
       group: 'WRITING',
       caption: 'Start the project and trigger hook generation.',
       meta: project?.topic ? 'Topic saved' : 'Needs topic',
@@ -146,6 +168,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'hook',
       href: buildShortFormDetailHref(projectId, 'hook'),
       label: 'Hook',
+      icon: 'hook',
       group: 'WRITING',
       caption: 'Generate, review, and select the hook that drives the rest of the workflow.',
       meta: project?.selectedHookText ? 'Hook selected' : 'Waiting for topic',
@@ -158,6 +181,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'research',
       href: buildShortFormDetailHref(projectId, 'research'),
       label: 'Research',
+      icon: 'research',
       group: 'WRITING',
       caption: 'Review Oracle research tied to the selected hook.',
       meta: project?.selectedHookText ? 'Hook approved' : 'Needs hook selection',
@@ -170,6 +194,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'text-script',
       href: buildShortFormDetailHref(projectId, 'text-script'),
       label: 'Text Script',
+      icon: 'text-script',
       group: 'WRITING',
       caption: 'Write and approve the plain narration script before XML planning starts.',
       meta: approved(project?.research.status) ? 'Research approved' : 'Needs approved research',
@@ -182,6 +207,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'generate-narration-audio',
       href: buildShortFormDetailHref(projectId, 'generate-narration-audio'),
       label: 'Generate Narration Audio',
+      icon: 'narration',
       group: 'NARRATION',
       caption: 'Generate narration audio, remove pauses, and force-align the processed WAV.',
       meta: approved(project?.script.status) ? 'Text script approved' : 'Needs approved text script',
@@ -194,6 +220,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'plan-captions',
       href: buildShortFormDetailHref(projectId, 'plan-captions'),
       label: 'Plan Captions',
+      icon: 'captions',
       group: 'NARRATION',
       caption: 'Generate deterministic caption JSON from the latest alignment.',
       meta: narrationStatus === 'approved' ? 'Narration aligned' : 'Needs narration audio',
@@ -206,6 +233,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'plan-visuals',
       href: buildShortFormDetailHref(projectId, 'plan-visuals'),
       label: 'Plan Visuals',
+      icon: 'plan-visuals',
       group: 'VISUALS',
       caption: 'Write the XML asset and timeline plan from approved narration timing and captions.',
       meta: captionsStatus === 'approved' ? 'Captions planned' : 'Needs caption plan',
@@ -218,6 +246,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'generate-visuals',
       href: buildShortFormDetailHref(projectId, 'generate-visuals'),
       label: 'Generate Visuals',
+      icon: 'generate-visuals',
       group: 'VISUALS',
       caption: 'Generate, review, and approve scene images from the XML plan.',
       meta: approved(project?.xmlScript.status) ? 'XML approved' : 'Needs approved XML',
@@ -230,6 +259,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'plan-sound-design',
       href: buildShortFormDetailHref(projectId, 'plan-sound-design'),
       label: 'Plan Sound Design',
+      icon: 'plan-sound-design',
       group: 'SOUND DESIGN',
       caption: 'Generate and review the Plan Sound Design XML artifact.',
       meta: approved(project?.sceneImages.status) ? 'Generate Visuals approved' : 'Needs approved generated visuals',
@@ -242,6 +272,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'generate-sound-design',
       href: buildShortFormDetailHref(projectId, 'generate-sound-design'),
       label: 'Generate Sound Design',
+      icon: 'generate-sound-design',
       group: 'SOUND DESIGN',
       caption: 'Resolve assets, render audio, tune event overrides, and hand off for final render.',
       meta: project?.soundDesign.exists ? 'XML plan ready' : 'Needs Plan Sound Design XML',
@@ -254,6 +285,7 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       id: 'final-video',
       href: buildShortFormDetailHref(projectId, 'final-video'),
       label: 'Final Video',
+      icon: 'final-video',
       group: 'RENDER',
       caption: 'Render and review the finished short-form export.',
       meta: approved(project?.sceneImages.status) ? 'Ready after handoff' : 'Needs approved generated visuals',
@@ -284,6 +316,7 @@ export function getShortFormSettingsNavItems(summary?: ShortFormSettingsNavSumma
     {
       href: buildShortFormSettingsHref('prompts'),
       label: 'Prompts',
+      icon: 'prompts',
       caption: 'Hooks, research, narration script, and XML visual-planning prompts.',
       meta: '4 editable sections',
       status: promptsDirty ? 'needs review' : 'approved',
@@ -292,6 +325,7 @@ export function getShortFormSettingsNavItems(summary?: ShortFormSettingsNavSumma
     {
       href: buildShortFormSettingsHref('audio'),
       label: 'Audio',
+      icon: 'audio',
       caption: 'Narration voice library plus pause-removal and chroma-key defaults.',
       meta: `${summary?.voiceCount || 0} voices`,
       status: audioDirty ? 'needs review' : 'approved',
@@ -300,6 +334,7 @@ export function getShortFormSettingsNavItems(summary?: ShortFormSettingsNavSumma
     {
       href: buildShortFormSettingsHref('sound-library'),
       label: 'Sound Library',
+      icon: 'sound-library',
       caption: 'Shared prompt, mix defaults, and reusable SFX library.',
       meta: `${summary?.soundCount || 0} sounds`,
       status: dirty.has('sound-library') ? 'needs review' : 'approved',
@@ -308,6 +343,7 @@ export function getShortFormSettingsNavItems(summary?: ShortFormSettingsNavSumma
     {
       href: buildShortFormSettingsHref('images'),
       label: 'Images',
+      icon: 'images',
       caption: 'Nano Banana prompt templates and the reusable image-style library.',
       meta: `${summary?.styleCount || 0} styles`,
       status: dirty.has('image-templates') || dirty.has('image-styles') ? 'needs review' : 'approved',
@@ -316,6 +352,7 @@ export function getShortFormSettingsNavItems(summary?: ShortFormSettingsNavSumma
     {
       href: buildShortFormSettingsHref('captions'),
       label: 'Captions',
+      icon: 'settings-captions',
       caption: 'Reusable caption-style presets and animation definitions.',
       meta: `${summary?.captionStyleCount || 0} caption styles`,
       status: dirty.has('caption-styles') ? 'needs review' : 'approved',
@@ -324,6 +361,7 @@ export function getShortFormSettingsNavItems(summary?: ShortFormSettingsNavSumma
     {
       href: buildShortFormSettingsHref('backgrounds'),
       label: 'Backgrounds',
+      icon: 'backgrounds',
       caption: 'Looping background videos used behind generated scene images.',
       meta: `${summary?.backgroundCount || 0} loops`,
       status: dirty.has('background-videos') ? 'needs review' : 'approved',
@@ -332,6 +370,7 @@ export function getShortFormSettingsNavItems(summary?: ShortFormSettingsNavSumma
     {
       href: buildShortFormSettingsHref('music'),
       label: 'Music',
+      icon: 'music',
       caption: 'Saved soundtrack presets and preview generation settings.',
       meta: `${summary?.musicTrackCount || 0} tracks`,
       status: dirty.has('music-library') ? 'needs review' : 'approved',

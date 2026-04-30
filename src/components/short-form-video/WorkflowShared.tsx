@@ -20,6 +20,7 @@ export function WorkflowArtifactActionButton({
   rerunWithNotesLabel,
   loadingLabel = "Working…",
   notesPlaceholder = "Enter revision instructions to incorporate",
+  allowRerunWithNotes = true,
   disabled = false,
   loading = false,
   onInitialRun,
@@ -32,6 +33,7 @@ export function WorkflowArtifactActionButton({
   rerunWithNotesLabel: string;
   loadingLabel?: string;
   notesPlaceholder?: string;
+  allowRerunWithNotes?: boolean;
   disabled?: boolean;
   loading?: boolean;
   onInitialRun: () => void | Promise<void>;
@@ -87,6 +89,19 @@ export function WorkflowArtifactActionButton({
         className="cursor-pointer"
       >
         {loading ? loadingLabel : initialLabel}
+      </Button>
+    );
+  }
+
+  if (!allowRerunWithNotes) {
+    return (
+      <Button
+        type="button"
+        onClick={() => void onCleanRerun()}
+        disabled={isDisabled}
+        className="cursor-pointer"
+      >
+        {loading ? loadingLabel : rerunLabel}
       </Button>
     );
   }
@@ -162,7 +177,7 @@ export function ShortFormSubpageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="space-y-3">
       <div className="min-w-0 max-w-4xl">
         {eyebrow ? (
           <p className="text-sm text-muted-foreground">{eyebrow}</p>

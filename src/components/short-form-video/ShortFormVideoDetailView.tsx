@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -10,6 +16,7 @@ import { EditIconButton } from "@/components/EditIconButton";
 import { RefreshIconButton } from "@/components/RefreshIconButton";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,6 +28,10 @@ import {
   PipelinePanel,
   type PipelineStep,
 } from "@/components/short-form-video/PipelinePanel";
+import {
+  CompactSettingCard,
+  CompactSettingLink,
+} from "@/components/short-form-video/CompactSettingCard";
 import { SyntaxHighlightedCode } from "@/components/short-form-video/SyntaxHighlightedCode";
 import {
   PendingNotice,
@@ -621,6 +632,19 @@ function ScenePreviewVideoCard({
   );
 }
 
+const SUPPRESSED_VIDEO_PIPELINE_WARNINGS = new Set([
+  "Caption preset Fluid Pop now renders through the animated overlay renderer so the saved config-driven timing, easing, motion tracks, layout mode, and color-source settings are applied during final render.",
+]);
+
+function filterVideoPipelineWarning(warning?: string) {
+  if (!warning) return undefined;
+  const visibleWarnings = warning
+    .split(" · ")
+    .map((part) => part.trim())
+    .filter((part) => part && !SUPPRESSED_VIDEO_PIPELINE_WARNINGS.has(part));
+  return visibleWarnings.length > 0 ? visibleWarnings.join(" · ") : undefined;
+}
+
 function VideoPipelinePanel({ project }: { project: Project }) {
   const pipeline = project.video.pipeline;
 
@@ -629,24 +653,9 @@ function VideoPipelinePanel({ project }: { project: Project }) {
   return (
     <PipelinePanel
       title="Final-video pipeline"
-      description="This shows the actual persisted final-video artifacts, including whether narration/alignment were reused from Generate Narration Audio or regenerated, plus the timing path the renderer actually used."
       status={pipeline.status}
-      warning={pipeline.warning}
+      warning={filterVideoPipelineWarning(pipeline.warning)}
       steps={pipeline.steps}
-      metadata={
-        <>
-          {pipeline.workDir ? <span>Work dir: {pipeline.workDir}</span> : null}
-          {pipeline.transcriptPath ? (
-            <span>Transcript: {pipeline.transcriptPath}</span>
-          ) : null}
-          {pipeline.alignmentInputPath ? (
-            <span>Alignment input: {pipeline.alignmentInputPath}</span>
-          ) : null}
-          {pipeline.alignmentOutputPath ? (
-            <span>Alignment output: {pipeline.alignmentOutputPath}</span>
-          ) : null}
-        </>
-      }
     />
   );
 }
@@ -1452,8 +1461,13 @@ function XMLScriptSection({
       : "",
   );
   const [savingVoice, setSavingVoice] = useState(false);
+  const [voiceDialogOpen, setVoiceDialogOpen] = useState(false);
+  const [draftVoiceId, setDraftVoiceId] = useState("");
   const [savingCaptionMaxWords, setSavingCaptionMaxWords] = useState(false);
+  const [captionMaxWordsDialogOpen, setCaptionMaxWordsDialogOpen] =
+    useState(false);
   const [savingPauseRemoval, setSavingPauseRemoval] = useState(false);
+  const [pauseRemovalDialogOpen, setPauseRemovalDialogOpen] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [captionMaxWordsError, setCaptionMaxWordsError] = useState<
     string | null
@@ -1601,12 +1615,14 @@ function XMLScriptSection({
         "Failed to update XML narration voice",
       );
       await onProjectRefresh();
+      return true;
     } catch (err) {
       setVoiceError(
         err instanceof Error
           ? err.message
           : "Failed to update XML narration voice",
       );
+      return false;
     } finally {
       setSavingVoice(false);
     }
@@ -1630,12 +1646,14 @@ function XMLScriptSection({
         "Failed to update XML caption max words override",
       );
       await onProjectRefresh();
+      return true;
     } catch (err) {
       setCaptionMaxWordsError(
         err instanceof Error
           ? err.message
           : "Failed to update XML caption max words override",
       );
+      return false;
     } finally {
       setSavingCaptionMaxWords(false);
     }
@@ -1678,29 +1696,49 @@ function XMLScriptSection({
         "Failed to update XML pause-removal override",
       );
       await onProjectRefresh();
+      return true;
     } catch (err) {
       setPauseRemovalError(
         err instanceof Error
           ? err.message
           : "Failed to update XML pause-removal override",
       );
+      return false;
     } finally {
       setSavingPauseRemoval(false);
     }
   }
 
-  const activeVoiceLabel =
-    project.selectedVoiceName ||
+  const globalDefaultVoiceLabel =
     voiceOptions.find((voice) => voice.id === defaultVoiceId)?.name ||
     "default voice";
+  const activeVoiceId = project.selectedVoiceId || defaultVoiceId || "";
+  const activeVoiceLabel = project.selectedVoiceName || globalDefaultVoiceLabel;
   const effectiveCaptionMaxWords =
     project.captionMaxWordsOverride || defaultCaptionMaxWords;
+  const captionMaxWordsGlobalDefaultText = defaultCaptionMaxWords
+    ? `${defaultCaptionMaxWords} words`
+    : "Default";
+  const captionMaxWordsDisplayText = effectiveCaptionMaxWords
+    ? `${effectiveCaptionMaxWords} words`
+    : "Default";
   const effectivePauseRemovalMinSilenceDurationSeconds =
     project.pauseRemovalMinSilenceDurationSecondsOverride ||
     defaultPauseRemovalMinSilenceDurationSeconds;
   const effectivePauseRemovalSilenceThresholdDb =
     project.pauseRemovalSilenceThresholdDbOverride ||
     defaultPauseRemovalSilenceThresholdDb;
+  const pauseRemovalGlobalDefaultText = `${(
+    defaultPauseRemovalMinSilenceDurationSeconds || 0.35
+  ).toFixed(2)}s minimum silence, ${(
+    defaultPauseRemovalSilenceThresholdDb || -40
+  ).toFixed(1)} dB threshold`;
+  const pauseRemovalDisplayMinSilenceText = `${(
+    effectivePauseRemovalMinSilenceDurationSeconds || 0.35
+  ).toFixed(2)}s min silence`;
+  const pauseRemovalDisplayThresholdText = `${(
+    effectivePauseRemovalSilenceThresholdDb || -40
+  ).toFixed(1)} dB threshold`;
   const narrationStatus = getXmlPipelineTaskStatus(
     getXmlPipelineSteps(doc, ["narration", "silence-removal", "alignment"]),
   );
@@ -1790,179 +1828,267 @@ function XMLScriptSection({
                 : "Run pause removal + alignment"}
           </Button>
         </div>
-        <div className="rounded-lg border border-border bg-background/60 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-medium text-foreground">
-                Voice for narration
-              </h3>
-              <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-                Choose the narration voice before running Narration Audio.
-                Captions and visuals planning can then rerun independently
-                against the same narration/alignment artifacts.
-              </p>
-            </div>
-            <Link
+        <CompactSettingCard
+          title="Narration voice"
+          globalDefault={<>Global default voice: {globalDefaultVoiceLabel}</>}
+          valueLines={[{ children: activeVoiceLabel }]}
+          editTooltip="Edit narration voice"
+          editDisabled={Boolean(doc?.pending)}
+          onEdit={() => {
+            setDraftVoiceId(activeVoiceId);
+            setVoiceError(null);
+            setVoiceDialogOpen(true);
+          }}
+          links={
+            <CompactSettingLink
               href={buildShortFormSettingsHref("audio", { hash: "tts-voice" })}
               target="_blank"
               rel="noreferrer"
-              className="text-xs text-muted-foreground hover:text-foreground"
             >
               Open voice library ↗
-            </Link>
-          </div>
-          <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
-            <Select
-              value={project.selectedVoiceId || defaultVoiceId || ""}
-              onChange={(event) => void saveProjectVoice(event.target.value)}
-              disabled={
-                savingVoice ||
-                voiceOptions.length === 0 ||
-                Boolean(doc?.pending)
-              }
-              className="max-w-sm"
-            >
-              {voiceOptions.map((voice) => (
-                <option key={voice.id} value={voice.id}>
-                  {voice.name}
-                  {voice.sourceType === "uploaded-reference"
-                    ? " [uploaded reference]"
-                    : voice.mode === "custom-voice"
-                      ? " [legacy custom]"
-                      : " [generated]"}
-                  {voice.id === defaultVoiceId ? " (default)" : ""}
-                </option>
-              ))}
-            </Select>
-            <div className="text-xs text-muted-foreground">
-              {savingVoice
-                ? "Saving narration voice…"
-                : project.selectedVoiceName
-                  ? `Current narration voice: ${project.selectedVoiceName}`
-                  : defaultVoiceId
-                    ? `Using the current default voice: ${activeVoiceLabel}`
-                    : "Using the fallback default voice."}
-            </div>
-          </div>
-        </div>
-        <div className="rounded-lg border border-border bg-background/60 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-medium text-foreground">
-                Pause removal / silence trimming
-              </h3>
-              <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-                These project-level overrides control the ffmpeg silence-removal
-                pass that runs after original narration generation. Re-running
-                this step also re-runs forced alignment so downstream timing
-                stays in sync.
-              </p>
-            </div>
-            <Link
+            </CompactSettingLink>
+          }
+          dialog={{
+            open: voiceDialogOpen,
+            title: "Narration voice",
+            description: "Pick the voice to use when generating narration audio.",
+            children: (
+              <>
+                {voiceError ? (
+                  <ValidationNotice
+                    title="Narration voice issue"
+                    message={voiceError}
+                  />
+                ) : null}
+                <CompactSettingLink
+                  href={buildShortFormSettingsHref("audio", { hash: "tts-voice" })}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open voice library ↗
+                </CompactSettingLink>
+                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                  {voiceOptions.length > 0 ? (
+                    voiceOptions.map((voice) => (
+                      <button
+                        key={voice.id}
+                        type="button"
+                        onClick={() => setDraftVoiceId(voice.id)}
+                        disabled={savingVoice || Boolean(doc?.pending)}
+                        className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
+                          draftVoiceId === voice.id
+                            ? "border-primary bg-primary/10 text-foreground"
+                            : "border-border bg-background/60 text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="font-medium">{voice.name}</span>
+                          {voice.id === defaultVoiceId ? (
+                            <Badge variant="secondary">Global default</Badge>
+                          ) : null}
+                        </div>
+                        <div className="mt-1 text-xs opacity-80">
+                          {voice.sourceType === "uploaded-reference"
+                            ? "Uploaded reference"
+                            : voice.mode === "custom-voice"
+                              ? "Legacy custom voice"
+                              : "Generated voice"}
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="rounded-md border border-border bg-background/60 p-3 text-sm text-muted-foreground">
+                      No narration voices are available yet.
+                    </p>
+                  )}
+                </div>
+                <DialogFooter className="mt-0 justify-start">
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      void saveProjectVoice(draftVoiceId).then((saved) => {
+                        if (saved) setVoiceDialogOpen(false);
+                      })
+                    }
+                    disabled={
+                      savingVoice ||
+                      !draftVoiceId ||
+                      voiceOptions.length === 0 ||
+                      Boolean(doc?.pending)
+                    }
+                  >
+                    {savingVoice ? "Saving…" : "Save"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setVoiceDialogOpen(false)}
+                    disabled={savingVoice}
+                  >
+                    Cancel
+                  </Button>
+                </DialogFooter>
+              </>
+            ),
+          }}
+        />
+        <CompactSettingCard
+          title="Pause removal / silence trimming"
+          globalDefault={<>Global default: {pauseRemovalGlobalDefaultText}</>}
+          valueLines={[
+            { children: pauseRemovalDisplayMinSilenceText },
+            { children: pauseRemovalDisplayThresholdText, tone: "secondary" },
+          ]}
+          editTooltip="Edit pause removal settings"
+          editDisabled={Boolean(doc?.pending)}
+          onEdit={() => {
+            setProjectPauseRemovalMinSilenceDurationSecondsOverride(
+              project.pauseRemovalMinSilenceDurationSecondsOverride
+                ? String(project.pauseRemovalMinSilenceDurationSecondsOverride)
+                : "",
+            );
+            setProjectPauseRemovalSilenceThresholdDbOverride(
+              project.pauseRemovalSilenceThresholdDbOverride
+                ? String(project.pauseRemovalSilenceThresholdDbOverride)
+                : "",
+            );
+            setPauseRemovalError(null);
+            setPauseRemovalDialogOpen(true);
+          }}
+          links={
+            <CompactSettingLink
               href={buildShortFormSettingsHref("audio", {
                 hash: "pause-removal",
               })}
               target="_blank"
               rel="noreferrer"
-              className="text-xs text-muted-foreground hover:text-foreground"
             >
               Open global defaults ↗
-            </Link>
-          </div>
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Remove pauses longer than (seconds)
-              </label>
-              <Input
-                type="number"
-                min={0.1}
-                max={2.5}
-                step={0.01}
-                value={projectPauseRemovalMinSilenceDurationSecondsOverride}
-                onChange={(event) =>
-                  setProjectPauseRemovalMinSilenceDurationSecondsOverride(
-                    event.target.value,
-                  )
-                }
-                placeholder={
-                  defaultPauseRemovalMinSilenceDurationSeconds
-                    ? String(defaultPauseRemovalMinSilenceDurationSeconds)
-                    : "0.35"
-                }
-                className="max-w-[160px]"
-                disabled={savingPauseRemoval || Boolean(doc?.pending)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Longer silent spans than this are trimmed out of the processed
-                narration file.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Silence threshold (dB)
-              </label>
-              <Input
-                type="number"
-                min={-80}
-                max={-5}
-                step={0.1}
-                value={projectPauseRemovalSilenceThresholdDbOverride}
-                onChange={(event) =>
-                  setProjectPauseRemovalSilenceThresholdDbOverride(
-                    event.target.value,
-                  )
-                }
-                placeholder={
-                  defaultPauseRemovalSilenceThresholdDb
-                    ? String(defaultPauseRemovalSilenceThresholdDb)
-                    : "-40"
-                }
-                className="max-w-[160px]"
-                disabled={savingPauseRemoval || Boolean(doc?.pending)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Anything quieter than this is treated as silence during
-                trimming.
-              </p>
-            </div>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              onClick={() =>
-                void saveProjectPauseRemoval(
-                  projectPauseRemovalMinSilenceDurationSecondsOverride || null,
-                  projectPauseRemovalSilenceThresholdDbOverride || null,
-                )
-              }
-              disabled={savingPauseRemoval || Boolean(doc?.pending)}
-            >
-              {savingPauseRemoval ? "Saving…" : "Save pause-removal override"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void saveProjectPauseRemoval(null, null)}
-              disabled={
-                savingPauseRemoval ||
-                (!project.pauseRemovalMinSilenceDurationSecondsOverride &&
-                  !project.pauseRemovalSilenceThresholdDbOverride) ||
-                Boolean(doc?.pending)
-              }
-            >
-              Use global defaults
-            </Button>
-          </div>
-          <div className="mt-3 text-xs text-muted-foreground">
-            {savingPauseRemoval
-              ? "Saving pause-removal overrides…"
-              : project.pauseRemovalMinSilenceDurationSecondsOverride ||
-                  project.pauseRemovalSilenceThresholdDbOverride
-                ? `Effective pause removal: ${effectivePauseRemovalMinSilenceDurationSeconds?.toFixed(2) || "0.35"}s minimum silence, threshold ${effectivePauseRemovalSilenceThresholdDb?.toFixed(1) || "-40.0"} dB (project override).`
-                : `Effective pause removal: ${effectivePauseRemovalMinSilenceDurationSeconds?.toFixed(2) || "0.35"}s minimum silence, threshold ${effectivePauseRemovalSilenceThresholdDb?.toFixed(1) || "-40.0"} dB (global default).`}
-          </div>
-        </div>
+            </CompactSettingLink>
+          }
+          dialog={{
+            open: pauseRemovalDialogOpen,
+            title: "Pause removal / silence trimming",
+            description:
+              "Set project overrides for the silence-removal pass, or reset to the global defaults.",
+            children: (
+              <>
+                {pauseRemovalError ? (
+                  <ValidationNotice
+                    title="Pause-removal settings issue"
+                    message={pauseRemovalError}
+                  />
+                ) : null}
+                <CompactSettingLink
+                  href={buildShortFormSettingsHref("audio", {
+                    hash: "pause-removal",
+                  })}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open global defaults ↗
+                </CompactSettingLink>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Remove pauses longer than (seconds)
+                    </label>
+                    <Input
+                      type="number"
+                      min={0.1}
+                      max={2.5}
+                      step={0.01}
+                      value={projectPauseRemovalMinSilenceDurationSecondsOverride}
+                      onChange={(event) =>
+                        setProjectPauseRemovalMinSilenceDurationSecondsOverride(
+                          event.target.value,
+                        )
+                      }
+                      placeholder={
+                        defaultPauseRemovalMinSilenceDurationSeconds
+                          ? String(defaultPauseRemovalMinSilenceDurationSeconds)
+                          : "0.35"
+                      }
+                      className="max-w-[160px]"
+                      disabled={savingPauseRemoval || Boolean(doc?.pending)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Longer silent spans than this are trimmed out.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Silence threshold (dB)
+                    </label>
+                    <Input
+                      type="number"
+                      min={-80}
+                      max={-5}
+                      step={0.1}
+                      value={projectPauseRemovalSilenceThresholdDbOverride}
+                      onChange={(event) =>
+                        setProjectPauseRemovalSilenceThresholdDbOverride(
+                          event.target.value,
+                        )
+                      }
+                      placeholder={
+                        defaultPauseRemovalSilenceThresholdDb
+                          ? String(defaultPauseRemovalSilenceThresholdDb)
+                          : "-40"
+                      }
+                      className="max-w-[160px]"
+                      disabled={savingPauseRemoval || Boolean(doc?.pending)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Quieter audio is treated as silence.
+                    </p>
+                  </div>
+                </div>
+                <DialogFooter className="mt-0 justify-start">
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      void saveProjectPauseRemoval(
+                        projectPauseRemovalMinSilenceDurationSecondsOverride || null,
+                        projectPauseRemovalSilenceThresholdDbOverride || null,
+                      ).then((saved) => {
+                        if (saved) setPauseRemovalDialogOpen(false);
+                      })
+                    }
+                    disabled={savingPauseRemoval || Boolean(doc?.pending)}
+                  >
+                    {savingPauseRemoval ? "Saving…" : "Save"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      void saveProjectPauseRemoval(null, null).then((saved) => {
+                        if (saved) setPauseRemovalDialogOpen(false);
+                      })
+                    }
+                    disabled={
+                      savingPauseRemoval ||
+                      (!project.pauseRemovalMinSilenceDurationSecondsOverride &&
+                        !project.pauseRemovalSilenceThresholdDbOverride) ||
+                      Boolean(doc?.pending)
+                    }
+                  >
+                    Use global defaults
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setPauseRemovalDialogOpen(false)}
+                    disabled={savingPauseRemoval}
+                  >
+                    Cancel
+                  </Button>
+                </DialogFooter>
+              </>
+            ),
+          }}
+        />
         <XmlTaskPipelinePanel
           doc={doc}
           title="Narration Audio pipeline"
@@ -2035,81 +2161,104 @@ function XMLScriptSection({
                 : "Plan captions"}
           </Button>
         </div>
-        <div className="rounded-lg border border-border bg-background/60 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-medium text-foreground">
-                Caption max words
-              </h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Optional project override for deterministic caption chunking.
-                Leave blank to use the global setting.
-              </p>
-            </div>
-            <Link
+        <CompactSettingCard
+          title="Max words per caption"
+          globalDefault={<>Global default: {captionMaxWordsGlobalDefaultText}</>}
+          valueLines={[{ children: captionMaxWordsDisplayText }]}
+          editTooltip="Edit max words per caption"
+          editDisabled={Boolean(doc?.pending)}
+          onEdit={() => {
+            setProjectCaptionMaxWordsOverride(
+              project.captionMaxWordsOverride
+                ? String(project.captionMaxWordsOverride)
+                : "",
+            );
+            setCaptionMaxWordsDialogOpen(true);
+          }}
+          links={
+            <CompactSettingLink
               href={buildShortFormSettingsHref("captions", {
                 hash: "caption-styles",
               })}
               target="_blank"
               rel="noreferrer"
-              className="text-xs text-muted-foreground hover:text-foreground"
             >
               Open global setting ↗
-            </Link>
-          </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-[auto_auto_1fr] sm:items-center">
-            <Input
-              type="number"
-              min={2}
-              max={12}
-              value={projectCaptionMaxWordsOverride}
-              onChange={(event) =>
-                setProjectCaptionMaxWordsOverride(event.target.value)
-              }
-              placeholder={
-                defaultCaptionMaxWords
-                  ? String(defaultCaptionMaxWords)
-                  : "Default"
-              }
-              className="w-24"
-              disabled={savingCaptionMaxWords || Boolean(doc?.pending)}
-            />
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                onClick={() =>
-                  void saveProjectCaptionMaxWords(
-                    projectCaptionMaxWordsOverride || null,
-                  )
-                }
-                disabled={savingCaptionMaxWords || Boolean(doc?.pending)}
-              >
-                {savingCaptionMaxWords ? "Saving…" : "Save"}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void saveProjectCaptionMaxWords(null)}
-                disabled={
-                  savingCaptionMaxWords ||
-                  !project.captionMaxWordsOverride ||
-                  Boolean(doc?.pending)
-                }
-              >
-                Reset
-              </Button>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {savingCaptionMaxWords
-                ? "Saving caption override…"
-                : project.captionMaxWordsOverride
-                  ? `Effective max: ${project.captionMaxWordsOverride} words (project override)`
-                  : effectiveCaptionMaxWords
-                    ? `Effective max: ${effectiveCaptionMaxWords} words (global default)`
-                    : "Uses the global default when caption planning starts."}
-            </div>
-          </div>
-        </div>
+            </CompactSettingLink>
+          }
+          dialog={{
+            open: captionMaxWordsDialogOpen,
+            title: "Max words per caption",
+            description:
+              "Optional project override for deterministic caption chunking. Leave blank to use the global setting.",
+            size: "sm",
+            children: (
+              <>
+                {captionMaxWordsError ? (
+                  <ValidationNotice
+                    title="Caption settings issue"
+                    message={captionMaxWordsError}
+                  />
+                ) : null}
+                <Input
+                  type="number"
+                  min={2}
+                  max={12}
+                  value={projectCaptionMaxWordsOverride}
+                  onChange={(event) =>
+                    setProjectCaptionMaxWordsOverride(event.target.value)
+                  }
+                  placeholder={
+                    defaultCaptionMaxWords
+                      ? String(defaultCaptionMaxWords)
+                      : "Default"
+                  }
+                  className="w-24"
+                  disabled={savingCaptionMaxWords || Boolean(doc?.pending)}
+                />
+                <DialogFooter className="mt-0 justify-start">
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      void saveProjectCaptionMaxWords(
+                        projectCaptionMaxWordsOverride || null,
+                      ).then((saved) => {
+                        if (saved) setCaptionMaxWordsDialogOpen(false);
+                      })
+                    }
+                    disabled={savingCaptionMaxWords || Boolean(doc?.pending)}
+                  >
+                    {savingCaptionMaxWords ? "Saving…" : "Save"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      void saveProjectCaptionMaxWords(null).then((saved) => {
+                        if (saved) setCaptionMaxWordsDialogOpen(false);
+                      })
+                    }
+                    disabled={
+                      savingCaptionMaxWords ||
+                      !project.captionMaxWordsOverride ||
+                      Boolean(doc?.pending)
+                    }
+                  >
+                    Reset
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setCaptionMaxWordsDialogOpen(false)}
+                    disabled={savingCaptionMaxWords}
+                  >
+                    Cancel
+                  </Button>
+                </DialogFooter>
+              </>
+            ),
+          }}
+        />
         {captionsStatus === "running" ? (
           <PendingNotice
             label={captionsStep?.progressLabel || "Planning captions"}
@@ -2252,8 +2401,11 @@ function StageReviewSection({
   triggerDisabled = false,
   triggerDisabledReason,
   collapseDocumentByDefault = false,
+  hideReviewDocument = false,
   showExtraWhenEmpty = false,
   simplifiedReviewActions = false,
+  allowRerunWithNotes = true,
+  wrapDocumentInCard = false,
 }: {
   projectId: string;
   title: string;
@@ -2270,8 +2422,11 @@ function StageReviewSection({
   triggerDisabled?: boolean;
   triggerDisabledReason?: React.ReactNode;
   collapseDocumentByDefault?: boolean;
+  hideReviewDocument?: boolean;
   showExtraWhenEmpty?: boolean;
   simplifiedReviewActions?: boolean;
+  allowRerunWithNotes?: boolean;
+  wrapDocumentInCard?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(doc.content);
@@ -2430,7 +2585,8 @@ function StageReviewSection({
     revision?.mode === "generate"
       ? `Retry ${title.toLowerCase()} generation`
       : `Retry ${title.toLowerCase()} revision`;
-  const canCollapseDocument = collapseDocumentByDefault && doc.exists;
+  const canCollapseDocument =
+    collapseDocumentByDefault && doc.exists && !hideReviewDocument;
   const showSimplifiedReviewActions = simplifiedReviewActions && doc.exists;
   const showApproveAction =
     showSimplifiedReviewActions && needsReviewStatus(status || doc.status);
@@ -2525,6 +2681,7 @@ function StageReviewSection({
             initialLabel={triggerLabel}
             rerunLabel={`Re-${triggerLabel.toLowerCase()}`}
             rerunWithNotesLabel={`Re-${triggerLabel.toLowerCase()} with revision notes`}
+            allowRerunWithNotes={allowRerunWithNotes}
             loading={doc.pending || saving}
             loadingLabel={`${triggerLabel}…`}
             disabled={triggerDisabled}
@@ -2557,6 +2714,7 @@ function StageReviewSection({
               initialLabel={triggerLabel}
               rerunLabel={`Re-${triggerLabel.toLowerCase()}`}
               rerunWithNotesLabel={`Re-${triggerLabel.toLowerCase()} with revision notes`}
+              allowRerunWithNotes={allowRerunWithNotes}
               loading={saving || doc.pending}
               disabled={triggerDisabled}
               onInitialRun={() => triggerStageAction("generate")}
@@ -2575,7 +2733,7 @@ function StageReviewSection({
                 {approving ? "Approving…" : "Approve"}
               </Button>
             ) : null}
-            {showSimplifiedReviewActions ? (
+            {showSimplifiedReviewActions && !hideReviewDocument ? (
               <EditIconButton
                 editing={editing}
                 onClick={toggleDocumentEdit}
@@ -2622,7 +2780,7 @@ function StageReviewSection({
             />
           ) : null}
 
-          {canCollapseDocument ? (
+          {hideReviewDocument ? null : canCollapseDocument ? (
             <div className="space-y-3 rounded-lg border border-border p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -2711,6 +2869,10 @@ function StageReviewSection({
                 </Button>
               </div>
             </div>
+          ) : wrapDocumentInCard ? (
+            <Card className="border-border bg-background/60 p-4">
+              <MarkdownOrCode content={doc.content} mode={mode} />
+            </Card>
           ) : (
             <MarkdownOrCode content={doc.content} mode={mode} />
           )}
@@ -3268,10 +3430,15 @@ function SceneImagesSection({
   const [backgroundOptions, setBackgroundOptions] = useState<
     BackgroundVideoOption[]
   >([]);
+  const [defaultStyleId, setDefaultStyleId] = useState<string>("");
   const [defaultBackgroundVideoId, setDefaultBackgroundVideoId] =
     useState<string>("");
   const [savingStyle, setSavingStyle] = useState(false);
+  const [styleDialogOpen, setStyleDialogOpen] = useState(false);
+  const [draftStyleId, setDraftStyleId] = useState("");
   const [savingBackground, setSavingBackground] = useState(false);
+  const [backgroundDialogOpen, setBackgroundDialogOpen] = useState(false);
+  const [draftBackgroundVideoId, setDraftBackgroundVideoId] = useState("");
   const [sceneTabById, setSceneTabById] = useState<
     Record<string, "preview" | "raw">
   >({});
@@ -3306,6 +3473,7 @@ function SceneImagesSection({
         )
       : [];
     setStyleOptions(nextStyles);
+    setDefaultStyleId(imageSettingsPayload?.data?.imageStyles?.defaultStyleId || "");
     setBackgroundOptions(nextBackgrounds);
     setDefaultBackgroundVideoId(
       imageSettingsPayload?.data?.backgroundVideos?.defaultBackgroundVideoId || "",
@@ -3337,10 +3505,12 @@ function SceneImagesSection({
         "Failed to update visual style",
       );
       await refresh();
+      return true;
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to update visual style",
       );
+      return false;
     } finally {
       setSavingStyle(false);
     }
@@ -3361,12 +3531,14 @@ function SceneImagesSection({
         "Failed to update background video",
       );
       await refresh();
+      return true;
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
           : "Failed to update background video",
       );
+      return false;
     } finally {
       setSavingBackground(false);
     }
@@ -3404,6 +3576,20 @@ function SceneImagesSection({
   }
 
   const sceneProgress = project.sceneImages.sceneProgress;
+  const defaultStyleLabel =
+    styleOptions.find((style) => style.id === defaultStyleId)?.name ||
+    "default style";
+  const activeStyleId = project.selectedImageStyleId || defaultStyleId || "";
+  const activeStyleLabel = project.selectedImageStyleName || defaultStyleLabel;
+  const defaultBackgroundLabel =
+    backgroundOptions.find(
+      (background) => background.id === defaultBackgroundVideoId,
+    )?.name || "default background video";
+  const activeBackgroundVideoId =
+    project.selectedBackgroundVideoId || defaultBackgroundVideoId || "";
+  const activeBackgroundLabel =
+    project.selectedBackgroundVideoName ||
+    (defaultBackgroundVideoId ? defaultBackgroundLabel : "No background video");
 
   return (
     <StageReviewSection
@@ -3418,6 +3604,7 @@ function SceneImagesSection({
       triggerDescription={`This should create green-screen scene plates using the selected image style${project.selectedImageStyleName ? ` (${project.selectedImageStyleName})` : ""}${project.selectedBackgroundVideoName ? ` and prepare preview compositing against ${project.selectedBackgroundVideoName}` : ""}.`}
       onRefresh={refresh}
       collapseDocumentByDefault
+      hideReviewDocument
       simplifiedReviewActions
       extra={
         <div className="space-y-4">
@@ -3427,109 +3614,215 @@ function SceneImagesSection({
               message={error}
             />
           ) : null}
-          <div className="rounded-lg border border-border bg-background/60 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-medium text-foreground">
-                  Visual style for this project
-                </h3>
-                <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-                  Pick the reusable style that should feed the direct visual
-                  generation path. The saved style-instructions template and
-                  this style’s own instructions are what drive generation.
-                </p>
-              </div>
-              <Link
+          <CompactSettingCard
+            title="Visual style"
+            globalDefault={<>Global default style: {defaultStyleLabel}</>}
+            valueLines={[{ children: activeStyleLabel }]}
+            editTooltip="Edit visual style"
+            editDisabled={styleOptions.length === 0}
+            onEdit={() => {
+              setDraftStyleId(activeStyleId);
+              setError(null);
+              setStyleDialogOpen(true);
+            }}
+            links={
+              <CompactSettingLink
                 href={buildShortFormSettingsHref("images", {
                   query: `style=${encodeURIComponent(project.selectedImageStyleId || "")}`,
                   hash: "image-styles",
                 })}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-muted-foreground hover:text-foreground"
               >
                 Open styles editor ↗
-              </Link>
-            </div>
-            <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
-              <Select
-                value={project.selectedImageStyleId || ""}
-                onChange={(event) => void saveProjectStyle(event.target.value)}
-                disabled={savingStyle || styleOptions.length === 0}
-                className="max-w-sm"
-              >
-                {styleOptions.map((style) => (
-                  <option key={style.id} value={style.id}>
-                    {style.name}
-                  </option>
-                ))}
-              </Select>
-              <div className="text-xs text-muted-foreground">
-                {savingStyle
-                  ? "Saving style selection…"
-                  : project.selectedImageStyleName
-                    ? `Current style: ${project.selectedImageStyleName}`
-                    : "Using the current default style."}
-              </div>
-            </div>
-          </div>
+              </CompactSettingLink>
+            }
+            dialog={{
+              open: styleDialogOpen,
+              title: "Visual style",
+              description:
+                "Pick the reusable style that should drive direct visual generation.",
+              children: (
+                <>
+                  {error ? (
+                    <ValidationNotice
+                      title="Visual change request failed"
+                      message={error}
+                    />
+                  ) : null}
+                  <CompactSettingLink
+                    href={buildShortFormSettingsHref("images", {
+                      query: `style=${encodeURIComponent(draftStyleId || activeStyleId)}`,
+                      hash: "image-styles",
+                    })}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open styles editor ↗
+                  </CompactSettingLink>
+                  <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                    {styleOptions.length > 0 ? (
+                      styleOptions.map((style) => (
+                        <button
+                          key={style.id}
+                          type="button"
+                          onClick={() => setDraftStyleId(style.id)}
+                          disabled={savingStyle}
+                          className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
+                            draftStyleId === style.id
+                              ? "border-primary bg-primary/10 text-foreground"
+                              : "border-border bg-background/60 text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-medium">{style.name}</span>
+                            {style.id === defaultStyleId ? (
+                              <Badge variant="secondary">Global default</Badge>
+                            ) : null}
+                          </div>
+                          {style.description ? (
+                            <div className="mt-1 line-clamp-2 text-xs opacity-80">
+                              {style.description}
+                            </div>
+                          ) : null}
+                        </button>
+                      ))
+                    ) : (
+                      <p className="rounded-md border border-border bg-background/60 p-3 text-sm text-muted-foreground">
+                        No visual styles are available yet.
+                      </p>
+                    )}
+                  </div>
+                  <DialogFooter className="mt-0 justify-start">
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        void saveProjectStyle(draftStyleId).then((saved) => {
+                          if (saved) setStyleDialogOpen(false);
+                        })
+                      }
+                      disabled={savingStyle || !draftStyleId || styleOptions.length === 0}
+                    >
+                      {savingStyle ? "Saving…" : "Save"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setStyleDialogOpen(false)}
+                      disabled={savingStyle}
+                    >
+                      Cancel
+                    </Button>
+                  </DialogFooter>
+                </>
+              ),
+            }}
+          />
 
-          <div className="rounded-lg border border-border bg-background/60 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-medium text-foreground">
-                  Looping background video for this visual project
-                </h3>
-                <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-                  Pick which saved background video should sit behind the
-                  green-screen characters for scene previews and final render.
-                  New projects default to the library default automatically.
-                </p>
-              </div>
-              <Link
+
+          <CompactSettingCard
+            title="Looping background video"
+            globalDefault={<>Global default background: {defaultBackgroundLabel}</>}
+            valueLines={[{ children: activeBackgroundLabel }]}
+            editTooltip="Edit looping background video"
+            editDisabled={backgroundOptions.length === 0}
+            onEdit={() => {
+              setDraftBackgroundVideoId(activeBackgroundVideoId);
+              setError(null);
+              setBackgroundDialogOpen(true);
+            }}
+            links={
+              <CompactSettingLink
                 href={buildShortFormSettingsHref("backgrounds", {
                   hash: "background-videos",
                 })}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-muted-foreground hover:text-foreground"
               >
                 Manage backgrounds ↗
-              </Link>
-            </div>
-            <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
-              <Select
-                value={
-                  project.selectedBackgroundVideoId ||
-                  defaultBackgroundVideoId ||
-                  ""
-                }
-                onChange={(event) =>
-                  void saveProjectBackground(event.target.value)
-                }
-                disabled={savingBackground || backgroundOptions.length === 0}
-                className="max-w-sm"
-              >
-                {backgroundOptions.map((background) => (
-                  <option key={background.id} value={background.id}>
-                    {background.name}
-                    {background.id === defaultBackgroundVideoId
-                      ? " (default)"
-                      : ""}
-                  </option>
-                ))}
-              </Select>
-              <div className="text-xs text-muted-foreground">
-                {savingBackground
-                  ? "Saving background selection…"
-                  : project.selectedBackgroundVideoName
-                    ? `Current background: ${project.selectedBackgroundVideoName}`
-                    : defaultBackgroundVideoId
-                      ? "Using the current default background video."
-                      : "No background video configured yet."}
-              </div>
-            </div>
-          </div>
+              </CompactSettingLink>
+            }
+            dialog={{
+              open: backgroundDialogOpen,
+              title: "Looping background video",
+              description:
+                "Pick which saved background video should sit behind the green-screen characters for previews and final render.",
+              children: (
+                <>
+                  {error ? (
+                    <ValidationNotice
+                      title="Visual change request failed"
+                      message={error}
+                    />
+                  ) : null}
+                  <CompactSettingLink
+                    href={buildShortFormSettingsHref("backgrounds", {
+                      hash: "background-videos",
+                    })}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Manage backgrounds ↗
+                  </CompactSettingLink>
+                  <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                    {backgroundOptions.length > 0 ? (
+                      backgroundOptions.map((background) => (
+                        <button
+                          key={background.id}
+                          type="button"
+                          onClick={() => setDraftBackgroundVideoId(background.id)}
+                          disabled={savingBackground}
+                          className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
+                            draftBackgroundVideoId === background.id
+                              ? "border-primary bg-primary/10 text-foreground"
+                              : "border-border bg-background/60 text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-medium">{background.name}</span>
+                            {background.id === defaultBackgroundVideoId ? (
+                              <Badge variant="secondary">Global default</Badge>
+                            ) : null}
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="rounded-md border border-border bg-background/60 p-3 text-sm text-muted-foreground">
+                        No background videos are available yet.
+                      </p>
+                    )}
+                  </div>
+                  <DialogFooter className="mt-0 justify-start">
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        void saveProjectBackground(draftBackgroundVideoId).then(
+                          (saved) => {
+                            if (saved) setBackgroundDialogOpen(false);
+                          },
+                        )
+                      }
+                      disabled={
+                        savingBackground ||
+                        !draftBackgroundVideoId ||
+                        backgroundOptions.length === 0
+                      }
+                    >
+                      {savingBackground ? "Saving…" : "Save"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setBackgroundDialogOpen(false)}
+                      disabled={savingBackground}
+                    >
+                      Cancel
+                    </Button>
+                  </DialogFooter>
+                </>
+              ),
+            }}
+          />
           {sceneProgress ? (
             <div className="rounded-lg border border-border bg-background/60 p-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -3727,12 +4020,6 @@ function SceneImagesSection({
                           className="min-h-[88px]"
                           disabled={sceneBusy}
                         />
-                        {!sceneBusy ? (
-                          <p className="text-xs text-muted-foreground">
-                            Leave notes empty to rerender this scene cleanly, or
-                            add notes to request a targeted change.
-                          </p>
-                        ) : null}
                       </div>
                       <Button
                         variant="outline"
@@ -4755,7 +5042,6 @@ function SoundDesignSection({
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="outline">{event.type}</Badge>
                         <Badge variant="outline">{event.track}</Badge>
-                        <Badge variant="outline">{event.anchor}</Badge>
                         <Badge variant="secondary">Resolved</Badge>
                         {event.muted ? (
                           <Badge variant="warning">Muted</Badge>
@@ -4911,7 +5197,7 @@ function SoundDesignSection({
                       </div>
                       <p className="mt-2 text-xs text-muted-foreground">
                         Shift this event earlier or later without editing the
-                        XML anchor.
+                        timestamp XML.
                       </p>
                     </div>
                     <div>
@@ -5041,8 +5327,15 @@ function VideoSection({
     useState<boolean>(false);
   const [musicVolume, setMusicVolume] = useState<number>(0.38);
   const [savingMusic, setSavingMusic] = useState(false);
+  const [musicDialogOpen, setMusicDialogOpen] = useState(false);
+  const [draftMusicId, setDraftMusicId] = useState("");
   const [savingCaptionStyle, setSavingCaptionStyle] = useState(false);
+  const [captionStyleDialogOpen, setCaptionStyleDialogOpen] = useState(false);
+  const [draftCaptionStyleId, setDraftCaptionStyleId] = useState("");
   const [savingChromaKey, setSavingChromaKey] = useState(false);
+  const [backgroundChromaDialogOpen, setBackgroundChromaDialogOpen] =
+    useState(false);
+  const [draftChromaKeyValue, setDraftChromaKeyValue] = useState("");
   const [musicError, setMusicError] = useState<string | null>(null);
   const [captionStyleError, setCaptionStyleError] = useState<string | null>(
     null,
@@ -5121,12 +5414,14 @@ function VideoSection({
         "Failed to update project soundtrack",
       );
       await refresh();
+      return true;
     } catch (err) {
       setMusicError(
         err instanceof Error
           ? err.message
           : "Failed to update project soundtrack",
       );
+      return false;
     } finally {
       setSavingMusic(false);
     }
@@ -5148,12 +5443,14 @@ function VideoSection({
         "Failed to update project caption style",
       );
       await refresh();
+      return true;
     } catch (err) {
       setCaptionStyleError(
         err instanceof Error
           ? err.message
           : "Failed to update project caption style",
       );
+      return false;
     } finally {
       setSavingCaptionStyle(false);
     }
@@ -5172,12 +5469,14 @@ function VideoSection({
         "Failed to update project chroma-key setting",
       );
       await refresh();
+      return true;
     } catch (err) {
       setChromaKeyError(
         err instanceof Error
           ? err.message
           : "Failed to update project chroma-key setting",
       );
+      return false;
     } finally {
       setSavingChromaKey(false);
     }
@@ -5187,18 +5486,20 @@ function VideoSection({
     project.selectedVoiceName ||
     voiceOptions.find((voice) => voice.id === defaultVoiceId)?.name ||
     "default voice";
-  const activeMusicLabel =
-    project.selectedMusicName ||
+  const globalDefaultMusicLabel =
     musicOptions.find((track) => track.id === defaultMusicId)?.name ||
     "default soundtrack";
-  const activeCaptionStyleLabel =
-    project.selectedCaptionStyleName ||
+  const activeMusicId = project.selectedMusicId || defaultMusicId || "";
+  const activeMusicLabel = project.selectedMusicName || globalDefaultMusicLabel;
+  const globalDefaultCaptionStyleLabel =
     captionStyleOptions.find((style) => style.id === defaultCaptionStyleId)
-      ?.name ||
-    "default caption style";
-  const activeChromaKeyLabel = project.chromaKeyEnabled
-    ? "enabled"
-    : "disabled";
+      ?.name || "default caption style";
+  const activeCaptionStyleLabel =
+    project.selectedCaptionStyleName || globalDefaultCaptionStyleLabel;
+  const activeBackgroundLabel =
+    project.selectedBackgroundVideoName || "Not selected yet";
+  const defaultChromaKeyLabel = defaultChromaKeyEnabled ? "On" : "Off";
+  const activeChromaKeyLabel = project.chromaKeyEnabled ? "On" : "Off";
   const activeChromaKeySourceLabel =
     project.chromaKeyEnabledSource === "project"
       ? "project override"
@@ -5232,9 +5533,6 @@ function VideoSection({
   );
   const soundDesignHandoff = getSoundDesignHandoffState(project);
   const soundDesignReadyForVideo = soundDesignHandoff.canProceedToFinalVideo;
-  const soundDesignSkippedForVideo =
-    soundDesignHandoff.decision === "skipped" && soundDesignReadyForVideo;
-
   useEffect(() => {
     if (!previewVideoRef.current || !previewVideoUrl) return;
     previewVideoRef.current.load();
@@ -5263,57 +5561,11 @@ function VideoSection({
           : undefined
       }
       collapseDocumentByDefault
+      hideReviewDocument
       simplifiedReviewActions
+      allowRerunWithNotes={false}
       extra={
         <div className="space-y-4">
-          <div
-            className={`rounded-lg border p-4 ${soundDesignReadyForVideo ? "border-emerald-500/30 bg-emerald-500/10" : "border-amber-500/30 bg-amber-500/10"}`}
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-medium text-foreground">
-                    Generate Sound Design handoff
-                  </h3>
-                  {soundDesignHandoff.decision === "approved" &&
-                  soundDesignReadyForVideo ? (
-                    <StatusBadge status="approved" compact />
-                  ) : soundDesignHandoff.decision === "skipped" &&
-                    soundDesignReadyForVideo ? (
-                    <Badge variant="warning">Skipped</Badge>
-                  ) : (
-                    <Badge variant="outline">Required before render</Badge>
-                  )}
-                </div>
-                <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-                  Final Video stays gated until Generate Sound Design is either approved
-                  after previewing the mix or explicitly skipped with a reason.
-                </p>
-              </div>
-              <Link
-                href={buildShortFormDetailHref(project.id, "generate-sound-design")}
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
-                Jump to Generate Sound Design ↑
-              </Link>
-            </div>
-            <div className="mt-3 text-xs text-muted-foreground">
-              {soundDesignHandoff.decision === "approved" &&
-              soundDesignReadyForVideo
-                ? "The current Generate Sound Design preview has been approved for the final render handoff."
-                : soundDesignHandoff.decision === "skipped" &&
-                    soundDesignReadyForVideo
-                  ? `Sound design is intentionally skipped for this final render${project.soundDesignSkipReason ? `: ${project.soundDesignSkipReason}` : "."}`
-                  : soundDesignHandoff.gateReason ||
-                    "No handoff decision saved yet. The final-render trigger remains disabled until that decision is made in Generate Sound Design."}
-            </div>
-            {soundDesignSkippedForVideo ? (
-              <p className="mt-2 text-xs text-amber-100">
-                Skip mode is active, so the final render will proceed without
-                requiring the Generate Sound Design mix.
-              </p>
-            ) : null}
-          </div>
           {musicError ? (
             <ValidationNotice
               title="Soundtrack selection failed"
@@ -5332,209 +5584,384 @@ function VideoSection({
               message={chromaKeyError}
             />
           ) : null}
-          <div className="rounded-lg border border-border bg-background/60 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-medium text-foreground">
-                  Narration source
-                </h3>
-                <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-                  Final Video does not pick or regenerate its own voice anymore.
-                  It reuses the processed narration WAV and forced alignment
-                  already created in the Generate Narration Audio step.
-                </p>
-              </div>
-              <Link
-                href={buildShortFormDetailHref(project.id, "generate-narration-audio")}
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
-                Jump to Generate Narration Audio ↑
-              </Link>
-            </div>
-            <div className="mt-3 text-xs text-muted-foreground">
-              {project.selectedVoiceName
-                ? `XML narration voice currently selected for this project: ${project.selectedVoiceName}`
-                : defaultVoiceId
-                  ? `XML narration currently falls back to the default voice: ${activeVoiceLabel}`
-                  : "XML narration will use the fallback default voice until a project/default voice is selected."}
-            </div>
-          </div>
-          <div className="rounded-lg border border-border bg-background/60 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-medium text-foreground">
-                  Soundtrack for this project
-                </h3>
-                <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-                  Pick which saved soundtrack entry should be reused for this
-                  project. Once a soundtrack has been generated in settings,
-                  final-video renders reuse that exact saved WAV file instead of
-                  asking ACE-Step for a fresh song each time.
-                </p>
-              </div>
-              <Link
+          <CompactSettingCard
+            title="Soundtrack"
+            globalDefault={<>Global default soundtrack: {globalDefaultMusicLabel}</>}
+            valueLines={[
+              { children: activeMusicLabel },
+              {
+                children: `Mix volume ${Math.round(musicVolume * 100)}%`,
+                tone: "secondary",
+              },
+            ]}
+            editTooltip="Edit soundtrack"
+            editDisabled={musicOptions.length === 0}
+            onEdit={() => {
+              setDraftMusicId(activeMusicId);
+              setMusicError(null);
+              setMusicDialogOpen(true);
+            }}
+            links={
+              <CompactSettingLink
                 href={buildShortFormSettingsHref("music", {
                   hash: "music-library",
                 })}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-muted-foreground hover:text-foreground"
               >
                 Open music library ↗
-              </Link>
-            </div>
-            <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
-              <Select
-                value={project.selectedMusicId || defaultMusicId || ""}
-                onChange={(event) => void saveProjectMusic(event.target.value)}
-                disabled={savingMusic || musicOptions.length === 0}
-                className="max-w-sm"
-              >
-                {musicOptions.map((track) => (
-                  <option key={track.id} value={track.id}>
-                    {track.name}
-                    {track.id === defaultMusicId ? " (default)" : ""}
-                  </option>
-                ))}
-              </Select>
-              <div className="text-xs text-muted-foreground">
-                {savingMusic
-                  ? "Saving soundtrack selection…"
-                  : project.selectedMusicName
-                    ? `Current project soundtrack: ${project.selectedMusicName}`
-                    : defaultMusicId
-                      ? `Using the current default soundtrack: ${activeMusicLabel}`
-                      : "Using the fallback soundtrack preset."}
-              </div>
-            </div>
-            <div className="mt-3 text-xs text-muted-foreground">
-              Saved music mix volume for new renders:{" "}
-              <span className="font-medium text-foreground">
-                {Math.round(musicVolume * 100)}%
-              </span>
-            </div>
-          </div>
-          <div className="rounded-lg border border-border bg-background/60 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-medium text-foreground">
-                  Caption style for this project
-                </h3>
-                <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-                  Final-video renders now burn ASS subtitles using the selected
-                  caption-style preset. Leave the project on the global default,
-                  or override it here for a specific short-form video.
-                </p>
-              </div>
-              <Link
+              </CompactSettingLink>
+            }
+            dialog={{
+              open: musicDialogOpen,
+              title: "Soundtrack",
+              description: "Pick the saved soundtrack entry to reuse for this project.",
+              children: (
+                <>
+                  {musicError ? (
+                    <ValidationNotice
+                      title="Soundtrack selection failed"
+                      message={musicError}
+                    />
+                  ) : null}
+                  <CompactSettingLink
+                    href={buildShortFormSettingsHref("music", {
+                      hash: "music-library",
+                    })}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open music library ↗
+                  </CompactSettingLink>
+                  <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                    {musicOptions.length > 0 ? (
+                      musicOptions.map((track) => (
+                        <button
+                          key={track.id}
+                          type="button"
+                          onClick={() => setDraftMusicId(track.id)}
+                          disabled={savingMusic}
+                          className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
+                            draftMusicId === track.id
+                              ? "border-primary bg-primary/10 text-foreground"
+                              : "border-border bg-background/60 text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-medium">{track.name}</span>
+                            {track.id === defaultMusicId ? (
+                              <Badge variant="secondary">Global default</Badge>
+                            ) : null}
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="rounded-md border border-border bg-background/60 p-3 text-sm text-muted-foreground">
+                        No soundtrack entries are available yet.
+                      </p>
+                    )}
+                  </div>
+                  <DialogFooter className="mt-0 justify-start">
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        void saveProjectMusic(draftMusicId).then((saved) => {
+                          if (saved) setMusicDialogOpen(false);
+                        })
+                      }
+                      disabled={savingMusic || !draftMusicId || musicOptions.length === 0}
+                    >
+                      {savingMusic ? "Saving…" : "Save"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setMusicDialogOpen(false)}
+                      disabled={savingMusic}
+                    >
+                      Cancel
+                    </Button>
+                  </DialogFooter>
+                </>
+              ),
+            }}
+          />
+          <CompactSettingCard
+            title="Caption style"
+            globalDefault={<>Global default caption style: {globalDefaultCaptionStyleLabel}</>}
+            valueLines={[{ children: activeCaptionStyleLabel }]}
+            editTooltip="Edit caption style"
+            editDisabled={captionStyleOptions.length === 0}
+            onEdit={() => {
+              setDraftCaptionStyleId(project.captionStyleOverrideId || "");
+              setCaptionStyleError(null);
+              setCaptionStyleDialogOpen(true);
+            }}
+            links={
+              <CompactSettingLink
                 href={buildShortFormSettingsHref("captions", {
                   hash: "caption-styles",
                 })}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-muted-foreground hover:text-foreground"
               >
                 Open caption styles ↗
-              </Link>
-            </div>
-            <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
-              <Select
-                value={project.captionStyleOverrideId || ""}
-                onChange={(event) =>
-                  void saveProjectCaptionStyle(event.target.value || null)
-                }
-                disabled={
-                  savingCaptionStyle || captionStyleOptions.length === 0
-                }
-                className="max-w-sm"
-              >
-                <option value="">Use default caption style</option>
-                {captionStyleOptions.map((style) => (
-                  <option key={style.id} value={style.id}>
-                    {style.name}
-                    {style.id === defaultCaptionStyleId ? " (default)" : ""}
-                  </option>
-                ))}
-              </Select>
-              <div className="text-xs text-muted-foreground">
-                {savingCaptionStyle
-                  ? "Saving caption style selection…"
-                  : project.captionStyleOverrideId
-                    ? `Current project caption style override: ${project.selectedCaptionStyleName || activeCaptionStyleLabel}`
-                    : defaultCaptionStyleId
-                      ? `Using the current default caption style: ${activeCaptionStyleLabel}`
-                      : "Using the fallback caption style."}
-              </div>
-            </div>
-            <div className="mt-3 text-xs text-muted-foreground">
-              Effective final-render caption style:{" "}
-              <span className="font-medium text-foreground">
-                {activeCaptionStyleLabel}
-              </span>
-            </div>
-          </div>
-          <div className="rounded-lg border border-border bg-background/60 p-3 text-xs text-muted-foreground">
-            <div className="flex flex-wrap items-center gap-3">
-              <span>
-                <span className="font-medium text-foreground">Background:</span>{" "}
-                {project.selectedBackgroundVideoName || "Not selected yet"}
-              </span>
-              <span className="text-border">•</span>
-              <span className="font-medium text-foreground">Chroma key</span>
-              <Select
-                value={
-                  typeof project.chromaKeyEnabledOverride === "boolean"
-                    ? project.chromaKeyEnabledOverride
-                      ? "enabled"
-                      : "disabled"
-                    : ""
-                }
-                onChange={(event) =>
-                  void saveProjectChromaKey(
-                    event.target.value === ""
-                      ? null
-                      : event.target.value === "enabled",
-                  )
-                }
-                disabled={savingChromaKey}
-                className="h-8 w-[190px] py-1 text-xs"
-              >
-                <option value="">
-                  Use default ({defaultChromaKeyEnabled ? "On" : "Off"})
-                </option>
-                <option value="disabled">Force off</option>
-                <option value="enabled">Force on</option>
-              </Select>
-              <span>
-                {savingChromaKey
-                  ? "Saving…"
-                  : `Effective: ${activeChromaKeyLabel} (${activeChromaKeySourceLabel})`}
-              </span>
-              <Link
-                href={buildShortFormSettingsHref("audio", {
-                  hash: "pause-removal",
-                })}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
-                Defaults ↗
-              </Link>
-            </div>
-          </div>
+              </CompactSettingLink>
+            }
+            dialog={{
+              open: captionStyleDialogOpen,
+              title: "Caption style",
+              description:
+                "Override this project’s final-render caption style, or use the global default.",
+              children: (
+                <>
+                  {captionStyleError ? (
+                    <ValidationNotice
+                      title="Caption style selection failed"
+                      message={captionStyleError}
+                    />
+                  ) : null}
+                  <CompactSettingLink
+                    href={buildShortFormSettingsHref("captions", {
+                      hash: "caption-styles",
+                    })}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open caption styles ↗
+                  </CompactSettingLink>
+                  <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                    <button
+                      type="button"
+                      onClick={() => setDraftCaptionStyleId("")}
+                      disabled={savingCaptionStyle}
+                      className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
+                        draftCaptionStyleId === ""
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-border bg-background/60 text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-medium">
+                          Use global default ({globalDefaultCaptionStyleLabel})
+                        </span>
+                        <Badge variant="secondary">Global default</Badge>
+                      </div>
+                    </button>
+                    {captionStyleOptions.map((style) => (
+                      <button
+                        key={style.id}
+                        type="button"
+                        onClick={() => setDraftCaptionStyleId(style.id)}
+                        disabled={savingCaptionStyle}
+                        className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
+                          draftCaptionStyleId === style.id
+                            ? "border-primary bg-primary/10 text-foreground"
+                            : "border-border bg-background/60 text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="font-medium">{style.name}</span>
+                          {style.id === defaultCaptionStyleId ? (
+                            <Badge variant="secondary">Global default</Badge>
+                          ) : null}
+                        </div>
+                        {style.animationPreset ? (
+                          <div className="mt-1 text-xs opacity-80">
+                            Animation: {style.animationPreset}
+                          </div>
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                  <DialogFooter className="mt-0 justify-start">
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        void saveProjectCaptionStyle(
+                          draftCaptionStyleId || null,
+                        ).then((saved) => {
+                          if (saved) setCaptionStyleDialogOpen(false);
+                        })
+                      }
+                      disabled={
+                        savingCaptionStyle || captionStyleOptions.length === 0
+                      }
+                    >
+                      {savingCaptionStyle ? "Saving…" : "Save"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        void saveProjectCaptionStyle(null).then((saved) => {
+                          if (saved) setCaptionStyleDialogOpen(false);
+                        })
+                      }
+                      disabled={
+                        savingCaptionStyle ||
+                        !project.captionStyleOverrideId ||
+                        captionStyleOptions.length === 0
+                      }
+                    >
+                      Use global default
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setCaptionStyleDialogOpen(false)}
+                      disabled={savingCaptionStyle}
+                    >
+                      Cancel
+                    </Button>
+                  </DialogFooter>
+                </>
+              ),
+            }}
+          />
+          <CompactSettingCard
+            title="Background + chroma key"
+            globalDefault={<>Default chroma key: {defaultChromaKeyLabel}</>}
+            valueLines={[
+              { children: activeBackgroundLabel },
+              { children: `Chroma key ${activeChromaKeyLabel}`, tone: "secondary" },
+            ]}
+            editTooltip="Edit chroma key"
+            onEdit={() => {
+              setDraftChromaKeyValue(
+                typeof project.chromaKeyEnabledOverride === "boolean"
+                  ? project.chromaKeyEnabledOverride
+                    ? "enabled"
+                    : "disabled"
+                  : "",
+              );
+              setChromaKeyError(null);
+              setBackgroundChromaDialogOpen(true);
+            }}
+            links={
+              <>
+                <CompactSettingLink
+                  href={buildShortFormDetailHref(project.id, "generate-visuals")}
+                >
+                  Edit background in Generate Visuals ↑
+                </CompactSettingLink>
+                <CompactSettingLink
+                  href={buildShortFormSettingsHref("audio", {
+                    hash: "pause-removal",
+                  })}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Defaults ↗
+                </CompactSettingLink>
+              </>
+            }
+            dialog={{
+              open: backgroundChromaDialogOpen,
+              title: "Background + chroma key",
+              description:
+                "Background video is selected on Generate Visuals. Final Video can override only the chroma-key behavior.",
+              children: (
+                <>
+                  {chromaKeyError ? (
+                    <ValidationNotice
+                      title="Chroma-key selection failed"
+                      message={chromaKeyError}
+                    />
+                  ) : null}
+                  <div className="rounded-md border border-border bg-background/60 p-3 text-sm">
+                    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Background
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-foreground">
+                      {activeBackgroundLabel}
+                    </div>
+                    <CompactSettingLink
+                      href={buildShortFormDetailHref(project.id, "generate-visuals")}
+                      className="mt-2"
+                    >
+                      Edit background in Generate Visuals ↑
+                    </CompactSettingLink>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Chroma key
+                    </label>
+                    <Select
+                      value={draftChromaKeyValue}
+                      onChange={(event) =>
+                        setDraftChromaKeyValue(event.target.value)
+                      }
+                      disabled={savingChromaKey}
+                      className="max-w-[240px]"
+                    >
+                      <option value="">
+                        Use default ({defaultChromaKeyEnabled ? "On" : "Off"})
+                      </option>
+                      <option value="disabled">Force off</option>
+                      <option value="enabled">Force on</option>
+                    </Select>
+                  </div>
+                  <CompactSettingLink
+                    href={buildShortFormSettingsHref("audio", {
+                      hash: "pause-removal",
+                    })}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Defaults ↗
+                  </CompactSettingLink>
+                  <DialogFooter className="mt-0 justify-start">
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        void saveProjectChromaKey(
+                          draftChromaKeyValue === ""
+                            ? null
+                            : draftChromaKeyValue === "enabled",
+                        ).then((saved) => {
+                          if (saved) setBackgroundChromaDialogOpen(false);
+                        })
+                      }
+                      disabled={savingChromaKey}
+                    >
+                      {savingChromaKey ? "Saving…" : "Save"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        void saveProjectChromaKey(null).then((saved) => {
+                          if (saved) setBackgroundChromaDialogOpen(false);
+                        })
+                      }
+                      disabled={
+                        savingChromaKey ||
+                        typeof project.chromaKeyEnabledOverride !== "boolean"
+                      }
+                    >
+                      Use global default
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setBackgroundChromaDialogOpen(false)}
+                      disabled={savingChromaKey}
+                    >
+                      Cancel
+                    </Button>
+                  </DialogFooter>
+                </>
+              ),
+            }}
+          />
           <VideoPipelinePanel project={project} />
           {previewVideoUrl ? (
-            <div className="space-y-3">
+            <Card className="space-y-3 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h3 className="text-sm font-medium text-foreground">
-                    Preview
-                  </h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Use the button to open or download the final video file
-                    directly, especially on mobile.
-                  </p>
-                </div>
+                <h3 className="text-sm font-medium text-foreground">
+                  Preview
+                </h3>
                 <a
                   href={previewVideoUrl}
                   download
@@ -5554,7 +5981,7 @@ function VideoSection({
                 preload="metadata"
                 className="max-h-[70vh] w-full rounded-lg border border-border bg-black"
               />
-            </div>
+            </Card>
           ) : null}
         </div>
       }
@@ -5853,6 +6280,7 @@ export function ShortFormVideoDetailView({
             triggerDescription="This should create a research deliverable tailored to the selected hook."
             onRefresh={refreshProject}
             simplifiedReviewActions
+            wrapDocumentInCard
           />
         );
       case "text-script":
