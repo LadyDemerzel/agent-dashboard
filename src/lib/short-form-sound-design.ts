@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { spawnSync } from "child_process";
 import { extractBody, generateFrontMatter, parseFrontMatter } from "@/lib/frontmatter";
 import {
@@ -110,6 +111,10 @@ export interface ShortFormResolvedSoundDesignMusicSegment extends ShortFormSound
 
 export interface ShortFormSoundDesignMixSettings {
   defaultDuckingDb: number;
+  ambienceDuckingDb: number;
+  motionDuckingDb: number;
+  transientDuckingDb: number;
+  transientBusGainDb: number;
   maxConcurrentOneShots: number;
   musicDuckingDb: number;
   musicEqCutDb: number;
@@ -117,6 +122,64 @@ export interface ShortFormSoundDesignMixSettings {
   musicEqQ: number;
   musicLowCutHz: number;
   musicHighCutHz: number;
+  outputSampleRate: number;
+  outputChannels: number;
+  masterLoudnessTargetLufs: number;
+  masterTruePeakDb: number;
+}
+
+export interface ShortFormSoundDesignQaIssue {
+  severity: "warn" | "fail";
+  code: string;
+  message: string;
+}
+
+export interface ShortFormSoundDesignAudioMetrics {
+  relativePath?: string;
+  durationSeconds?: number;
+  sampleRate?: number;
+  channels?: number;
+  integratedLufs?: number;
+  truePeakDb?: number;
+  peakDb?: number;
+  rmsDb?: number;
+}
+
+export interface ShortFormSoundDesignAudibilitySample {
+  eventId: string;
+  type: ShortFormSoundSemanticType;
+  track: string;
+  bus: "ambience" | "motion" | "transient" | "music-control";
+  startSeconds: number;
+  endSeconds: number;
+  fullRmsDb?: number;
+  noSfxRmsDb?: number;
+  sfxOnlyRmsDb?: number;
+  diffRmsDb?: number;
+  audible: boolean;
+}
+
+export interface ShortFormSoundDesignQaReport {
+  status: "pass" | "warn" | "fail";
+  generatedAt: string;
+  previewFresh: boolean;
+  finalFresh: boolean;
+  finalInputFingerprint?: string;
+  finalInputLastChangedAt?: string;
+  fullMix?: ShortFormSoundDesignAudioMetrics;
+  noSfxMix?: ShortFormSoundDesignAudioMetrics;
+  sfxOnlyMix?: ShortFormSoundDesignAudioMetrics;
+  finalOutput?: ShortFormSoundDesignAudioMetrics;
+  fullVsNoSfxCorrelation?: number;
+  fullVsNoSfxDiffRmsDb?: number;
+  audibleEventPercent?: number;
+  audibleEvents?: number;
+  measuredEvents?: number;
+  buriedEvents?: number;
+  transientAudibleEventPercent?: number;
+  measuredTransientEvents?: number;
+  audibleSamples?: ShortFormSoundDesignAudibilitySample[];
+  issues: ShortFormSoundDesignQaIssue[];
 }
 
 export interface ShortFormSoundDesignResolution {
@@ -125,6 +188,7 @@ export interface ShortFormSoundDesignResolution {
   previewAudioRelativePath?: string;
   previewUpdatedAt?: string;
   mixSettings?: ShortFormSoundDesignMixSettings;
+  qa?: ShortFormSoundDesignQaReport;
   musicSegments?: ShortFormResolvedSoundDesignMusicSegment[];
   events: ShortFormResolvedSoundDesignEvent[];
   stats: {
@@ -264,6 +328,23 @@ function isAssetBackedEventType(type: ShortFormSoundSemanticType): type is "impa
   return type === "impact" || type === "riser" || type === "click" || type === "whoosh" || type === "ambience";
 }
 
+function classifySoundDesignBus(event: {
+  type: ShortFormSoundSemanticType;
+  timingType?: ShortFormSoundTimingType;
+  layerRole?: string;
+}): "ambience" | "motion" | "transient" | "music-control" {
+  if (event.type === "ambience" || event.timingType === "bed") return "ambience";
+  if (event.type === "riser" || event.type === "whoosh" || (event.layerRole || "").toLowerCase() === "motion") return "motion";
+  if (event.type === "impact" || event.type === "click") return "transient";
+  return "music-control";
+}
+
+function isMeasuredAudibilityEvent(event: ShortFormResolvedSoundDesignEvent) {
+  if (event.status !== "resolved" || event.muted || !event.assetRelativePath) return false;
+  const bus = classifySoundDesignBus(event);
+  return bus === "motion" || bus === "transient";
+}
+
 function normalizeKey(value: unknown) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
@@ -394,6 +475,10 @@ export function resolveShortFormSoundDesignMixSettings(content?: string, events:
   const root = content ? parseShortFormSoundDesignRootAttributes(content) : {};
   const base: ShortFormSoundDesignMixSettings = {
     defaultDuckingDb: clampNumber(root.duckingDb, -24, 0, settings.defaultDuckingDb, 1),
+    ambienceDuckingDb: clampNumber(root.ambienceDuckingDb, -24, 0, settings.ambienceDuckingDb, 1),
+    motionDuckingDb: clampNumber(root.motionDuckingDb, -24, 0, settings.motionDuckingDb, 1),
+    transientDuckingDb: clampNumber(root.transientDuckingDb, -12, 6, settings.transientDuckingDb, 1),
+    transientBusGainDb: clampNumber(root.transientBusGainDb, -12, 12, settings.transientBusGainDb, 1),
     maxConcurrentOneShots: clampNumber(root.maxConcurrentOneShots, 1, 8, settings.maxConcurrentOneShots, 0),
     musicDuckingDb: clampNumber(root.musicDuckingDb, -24, 0, settings.musicDuckingDb, 1),
     musicEqCutDb: clampNumber(root.musicEqCutDb, -18, 0, settings.musicEqCutDb, 1),
@@ -401,6 +486,10 @@ export function resolveShortFormSoundDesignMixSettings(content?: string, events:
     musicEqQ: clampNumber(root.musicEqQ, 0.1, 10, settings.musicEqQ, 2),
     musicLowCutHz: clampNumber(root.musicLowCutHz, 0, 500, settings.musicLowCutHz, 0),
     musicHighCutHz: clampNumber(root.musicHighCutHz, 0, 20000, settings.musicHighCutHz, 0),
+    outputSampleRate: clampNumber(root.outputSampleRate, 22050, 192000, settings.outputSampleRate, 0),
+    outputChannels: clampNumber(root.outputChannels, 1, 8, settings.outputChannels, 0),
+    masterLoudnessTargetLufs: clampNumber(root.masterLoudnessTargetLufs, -24, -8, settings.masterLoudnessTargetLufs, 1),
+    masterTruePeakDb: clampNumber(root.masterTruePeakDb, -6, -0.1, settings.masterTruePeakDb, 1),
   };
   // Per-effect music controls are aggregate mix intentions, not sequenced automation.
   // Resolve them deterministically by choosing conservative values: strongest duck/cut,
@@ -446,11 +535,25 @@ function parseMusicSegmentNode(nodeSource: string, index: number): ShortFormSoun
 
 export function parseShortFormSoundDesignMusicSegments(content: string): ShortFormSoundDesignMusicSegment[] {
   const xml = extractBody(content);
-  const matches = [
-    ...(xml.match(/<segment\b[^>]*\/>/g) || []),
-    ...(xml.match(/<music_segment\b[^>]*\/>/g) || []),
-    ...(xml.match(/<music\b(?!_segments\b)[^>]*\/>/g) || []),
-  ];
+  const matches: string[] = [];
+
+  // Keep generic <segment /> parsing scoped to explicit music containers so future
+  // timeline/scene segment tags cannot accidentally become soundtrack cues.
+  const musicSegmentBlocks = xml.match(/<music_segments\b[^>]*>[\s\S]*?<\/music_segments>/g) || [];
+  for (const block of musicSegmentBlocks) {
+    matches.push(...(block.match(/<segment\b[^>]*\/>/g) || []));
+  }
+
+  // Backward-compatible direct music cue forms.
+  matches.push(...(xml.match(/<music_segment\b[^>]*\/>/g) || []));
+  matches.push(...(xml.match(/<music\b(?!_segments\b)[^>]*\/>/g) || []));
+
+  // Also accept <music> containers with nested <segment /> cues.
+  const musicBlocks = xml.match(/<music\b(?!_segments\b)[^>]*>[\s\S]*?<\/music>/g) || [];
+  for (const block of musicBlocks) {
+    matches.push(...(block.match(/<segment\b[^>]*\/>/g) || []));
+  }
+
   const seen = new Set<string>();
   return matches
     .map((match, index) => parseMusicSegmentNode(match, index))
@@ -572,7 +675,7 @@ export function buildDefaultShortFormSoundDesignDocument(projectId: string) {
     category: "sound-design",
   });
   const xml = [
-    "<sound_design version=\"2\" duckingDb=\"-8\" maxConcurrentOneShots=\"2\" musicDuckingDb=\"-6\" musicEqCutDb=\"-4\" musicEqFrequencyHz=\"1800\" musicEqQ=\"1.1\" musicLowCutHz=\"60\" musicHighCutHz=\"0\">",
+    "<sound_design version=\"2\" duckingDb=\"-8\" ambienceDuckingDb=\"-8\" motionDuckingDb=\"-3\" transientDuckingDb=\"0\" transientBusGainDb=\"3\" maxConcurrentOneShots=\"2\" musicDuckingDb=\"-6\" musicEqCutDb=\"-4\" musicEqFrequencyHz=\"1800\" musicEqQ=\"1.1\" musicLowCutHz=\"60\" musicHighCutHz=\"0\" outputSampleRate=\"48000\" outputChannels=\"2\" masterLoudnessTargetLufs=\"-15\" masterTruePeakDb=\"-1.5\">",
     "  <track id=\"impacts\" role=\"punctuation\" gainDb=\"0\">",
     "    <effect id=\"fx-opening-hit\" type=\"impact\" start=\"0.00\" duration=\"0.60\" gainDb=\"-5\" fadeInMs=\"0\" fadeOutMs=\"220\" intensity=\"medium\" groupId=\"open-low-mid-high\" frequencyBand=\"mid\" layerRole=\"body\" literalness=\"stylized\" searchQuery=\"premium editorial soft opening hit\" rationale=\"Opening punctuation timed by absolute timestamp.\" />",
     "  </track>",
@@ -638,12 +741,20 @@ export function buildSuggestedShortFormSoundDesignDocument(
   options?: { topic?: string; selectedHook?: string; notes?: string }
 ) {
   const settings = getShortFormSoundDesignSettings();
+  const scenes = getTimelineScenes(projectId);
   const visuals = getTimelineVisuals(projectId);
   const captions = getTimelineCaptions(projectId);
   const duration = getNarrationDuration(projectId);
   const hasSemantic = (semanticType: "impact" | "riser" | "click" | "whoosh" | "ambience") => settings.library.some((entry) => entry.semanticTypes.includes(semanticType));
   const events: ShortFormSoundDesignEvent[] = [];
   const firstVisual = visuals[0];
+  const beatScenes = scenes.length > 0 ? scenes : visuals.map((visual, index) => ({
+    id: visual.id,
+    number: index + 1,
+    caption: visual.label,
+    startTime: visual.start,
+    endTime: visual.end,
+  }));
 
   events.push({
     id: "fx-opening-hit",
@@ -691,20 +802,23 @@ export function buildSuggestedShortFormSoundDesignDocument(
     });
   }
 
-  visuals.slice(1, 4).forEach((visual, index) => {
+  beatScenes.slice(1, Math.min(beatScenes.length, 12)).forEach((visual, index) => {
+    const sceneStart = typeof visual.startTime === "number" ? visual.startTime : 0;
+    const sceneEnd = typeof visual.endTime === "number" ? visual.endTime : sceneStart + 1.2;
+    const sceneDuration = Math.max(0.2, sceneEnd - sceneStart);
     events.push({
       id: `fx-transition-${index + 1}`,
       type: hasSemantic("whoosh") ? "whoosh" : "riser",
       track: "transitions",
-      startSeconds: Math.max(0, visual.start - 0.08),
-      durationSeconds: 0.7,
+      startSeconds: Math.max(0, sceneStart - 0.08),
+      durationSeconds: Math.min(0.9, Math.max(0.3, sceneDuration * 0.65)),
       gainDb: -8,
       fadeInMs: 20,
       fadeOutMs: 180,
       intensity: index === 0 ? "medium" : "low",
-      description: `Transition into ${visual.label}`,
+      description: `Transition into ${visual.caption}`,
       searchQuery: "clean editorial transition whoosh riser",
-      rationale: `Carry momentum into the visual beat at ${visual.start.toFixed(2)}s (${visual.label}).`,
+      rationale: `Carry momentum into the visual beat at ${sceneStart.toFixed(2)}s (${visual.caption}).`,
       overlap: "avoid",
       groupId: `transition-${index + 1}-layered`,
       frequencyBand: index === 0 ? "mid" : "high",
@@ -713,6 +827,29 @@ export function buildSuggestedShortFormSoundDesignDocument(
       literalness: "stylized",
       priority: "nice-to-have",
     });
+    if (hasSemantic("click")) {
+      events.push({
+        id: `fx-cut-click-${index + 1}`,
+        type: "click",
+        track: "details",
+        startSeconds: Math.max(0, sceneStart + Math.min(0.08, sceneDuration * 0.12)),
+        durationSeconds: 0.18,
+        gainDb: -6,
+        fadeInMs: 0,
+        fadeOutMs: 90,
+        intensity: "low",
+        description: `Scene-cut punctuation for ${visual.caption}`,
+        searchQuery: "punchy editorial ui tick click",
+        rationale: `Lock a transient accent to the cut into scene ${visual.number}.`,
+        overlap: "avoid",
+        groupId: `transition-${index + 1}-layered`,
+        frequencyBand: "high",
+        layerRole: "tick",
+        stylePalette: "premium editorial",
+        literalness: "stylized",
+        priority: "must-have",
+      });
+    }
   });
 
   if (captions[1] && hasSemantic("click")) {
@@ -750,7 +887,7 @@ export function buildSuggestedShortFormSoundDesignDocument(
   });
 
   const lines = [
-    `<sound_design version=\"2\" duckingDb=\"${settings.defaultDuckingDb}\" maxConcurrentOneShots=\"${settings.maxConcurrentOneShots}\" musicDuckingDb=\"${settings.musicDuckingDb}\" musicEqCutDb=\"${settings.musicEqCutDb}\" musicEqFrequencyHz=\"${settings.musicEqFrequencyHz}\" musicEqQ=\"${settings.musicEqQ}\" musicLowCutHz=\"${settings.musicLowCutHz}\" musicHighCutHz=\"${settings.musicHighCutHz}\">`,
+    `<sound_design version=\"2\" duckingDb=\"${settings.defaultDuckingDb}\" ambienceDuckingDb=\"${settings.ambienceDuckingDb}\" motionDuckingDb=\"${settings.motionDuckingDb}\" transientDuckingDb=\"${settings.transientDuckingDb}\" transientBusGainDb=\"${settings.transientBusGainDb}\" maxConcurrentOneShots=\"${settings.maxConcurrentOneShots}\" musicDuckingDb=\"${settings.musicDuckingDb}\" musicEqCutDb=\"${settings.musicEqCutDb}\" musicEqFrequencyHz=\"${settings.musicEqFrequencyHz}\" musicEqQ=\"${settings.musicEqQ}\" musicLowCutHz=\"${settings.musicLowCutHz}\" musicHighCutHz=\"${settings.musicHighCutHz}\" outputSampleRate=\"${settings.outputSampleRate}\" outputChannels=\"${settings.outputChannels}\" masterLoudnessTargetLufs=\"${settings.masterLoudnessTargetLufs}\" masterTruePeakDb=\"${settings.masterTruePeakDb}\">`,
   ];
   const byTrack = new Map<string, ShortFormSoundDesignEvent[]>();
   events.forEach((event) => {
@@ -907,6 +1044,10 @@ export function readShortFormSoundDesignResolution(projectId: string): ShortForm
     mixSettings: obj.mixSettings && typeof obj.mixSettings === "object" && !Array.isArray(obj.mixSettings)
       ? {
           defaultDuckingDb: clampNumber((obj.mixSettings as Record<string, unknown>).defaultDuckingDb, -24, 0, -8, 1),
+          ambienceDuckingDb: clampNumber((obj.mixSettings as Record<string, unknown>).ambienceDuckingDb, -24, 0, clampNumber((obj.mixSettings as Record<string, unknown>).defaultDuckingDb, -24, 0, -8, 1), 1),
+          motionDuckingDb: clampNumber((obj.mixSettings as Record<string, unknown>).motionDuckingDb, -24, 0, -3, 1),
+          transientDuckingDb: clampNumber((obj.mixSettings as Record<string, unknown>).transientDuckingDb, -12, 6, 0, 1),
+          transientBusGainDb: clampNumber((obj.mixSettings as Record<string, unknown>).transientBusGainDb, -12, 12, 3, 1),
           maxConcurrentOneShots: clampNumber((obj.mixSettings as Record<string, unknown>).maxConcurrentOneShots, 1, 8, 2, 0),
           musicDuckingDb: clampNumber((obj.mixSettings as Record<string, unknown>).musicDuckingDb, -24, 0, -6, 1),
           musicEqCutDb: clampNumber((obj.mixSettings as Record<string, unknown>).musicEqCutDb, -18, 0, -4, 1),
@@ -914,6 +1055,38 @@ export function readShortFormSoundDesignResolution(projectId: string): ShortForm
           musicEqQ: clampNumber((obj.mixSettings as Record<string, unknown>).musicEqQ, 0.1, 10, 1.1, 2),
           musicLowCutHz: clampNumber((obj.mixSettings as Record<string, unknown>).musicLowCutHz, 0, 500, 60, 0),
           musicHighCutHz: clampNumber((obj.mixSettings as Record<string, unknown>).musicHighCutHz, 0, 20000, 0, 0),
+          outputSampleRate: clampNumber((obj.mixSettings as Record<string, unknown>).outputSampleRate, 22050, 192000, 48000, 0),
+          outputChannels: clampNumber((obj.mixSettings as Record<string, unknown>).outputChannels, 1, 8, 2, 0),
+          masterLoudnessTargetLufs: clampNumber((obj.mixSettings as Record<string, unknown>).masterLoudnessTargetLufs, -24, -8, -15, 1),
+          masterTruePeakDb: clampNumber((obj.mixSettings as Record<string, unknown>).masterTruePeakDb, -6, -0.1, -1.5, 1),
+        }
+      : undefined,
+    qa: obj.qa && typeof obj.qa === "object" && !Array.isArray(obj.qa)
+      ? {
+          status: (obj.qa as Record<string, unknown>).status === "fail" || (obj.qa as Record<string, unknown>).status === "warn" ? (obj.qa as Record<string, unknown>).status as "fail" | "warn" : "pass",
+          generatedAt: normalizeString((obj.qa as Record<string, unknown>).generatedAt, new Date().toISOString()),
+          previewFresh: (obj.qa as Record<string, unknown>).previewFresh === true,
+          finalFresh: (obj.qa as Record<string, unknown>).finalFresh === true,
+          finalInputFingerprint: normalizeOptionalString((obj.qa as Record<string, unknown>).finalInputFingerprint),
+          finalInputLastChangedAt: normalizeOptionalString((obj.qa as Record<string, unknown>).finalInputLastChangedAt),
+          fullMix: ((obj.qa as Record<string, unknown>).fullMix as ShortFormSoundDesignAudioMetrics | undefined),
+          noSfxMix: ((obj.qa as Record<string, unknown>).noSfxMix as ShortFormSoundDesignAudioMetrics | undefined),
+          sfxOnlyMix: ((obj.qa as Record<string, unknown>).sfxOnlyMix as ShortFormSoundDesignAudioMetrics | undefined),
+          finalOutput: ((obj.qa as Record<string, unknown>).finalOutput as ShortFormSoundDesignAudioMetrics | undefined),
+          fullVsNoSfxCorrelation: clampOptionalNumber((obj.qa as Record<string, unknown>).fullVsNoSfxCorrelation, -1, 1, 4),
+          fullVsNoSfxDiffRmsDb: clampOptionalNumber((obj.qa as Record<string, unknown>).fullVsNoSfxDiffRmsDb, -120, 12, 1),
+          audibleEventPercent: clampOptionalNumber((obj.qa as Record<string, unknown>).audibleEventPercent, 0, 100, 1),
+          audibleEvents: clampOptionalNumber((obj.qa as Record<string, unknown>).audibleEvents, 0, 10000, 0),
+          measuredEvents: clampOptionalNumber((obj.qa as Record<string, unknown>).measuredEvents, 0, 10000, 0),
+          buriedEvents: clampOptionalNumber((obj.qa as Record<string, unknown>).buriedEvents, 0, 10000, 0),
+          transientAudibleEventPercent: clampOptionalNumber((obj.qa as Record<string, unknown>).transientAudibleEventPercent, 0, 100, 1),
+          measuredTransientEvents: clampOptionalNumber((obj.qa as Record<string, unknown>).measuredTransientEvents, 0, 10000, 0),
+          audibleSamples: Array.isArray((obj.qa as Record<string, unknown>).audibleSamples)
+            ? ((obj.qa as Record<string, unknown>).audibleSamples as ShortFormSoundDesignAudibilitySample[])
+            : undefined,
+          issues: Array.isArray((obj.qa as Record<string, unknown>).issues)
+            ? ((obj.qa as Record<string, unknown>).issues as ShortFormSoundDesignQaIssue[])
+            : [],
         }
       : undefined,
     musicSegments: Array.isArray(obj.musicSegments)
@@ -1192,7 +1365,7 @@ export function resolveShortFormSoundDesign(projectId: string, overrides?: Short
         resolvedGainDb: typeof event.gainDb === "number" ? event.gainDb : 0,
         resolvedFadeInMs: typeof event.fadeInMs === "number" ? event.fadeInMs : 0,
         resolvedFadeOutMs: typeof event.fadeOutMs === "number" ? event.fadeOutMs : 0,
-        duckingDb: mixSettings.defaultDuckingDb,
+        duckingDb: mixSettings.musicDuckingDb,
         muted: prior?.muted === true,
         solo: prior?.solo === true,
         manualGainDb: prior?.manualGainDb,
@@ -1240,6 +1413,7 @@ export function resolveShortFormSoundDesign(projectId: string, overrides?: Short
           ? start + assetDuration
           : undefined;
 
+    const bus = classifySoundDesignBus({ ...event, timingType: asset?.timingType });
     return {
       ...event,
       assetId: asset?.id,
@@ -1252,7 +1426,11 @@ export function resolveShortFormSoundDesign(projectId: string, overrides?: Short
       resolvedGainDb: gainDb,
       resolvedFadeInMs: fadeInMs,
       resolvedFadeOutMs: fadeOutMs,
-      duckingDb: mixSettings.defaultDuckingDb,
+      duckingDb: bus === "ambience"
+        ? mixSettings.ambienceDuckingDb
+        : bus === "motion"
+          ? mixSettings.motionDuckingDb
+          : mixSettings.transientDuckingDb,
       muted: prior?.muted === true,
       solo: prior?.solo === true,
       manualAssetId: prior?.manualAssetId,
@@ -1277,6 +1455,7 @@ export function resolveShortFormSoundDesign(projectId: string, overrides?: Short
     previewAudioRelativePath: doc.resolution?.previewAudioRelativePath,
     previewUpdatedAt: doc.resolution?.previewUpdatedAt,
     mixSettings,
+    qa: undefined,
     ...(resolvedMusicSegments.length > 0 ? { musicSegments: resolvedMusicSegments } : {}),
     events: resolvedEvents,
     stats: {
@@ -1302,6 +1481,394 @@ function getAudioDurationSeconds(audioPath: string) {
   ], { encoding: "utf-8" });
   const parsed = Number(result.stdout?.trim() || "");
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function getAudioFileMetrics(filePath: string): ShortFormSoundDesignAudioMetrics {
+  if (!fs.existsSync(filePath)) return {};
+  const probe = spawnSync("ffprobe", [
+    "-v",
+    "error",
+    "-select_streams",
+    "a:0",
+    "-show_entries",
+    "stream=sample_rate,channels",
+    "-show_entries",
+    "format=duration",
+    "-of",
+    "json",
+    filePath,
+  ], { encoding: "utf-8" });
+  const metrics: ShortFormSoundDesignAudioMetrics = {};
+  try {
+    const parsed = JSON.parse(probe.stdout || "{}") as {
+      streams?: Array<{ sample_rate?: string; channels?: number }>;
+      format?: { duration?: string };
+    };
+    const stream = Array.isArray(parsed.streams) ? parsed.streams[0] : undefined;
+    const sampleRate = Number(stream?.sample_rate || "");
+    const channels = Number(stream?.channels || "");
+    const durationSeconds = Number(parsed.format?.duration || "");
+    if (Number.isFinite(sampleRate) && sampleRate > 0) metrics.sampleRate = sampleRate;
+    if (Number.isFinite(channels) && channels > 0) metrics.channels = channels;
+    if (Number.isFinite(durationSeconds) && durationSeconds > 0) metrics.durationSeconds = Math.round(durationSeconds * 1000) / 1000;
+  } catch {}
+
+  const loudness = spawnSync("ffmpeg", [
+    "-hide_banner",
+    "-i",
+    filePath,
+    "-af",
+    "loudnorm=I=-15:TP=-1.5:LRA=11:print_format=json",
+    "-f",
+    "null",
+    "-",
+  ], { encoding: "utf-8", maxBuffer: 8 * 1024 * 1024 });
+  const loudnessMatch = `${loudness.stderr || ""}\n${loudness.stdout || ""}`.match(/\{\s*"input_i"[\s\S]*?\}/m);
+  if (loudnessMatch) {
+    try {
+      const parsed = JSON.parse(loudnessMatch[0]) as {
+        input_i?: string;
+        input_tp?: string;
+      };
+      const integratedLufs = Number(parsed.input_i || "");
+      const truePeakDb = Number(parsed.input_tp || "");
+      if (Number.isFinite(integratedLufs)) metrics.integratedLufs = integratedLufs;
+      if (Number.isFinite(truePeakDb)) metrics.truePeakDb = truePeakDb;
+    } catch {}
+  }
+
+  const volumeDetect = spawnSync("ffmpeg", [
+    "-hide_banner",
+    "-i",
+    filePath,
+    "-af",
+    "volumedetect",
+    "-f",
+    "null",
+    "-",
+  ], { encoding: "utf-8", maxBuffer: 4 * 1024 * 1024 });
+  const volumeText = `${volumeDetect.stderr || ""}\n${volumeDetect.stdout || ""}`;
+  const meanMatch = volumeText.match(/mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB/i);
+  const peakMatch = volumeText.match(/max_volume:\s*(-?\d+(?:\.\d+)?)\s*dB/i);
+  if (meanMatch) metrics.rmsDb = Number(meanMatch[1]);
+  if (peakMatch) metrics.peakDb = Number(peakMatch[1]);
+  return metrics;
+}
+
+function readWavMonoSamples(filePath: string) {
+  const buffer = fs.readFileSync(filePath);
+  if (buffer.length < 44 || buffer.toString("ascii", 0, 4) !== "RIFF" || buffer.toString("ascii", 8, 12) !== "WAVE") {
+    throw new Error(`Unsupported WAV file: ${filePath}`);
+  }
+  let channels = 0;
+  let sampleRate = 0;
+  let bitsPerSample = 0;
+  let blockAlign = 0;
+  let dataOffset = 0;
+  let dataSize = 0;
+  for (let offset = 12; offset + 8 <= buffer.length;) {
+    const chunkId = buffer.toString("ascii", offset, offset + 4);
+    const chunkSize = buffer.readUInt32LE(offset + 4);
+    const chunkDataStart = offset + 8;
+    const chunkDataEnd = Math.min(buffer.length, chunkDataStart + chunkSize);
+    if (chunkId === "fmt " && chunkDataEnd - chunkDataStart >= 16) {
+      channels = buffer.readUInt16LE(chunkDataStart + 2);
+      sampleRate = buffer.readUInt32LE(chunkDataStart + 4);
+      blockAlign = buffer.readUInt16LE(chunkDataStart + 12);
+      bitsPerSample = buffer.readUInt16LE(chunkDataStart + 14);
+    } else if (chunkId === "data") {
+      dataOffset = chunkDataStart;
+      dataSize = Math.max(0, chunkDataEnd - chunkDataStart);
+    }
+    offset = chunkDataStart + chunkSize + (chunkSize % 2);
+  }
+  if (!channels || !sampleRate || !bitsPerSample || !blockAlign || !dataOffset || !dataSize) {
+    throw new Error(`Incomplete WAV metadata: ${filePath}`);
+  }
+  const bytesPerSample = bitsPerSample / 8;
+  const totalFrames = Math.floor(dataSize / blockAlign);
+  const samples = new Float32Array(totalFrames);
+  for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
+    const frameOffset = dataOffset + frameIndex * blockAlign;
+    let mono = 0;
+    for (let channelIndex = 0; channelIndex < channels; channelIndex += 1) {
+      const sampleOffset = frameOffset + channelIndex * bytesPerSample;
+      let normalizedSample = 0;
+      if (bitsPerSample === 8) {
+        normalizedSample = (buffer.readUInt8(sampleOffset) - 128) / 128;
+      } else if (bitsPerSample === 16) {
+        normalizedSample = buffer.readInt16LE(sampleOffset) / 32768;
+      } else if (bitsPerSample === 24) {
+        normalizedSample = buffer.readIntLE(sampleOffset, 3) / 8388608;
+      } else if (bitsPerSample === 32) {
+        normalizedSample = buffer.readInt32LE(sampleOffset) / 2147483648;
+      } else {
+        throw new Error(`Unsupported WAV bit depth: ${bitsPerSample}`);
+      }
+      mono += normalizedSample;
+    }
+    samples[frameIndex] = mono / channels;
+  }
+  return { sampleRate, samples };
+}
+
+function rmsToDb(rms: number) {
+  if (!Number.isFinite(rms) || rms <= 0) return -120;
+  return Math.round((20 * Math.log10(rms)) * 10) / 10;
+}
+
+function computeWindowRms(samples: Float32Array, startIndex: number, endIndex: number) {
+  const safeStart = Math.max(0, Math.min(samples.length, startIndex));
+  const safeEnd = Math.max(safeStart + 1, Math.min(samples.length, endIndex));
+  let sum = 0;
+  let count = 0;
+  for (let index = safeStart; index < safeEnd; index += 1) {
+    const value = samples[index] || 0;
+    sum += value * value;
+    count += 1;
+  }
+  return Math.sqrt(sum / Math.max(1, count));
+}
+
+function computeCorrelation(left: Float32Array, right: Float32Array) {
+  const length = Math.min(left.length, right.length);
+  if (length < 2) return undefined;
+  let sumLeft = 0;
+  let sumRight = 0;
+  for (let index = 0; index < length; index += 1) {
+    sumLeft += left[index] || 0;
+    sumRight += right[index] || 0;
+  }
+  const meanLeft = sumLeft / length;
+  const meanRight = sumRight / length;
+  let numerator = 0;
+  let denomLeft = 0;
+  let denomRight = 0;
+  for (let index = 0; index < length; index += 1) {
+    const a = (left[index] || 0) - meanLeft;
+    const b = (right[index] || 0) - meanRight;
+    numerator += a * b;
+    denomLeft += a * a;
+    denomRight += b * b;
+  }
+  const denominator = Math.sqrt(denomLeft * denomRight);
+  if (!Number.isFinite(denominator) || denominator <= 0) return undefined;
+  return Math.round((numerator / denominator) * 10000) / 10000;
+}
+
+function computeDifferenceRmsDb(left: Float32Array, right: Float32Array) {
+  const length = Math.min(left.length, right.length);
+  if (length < 1) return undefined;
+  let sum = 0;
+  for (let index = 0; index < length; index += 1) {
+    const diff = (left[index] || 0) - (right[index] || 0);
+    sum += diff * diff;
+  }
+  return rmsToDb(Math.sqrt(sum / length));
+}
+
+function stableStringifySoundDesignInput(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringifySoundDesignInput(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableStringifySoundDesignInput(record[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+function hashSoundDesignInput(value: unknown): string {
+  return crypto.createHash("sha256").update(stableStringifySoundDesignInput(value)).digest("hex");
+}
+
+function getSoundDesignInputFileSignature(role: string, relativePath: string, absolutePath: string) {
+  if (!fs.existsSync(absolutePath)) {
+    return { role, relativePath, exists: false };
+  }
+  const stat = fs.statSync(absolutePath);
+  return {
+    role,
+    relativePath,
+    exists: true,
+    size: stat.size,
+    mtimeMs: Math.round(stat.mtimeMs),
+  };
+}
+
+function getSoundDesignFinalInputSnapshot(projectId: string, resolution?: ShortFormSoundDesignResolution) {
+  const projectDir = getProjectDir(projectId);
+  const docPath = getShortFormSoundDesignPath(projectId);
+  const resolvedEvents = Array.isArray(resolution?.events) ? resolution.events : [];
+  const activeEventsBase = resolvedEvents.filter((event) => event.status === "resolved" && !event.muted && event.assetRelativePath);
+  const anySolo = activeEventsBase.some((event) => event.solo === true);
+  const activeEvents = anySolo ? activeEventsBase.filter((event) => event.solo === true) : activeEventsBase;
+  const activeMusicSegments = (resolution?.musicSegments || []).filter((segment) => segment.status === "resolved" && segment.musicRelativePath);
+  const fileSignatures = [
+    getSoundDesignInputFileSignature("sound-design-doc", "sound-design.md", docPath),
+    ...activeEvents.map((event) => getSoundDesignInputFileSignature(
+      "sound-asset",
+      event.assetRelativePath || "",
+      path.join(getShortFormSoundLibraryDir(), event.assetRelativePath || ""),
+    )),
+    ...activeMusicSegments.map((segment) => getSoundDesignInputFileSignature(
+      "music-asset",
+      segment.musicRelativePath || "",
+      path.join(getShortFormMusicLibraryDir(), segment.musicRelativePath || ""),
+    )),
+  ];
+  const existingMtimes = fileSignatures
+    .map((signature) => typeof signature.mtimeMs === "number" ? signature.mtimeMs : 0)
+    .filter((mtimeMs) => mtimeMs > 0);
+  const lastChangedAtMs = existingMtimes.length > 0 ? Math.max(...existingMtimes) : 0;
+  const input = {
+    version: resolution?.version || 0,
+    mixSettings: resolution?.mixSettings || null,
+    events: activeEvents,
+    musicSegments: activeMusicSegments,
+    files: fileSignatures,
+  };
+  return {
+    fingerprint: hashSoundDesignInput(input),
+    lastChangedAtMs,
+    lastChangedAt: lastChangedAtMs > 0 ? new Date(lastChangedAtMs).toISOString() : undefined,
+    projectDir,
+  };
+}
+
+function getProjectSoundDesignFreshness(projectId: string, previewRelativePath?: string, resolution?: ShortFormSoundDesignResolution) {
+  const projectDir = getProjectDir(projectId);
+  const docPath = getShortFormSoundDesignPath(projectId);
+  const previewPath = previewRelativePath ? path.join(projectDir, previewRelativePath) : undefined;
+  const finalVideoPath = path.join(projectDir, "output", "final-video.mp4");
+  const baselineMtime = Math.max(
+    fs.existsSync(docPath) ? fs.statSync(docPath).mtimeMs : 0,
+    Date.parse(resolution?.generatedAt || "") || 0,
+  );
+  const finalInputSnapshot = getSoundDesignFinalInputSnapshot(projectId, resolution);
+  const previewFresh = Boolean(previewPath && fs.existsSync(previewPath) && fs.statSync(previewPath).mtimeMs >= baselineMtime - 250);
+  const finalMtime = fs.existsSync(finalVideoPath) ? fs.statSync(finalVideoPath).mtimeMs : 0;
+  const priorFinalInputFingerprint = resolution?.qa?.finalInputFingerprint;
+  const finalFingerprintMatches = typeof priorFinalInputFingerprint === "string" && priorFinalInputFingerprint.length > 0
+    ? priorFinalInputFingerprint === finalInputSnapshot.fingerprint
+    : true;
+  const finalFresh = Boolean(finalMtime > 0 && finalFingerprintMatches && finalMtime >= finalInputSnapshot.lastChangedAtMs - 250);
+  return { previewFresh, finalFresh, finalInputSnapshot };
+}
+
+function buildSoundDesignQaReport(options: {
+  projectId: string;
+  resolution: ShortFormSoundDesignResolution;
+  fullMixPath: string;
+  noSfxMixPath: string;
+  sfxOnlyMixPath: string;
+  finalOutputPath?: string;
+}): ShortFormSoundDesignQaReport {
+  const { projectId, resolution, fullMixPath, noSfxMixPath, sfxOnlyMixPath, finalOutputPath } = options;
+  const fullMix = getAudioFileMetrics(fullMixPath);
+  const noSfxMix = getAudioFileMetrics(noSfxMixPath);
+  const sfxOnlyMix = getAudioFileMetrics(sfxOnlyMixPath);
+  const finalOutput = finalOutputPath && fs.existsSync(finalOutputPath) ? getAudioFileMetrics(finalOutputPath) : undefined;
+  const fullSamples = readWavMonoSamples(fullMixPath);
+  const noSfxSamples = readWavMonoSamples(noSfxMixPath);
+  const sfxOnlySamples = readWavMonoSamples(sfxOnlyMixPath);
+  const fullVsNoSfxCorrelation = computeCorrelation(fullSamples.samples, noSfxSamples.samples);
+  const fullVsNoSfxDiffRmsDb = computeDifferenceRmsDb(fullSamples.samples, noSfxSamples.samples);
+  const measuredEvents = resolution.events.filter((event) => isMeasuredAudibilityEvent(event));
+  const audibleSamples: ShortFormSoundDesignAudibilitySample[] = measuredEvents.map((event) => {
+    const bus = classifySoundDesignBus(event);
+    const startSeconds = Math.max(0, event.resolvedStartSeconds - (bus === "transient" ? 0.03 : 0.06));
+    const nominalEnd = typeof event.resolvedEndSeconds === "number"
+      ? event.resolvedEndSeconds
+      : event.resolvedStartSeconds + Math.max(0.08, event.durationSeconds || (bus === "transient" ? 0.18 : 0.55));
+    const endSeconds = Math.max(startSeconds + 0.08, Math.min(nominalEnd + (bus === "transient" ? 0.08 : 0.14), startSeconds + (bus === "transient" ? 0.35 : 0.85)));
+    const startIndex = Math.floor(startSeconds * fullSamples.sampleRate);
+    const endIndex = Math.ceil(endSeconds * fullSamples.sampleRate);
+    const fullRmsDb = rmsToDb(computeWindowRms(fullSamples.samples, startIndex, endIndex));
+    const noSfxRmsDb = rmsToDb(computeWindowRms(noSfxSamples.samples, startIndex, endIndex));
+    const sfxOnlyRmsDb = rmsToDb(computeWindowRms(sfxOnlySamples.samples, startIndex, endIndex));
+    let diffSum = 0;
+    const safeEnd = Math.min(endIndex, fullSamples.samples.length, noSfxSamples.samples.length);
+    for (let index = Math.max(0, startIndex); index < safeEnd; index += 1) {
+      const diff = (fullSamples.samples[index] || 0) - (noSfxSamples.samples[index] || 0);
+      diffSum += diff * diff;
+    }
+    const diffRmsDb = rmsToDb(Math.sqrt(diffSum / Math.max(1, safeEnd - Math.max(0, startIndex))));
+    const diffGapDb = fullRmsDb - diffRmsDb;
+    const audible = bus === "transient"
+      ? diffRmsDb >= -38 && diffGapDb <= 21
+      : diffRmsDb >= -42 && diffGapDb <= 24;
+    return {
+      eventId: event.id,
+      type: event.type,
+      track: event.track,
+      bus,
+      startSeconds: Math.round(startSeconds * 1000) / 1000,
+      endSeconds: Math.round(endSeconds * 1000) / 1000,
+      fullRmsDb,
+      noSfxRmsDb,
+      sfxOnlyRmsDb,
+      diffRmsDb,
+      audible,
+    };
+  });
+
+  const audibleEvents = audibleSamples.filter((sample) => sample.audible).length;
+  const transientSamples = audibleSamples.filter((sample) => sample.bus === "transient");
+  const transientAudible = transientSamples.filter((sample) => sample.audible).length;
+  const audibleEventPercent = audibleSamples.length > 0 ? Math.round((audibleEvents / audibleSamples.length) * 1000) / 10 : undefined;
+  const transientAudibleEventPercent = transientSamples.length > 0 ? Math.round((transientAudible / transientSamples.length) * 1000) / 10 : undefined;
+  const issues: ShortFormSoundDesignQaIssue[] = [];
+  if (typeof fullVsNoSfxCorrelation === "number" && fullVsNoSfxCorrelation >= 0.992) {
+    issues.push({ severity: "fail", code: "sfx-correlation-too-high", message: `Full mix and no-SFX mix are still too similar (${fullVsNoSfxCorrelation.toFixed(4)} correlation).` });
+  }
+  if (typeof fullVsNoSfxDiffRmsDb === "number" && fullVsNoSfxDiffRmsDb <= -30) {
+    issues.push({ severity: "fail", code: "sfx-diff-too-quiet", message: `Overall SFX contribution is too quiet (${fullVsNoSfxDiffRmsDb.toFixed(1)} dB RMS difference).` });
+  }
+  if (typeof audibleEventPercent === "number" && audibleEventPercent < 70) {
+    issues.push({ severity: "fail", code: "audible-event-coverage-low", message: `Only ${audibleEventPercent.toFixed(1)}% of measured motion/transient events read audibly in the mix.` });
+  }
+  if (typeof transientAudibleEventPercent === "number" && transientAudibleEventPercent < 75) {
+    issues.push({ severity: "warn", code: "transient-punch-low", message: `Transient punch coverage is only ${transientAudibleEventPercent.toFixed(1)}%.` });
+  }
+  if ((sfxOnlyMix.integratedLufs ?? -99) <= -28) {
+    issues.push({ severity: "warn", code: "sfx-bus-too-quiet", message: `SFX-only render is still very quiet (${(sfxOnlyMix.integratedLufs ?? -99).toFixed(1)} LUFS).` });
+  }
+  if ((fullMix.sampleRate || 0) < 48000 || (fullMix.channels || 0) < 2) {
+    issues.push({ severity: "fail", code: "preview-format-low-quality", message: `Preview mix is ${fullMix.sampleRate || "unknown"} Hz / ${fullMix.channels || "unknown"} ch instead of 48k stereo.` });
+  }
+  if (finalOutput && ((finalOutput.sampleRate || 0) < 48000 || (finalOutput.channels || 0) < 2)) {
+    issues.push({ severity: "warn", code: "final-format-low-quality", message: `Final output is ${finalOutput.sampleRate || "unknown"} Hz / ${finalOutput.channels || "unknown"} ch instead of 48k stereo.` });
+  }
+  const freshness = getProjectSoundDesignFreshness(projectId, resolution.previewAudioRelativePath, resolution);
+  if (!freshness.previewFresh) {
+    issues.push({ severity: "fail", code: "preview-stale", message: "Preview mix is stale relative to the current sound-design plan or resolution." });
+  }
+  if (finalOutputPath && !freshness.finalFresh) {
+    issues.push({ severity: "warn", code: "final-stale", message: "Final video is stale relative to the current sound-design plan or resolution." });
+  }
+  return {
+    status: issues.some((issue) => issue.severity === "fail") ? "fail" : issues.length > 0 ? "warn" : "pass",
+    generatedAt: new Date().toISOString(),
+    previewFresh: freshness.previewFresh,
+    finalFresh: freshness.finalFresh,
+    finalInputFingerprint: freshness.finalInputSnapshot.fingerprint,
+    finalInputLastChangedAt: freshness.finalInputSnapshot.lastChangedAt,
+    fullMix,
+    noSfxMix,
+    sfxOnlyMix,
+    ...(finalOutput ? { finalOutput } : {}),
+    fullVsNoSfxCorrelation,
+    fullVsNoSfxDiffRmsDb,
+    audibleEventPercent,
+    audibleEvents,
+    measuredEvents: audibleSamples.length,
+    buriedEvents: audibleSamples.length - audibleEvents,
+    transientAudibleEventPercent,
+    measuredTransientEvents: transientSamples.length,
+    audibleSamples,
+    issues,
+  };
 }
 
 function buildAtempoFilters(playbackRate: number) {
@@ -1343,47 +1910,68 @@ function buildMusicMixFilters(musicVolume: number | undefined, mixSettings: Shor
   return filters;
 }
 
-function buildDuckedBackgroundFilters(inputLabel: string, narrationLabel: string, outputLabel: string, duckingDb: number) {
+function buildDuckedBackgroundFilters(inputLabel: string, narrationLabel: string, outputLabel: string, duckingDb: number, options?: {
+  attackMs?: number;
+  releaseMs?: number;
+  threshold?: number;
+}) {
   if (ffmpegSupportsFilter("sidechaincompress")) {
     const ratio = Math.max(2, Math.min(20, Math.abs(duckingDb) * 1.4));
-    return `${inputLabel}${narrationLabel}sidechaincompress=threshold=0.04:ratio=${ratio.toFixed(1)}:attack=15:release=280:makeup=1${outputLabel}`;
+    return `${inputLabel}${narrationLabel}sidechaincompress=threshold=${(options?.threshold ?? 0.04).toFixed(3)}:ratio=${ratio.toFixed(1)}:attack=${Math.max(1, Math.round(options?.attackMs ?? 15))}:release=${Math.max(10, Math.round(options?.releaseMs ?? 280))}:makeup=1${outputLabel}`;
   }
   return `${inputLabel}volume=${dbToVolume(duckingDb).toFixed(5)}${outputLabel}`;
 }
 
-export function renderShortFormSoundDesignPreview(options: {
+function buildTransientBusFilters(inputLabel: string, outputLabel: string, mixSettings: ShortFormSoundDesignMixSettings) {
+  const filters = [`volume=${dbToVolume(mixSettings.transientBusGainDb).toFixed(5)}`];
+  if (ffmpegSupportsFilter("acompressor")) {
+    filters.push("acompressor=threshold=0.18:ratio=2.2:attack=2:release=80:makeup=1");
+  }
+  if (ffmpegSupportsFilter("alimiter")) {
+    filters.push(`alimiter=limit=${dbToVolume(mixSettings.masterTruePeakDb).toFixed(5)}:level=disabled`);
+  }
+  return `${inputLabel}${filters.join(",")}${outputLabel}`;
+}
+
+function buildMasteredOutputFilters(inputLabel: string, outputLabel: string, mixSettings: ShortFormSoundDesignMixSettings) {
+  const filters: string[] = [];
+  if (ffmpegSupportsFilter("loudnorm")) {
+    filters.push(`loudnorm=I=${mixSettings.masterLoudnessTargetLufs.toFixed(1)}:TP=${mixSettings.masterTruePeakDb.toFixed(1)}:LRA=11`);
+  }
+  if (ffmpegSupportsFilter("alimiter")) {
+    filters.push(`alimiter=limit=${dbToVolume(mixSettings.masterTruePeakDb).toFixed(5)}:level=disabled`);
+  }
+  if (filters.length === 0) return null;
+  return `${inputLabel}${filters.join(",")}${outputLabel}`;
+}
+
+function renderShortFormSoundDesignPreviewVariant(options: {
   projectId: string;
   narrationPath: string;
   musicPath?: string;
   musicVolume?: number;
-  includeNarration?: boolean;
-  includeMusic?: boolean;
-  includeSoundEffects?: boolean;
+  includeNarration: boolean;
+  includeMusic: boolean;
+  includeSoundEffects: boolean;
   onlyTrack?: string;
-  outputFileName?: string;
-  persistAsDefault?: boolean;
+  outputFileName: string;
 }) {
   const {
     projectId,
     narrationPath,
     musicPath,
     musicVolume,
-    includeNarration = true,
-    includeMusic = true,
-    includeSoundEffects = true,
+    includeNarration,
+    includeMusic,
+    includeSoundEffects,
     onlyTrack,
-    outputFileName = "sound-design-preview.wav",
-    persistAsDefault = outputFileName === "sound-design-preview.wav",
+    outputFileName,
   } = options;
   const resolution = readShortFormSoundDesignResolution(projectId) || resolveShortFormSoundDesign(projectId);
   const mixSettings = resolution.mixSettings || resolveShortFormSoundDesignMixSettings();
   const previewPath = getShortFormSoundDesignPreviewPath(projectId, outputFileName);
   const previewRelativePath = getShortFormSoundDesignPreviewRelativePath(projectId, outputFileName);
   ensureDir(path.dirname(previewPath));
-
-  if (includeNarration && !fs.existsSync(narrationPath)) {
-    throw new Error("Missing narration WAV for sound-design preview.");
-  }
 
   const activeEventsBase = resolution.events.filter((event) => event.status === "resolved" && !event.muted && event.assetRelativePath);
   const anySolo = activeEventsBase.some((event) => event.solo);
@@ -1392,7 +1980,9 @@ export function renderShortFormSoundDesignPreview(options: {
   const inputArgs = ["-y"];
   const filterLines: string[] = [];
   const musicLabels: string[] = [];
-  const sfxLabels: string[] = [];
+  const ambienceLabels: string[] = [];
+  const motionLabels: string[] = [];
+  const transientLabels: string[] = [];
   let inputIndex = 0;
 
   if (includeNarration) {
@@ -1465,7 +2055,10 @@ export function renderShortFormSoundDesignPreview(options: {
       ];
       const label = `evt${inputIndex}`;
       filterLines.push(`[${inputIndex}:a]${filters.join(",")}[${label}]`);
-      sfxLabels.push(`[${label}]`);
+      const bus = classifySoundDesignBus(event);
+      if (bus === "ambience") ambienceLabels.push(`[${label}]`);
+      else if (bus === "motion") motionLabels.push(`[${label}]`);
+      else transientLabels.push(`[${label}]`);
       inputIndex += 1;
     }
   }
@@ -1484,35 +2077,81 @@ export function renderShortFormSoundDesignPreview(options: {
       backgroundLabels.push(musicLabel);
     }
   }
-  if (sfxLabels.length > 0) {
-    const sfxLabel = sfxLabels.length > 1 ? "[sfxraw]" : sfxLabels[0]!;
-    if (sfxLabels.length > 1) {
-      filterLines.push(`${sfxLabels.join("")}amix=inputs=${sfxLabels.length}:normalize=0:dropout_transition=0${sfxLabel}`);
+
+  if (ambienceLabels.length > 0) {
+    const ambienceLabel = ambienceLabels.length > 1 ? "[ambienceraw]" : ambienceLabels[0]!;
+    if (ambienceLabels.length > 1) {
+      filterLines.push(`${ambienceLabels.join("")}amix=inputs=${ambienceLabels.length}:normalize=0:dropout_transition=0${ambienceLabel}`);
     }
     if (hasNarration) {
-      filterLines.push(buildDuckedBackgroundFilters(sfxLabel, "[narr]", "[duckedsfx]", mixSettings.defaultDuckingDb));
-      backgroundLabels.push("[duckedsfx]");
+      filterLines.push(buildDuckedBackgroundFilters(ambienceLabel, "[narr]", "[duckedambience]", mixSettings.ambienceDuckingDb, { attackMs: 18, releaseMs: 320 }));
+      backgroundLabels.push("[duckedambience]");
     } else {
-      backgroundLabels.push(sfxLabel);
+      backgroundLabels.push(ambienceLabel);
     }
   }
-  const hasBackground = backgroundLabels.length > 0;
-  if (!hasNarration && !hasBackground) {
+
+  if (motionLabels.length > 0) {
+    const motionLabel = motionLabels.length > 1 ? "[motionraw]" : motionLabels[0]!;
+    if (motionLabels.length > 1) {
+      filterLines.push(`${motionLabels.join("")}amix=inputs=${motionLabels.length}:normalize=0:dropout_transition=0${motionLabel}`);
+    }
+    if (hasNarration) {
+      filterLines.push(buildDuckedBackgroundFilters(motionLabel, "[narr]", "[duckedmotion]", mixSettings.motionDuckingDb, { attackMs: 10, releaseMs: 180, threshold: 0.05 }));
+      backgroundLabels.push("[duckedmotion]");
+    } else {
+      backgroundLabels.push(motionLabel);
+    }
+  }
+
+  if (transientLabels.length > 0) {
+    const transientLabel = transientLabels.length > 1 ? "[transientraw]" : transientLabels[0]!;
+    if (transientLabels.length > 1) {
+      filterLines.push(`${transientLabels.join("")}amix=inputs=${transientLabels.length}:normalize=0:dropout_transition=0${transientLabel}`);
+    }
+    filterLines.push(buildTransientBusFilters(transientLabel, "[transientbus]", mixSettings));
+    if (hasNarration && mixSettings.transientDuckingDb < 0) {
+      filterLines.push(buildDuckedBackgroundFilters("[transientbus]", "[narr]", "[duckedtransients]", mixSettings.transientDuckingDb, { attackMs: 3, releaseMs: 70, threshold: 0.08 }));
+      backgroundLabels.push("[duckedtransients]");
+    } else {
+      backgroundLabels.push("[transientbus]");
+    }
+  }
+
+  if (!hasNarration && backgroundLabels.length === 0) {
     throw new Error(onlyTrack
       ? `No resolved sound-design events are available on the ${onlyTrack} track for preview.`
       : "No audio sources are available for this preview mode.");
   }
 
   let outputLabel = hasNarration ? "[narr]" : backgroundLabels[0] || "";
-  if (hasNarration && hasBackground) {
-    filterLines.push(`[narr]${backgroundLabels.join("")}amix=inputs=${backgroundLabels.length + 1}:normalize=0:weights='${[1, ...backgroundLabels.map(() => 1)].join(" ")}'[mix]`);
-    outputLabel = "[mix]";
-  } else if (hasBackground) {
+  if (hasNarration && backgroundLabels.length > 0) {
+    filterLines.push(`[narr]${backgroundLabels.join("")}amix=inputs=${backgroundLabels.length + 1}:normalize=0:weights='${[1, ...backgroundLabels.map(() => 1)].join(" ")}'[mixraw]`);
+    const mastered = buildMasteredOutputFilters("[mixraw]", "[mix]", mixSettings);
+    if (mastered) {
+      filterLines.push(mastered);
+      outputLabel = "[mix]";
+    } else {
+      outputLabel = "[mixraw]";
+    }
+  } else if (backgroundLabels.length > 0) {
     if (backgroundLabels.length > 1) {
       filterLines.push(`${backgroundLabels.join("")}amix=inputs=${backgroundLabels.length}:normalize=0:dropout_transition=0[bgraw]`);
-      outputLabel = "[bgraw]";
+      const mastered = buildMasteredOutputFilters("[bgraw]", "[bgmix]", mixSettings);
+      if (mastered) {
+        filterLines.push(mastered);
+        outputLabel = "[bgmix]";
+      } else {
+        outputLabel = "[bgraw]";
+      }
     } else {
-      outputLabel = backgroundLabels[0]!;
+      const mastered = buildMasteredOutputFilters(backgroundLabels[0]!, "[bgmix]", mixSettings);
+      if (mastered) {
+        filterLines.push(mastered);
+        outputLabel = "[bgmix]";
+      } else {
+        outputLabel = backgroundLabels[0]!;
+      }
     }
   }
 
@@ -1521,6 +2160,10 @@ export function renderShortFormSoundDesignPreview(options: {
     ...(filterLines.length > 0 ? ["-filter_complex", filterLines.join(";")] : []),
     "-map",
     outputLabel,
+    "-ac",
+    String(Math.max(1, Math.round(mixSettings.outputChannels))),
+    "-ar",
+    String(Math.max(22050, Math.round(mixSettings.outputSampleRate))),
     "-c:a",
     "pcm_s16le",
     previewPath,
@@ -1531,12 +2174,83 @@ export function renderShortFormSoundDesignPreview(options: {
     throw new Error(result.stderr || result.stdout || "Failed to render sound-design preview audio.");
   }
 
+  return { previewPath, previewRelativePath };
+}
+
+export function renderShortFormSoundDesignPreview(options: {
+  projectId: string;
+  narrationPath: string;
+  musicPath?: string;
+  musicVolume?: number;
+  includeNarration?: boolean;
+  includeMusic?: boolean;
+  includeSoundEffects?: boolean;
+  onlyTrack?: string;
+  outputFileName?: string;
+  persistAsDefault?: boolean;
+}) {
+  const {
+    projectId,
+    narrationPath,
+    musicPath,
+    musicVolume,
+    includeNarration = true,
+    includeMusic = true,
+    includeSoundEffects = true,
+    onlyTrack,
+    outputFileName = "sound-design-preview.wav",
+    persistAsDefault = outputFileName === "sound-design-preview.wav",
+  } = options;
+  if (includeNarration && !fs.existsSync(narrationPath)) {
+    throw new Error("Missing narration WAV for sound-design preview.");
+  }
+  const result = renderShortFormSoundDesignPreviewVariant({
+    projectId,
+    narrationPath,
+    musicPath,
+    musicVolume,
+    includeNarration,
+    includeMusic,
+    includeSoundEffects,
+    onlyTrack,
+    outputFileName,
+  });
+
   if (persistAsDefault) {
+    const resolution = readShortFormSoundDesignResolution(projectId) || resolveShortFormSoundDesign(projectId);
+    const withoutSfx = renderShortFormSoundDesignPreviewVariant({
+      projectId,
+      narrationPath,
+      musicPath,
+      musicVolume,
+      includeNarration: true,
+      includeMusic: true,
+      includeSoundEffects: false,
+      outputFileName: getShortFormSoundDesignPreviewFileName("without-sfx"),
+    });
+    const effectsOnly = renderShortFormSoundDesignPreviewVariant({
+      projectId,
+      narrationPath,
+      musicPath,
+      musicVolume,
+      includeNarration: false,
+      includeMusic: false,
+      includeSoundEffects: true,
+      outputFileName: getShortFormSoundDesignPreviewFileName("effects-only"),
+    });
     const updated = readShortFormSoundDesignResolution(projectId) || resolution;
-    updated.previewAudioRelativePath = previewRelativePath;
+    updated.previewAudioRelativePath = result.previewRelativePath;
     updated.previewUpdatedAt = new Date().toISOString();
+    updated.qa = buildSoundDesignQaReport({
+      projectId,
+      resolution: updated,
+      fullMixPath: result.previewPath,
+      noSfxMixPath: withoutSfx.previewPath,
+      sfxOnlyMixPath: effectsOnly.previewPath,
+      finalOutputPath: path.join(getProjectDir(projectId), "output", "final-video.mp4"),
+    });
     writeShortFormSoundDesignResolution(projectId, updated);
   }
 
-  return { previewPath, previewRelativePath };
+  return result;
 }

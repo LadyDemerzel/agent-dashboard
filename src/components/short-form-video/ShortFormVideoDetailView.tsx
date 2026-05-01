@@ -4183,6 +4183,15 @@ function SoundDesignSection({
       resolution?.stats.unresolved ||
       resolvedEvents.filter((event) => event.status !== "resolved").length,
   };
+  const soundDesignQa = resolution?.qa;
+  const qaStatusLabel =
+    soundDesignQa?.status === "fail"
+      ? "Fail"
+      : soundDesignQa?.status === "warn"
+        ? "Warn"
+        : soundDesignQa
+          ? "Pass"
+          : "Not run";
   const editableEvents = useMemo(
     () => eventDrafts.filter((event) => event.status === "resolved"),
     [eventDrafts],
@@ -4750,7 +4759,7 @@ function SoundDesignSection({
       </div>
 
       <div className="rounded-lg border border-border bg-background/60 p-4">
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-6">
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Events
@@ -4781,9 +4790,64 @@ function SoundDesignSection({
               {previewAudioUrl ? "Ready" : "Not rendered yet"}
             </p>
           </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              QA status
+            </p>
+            <p className="mt-1 text-sm text-foreground">{qaStatusLabel}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Audible events
+            </p>
+            <p className="mt-1 text-sm text-foreground">
+              {typeof soundDesignQa?.audibleEventPercent === "number"
+                ? `${soundDesignQa.audibleEventPercent.toFixed(1)}%`
+                : "Not measured"}
+            </p>
+          </div>
         </div>
+        {soundDesignQa ? (
+          <div className="mt-4 space-y-2 text-xs text-muted-foreground">
+            <p>
+              Full vs no-SFX:{" "}
+              {typeof soundDesignQa.fullVsNoSfxCorrelation === "number"
+                ? `${soundDesignQa.fullVsNoSfxCorrelation.toFixed(4)} corr`
+                : "n/a"}
+              {" · "}
+              {typeof soundDesignQa.fullVsNoSfxDiffRmsDb === "number"
+                ? `${soundDesignQa.fullVsNoSfxDiffRmsDb.toFixed(1)} dB diff`
+                : "n/a"}
+              {" · "}
+              Preview freshness: {soundDesignQa.previewFresh ? "Fresh" : "Stale"}
+              {" · "}
+              Final freshness: {soundDesignQa.finalFresh ? "Fresh" : "Stale"}
+            </p>
+            <p>
+              Output:{" "}
+              {soundDesignQa.fullMix?.sampleRate && soundDesignQa.fullMix?.channels
+                ? `${soundDesignQa.fullMix.sampleRate} Hz / ${soundDesignQa.fullMix.channels} ch`
+                : "Unknown format"}
+              {typeof soundDesignQa.fullMix?.integratedLufs === "number"
+                ? ` · ${soundDesignQa.fullMix.integratedLufs.toFixed(1)} LUFS`
+                : ""}
+              {typeof soundDesignQa.fullMix?.truePeakDb === "number"
+                ? ` · ${soundDesignQa.fullMix.truePeakDb.toFixed(1)} dBTP`
+                : ""}
+            </p>
+            {Array.isArray(soundDesignQa.issues) && soundDesignQa.issues.length > 0 ? (
+              <div className="space-y-1">
+                {soundDesignQa.issues.slice(0, 4).map((issue) => (
+                  <p key={`${issue.code}:${issue.message}`}>
+                    {issue.severity === "fail" ? "Fail" : "Warn"}: {issue.message}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <p className="mt-4 text-xs text-muted-foreground">
-          Resolve the XML plan, render preview audio, tune event overrides, then approve the selected mix for Final Video.
+          Resolve the XML plan, render preview audio, clear QA, tune event overrides, then approve the selected mix for Final Video.
         </p>
       </div>
 

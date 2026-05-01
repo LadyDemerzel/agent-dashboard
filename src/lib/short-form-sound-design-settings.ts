@@ -23,6 +23,7 @@ const DEFAULT_PLANNING_BRIEF_TEMPLATE = [
   "Plan meaningful risers and uplifters before anticipation, transitions, and payoff beats. Layer short click/tick accents with risers so the mix has movement instead of a flat bed.",
   "Target a denser editorial pass: roughly one click/tick/micro-accent every 1.5-3 seconds during active narration or visual changes, plus risers around section turns and reveals. Avoid firing on every word; do hit phrase pivots, UI-like emphasis points, micro beats, and transitions.",
   "Bias away from under-designing. Plan richer, more frequent sound effects where the edit supports them, especially on transitions, reveals, movement, visual timing changes, and strong narration turns.",
+  "Treat scene cuts, zooms, before/after reveals, whip moves, graphic changes, and image swaps as primary timing beats. Sound should lock to visual rhythm, not just the transcript.",
   "For major transitions, impacts, risers, whooshes, and useful ambience, plan frequency-layered cue groups: low weight/rumble, mid body/motion, and high air/tick/sparkle/texture. Give related layers the same groupId.",
   "Distinguish literal, stylized, and emotional-metaphor cues. Use emotional realism when the sound should match the feeling or metaphor rather than the visible object.",
   "Plan music transitions where useful: reverse-beat/tail risers, reverb tails on final beats, suckbacks under transitions, and impacts/slams on payoff beats.",
@@ -60,7 +61,8 @@ function buildTopLevelSoundDesignPromptTemplate(planningBriefTemplate: string) {
     "Inputs you must read before writing:",
     "- XML script artifact: {{xmlScriptPath}}",
     "- Caption timing JSON: {{captionPlanPath}}",
-    "- Visual timing manifest JSON: {{sceneManifestPath}}",
+    "- Visual timing/cut manifest JSON: {{sceneManifestPath}}",
+    "- Visual beat map summary JSON: {{visualBeatMapJson}}",
     "- Word-level forced alignment data, if present under the XML script work directory",
     "",
     "Saved sound library JSON:",
@@ -75,7 +77,7 @@ function buildTopLevelSoundDesignPromptTemplate(planningBriefTemplate: string) {
     "Artifact requirements:",
     "- Write YAML front matter first with title, status: needs review, date, agent: Scribe, and category: sound-design.",
     "- After the front matter, write raw <sound_design> XML only.",
-    "- Use one <sound_design version=\"2\" duckingDb=\"...\" maxConcurrentOneShots=\"...\" musicDuckingDb=\"...\" musicEqCutDb=\"...\" musicEqFrequencyHz=\"...\" musicEqQ=\"...\"> root element.",
+    "- Use one <sound_design version=\"2\" duckingDb=\"...\" ambienceDuckingDb=\"...\" motionDuckingDb=\"...\" transientDuckingDb=\"...\" transientBusGainDb=\"...\" maxConcurrentOneShots=\"...\" musicDuckingDb=\"...\" musicEqCutDb=\"...\" musicEqFrequencyHz=\"...\" musicEqQ=\"...\" outputSampleRate=\"...\" outputChannels=\"...\" masterLoudnessTargetLufs=\"...\" masterTruePeakDb=\"...\"> root element.",
     "- Inside it, group layered audio lanes with <track id=\"...\" role=\"...\"> elements containing self-closing <effect /> cues.",
     "- Optional music structure: add <music_segments> before/after the SFX tracks, with self-closing <segment id=\"...\" trackId=\"saved-music-id\" start=\"seconds\" end=\"seconds\" gainDb=\"...\" fadeInMs=\"...\" fadeOutMs=\"...\" mood=\"...\" pacing=\"...\" rationale=\"...\" /> entries. Use absolute timestamps only.",
     "- Every effect must include id, type, and start=\"seconds\". Include end=\"seconds\" or duration=\"seconds\" for beds/risers/tails when useful.",
@@ -83,6 +85,9 @@ function buildTopLevelSoundDesignPromptTemplate(planningBriefTemplate: string) {
     "- Placement must be timestamp-only. Use captions, transcript, word-level forced alignment, and visual timing data to choose sounds and timestamps, but do not emit anchors, sceneId, captionId, caption tags, scene references, or caption-boundary timing properties in the XML.",
     "- Keep cues tasteful and narration-supportive, but do not under-design the soundtrack.",
     "- Bias toward purposeful cue density where the edit supports it, especially across hook punctuation, transitions, reveals, motion accents, and strong narration turns.",
+    "- Treat the visual beat map as first-class timing truth. Cover scene cuts, reveals, zooms, camera moves, before/after comparisons, and graphic step-throughs even when the narration is semantically flat.",
+    "- Plan around actual scene boundaries and visual momentum, not just script phrases. A dense short-form edit with ~1-2 second scenes usually needs regular transient punctuation and transition motion support.",
+    "- Make sure major section turns and reveals have both movement support (riser/whoosh) and punch support (click/impact/tick) where appropriate.",
     "- Prefer click/tick/tap/micro-accent SFX for modern emphasis and timing detail. Use risers/uplifters for anticipation and transitions. Generic whooshes are secondary and should not dominate the plan.",
     "- Include enough click/riser coverage that the generated mix will not feel flat: micro accents on narration turns and UI-like emphasis points, risers into section turns/payoffs, and layered groups at larger beats.",
     "- Use the saved library as the allowed source palette when choosing cue types and event intent; metadata can guide palette coherence and low/mid/high layered cue groups.",
@@ -205,6 +210,10 @@ export interface ShortFormSoundDesignSettings {
   promptTemplate: string;
   revisionPromptTemplate: string;
   defaultDuckingDb: number;
+  ambienceDuckingDb: number;
+  motionDuckingDb: number;
+  transientDuckingDb: number;
+  transientBusGainDb: number;
   maxConcurrentOneShots: number;
   musicDuckingDb: number;
   musicEqCutDb: number;
@@ -212,6 +221,10 @@ export interface ShortFormSoundDesignSettings {
   musicEqQ: number;
   musicLowCutHz: number;
   musicHighCutHz: number;
+  outputSampleRate: number;
+  outputChannels: number;
+  masterLoudnessTargetLufs: number;
+  masterTruePeakDb: number;
   library: ShortFormSoundLibraryEntry[];
 }
 
@@ -263,6 +276,10 @@ export interface ShortFormSoundDesignEvent {
 
 export interface ShortFormSoundDesignMix {
   defaultDuckingDb: number;
+  ambienceDuckingDb: number;
+  motionDuckingDb: number;
+  transientDuckingDb: number;
+  transientBusGainDb: number;
   maxConcurrentOneShots: number;
   musicDuckingDb: number;
   musicEqCutDb: number;
@@ -270,6 +287,10 @@ export interface ShortFormSoundDesignMix {
   musicEqQ: number;
   musicLowCutHz: number;
   musicHighCutHz: number;
+  outputSampleRate: number;
+  outputChannels: number;
+  masterLoudnessTargetLufs: number;
+  masterTruePeakDb: number;
 }
 
 export interface ShortFormSoundDesignArtifact {
@@ -541,6 +562,89 @@ function normalizeLibraryEntry(candidate: Partial<ShortFormSoundLibraryEntry> | 
   };
 }
 
+function inferSoundLibraryStylePalettes(entry: ShortFormSoundLibraryEntry) {
+  if (entry.stylePalettes && entry.stylePalettes.length > 0) return entry.stylePalettes;
+  const key = `${entry.id} ${entry.name} ${entry.tags.join(" ")}`.toLowerCase();
+  if (entry.category.toLowerCase() === "ambience") return ["premium editorial", "clean tech"];
+  if (key.includes("wood") || key.includes("organic") || key.includes("field") || key.includes("wind")) return ["organic/nature", "premium editorial"];
+  if (key.includes("trailer") || key.includes("cinematic") || key.includes("boom")) return ["cinematic trailer", "premium editorial"];
+  if (key.includes("glitch") || key.includes("digital") || key.includes("ui") || key.includes("menu") || key.includes("button") || key.includes("sonar")) return ["clean tech", "premium editorial"];
+  if (key.includes("cartoon") || key.includes("playful")) return ["playful ui", "premium editorial"];
+  return ["premium editorial", "clean tech"];
+}
+
+function inferSoundLibraryFrequencyBand(entry: ShortFormSoundLibraryEntry) {
+  if (entry.frequencyBand) return entry.frequencyBand;
+  const key = `${entry.id} ${entry.name} ${entry.tags.join(" ")}`.toLowerCase();
+  if (entry.category.toLowerCase() === "ambience") return key.includes("drone") || key.includes("bass") ? "low" : "high";
+  if (key.includes("bass") || key.includes("boom") || key.includes("low")) return "low";
+  if (key.includes("air") || key.includes("tick") || key.includes("click") || key.includes("spark") || key.includes("whip")) return "high";
+  return entry.category.toLowerCase() === "impact" ? "mid" : "full-range";
+}
+
+function inferSoundLibraryLayerRoles(entry: ShortFormSoundLibraryEntry) {
+  if (entry.layerRoles && entry.layerRoles.length > 0) return entry.layerRoles;
+  const key = `${entry.id} ${entry.name} ${entry.tags.join(" ")}`.toLowerCase();
+  if (entry.category.toLowerCase() === "ambience") return key.includes("drone") ? ["texture", "weight"] : ["air", "texture"];
+  if (entry.category.toLowerCase() === "click") return ["tick", "transient"];
+  if (entry.category.toLowerCase() === "whoosh") return ["motion", "air"];
+  if (entry.category.toLowerCase() === "riser") return ["motion", "build"];
+  if (key.includes("bass") || key.includes("boom")) return ["weight", "body"];
+  if (key.includes("bright") || key.includes("stinger")) return ["sparkle", "punctuation"];
+  return ["body", "punctuation"];
+}
+
+function inferSoundLibraryLiteralness(entry: ShortFormSoundLibraryEntry) {
+  if (entry.literalness) return entry.literalness;
+  if (entry.category.toLowerCase() === "ambience") return "emotional-metaphor";
+  return entry.category.toLowerCase() === "click" ? "stylized" : "stylized";
+}
+
+function curateDefaultGainDb(entry: ShortFormSoundLibraryEntry) {
+  const curatedOverrides: Record<string, number> = {
+    "click-ui-soft": -6.5,
+    "click-ui-button-tight": -4.5,
+    "click-glitch-tick": -5.5,
+    "click-micro-accent": -5.5,
+    "click-ui-round": -5.5,
+    "click-button-snappy": -5,
+    "click-menu-confirm": -5.5,
+    "click-minimal-dry": -5.5,
+    "click-sharp-accent": -4.5,
+    "click-atonal-high": -5.5,
+    "click-editorial-glass-tick": -3.5,
+    "click-digital-blip-soft": -4.5,
+    "click-low-mechanical-tick": -4.5,
+    "click-wooden-tap-tight": -4,
+    "impact-bright-stinger-hit": -4.5,
+    "impact-pop-accent": -4.5,
+    "impact-fx-hit-tight": -3.5,
+    "impact-sonar-pulse-hit": -4.5,
+    "impact-deep-bass-hit": -5,
+    "riser-short-spark-uplift": -7.5,
+    "riser-micro-reverse-tick": -7,
+    "riser-mid-pulse-build": -7,
+    "riser-noise-swell-soft": -8,
+    "ambience-airy-texture-bed": -19,
+    "ambience-soft-tonal-air-1": -18.5,
+    "ambience-soft-tonal-air-2": -18.5,
+  };
+  return curatedOverrides[entry.id] ?? entry.defaultGainDb;
+}
+
+function enrichLibraryEntry(entry: ShortFormSoundLibraryEntry) {
+  const sourcePage = entry.source && /^https?:\/\//i.test(entry.source) ? entry.source : undefined;
+  return {
+    ...entry,
+    stylePalettes: inferSoundLibraryStylePalettes(entry),
+    frequencyBand: inferSoundLibraryFrequencyBand(entry),
+    layerRoles: inferSoundLibraryLayerRoles(entry),
+    literalness: inferSoundLibraryLiteralness(entry),
+    defaultGainDb: curateDefaultGainDb(entry),
+    source: entry.source || sourcePage,
+  };
+}
+
 function normalizePromptTemplate(value: unknown) {
   if (typeof value !== "string" || !value.trim()) {
     return DEFAULT_PROMPT_TEMPLATE;
@@ -596,6 +700,13 @@ function normalizePromptTemplate(value: unknown) {
     normalized = normalized.replace(
       "Saved sound library JSON:\n{{soundLibraryJson}}",
       "Saved sound library JSON:\n{{soundLibraryJson}}\n\nSaved music library JSON:\n{{musicLibraryJson}}",
+    );
+  }
+
+  if (!normalized.includes("Visual beat map summary JSON:")) {
+    normalized = normalized.replace(
+      "- Visual timing manifest JSON: {{sceneManifestPath}}",
+      "- Visual timing/cut manifest JSON: {{sceneManifestPath}}\n- Visual beat map summary JSON: {{visualBeatMapJson}}",
     );
   }
 
@@ -681,6 +792,10 @@ function normalizeSettings(candidate: Partial<ShortFormSoundDesignSettings> | nu
     promptTemplate: normalizePromptTemplate(candidate?.promptTemplate),
     revisionPromptTemplate: normalizeRevisionPromptTemplate(candidate?.revisionPromptTemplate),
     defaultDuckingDb: normalizeNumber(candidate?.defaultDuckingDb, -24, 0, -8, 1),
+    ambienceDuckingDb: normalizeNumber(candidate?.ambienceDuckingDb, -24, 0, candidate?.defaultDuckingDb ?? -8, 1),
+    motionDuckingDb: normalizeNumber(candidate?.motionDuckingDb, -24, 0, -3, 1),
+    transientDuckingDb: normalizeNumber(candidate?.transientDuckingDb, -12, 6, 0, 1),
+    transientBusGainDb: normalizeNumber(candidate?.transientBusGainDb, -12, 12, 3, 1),
     maxConcurrentOneShots: normalizeNumber(candidate?.maxConcurrentOneShots, 1, 8, 2, 0),
     musicDuckingDb: normalizeNumber(candidate?.musicDuckingDb, -24, 0, -6, 1),
     musicEqCutDb: normalizeNumber(candidate?.musicEqCutDb, -18, 0, -4, 1),
@@ -688,9 +803,13 @@ function normalizeSettings(candidate: Partial<ShortFormSoundDesignSettings> | nu
     musicEqQ: normalizeNumber(candidate?.musicEqQ, 0.1, 10, 1.1, 2),
     musicLowCutHz: normalizeNumber(candidate?.musicLowCutHz, 0, 500, 60, 0),
     musicHighCutHz: normalizeNumber(candidate?.musicHighCutHz, 0, 20000, 0, 0),
+    outputSampleRate: normalizeNumber(candidate?.outputSampleRate, 22050, 192000, 48000, 0),
+    outputChannels: normalizeNumber(candidate?.outputChannels, 1, 8, 2, 0),
+    masterLoudnessTargetLufs: normalizeNumber(candidate?.masterLoudnessTargetLufs, -24, -8, -15, 1),
+    masterTruePeakDb: normalizeNumber(candidate?.masterTruePeakDb, -6, -0.1, -1.5, 1),
     library: Array.isArray(candidate?.library) && candidate.library.length > 0
-      ? candidate.library.map((entry, index) => normalizeLibraryEntry(entry, index))
-      : DEFAULT_SOUND_LIBRARY.map((entry, index) => normalizeLibraryEntry(entry, index)),
+      ? candidate.library.map((entry, index) => enrichLibraryEntry(normalizeLibraryEntry(entry, index)))
+      : DEFAULT_SOUND_LIBRARY.map((entry, index) => enrichLibraryEntry(normalizeLibraryEntry(entry, index))),
   };
 }
 
@@ -733,6 +852,46 @@ export function appendSoundLibraryUrls(settings: ShortFormSoundDesignSettings): 
       audioUrl: buildSoundAudioUrl(entry.audioRelativePath, entry.updatedAt || entry.uploadedAt),
     })),
   };
+}
+
+function buildPromptVisualBeatMapJson(projectDir: string) {
+  const manifestPath = path.join(projectDir, "scenes", "manifest.json");
+  const fallbackScenePath = path.join(projectDir, "scene-images.json");
+  try {
+    if (fs.existsSync(manifestPath)) {
+      const raw = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as {
+        scenes?: Array<Record<string, unknown>>;
+      };
+      const scenes = Array.isArray(raw.scenes) ? raw.scenes : [];
+      return JSON.stringify({
+        sceneCount: scenes.length,
+        cuts: scenes.map((scene) => ({
+          index: normalizeNumber(scene.index, 1, 10_000, 1, 0),
+          start: normalizeNumber(scene.start, 0, 10_000, 0, 3),
+          end: normalizeNumber(scene.end, 0, 10_000, 0, 3),
+          text: normalizeString(scene.text, ""),
+          visualId: normalizeOptionalString(scene.visual_id),
+          cameraMotion: normalizeOptionalString(scene.camera_motion),
+        })),
+      }, null, 2);
+    }
+    if (fs.existsSync(fallbackScenePath)) {
+      const raw = JSON.parse(fs.readFileSync(fallbackScenePath, "utf-8")) as {
+        scenes?: Array<Record<string, unknown>>;
+      };
+      const scenes = Array.isArray(raw.scenes) ? raw.scenes : [];
+      return JSON.stringify({
+        sceneCount: scenes.length,
+        cuts: scenes.map((scene, index) => ({
+          index: index + 1,
+          start: normalizeNumber(scene.startTime, 0, 10_000, 0, 3),
+          end: normalizeNumber(scene.endTime, 0, 10_000, 0, 3),
+          text: normalizeString(scene.caption, ""),
+        })),
+      }, null, 2);
+    }
+  } catch {}
+  return JSON.stringify({ sceneCount: 0, cuts: [] }, null, 2);
 }
 
 function getProjectDir(projectId: string) {
@@ -826,6 +985,10 @@ export function resolveSoundDesignArtifact(value: unknown, settings = getShortFo
     notes: normalizeOptionalString(candidate.notes),
     mix: {
       defaultDuckingDb: normalizeNumber(candidate.mix?.defaultDuckingDb, -24, 0, settings.defaultDuckingDb, 1),
+      ambienceDuckingDb: normalizeNumber(candidate.mix?.ambienceDuckingDb, -24, 0, settings.ambienceDuckingDb, 1),
+      motionDuckingDb: normalizeNumber(candidate.mix?.motionDuckingDb, -24, 0, settings.motionDuckingDb, 1),
+      transientDuckingDb: normalizeNumber(candidate.mix?.transientDuckingDb, -12, 6, settings.transientDuckingDb, 1),
+      transientBusGainDb: normalizeNumber(candidate.mix?.transientBusGainDb, -12, 12, settings.transientBusGainDb, 1),
       maxConcurrentOneShots: normalizeNumber(candidate.mix?.maxConcurrentOneShots, 1, 8, settings.maxConcurrentOneShots, 0),
       musicDuckingDb: normalizeNumber(candidate.mix?.musicDuckingDb, -24, 0, settings.musicDuckingDb, 1),
       musicEqCutDb: normalizeNumber(candidate.mix?.musicEqCutDb, -18, 0, settings.musicEqCutDb, 1),
@@ -833,6 +996,10 @@ export function resolveSoundDesignArtifact(value: unknown, settings = getShortFo
       musicEqQ: normalizeNumber(candidate.mix?.musicEqQ, 0.1, 10, settings.musicEqQ, 2),
       musicLowCutHz: normalizeNumber(candidate.mix?.musicLowCutHz, 0, 500, settings.musicLowCutHz, 0),
       musicHighCutHz: normalizeNumber(candidate.mix?.musicHighCutHz, 0, 20000, settings.musicHighCutHz, 0),
+      outputSampleRate: normalizeNumber(candidate.mix?.outputSampleRate, 22050, 192000, settings.outputSampleRate, 0),
+      outputChannels: normalizeNumber(candidate.mix?.outputChannels, 1, 8, settings.outputChannels, 0),
+      masterLoudnessTargetLufs: normalizeNumber(candidate.mix?.masterLoudnessTargetLufs, -24, -8, settings.masterLoudnessTargetLufs, 1),
+      masterTruePeakDb: normalizeNumber(candidate.mix?.masterTruePeakDb, -6, -0.1, settings.masterTruePeakDb, 1),
     },
     trackGroups,
     events: Array.isArray(candidate.events)
@@ -924,7 +1091,9 @@ export function buildShortFormSoundDesignPrompt(projectId: string, options: {
   const soundDesignPath = path.join(projectDir, "sound-design.md");
   const xmlScriptPath = path.join(projectDir, "xml-script.md");
   const captionPlanPath = path.join(projectDir, "output", "xml-script-work", "captions", "caption-sections.json");
-  const sceneManifestPath = path.join(projectDir, "scene-images.json");
+  const sceneManifestPath = fs.existsSync(path.join(projectDir, "scenes", "manifest.json"))
+    ? path.join(projectDir, "scenes", "manifest.json")
+    : path.join(projectDir, "scene-images.json");
   const selectedHookText = options.selectedHook?.trim() || "No selected hook yet";
   const revisionNotes = options.revisionNotes?.trim() || "";
   const revisionNotesBlock = revisionNotes
@@ -946,6 +1115,7 @@ export function buildShortFormSoundDesignPrompt(projectId: string, options: {
     xmlScriptPath,
     captionPlanPath,
     sceneManifestPath,
+    visualBeatMapJson: buildPromptVisualBeatMapJson(projectDir),
     soundLibraryJson: buildPromptSoundLibraryJson(settings.library),
     musicLibraryJson: buildPromptMusicLibraryJson(),
   });
@@ -967,6 +1137,10 @@ export function generateShortFormSoundDesign(projectId: string, options: {
     notes: options.revisionNotes?.trim() || undefined,
     mix: {
       defaultDuckingDb: settings.defaultDuckingDb,
+      ambienceDuckingDb: settings.ambienceDuckingDb,
+      motionDuckingDb: settings.motionDuckingDb,
+      transientDuckingDb: settings.transientDuckingDb,
+      transientBusGainDb: settings.transientBusGainDb,
       maxConcurrentOneShots: settings.maxConcurrentOneShots,
       musicDuckingDb: settings.musicDuckingDb,
       musicEqCutDb: settings.musicEqCutDb,
@@ -974,6 +1148,10 @@ export function generateShortFormSoundDesign(projectId: string, options: {
       musicEqQ: settings.musicEqQ,
       musicLowCutHz: settings.musicLowCutHz,
       musicHighCutHz: settings.musicHighCutHz,
+      outputSampleRate: settings.outputSampleRate,
+      outputChannels: settings.outputChannels,
+      masterLoudnessTargetLufs: settings.masterLoudnessTargetLufs,
+      masterTruePeakDb: settings.masterTruePeakDb,
     },
     trackGroups: buildDefaultTrackGroups(settings),
     events: [],

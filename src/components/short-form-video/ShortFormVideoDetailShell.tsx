@@ -39,22 +39,21 @@ export function ShortFormVideoDetailShell({
 }) {
   const [project, setProject] = useState<Project | null>(initialProject);
 
-  const { data: projectPayload } = useSWR<ApiResponse<Project>>(
+  useSWR<ApiResponse<Project>>(
     projectId ? `/api/short-form-videos/${projectId}` : null,
     apiEnvelopeFetcher,
     {
       ...realtimeSWRConfig,
       refreshInterval: 5000,
+      onSuccess: (projectPayload) => {
+        if (!projectPayload?.success || !projectPayload.data) return;
+        const normalized = normalizeShortFormProject(projectPayload.data);
+        setProject((current) =>
+          shortFormProjectChanged(current, normalized) ? normalized : current
+        );
+      },
     },
   );
-
-  useEffect(() => {
-    if (!projectPayload?.success || !projectPayload.data) return;
-    const normalized = normalizeShortFormProject(projectPayload.data);
-    setProject((current) =>
-      shortFormProjectChanged(current, normalized) ? normalized : current
-    );
-  }, [projectPayload]);
 
   useEffect(() => {
     function handleOptimisticUpdate(event: Event) {

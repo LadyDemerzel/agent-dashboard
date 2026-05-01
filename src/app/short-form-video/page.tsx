@@ -4,8 +4,15 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import Link from 'next/link';
+import { MoreVertical } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { OrbitLoader, Skeleton } from '@/components/ui/loading';
@@ -98,9 +105,47 @@ function tableStatus(project: ProjectRow) {
   }
 }
 
+function ProjectActionsMenu({
+  project,
+  isDuplicating,
+  onDuplicate,
+}: {
+  project: ProjectRow;
+  isDuplicating: boolean;
+  onDuplicate: (project: ProjectRow) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={isDuplicating ? `Duplicating ${primaryProjectText(project)}` : `Open actions for ${primaryProjectText(project)}`}
+          aria-busy={isDuplicating}
+          disabled={isDuplicating}
+          className="h-8 w-8 rounded-full bg-transparent p-0 shadow-none hover:border hover:border-border hover:bg-accent focus-visible:ring-1"
+        >
+          <MoreVertical aria-hidden="true" className={`h-4 w-4 ${isDuplicating ? 'animate-pulse' : ''}`} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-44">
+        <DropdownMenuItem
+          disabled={isDuplicating}
+          onSelect={() => onDuplicate(project)}
+        >
+          Duplicate video
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export default function ShortFormVideoPage() {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
+  const [duplicatingProjectId, setDuplicatingProjectId] = useState<string | null>(null);
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
   const [topic, setTopic] = useState('');
   const {
     data: projectsPayload,
@@ -133,6 +178,31 @@ export default function ShortFormVideoPage() {
     }
   }
 
+  async function handleDuplicate(project: ProjectRow) {
+    setDuplicatingProjectId(project.id);
+    setDuplicateError(null);
+    try {
+      const res = await fetch(`/api/short-form-videos/${project.id}/duplicate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: `${project.title || project.topic || 'Untitled short-form video'} copy`,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success || !data.data?.id) {
+        throw new Error(data.error || 'Failed to duplicate video');
+      }
+
+      await refreshProjects();
+      router.push(`/short-form-video/${data.data.id}/topic`);
+    } catch (error) {
+      setDuplicateError(error instanceof Error ? error.message : 'Failed to duplicate video');
+    } finally {
+      setDuplicatingProjectId(null);
+    }
+  }
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -161,7 +231,12 @@ export default function ShortFormVideoPage() {
         </form>
       </Card>
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-visible">
+        {duplicateError ? (
+          <div className="border-b border-border bg-destructive/10 px-5 py-3 text-sm text-destructive">
+            {duplicateError}
+          </div>
+        ) : null}
         {loading ? (
           <div className="p-5 space-y-4">
             {Array.from({ length: 5 }).map((_, idx) => (
@@ -182,6 +257,9 @@ export default function ShortFormVideoPage() {
                 <TableHead>Current stage</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Updated</TableHead>
+                <TableHead className="w-12 text-right">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -200,6 +278,13 @@ export default function ShortFormVideoPage() {
                     <StatusBadge status={tableStatus(project)} />
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{new Date(project.updatedAt).toLocaleString()}</TableCell>
+                  <TableCell className="text-right align-middle">
+                    <ProjectActionsMenu
+                      project={project}
+                      isDuplicating={duplicatingProjectId === project.id}
+                      onDuplicate={(projectToDuplicate) => void handleDuplicate(projectToDuplicate)}
+                    />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

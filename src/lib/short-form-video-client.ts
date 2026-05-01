@@ -241,6 +241,42 @@ export interface SoundDesignSummaryClient extends StageDoc {
     generatedAt: string;
     previewAudioRelativePath?: string;
     previewUpdatedAt?: string;
+    qa?: {
+      status: 'pass' | 'warn' | 'fail';
+      generatedAt: string;
+      previewFresh: boolean;
+      finalFresh: boolean;
+      fullVsNoSfxCorrelation?: number;
+      fullVsNoSfxDiffRmsDb?: number;
+      audibleEventPercent?: number;
+      audibleEvents?: number;
+      measuredEvents?: number;
+      buriedEvents?: number;
+      transientAudibleEventPercent?: number;
+      measuredTransientEvents?: number;
+      fullMix?: {
+        sampleRate?: number;
+        channels?: number;
+        integratedLufs?: number;
+        truePeakDb?: number;
+        peakDb?: number;
+        rmsDb?: number;
+      };
+      sfxOnlyMix?: {
+        integratedLufs?: number;
+      };
+      finalOutput?: {
+        sampleRate?: number;
+        channels?: number;
+        integratedLufs?: number;
+        truePeakDb?: number;
+      };
+      issues?: Array<{
+        severity: 'warn' | 'fail';
+        code: string;
+        message: string;
+      }>;
+    };
     musicSegments?: SoundDesignMusicSegmentClient[];
     events: SoundDesignResolvedEventClient[];
     stats: {
@@ -868,6 +904,57 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
           generatedAt: asString(resolution.generatedAt),
           previewAudioRelativePath: asOptionalString(resolution.previewAudioRelativePath),
           previewUpdatedAt: asOptionalString(resolution.previewUpdatedAt),
+          qa: (() => {
+            const qa = asObject(resolution.qa);
+            if (!Object.keys(qa).length) return undefined;
+            return {
+              status: qa.status === 'fail' || qa.status === 'warn' ? qa.status : 'pass',
+              generatedAt: asString(qa.generatedAt),
+              previewFresh: asBoolean(qa.previewFresh),
+              finalFresh: asBoolean(qa.finalFresh),
+              fullVsNoSfxCorrelation: typeof qa.fullVsNoSfxCorrelation === 'number' ? qa.fullVsNoSfxCorrelation : undefined,
+              fullVsNoSfxDiffRmsDb: typeof qa.fullVsNoSfxDiffRmsDb === 'number' ? qa.fullVsNoSfxDiffRmsDb : undefined,
+              audibleEventPercent: typeof qa.audibleEventPercent === 'number' ? qa.audibleEventPercent : undefined,
+              audibleEvents: typeof qa.audibleEvents === 'number' ? qa.audibleEvents : undefined,
+              measuredEvents: typeof qa.measuredEvents === 'number' ? qa.measuredEvents : undefined,
+              buriedEvents: typeof qa.buriedEvents === 'number' ? qa.buriedEvents : undefined,
+              transientAudibleEventPercent: typeof qa.transientAudibleEventPercent === 'number' ? qa.transientAudibleEventPercent : undefined,
+              measuredTransientEvents: typeof qa.measuredTransientEvents === 'number' ? qa.measuredTransientEvents : undefined,
+              fullMix: Object.keys(asObject(qa.fullMix)).length
+                ? asObject(qa.fullMix) as {
+                    sampleRate?: number;
+                    channels?: number;
+                    integratedLufs?: number;
+                    truePeakDb?: number;
+                    peakDb?: number;
+                    rmsDb?: number;
+                  }
+                : undefined,
+              sfxOnlyMix: Object.keys(asObject(qa.sfxOnlyMix)).length
+                ? asObject(qa.sfxOnlyMix) as {
+                    integratedLufs?: number;
+                  }
+                : undefined,
+              finalOutput: Object.keys(asObject(qa.finalOutput)).length
+                ? asObject(qa.finalOutput) as {
+                    sampleRate?: number;
+                    channels?: number;
+                    integratedLufs?: number;
+                    truePeakDb?: number;
+                  }
+                : undefined,
+              issues: Array.isArray(qa.issues)
+                ? qa.issues
+                    .map((issue) => asObject(issue))
+                    .filter((issue) => typeof issue.code === 'string' && typeof issue.message === 'string')
+                    .map((issue) => ({
+                      severity: issue.severity === 'fail' ? 'fail' : 'warn',
+                      code: asString(issue.code),
+                      message: asString(issue.message),
+                    }))
+                : undefined,
+            };
+          })(),
           musicSegments: musicSegments.length > 0 ? musicSegments : undefined,
           events,
           stats: {

@@ -78,6 +78,7 @@ const clickCount = typeCounts.get("click") || 0;
 const riserCount = typeCounts.get("riser") || 0;
 const distinctClickAssets = assetTypes.get("click")?.size || 0;
 const distinctRiserAssets = assetTypes.get("riser")?.size || 0;
+const qa = resolution.qa && typeof resolution.qa === "object" ? resolution.qa : null;
 
 console.log(JSON.stringify({
   projectId,
@@ -94,6 +95,20 @@ console.log(JSON.stringify({
   distinctMusicTracks: distinctMusicTracks.size,
   maxConcurrentOneShots,
   observedMaxConcurrent,
+  qa: qa ? {
+    status: qa.status,
+    previewFresh: qa.previewFresh,
+    finalFresh: qa.finalFresh,
+    fullVsNoSfxCorrelation: qa.fullVsNoSfxCorrelation,
+    fullVsNoSfxDiffRmsDb: qa.fullVsNoSfxDiffRmsDb,
+    audibleEventPercent: qa.audibleEventPercent,
+    transientAudibleEventPercent: qa.transientAudibleEventPercent,
+    fullMix: qa.fullMix,
+    sfxOnlyMix: qa.sfxOnlyMix,
+    finalOutput: qa.finalOutput,
+    finalInputLastChangedAt: qa.finalInputLastChangedAt,
+    issueCount: Array.isArray(qa.issues) ? qa.issues.length : 0,
+  } : undefined,
 }, null, 2));
 
 if (!events.length) {
@@ -110,6 +125,38 @@ if (allSameAsset) {
 }
 if (exceedsConcurrency) {
   console.error(`Observed ${observedMaxConcurrent} concurrent one-shot cues, exceeding limit ${maxConcurrentOneShots}.`);
+  process.exit(1);
+}
+if (!qa) {
+  console.error("Sound-design QA report is missing. Render a fresh preview mix first.");
+  process.exit(1);
+}
+if (qa.status === "fail") {
+  console.error(`Sound-design QA failed: ${(qa.issues || []).map((issue) => issue.message).join(" | ") || "unknown failure"}`);
+  process.exit(1);
+}
+if (qa.previewFresh !== true) {
+  console.error("Sound-design preview is stale relative to the current plan/resolution.");
+  process.exit(1);
+}
+if ((Number(qa.fullMix?.sampleRate) || 0) < 48000 || (Number(qa.fullMix?.channels) || 0) < 2) {
+  console.error(`Preview mix format is low quality: ${qa.fullMix?.sampleRate || "unknown"} Hz / ${qa.fullMix?.channels || "unknown"} ch.`);
+  process.exit(1);
+}
+if (typeof qa.fullVsNoSfxCorrelation === "number" && qa.fullVsNoSfxCorrelation >= 0.992) {
+  console.error(`Full mix vs no-SFX correlation is still too high: ${qa.fullVsNoSfxCorrelation}.`);
+  process.exit(1);
+}
+if (typeof qa.fullVsNoSfxDiffRmsDb === "number" && qa.fullVsNoSfxDiffRmsDb <= -30) {
+  console.error(`Full mix vs no-SFX diff RMS is still too low: ${qa.fullVsNoSfxDiffRmsDb} dB.`);
+  process.exit(1);
+}
+if (typeof qa.audibleEventPercent === "number" && qa.audibleEventPercent < 70) {
+  console.error(`Only ${qa.audibleEventPercent}% of measured events are audible in the mix.`);
+  process.exit(1);
+}
+if (typeof qa.transientAudibleEventPercent === "number" && qa.transientAudibleEventPercent < 75) {
+  console.error(`Transient audibility is too low: ${qa.transientAudibleEventPercent}%.`);
   process.exit(1);
 }
 if (projectId === "project-20260401192941") {

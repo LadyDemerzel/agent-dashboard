@@ -12,6 +12,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@types/diff": "^7.0.2",
     "@types/ws": "^8.18.1",
     "class-variance-authority": "^0.7.1",

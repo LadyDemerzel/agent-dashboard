@@ -25,6 +25,7 @@ The design standard for this app is to stay as close as possible to the default 
 
 Rules:
 - Prefer Shadcn UI components whenever they fit the use case.
+- If a needed Shadcn primitive is not already present, add it via the Shadcn CLI instead of hand-rolling a custom replacement.
 - Prefer default Shadcn styling over custom styling.
 - Do not introduce unnecessary visual customization when the default Shadcn component already works well.
 - Only diverge from default Shadcn styles when there is a clear product or usability reason.
@@ -86,12 +87,23 @@ When making UI changes, agents should:
 - keep loading states, empty states, and error states in mind as part of the feature
 - avoid introducing unnecessary new design patterns when an existing one already works
 
+### 4) Buttons should feel clickable
+
+All clickable buttons should use `cursor: pointer` so the interaction is obvious. Disabled buttons should keep non-interactive disabled behavior.
+
+Rules:
+- Shared button primitives should include pointer cursor styling by default.
+- Route-local or one-off button-like controls must also show `cursor: pointer` when clickable.
+- Icon-only controls, including kebab menus and toolbar buttons, should follow the same rule.
+
 ## Practical Checklist
 
 Before implementing:
 - What is the loading state?
 - Can I use a Shadcn component for this?
+- If the Shadcn primitive is missing, should I add it with the Shadcn CLI?
 - Can I stay close to default Shadcn styling?
+- Do clickable buttons/controls clearly use `cursor: pointer`?
 - Is there an existing reusable component I should reuse?
 - If not, is it better to modify an existing component or create a new one?
 

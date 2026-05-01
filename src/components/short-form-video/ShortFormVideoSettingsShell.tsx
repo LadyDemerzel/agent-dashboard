@@ -1,26 +1,23 @@
 'use client';
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
 import useSWR from 'swr';
-import { jsonFetcher, realtimeSWRConfig } from '@/lib/swr-fetcher';
+import { apiDataFetcher, realtimeSWRConfig } from '@/lib/swr-fetcher';
 import { ShortFormSecondaryShell } from '@/components/short-form-video/ShortFormSecondaryShell';
 import {
   getShortFormSettingsNavItems,
   type ShortFormSettingsNavSummary,
 } from '@/lib/short-form-secondary-nav';
 
-interface SettingsSummaryResponse {
-  success: boolean;
-  data?: {
-    imageStyles?: { styles?: unknown[] };
-    videoRender?: {
-      voices?: unknown[];
-      musicTracks?: unknown[];
-      captionStyles?: unknown[];
-    };
-    backgroundVideos?: { backgrounds?: unknown[] };
-    soundDesign?: { library?: unknown[] };
+interface SettingsSummaryData {
+  imageStyles?: { styles?: unknown[] };
+  videoRender?: {
+    voices?: unknown[];
+    musicTracks?: unknown[];
+    captionStyles?: unknown[];
   };
+  backgroundVideos?: { backgrounds?: unknown[] };
+  soundDesign?: { library?: unknown[] };
 }
 
 interface ShortFormSettingsShellNavContextValue {
@@ -30,16 +27,16 @@ interface ShortFormSettingsShellNavContextValue {
 
 const ShortFormSettingsShellNavContext = createContext<ShortFormSettingsShellNavContextValue | null>(null);
 
-function normalizeSummary(payload: SettingsSummaryResponse | null | undefined): ShortFormSettingsNavSummary | null {
-  if (!payload?.success || !payload.data) return null;
+function normalizeSummary(payload: SettingsSummaryData | null | undefined): ShortFormSettingsNavSummary | null {
+  if (!payload) return null;
 
   return {
-    voiceCount: payload.data.videoRender?.voices?.length || 0,
-    soundCount: payload.data.soundDesign?.library?.length || 0,
-    styleCount: payload.data.imageStyles?.styles?.length || 0,
-    captionStyleCount: payload.data.videoRender?.captionStyles?.length || 0,
-    backgroundCount: payload.data.backgroundVideos?.backgrounds?.length || 0,
-    musicTrackCount: payload.data.videoRender?.musicTracks?.length || 0,
+    voiceCount: payload.videoRender?.voices?.length || 0,
+    soundCount: payload.soundDesign?.library?.length || 0,
+    styleCount: payload.imageStyles?.styles?.length || 0,
+    captionStyleCount: payload.videoRender?.captionStyles?.length || 0,
+    backgroundCount: payload.backgroundVideos?.backgrounds?.length || 0,
+    musicTrackCount: payload.videoRender?.musicTracks?.length || 0,
   };
 }
 
@@ -54,23 +51,22 @@ export function ShortFormVideoSettingsShell({
   initialSummary: ShortFormSettingsNavSummary;
   children: React.ReactNode;
 }) {
-  const [summary, setSummary] = useState<ShortFormSettingsNavSummary>(initialSummary);
   const [dirtySectionIds, setDirtySectionIds] = useState<string[]>(initialSummary.dirtySectionIds || []);
   const [summaryOverrides, setSummaryOverrides] = useState<Partial<ShortFormSettingsNavSummary>>({});
 
-  const { data: settingsSummaryPayload } = useSWR<SettingsSummaryResponse>(
+  const { data: settingsSummaryPayload } = useSWR<SettingsSummaryData>(
     '/api/short-form-videos/settings',
-    jsonFetcher,
+    apiDataFetcher,
     {
       ...realtimeSWRConfig,
       refreshInterval: 8000,
     },
   );
 
-  useEffect(() => {
-    const next = normalizeSummary(settingsSummaryPayload);
-    if (next) setSummary(next);
-  }, [settingsSummaryPayload]);
+  const summary = useMemo(
+    () => normalizeSummary(settingsSummaryPayload) || initialSummary,
+    [initialSummary, settingsSummaryPayload]
+  );
 
   const navSummary = useMemo<ShortFormSettingsNavSummary>(
     () => ({

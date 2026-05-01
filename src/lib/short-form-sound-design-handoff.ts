@@ -12,6 +12,11 @@ export interface SoundDesignHandoffInput {
       stats?: {
         unresolved?: number;
       };
+      qa?: {
+        status?: "pass" | "warn" | "fail";
+        previewFresh?: boolean;
+        finalFresh?: boolean;
+      };
     };
   };
 }
@@ -45,7 +50,9 @@ export function getSoundDesignHandoffState(input: SoundDesignHandoffInput): Soun
   const unresolvedEvents = typeof unresolvedRaw === "number" && Number.isFinite(unresolvedRaw)
     ? unresolvedRaw
     : null;
-  const canApprove = Boolean(soundDesign?.exists && hasPreview && unresolvedEvents === 0);
+  const qaStatus = soundDesign?.resolution?.qa?.status;
+  const previewFresh = soundDesign?.resolution?.qa?.previewFresh;
+  const canApprove = Boolean(soundDesign?.exists && hasPreview && unresolvedEvents === 0 && qaStatus !== "fail" && previewFresh !== false);
   const canSkip = Boolean(skipReason);
   const canProceedToFinalVideo = (decision === "approved" && canApprove) || (decision === "skipped" && canSkip);
 
@@ -60,6 +67,10 @@ export function getSoundDesignHandoffState(input: SoundDesignHandoffInput): Soun
     gateReason = "Resolve the sound-design events before approving this handoff for Final Video.";
   } else if (unresolvedEvents > 0) {
     gateReason = `Resolve ${unresolvedEvents} remaining ${pluralize(unresolvedEvents, "sound-design event")} before approving this handoff for Final Video.`;
+  } else if (qaStatus === "fail") {
+    gateReason = "Render a fresh preview mix and clear the sound-design QA failures before approving Final Video.";
+  } else if (previewFresh === false) {
+    gateReason = "Render a fresh preview mix before approving this handoff for Final Video.";
   } else if (decision !== "approved" && decision !== "skipped") {
     gateReason = "Approve the sound-design mix or explicitly skip it with a short reason before Final Video.";
   }

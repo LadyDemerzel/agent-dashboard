@@ -399,16 +399,8 @@ function dedupePromptBlocks(blocks: string[]) {
   return normalizedBlocks;
 }
 
-function insertBlocksBeforePlaceholder(blocks: string[], placeholder: string, insertions: string[]) {
-  const index = blocks.findIndex((block) => block === placeholder);
-  if (index === -1) {
-    return [...blocks, ...insertions];
-  }
-  return [...blocks.slice(0, index), ...insertions, ...blocks.slice(index)];
-}
-
 function normalizeStyleInstructionsTemplate(template: string) {
-  let blocks = splitPromptTemplateBlocks(template)
+  const blocks = splitPromptTemplateBlocks(template)
     .flatMap((block) => {
       if (block === LEGACY_PER_STYLE_PLACEHOLDER) {
         return [STYLE_TEMPLATE_PER_STYLE_BLOCK];
@@ -444,14 +436,11 @@ function normalizeStyleInstructionsTemplate(template: string) {
       ].filter(Boolean);
     });
 
-  blocks = insertBlocksBeforePlaceholder(blocks, STYLE_TEMPLATE_PER_STYLE_BLOCK, DEFAULT_INLINE_SHARED_STYLE_RULES);
-  blocks = insertBlocksBeforePlaceholder(blocks, STYLE_TEMPLATE_PER_STYLE_BLOCK, DEFAULT_INLINE_GREENSCREEN_STYLE_RULES);
-
   return dedupePromptBlocks(blocks).join("\n\n");
 }
 
 function normalizeSceneTemplate(template: string) {
-  let blocks = splitPromptTemplateBlocks(template).flatMap((block) => {
+  const blocks = splitPromptTemplateBlocks(template).flatMap((block) => {
     if (block === LEGACY_TOPIC_LINE_PLACEHOLDER) {
       return [SCENE_TEMPLATE_TOPIC_BLOCK];
     }
@@ -522,11 +511,6 @@ function normalizeSceneTemplate(template: string) {
         .trim(),
     ].filter(Boolean);
   });
-
-  blocks = insertBlocksBeforePlaceholder(blocks, SCENE_TEMPLATE_EXTRA_DIRECTION_BLOCK, [
-    SCENE_TEMPLATE_ASSET_ID_BLOCK,
-    SCENE_TEMPLATE_ASSET_DERIVATION_BLOCK,
-  ]);
 
   return dedupePromptBlocks(blocks).join("\n\n");
 }

@@ -2,6 +2,7 @@
 
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { spawnSync } from "child_process";
 
 const jobPath = process.argv[2];
@@ -1361,6 +1362,10 @@ function resolveSoundDesignMixSettings(resolution) {
   const events = Array.isArray(resolution?.events) ? resolution.events : [];
   const settings = {
     defaultDuckingDb: normalizeMixNumber(raw.defaultDuckingDb, -24, 0, -8, 1),
+    ambienceDuckingDb: normalizeMixNumber(raw.ambienceDuckingDb, -24, 0, Number.isFinite(Number(raw.defaultDuckingDb)) ? Number(raw.defaultDuckingDb) : -8, 1),
+    motionDuckingDb: normalizeMixNumber(raw.motionDuckingDb, -24, 0, -3, 1),
+    transientDuckingDb: normalizeMixNumber(raw.transientDuckingDb, -12, 6, 0, 1),
+    transientBusGainDb: normalizeMixNumber(raw.transientBusGainDb, -12, 12, 3, 1),
     maxConcurrentOneShots: normalizeMixNumber(raw.maxConcurrentOneShots, 1, 8, 2, 0),
     musicDuckingDb: normalizeMixNumber(raw.musicDuckingDb, -24, 0, -6, 1),
     musicEqCutDb: normalizeMixNumber(raw.musicEqCutDb, -18, 0, -4, 1),
@@ -1368,6 +1373,10 @@ function resolveSoundDesignMixSettings(resolution) {
     musicEqQ: normalizeMixNumber(raw.musicEqQ, 0.1, 10, 1.1, 2),
     musicLowCutHz: normalizeMixNumber(raw.musicLowCutHz, 0, 500, 60, 0),
     musicHighCutHz: normalizeMixNumber(raw.musicHighCutHz, 0, 20000, 0, 0),
+    outputSampleRate: normalizeMixNumber(raw.outputSampleRate, 22050, 192000, 48000, 0),
+    outputChannels: normalizeMixNumber(raw.outputChannels, 1, 8, 2, 0),
+    masterLoudnessTargetLufs: normalizeMixNumber(raw.masterLoudnessTargetLufs, -24, -8, -15, 1),
+    masterTruePeakDb: normalizeMixNumber(raw.masterTruePeakDb, -6, -0.1, -1.5, 1),
   };
   let strongestEqCutEvent = null;
   for (const event of events) {
@@ -1397,6 +1406,14 @@ function resolveSoundDesignMixSettings(resolution) {
   return settings;
 }
 
+function classifySoundDesignBus(event) {
+  if (!event || typeof event !== "object") return "transient";
+  if (event.type === "ambience" || event.timingType === "bed") return "ambience";
+  if (event.type === "riser" || event.type === "whoosh" || String(event.layerRole || "").toLowerCase() === "motion") return "motion";
+  if (event.type === "impact" || event.type === "click") return "transient";
+  return "music-control";
+}
+
 function buildMusicMixFilters(musicVolume, mixSettings) {
   const filters = [`volume=${Number.isFinite(Number(musicVolume)) ? Number(musicVolume).toFixed(3) : "0.160"}`];
   if (mixSettings.musicLowCutHz > 0 && ffmpegSupportsFilter("highpass")) {
@@ -1411,12 +1428,26 @@ function buildMusicMixFilters(musicVolume, mixSettings) {
   return filters;
 }
 
-function buildDuckedBackgroundFilter(inputLabel, narrationLabel, outputLabel, duckingDb) {
+function buildDuckedBackgroundFilter(inputLabel, narrationLabel, outputLabel, duckingDb, options = {}) {
   if (ffmpegSupportsFilter("sidechaincompress")) {
     const ratio = Math.max(2, Math.min(20, Math.abs(duckingDb) * 1.4));
-    return `${inputLabel}${narrationLabel}sidechaincompress=threshold=0.04:ratio=${ratio.toFixed(1)}:attack=15:release=280:makeup=1${outputLabel}`;
+    return `${inputLabel}${narrationLabel}sidechaincompress=threshold=${Number.isFinite(Number(options.threshold)) ? Number(options.threshold).toFixed(3) : "0.040"}:ratio=${ratio.toFixed(1)}:attack=${Math.max(1, Math.round(Number(options.attackMs) || 15))}:release=${Math.max(10, Math.round(Number(options.releaseMs) || 280))}:makeup=1${outputLabel}`;
   }
   return `${inputLabel}volume=${dbToVolume(duckingDb).toFixed(5)}${outputLabel}`;
+}
+
+function buildTransientBusFilters(inputLabel, outputLabel, mixSettings) {
+  const filters = [`volume=${dbToVolume(mixSettings.transientBusGainDb).toFixed(5)}`];
+  if (ffmpegSupportsFilter("acompressor")) filters.push("acompressor=threshold=0.18:ratio=2.2:attack=2:release=80:makeup=1");
+  if (ffmpegSupportsFilter("alimiter")) filters.push(`alimiter=limit=${dbToVolume(mixSettings.masterTruePeakDb).toFixed(5)}:level=disabled`);
+  return `${inputLabel}${filters.join(",")}${outputLabel}`;
+}
+
+function buildMasteredOutputFilters(inputLabel, outputLabel, mixSettings) {
+  const filters = [];
+  if (ffmpegSupportsFilter("loudnorm")) filters.push(`loudnorm=I=${mixSettings.masterLoudnessTargetLufs.toFixed(1)}:TP=${mixSettings.masterTruePeakDb.toFixed(1)}:LRA=11`);
+  if (ffmpegSupportsFilter("alimiter")) filters.push(`alimiter=limit=${dbToVolume(mixSettings.masterTruePeakDb).toFixed(5)}:level=disabled`);
+  return filters.length > 0 ? `${inputLabel}${filters.join(",")}${outputLabel}` : null;
 }
 
 async function waitForArtifactPaths(paths, requestedAtMs, timeoutMs, pollMs) {
@@ -2679,6 +2710,152 @@ function resolveProjectRelativePath(projectId, relativePath) {
   return resolvedPath;
 }
 
+function isFreshApprovedSoundDesignPreview(projectId, previewAbsolutePath, resolution) {
+  if (!previewAbsolutePath || !fs.existsSync(previewAbsolutePath)) return false;
+  const soundDesignDocPath = path.join(getProjectDir(projectId), "sound-design.md");
+  const baselineMs = Math.max(
+    fs.existsSync(soundDesignDocPath) ? fs.statSync(soundDesignDocPath).mtimeMs : 0,
+    Date.parse(resolution?.generatedAt || "") || 0,
+  );
+  return fs.statSync(previewAbsolutePath).mtimeMs >= baselineMs - 250;
+}
+
+function getAudioFileMetrics(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) return undefined;
+  const metrics = {};
+  try {
+    const probe = runCommand("ffprobe", [
+      "-v",
+      "error",
+      "-select_streams",
+      "a:0",
+      "-show_entries",
+      "stream=sample_rate,channels",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "json",
+      filePath,
+    ]);
+    const parsed = JSON.parse(probe.stdout || "{}");
+    const stream = Array.isArray(parsed.streams) ? parsed.streams[0] : undefined;
+    const sampleRate = Number(stream?.sample_rate || "");
+    const channels = Number(stream?.channels || "");
+    const durationSeconds = Number(parsed.format?.duration || "");
+    if (Number.isFinite(sampleRate) && sampleRate > 0) metrics.sampleRate = sampleRate;
+    if (Number.isFinite(channels) && channels > 0) metrics.channels = channels;
+    if (Number.isFinite(durationSeconds) && durationSeconds > 0) metrics.durationSeconds = Math.round(durationSeconds * 1000) / 1000;
+  } catch {}
+  try {
+    const loudness = runCommand("ffmpeg", [
+      "-hide_banner",
+      "-i",
+      filePath,
+      "-af",
+      "loudnorm=I=-15:TP=-1.5:LRA=11:print_format=json",
+      "-f",
+      "null",
+      "-",
+    ]);
+    const loudnessMatch = `${loudness.stderr || ""}\n${loudness.stdout || ""}`.match(/\{\s*"input_i"[\s\S]*?\}/m);
+    if (loudnessMatch) {
+      const parsed = JSON.parse(loudnessMatch[0]);
+      const inputI = Number(parsed.input_i || "");
+      const inputTp = Number(parsed.input_tp || "");
+      if (Number.isFinite(inputI)) metrics.integratedLufs = inputI;
+      if (Number.isFinite(inputTp)) metrics.truePeakDb = inputTp;
+    }
+  } catch {}
+  return metrics;
+}
+
+function stableStringifySoundDesignInput(value) {
+  if (Array.isArray(value)) return `[${value.map((item) => stableStringifySoundDesignInput(item)).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringifySoundDesignInput(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+function hashSoundDesignInput(value) {
+  return crypto.createHash("sha256").update(stableStringifySoundDesignInput(value)).digest("hex");
+}
+
+function getSoundDesignInputFileSignature(role, relativePath, absolutePath) {
+  if (!absolutePath || !fs.existsSync(absolutePath)) return { role, relativePath, exists: false };
+  const stat = fs.statSync(absolutePath);
+  return { role, relativePath, exists: true, size: stat.size, mtimeMs: Math.round(stat.mtimeMs) };
+}
+
+function getSoundDesignFinalInputSnapshot(projectId, resolution) {
+  const resolvedEvents = Array.isArray(resolution?.events) ? resolution.events : [];
+  const activeEventsBase = resolvedEvents.filter((event) => event && event.status === "resolved" && !event.muted && event.assetRelativePath);
+  const anySolo = activeEventsBase.some((event) => event.solo === true);
+  const activeEvents = anySolo ? activeEventsBase.filter((event) => event.solo === true) : activeEventsBase;
+  const activeMusicSegments = Array.isArray(resolution?.musicSegments)
+    ? resolution.musicSegments.filter((segment) => segment && segment.status === "resolved" && segment.musicRelativePath)
+    : [];
+  const fileSignatures = [
+    getSoundDesignInputFileSignature("sound-design-doc", "sound-design.md", path.join(getProjectDir(projectId), "sound-design.md")),
+    ...activeEvents.map((event) => getSoundDesignInputFileSignature("sound-asset", event.assetRelativePath || "", resolveSoundLibraryAbsolutePath(event.assetRelativePath || ""))),
+    ...activeMusicSegments.map((segment) => getSoundDesignInputFileSignature("music-asset", segment.musicRelativePath || "", resolveMusicLibraryAbsolutePath(segment.musicRelativePath || ""))),
+  ];
+  const existingMtimes = fileSignatures
+    .map((signature) => typeof signature.mtimeMs === "number" ? signature.mtimeMs : 0)
+    .filter((mtimeMs) => mtimeMs > 0);
+  const lastChangedAtMs = existingMtimes.length > 0 ? Math.max(...existingMtimes) : 0;
+  return {
+    fingerprint: hashSoundDesignInput({
+      version: resolution?.version || 0,
+      mixSettings: resolution?.mixSettings || null,
+      events: activeEvents,
+      musicSegments: activeMusicSegments,
+      files: fileSignatures,
+    }),
+    lastChangedAtMs,
+    lastChangedAt: lastChangedAtMs > 0 ? new Date(lastChangedAtMs).toISOString() : undefined,
+  };
+}
+
+function updateSoundDesignFinalQa(projectId, resolution, finalVideoPath) {
+  if (!resolution || typeof resolution !== "object") return;
+  const previewFresh = resolution?.qa?.previewFresh === true;
+  const finalInputSnapshot = getSoundDesignFinalInputSnapshot(projectId, resolution);
+  const finalMtime = fs.existsSync(finalVideoPath) ? fs.statSync(finalVideoPath).mtimeMs : 0;
+  const priorFinalInputFingerprint = typeof resolution?.qa?.finalInputFingerprint === "string" ? resolution.qa.finalInputFingerprint : "";
+  const finalFingerprintMatches = priorFinalInputFingerprint ? priorFinalInputFingerprint === finalInputSnapshot.fingerprint : true;
+  const finalFresh = Boolean(finalMtime > 0 && finalFingerprintMatches && finalMtime >= finalInputSnapshot.lastChangedAtMs - 250);
+  const retainedIssues = Array.isArray(resolution?.qa?.issues)
+    ? resolution.qa.issues.filter((issue) => issue && issue.code !== "final-stale" && issue.code !== "final-format-low-quality")
+    : [];
+  const finalOutput = getAudioFileMetrics(finalVideoPath);
+  if (!finalFresh) {
+    retainedIssues.push({ severity: "warn", code: "final-stale", message: "Final video is stale relative to the current sound-design plan or resolution." });
+  }
+  if (finalOutput && ((finalOutput.sampleRate || 0) < 48000 || (finalOutput.channels || 0) < 2)) {
+    retainedIssues.push({ severity: "warn", code: "final-format-low-quality", message: `Final output is ${finalOutput.sampleRate || "unknown"} Hz / ${finalOutput.channels || "unknown"} ch instead of 48k stereo.` });
+  }
+  const nextResolution = {
+    ...resolution,
+    qa: {
+      ...(resolution.qa && typeof resolution.qa === "object" ? resolution.qa : {}),
+      status: retainedIssues.some((issue) => issue.severity === "fail") ? "fail" : retainedIssues.length > 0 ? "warn" : "pass",
+      generatedAt: new Date().toISOString(),
+      previewFresh,
+      finalFresh,
+      finalInputFingerprint: finalInputSnapshot.fingerprint,
+      finalInputLastChangedAt: finalInputSnapshot.lastChangedAt,
+      finalOutput,
+      issues: retainedIssues,
+    },
+  };
+  fs.writeFileSync(
+    path.join(getProjectDir(projectId), "output", "sound-design-work", "resolution.json"),
+    JSON.stringify(nextResolution, null, 2),
+    "utf-8",
+  );
+}
+
 function renderProjectSoundDesignMix({ projectId, narrationPath, musicPath, musicVolume, workDir, soundDesignDecision, soundDesignPreviewRelativePath }) {
   if (soundDesignDecision === "skipped") {
     return null;
@@ -2686,6 +2863,7 @@ function renderProjectSoundDesignMix({ projectId, narrationPath, musicPath, musi
 
   const resolution = readProjectSoundDesignResolution(projectId);
   const mixSettings = resolveSoundDesignMixSettings(resolution);
+  const approvedPreviewPath = resolveProjectRelativePath(projectId, soundDesignPreviewRelativePath);
 
   const events = Array.isArray(resolution?.events)
     ? resolution.events.filter((event) => event && typeof event === "object" && event.status === "resolved" && event.assetRelativePath && !event.muted)
@@ -2707,10 +2885,16 @@ function renderProjectSoundDesignMix({ projectId, narrationPath, musicPath, musi
   const mixDir = path.join(workDir, "sound-design");
   ensureDir(mixDir);
   const mixPath = path.join(mixDir, "sound-design-mix.wav");
+  if (soundDesignDecision === "approved" && isFreshApprovedSoundDesignPreview(projectId, approvedPreviewPath, resolution)) {
+    fs.copyFileSync(approvedPreviewPath, mixPath);
+    return mixPath;
+  }
   const inputArgs = ["-y", "-i", narrationPath];
   const filterLines = ["[0:a]volume=1.0[narr]"];
   const musicLabels = [];
-  const sfxLabels = [];
+  const ambienceLabels = [];
+  const motionLabels = [];
+  const transientLabels = [];
   let inputIndex = 1;
 
   if (musicSegments.length > 0) {
@@ -2767,7 +2951,10 @@ function renderProjectSoundDesignMix({ projectId, narrationPath, musicPath, musi
     ];
     const label = `sfx${inputIndex}`;
     filterLines.push(`[${inputIndex}:a]${filters.join(",")}[${label}]`);
-    sfxLabels.push(`[${label}]`);
+    const bus = classifySoundDesignBus(event);
+    if (bus === "ambience") ambienceLabels.push(`[${label}]`);
+    else if (bus === "motion") motionLabels.push(`[${label}]`);
+    else transientLabels.push(`[${label}]`);
     inputIndex += 1;
   }
 
@@ -2780,23 +2967,50 @@ function renderProjectSoundDesignMix({ projectId, narrationPath, musicPath, musi
     filterLines.push(buildDuckedBackgroundFilter(musicLabel, "[narr]", "[duckedmusic]", mixSettings.musicDuckingDb));
     backgroundLabels.push("[duckedmusic]");
   }
-  if (sfxLabels.length) {
-    const sfxLabel = sfxLabels.length > 1 ? "[sfxraw]" : sfxLabels[0];
-    if (sfxLabels.length > 1) {
-      filterLines.push(`${sfxLabels.join("")}amix=inputs=${sfxLabels.length}:normalize=0:dropout_transition=0${sfxLabel}`);
+  if (ambienceLabels.length) {
+    const ambienceLabel = ambienceLabels.length > 1 ? "[ambienceraw]" : ambienceLabels[0];
+    if (ambienceLabels.length > 1) {
+      filterLines.push(`${ambienceLabels.join("")}amix=inputs=${ambienceLabels.length}:normalize=0:dropout_transition=0${ambienceLabel}`);
     }
-    filterLines.push(buildDuckedBackgroundFilter(sfxLabel, "[narr]", "[duckedsfx]", mixSettings.defaultDuckingDb));
-    backgroundLabels.push("[duckedsfx]");
+    filterLines.push(buildDuckedBackgroundFilter(ambienceLabel, "[narr]", "[duckedambience]", mixSettings.ambienceDuckingDb, { attackMs: 18, releaseMs: 320 }));
+    backgroundLabels.push("[duckedambience]");
+  }
+  if (motionLabels.length) {
+    const motionLabel = motionLabels.length > 1 ? "[motionraw]" : motionLabels[0];
+    if (motionLabels.length > 1) {
+      filterLines.push(`${motionLabels.join("")}amix=inputs=${motionLabels.length}:normalize=0:dropout_transition=0${motionLabel}`);
+    }
+    filterLines.push(buildDuckedBackgroundFilter(motionLabel, "[narr]", "[duckedmotion]", mixSettings.motionDuckingDb, { attackMs: 10, releaseMs: 180, threshold: 0.05 }));
+    backgroundLabels.push("[duckedmotion]");
+  }
+  if (transientLabels.length) {
+    const transientLabel = transientLabels.length > 1 ? "[transientraw]" : transientLabels[0];
+    if (transientLabels.length > 1) {
+      filterLines.push(`${transientLabels.join("")}amix=inputs=${transientLabels.length}:normalize=0:dropout_transition=0${transientLabel}`);
+    }
+    filterLines.push(buildTransientBusFilters(transientLabel, "[transientbus]", mixSettings));
+    if (mixSettings.transientDuckingDb < 0) {
+      filterLines.push(buildDuckedBackgroundFilter("[transientbus]", "[narr]", "[duckedtransients]", mixSettings.transientDuckingDb, { attackMs: 3, releaseMs: 70, threshold: 0.08 }));
+      backgroundLabels.push("[duckedtransients]");
+    } else {
+      backgroundLabels.push("[transientbus]");
+    }
   }
   if (!backgroundLabels.length) return null;
-  filterLines.push(`[narr]${backgroundLabels.join("")}amix=inputs=${backgroundLabels.length + 1}:normalize=0:weights='${[1, ...backgroundLabels.map(() => 1)].join(" ")}'[mix]`);
+  filterLines.push(`[narr]${backgroundLabels.join("")}amix=inputs=${backgroundLabels.length + 1}:normalize=0:weights='${[1, ...backgroundLabels.map(() => 1)].join(" ")}'[mixraw]`);
+  const mastered = buildMasteredOutputFilters("[mixraw]", "[mix]", mixSettings);
+  if (mastered) filterLines.push(mastered);
 
   runCommand("ffmpeg", [
     ...inputArgs,
     "-filter_complex",
     filterLines.join(";"),
     "-map",
-    "[mix]",
+    mastered ? "[mix]" : "[mixraw]",
+    "-ac",
+    String(Math.max(1, Math.round(mixSettings.outputChannels))),
+    "-ar",
+    String(Math.max(22050, Math.round(mixSettings.outputSampleRate))),
     "-c:a",
     "pcm_s16le",
     mixPath,
@@ -2820,7 +3034,15 @@ function muxAudioOntoVideo(videoPath, audioPath, workDir) {
     "copy",
     "-c:a",
     "aac",
+    "-ar",
+    "48000",
+    "-ac",
+    "2",
+    "-b:a",
+    "192k",
     "-shortest",
+    "-movflags",
+    "+faststart",
     muxedPath,
   ]);
   fs.renameSync(muxedPath, videoPath);
@@ -3510,8 +3732,12 @@ function runDirectVideo(job) {
   if (soundDesignMixPath && fs.existsSync(soundDesignMixPath)) {
     updateDirectVideoProgress("finalize-output", "Merging the sound-design mix into the final render.");
     muxAudioOntoVideo(config.finalVideoPath, soundDesignMixPath, config.videoWorkDir);
+    updateSoundDesignFinalQa(job.projectId, readProjectSoundDesignResolution(job.projectId), config.finalVideoPath);
   } else {
     updateDirectVideoProgress("finalize-output", "Saving final-video metadata and review artifacts.");
+    if (config.soundDesignDecision === "approved") {
+      updateSoundDesignFinalQa(job.projectId, readProjectSoundDesignResolution(job.projectId), config.finalVideoPath);
+    }
   }
   updateVideoManifestCaptionRendering(job.projectId, config, captionStyleSelection, captionRender);
   fs.writeFileSync(config.videoDocPath, buildVideoReviewDoc(job.projectId, config, xmlSelectedVoice, selectedMusic.music, captionStyleSelection), "utf-8");

@@ -481,6 +481,80 @@ function createId(topic?: string) {
   return `${slug || "project"}-${stamp}`;
 }
 
+function createUniqueDuplicateId(source: ShortFormProjectMeta, title: string) {
+  const baseId = createId(title || source.title || source.topic || "project copy");
+  let id = baseId;
+  let suffix = 2;
+
+  while (fs.existsSync(getProjectDir(id))) {
+    id = `${baseId}-${suffix}`;
+    suffix += 1;
+  }
+
+  return id;
+}
+
+function isProbablyTextFile(filePath: string) {
+  const textExtensions = new Set([
+    ".css",
+    ".csv",
+    ".html",
+    ".js",
+    ".json",
+    ".log",
+    ".md",
+    ".mjs",
+    ".sh",
+    ".srt",
+    ".ts",
+    ".tsx",
+    ".txt",
+    ".vtt",
+    ".xml",
+    ".yaml",
+    ".yml",
+  ]);
+
+  if (!textExtensions.has(path.extname(filePath).toLowerCase())) {
+    return false;
+  }
+
+  const buffer = fs.readFileSync(filePath);
+  return !buffer.includes(0);
+}
+
+function rewriteProjectTextReferences(
+  rootDir: string,
+  replacements: Array<[from: string, to: string]>
+) {
+  const entries = fs.readdirSync(rootDir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const entryPath = path.join(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      rewriteProjectTextReferences(entryPath, replacements);
+      continue;
+    }
+
+    if (!entry.isFile() || !isProbablyTextFile(entryPath)) {
+      continue;
+    }
+
+    const content = fs.readFileSync(entryPath, "utf-8");
+    let next = content;
+
+    for (const [from, to] of replacements) {
+      if (from && from !== to) {
+        next = next.split(from).join(to);
+      }
+    }
+
+    if (next !== content) {
+      fs.writeFileSync(entryPath, next, "utf-8");
+    }
+  }
+}
+
 export function getProjectDir(projectId: string) {
   return path.join(SHORT_FORM_VIDEOS_DIR, projectId);
 }
@@ -919,6 +993,55 @@ export function createShortFormProject(topic = "") {
     selectedImageStyleId: resolvedStyleId,
     ...(resolvedMusicId ? { selectedMusicId: resolvedMusicId } : {}),
     ...(resolvedBackgroundVideoId ? { selectedBackgroundVideoId: resolvedBackgroundVideoId } : {}),
+  };
+
+  saveProjectMeta(id, meta);
+  return meta;
+}
+
+export function duplicateShortFormProject(
+  sourceProjectId: string,
+  options: { title?: string } = {}
+) {
+  ensureShortFormRoot();
+  const sourceMeta = readProjectMeta(sourceProjectId);
+  if (!sourceMeta) return null;
+
+  const sourceDir = getProjectDir(sourceProjectId);
+  if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
+    return null;
+  }
+
+  const title = options.title?.trim() || `${sourceMeta.title || sourceMeta.topic || "Untitled short-form video"} copy`;
+  const id = createUniqueDuplicateId(sourceMeta, title);
+  const destinationDir = getProjectDir(id);
+  fs.cpSync(sourceDir, destinationDir, {
+    recursive: true,
+    errorOnExist: true,
+    force: false,
+  });
+
+  rewriteProjectTextReferences(destinationDir, [
+    [sourceProjectId, id],
+    [sourceDir, destinationDir],
+    [sourceDir.split(path.sep).join("/"), destinationDir.split(path.sep).join("/")],
+    [encodeURIComponent(sourceProjectId), encodeURIComponent(id)],
+  ]);
+
+  const copiedMeta = readProjectMeta(id) || sourceMeta;
+  const now = new Date().toISOString();
+  const meta: ShortFormProjectMeta = {
+    ...copiedMeta,
+    id,
+    title,
+    createdAt: now,
+    updatedAt: now,
+    pendingHooks: false,
+    pendingResearch: false,
+    pendingScript: false,
+    pendingSceneImages: false,
+    pendingSoundDesign: false,
+    pendingVideo: false,
   };
 
   saveProjectMeta(id, meta);
