@@ -6,6 +6,8 @@ import type { ShortFormStageKey } from "@/lib/short-form-videos";
 import type { ShortFormNanoBananaPromptTemplates, ShortFormStyleReferenceImage } from "@/lib/short-form-image-styles";
 import type { ShortFormCaptionAnimationPresetEntry } from "@/lib/short-form-caption-animation";
 import type { ShortFormCaptionStyleEntry } from "@/lib/short-form-video-render-settings";
+import type { ShortFormVisualGenerationModelId } from "@/lib/short-form-visual-generation";
+import type { ShortFormMotionGraphicsSettings } from "@/lib/short-form-motion-graphics";
 
 export interface DirectSceneImagesConfig {
   scriptPath: string;
@@ -17,11 +19,18 @@ export interface DirectSceneImagesConfig {
   sceneId?: string;
   imageStyleId: string;
   imageStyleName: string;
+  visualGenerationModelId: ShortFormVisualGenerationModelId;
+  visualGenerationModelLabel: string;
+  visualGenerationModelRef: string;
   imageStyleSubject: string;
   imageStylePrompt: string;
   imageStyleHeaderPercent: number;
   imageStyleReferences?: ShortFormStyleReferenceImage[];
   imagePromptTemplates: ShortFormNanoBananaPromptTemplates;
+  motionGraphicsSettings?: ShortFormMotionGraphicsSettings;
+  backgroundVideoId?: string;
+  backgroundVideoName?: string;
+  backgroundVideoPath?: string;
 }
 
 export interface DirectVideoConfig {
@@ -96,9 +105,9 @@ const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
 const REPO_ROOT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard");
 const WORKER_PATH = path.join(REPO_ROOT, "scripts", "short-form-stage-worker.mjs");
 const DEFAULT_RELIABLE_MODEL =
-  process.env.SHORT_FORM_RELIABLE_MODEL || "codex/gpt-5.4";
+  process.env.SHORT_FORM_RELIABLE_MODEL || "openai-codex/gpt-5.5";
 const DEFAULT_RETRY_MODEL =
-  process.env.SHORT_FORM_RETRY_MODEL || "openrouter/anthropic/claude-3-haiku";
+  process.env.SHORT_FORM_RETRY_MODEL || "openai/gpt-5.5";
 
 function ensureDir(dirPath: string) {
   fs.mkdirSync(dirPath, { recursive: true });

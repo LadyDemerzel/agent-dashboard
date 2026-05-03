@@ -3,7 +3,10 @@ import path from "path";
 import { parseFrontMatter, generateFrontMatter, extractBody } from "@/lib/frontmatter";
 import { readStatusLog } from "@/lib/status";
 import { readFeedback, type FeedbackThread } from "@/lib/feedback";
-import { resolveShortFormImageStyle } from "@/lib/short-form-image-styles";
+import {
+  resolveShortFormImageStyle,
+  resolveShortFormVisualGenerationModel,
+} from "@/lib/short-form-image-styles";
 import {
   resolveShortFormCaptionStyleSelection,
   resolveShortFormChromaKeySelection,
@@ -25,6 +28,7 @@ import {
   type ShortFormSoundDesignResolution,
 } from "@/lib/short-form-sound-design";
 import { getSoundDesignHandoffState } from "@/lib/short-form-sound-design-handoff";
+import type { ShortFormVisualGenerationModelId } from "@/lib/short-form-visual-generation";
 
 export type ShortFormStageKey = "research" | "script" | "scene-images" | "sound-design" | "video";
 export type PendingStageKey = "hooks" | ShortFormStageKey;
@@ -129,6 +133,10 @@ export interface SceneImageArtifact {
   previewImage?: string;
   previewVideo?: string;
   previewVideoBackgroundId?: string;
+  visualType?: "image" | "motion_graphic";
+  motionGraphicId?: string;
+  motionGraphicTemplateId?: string;
+  motionGraphicRendererId?: string;
   notes?: string;
   status?: "completed" | "in-progress";
 }
@@ -178,6 +186,7 @@ export interface ShortFormProjectMeta {
   pendingSoundDesign?: boolean;
   pendingVideo?: boolean;
   selectedImageStyleId?: string;
+  visualGenerationModelIdOverride?: ShortFormVisualGenerationModelId;
   selectedVoiceId?: string;
   selectedMusicId?: string;
   selectedBackgroundVideoId?: string;
@@ -310,6 +319,10 @@ export interface ShortFormProject {
   selectedHookText?: string;
   selectedImageStyleId?: string;
   selectedImageStyleName?: string;
+  visualGenerationModelId: ShortFormVisualGenerationModelId;
+  visualGenerationModelLabel: string;
+  visualGenerationModelSource: "project" | "default";
+  visualGenerationModelOverrideId?: ShortFormVisualGenerationModelId;
   selectedVoiceId?: string;
   selectedVoiceName?: string;
   selectedMusicId?: string;
@@ -914,6 +927,11 @@ function validateSceneManifestPayload(payload: unknown): JsonReadResult<SceneIma
     const caption = (scene as { caption?: unknown }).caption;
     const image = (scene as { image?: unknown }).image;
     const previewImage = (scene as { previewImage?: unknown }).previewImage;
+    const previewVideo = (scene as { previewVideo?: unknown }).previewVideo;
+    const visualType = (scene as { visualType?: unknown }).visualType;
+    const motionGraphicId = (scene as { motionGraphicId?: unknown }).motionGraphicId;
+    const motionGraphicTemplateId = (scene as { motionGraphicTemplateId?: unknown }).motionGraphicTemplateId;
+    const motionGraphicRendererId = (scene as { motionGraphicRendererId?: unknown }).motionGraphicRendererId;
     const notes = (scene as { notes?: unknown }).notes;
 
     if (!isNonEmptyString(id)) {
@@ -939,10 +957,13 @@ function validateSceneManifestPayload(payload: unknown): JsonReadResult<SceneIma
     const previewImageError = validateRelativeMediaPath(previewImage, `${prefix}.previewImage`);
     if (previewImageError) return { data: [], error: previewImageError };
 
-    if (!image && !previewImage) {
+    const previewVideoError = validateRelativeMediaPath(previewVideo, `${prefix}.previewVideo`);
+    if (previewVideoError) return { data: [], error: previewVideoError };
+
+    if (!image && !previewImage && !previewVideo) {
       return {
         data: [],
-        error: `${prefix} must include at least one of image or previewImage so the storyboard can be reviewed.`,
+        error: `${prefix} must include at least one of image, previewImage, or previewVideo so the storyboard can be reviewed.`,
       };
     }
 
@@ -956,6 +977,11 @@ function validateSceneManifestPayload(payload: unknown): JsonReadResult<SceneIma
       caption: caption.trim(),
       ...(typeof image === "string" && image.trim() ? { image: image.trim() } : {}),
       ...(typeof previewImage === "string" && previewImage.trim() ? { previewImage: previewImage.trim() } : {}),
+      ...(typeof previewVideo === "string" && previewVideo.trim() ? { previewVideo: previewVideo.trim() } : {}),
+      ...(visualType === "motion_graphic" ? { visualType: "motion_graphic" as const } : {}),
+      ...(typeof motionGraphicId === "string" && motionGraphicId.trim() ? { motionGraphicId: motionGraphicId.trim() } : {}),
+      ...(typeof motionGraphicTemplateId === "string" && motionGraphicTemplateId.trim() ? { motionGraphicTemplateId: motionGraphicTemplateId.trim() } : {}),
+      ...(typeof motionGraphicRendererId === "string" && motionGraphicRendererId.trim() ? { motionGraphicRendererId: motionGraphicRendererId.trim() } : {}),
       ...(typeof notes === "string" && notes.trim() ? { notes: notes.trim() } : {}),
     });
   }
@@ -1248,6 +1274,10 @@ function readGeneratedSceneManifestResult(projectId: string): JsonReadResult<Gen
     const basedOnImageId = (scene as { based_on_image_id?: unknown }).based_on_image_id;
     const reusedExistingAsset = (scene as { reused_existing_asset?: unknown }).reused_existing_asset;
     const visualId = (scene as { visual_id?: unknown }).visual_id;
+    const visualType = (scene as { visual_type?: unknown }).visual_type;
+    const motionGraphicId = (scene as { motion_graphic_id?: unknown }).motion_graphic_id;
+    const motionGraphicTemplateId = (scene as { motion_graphic_template_id?: unknown }).motion_graphic_template_id;
+    const motionGraphicRendererId = (scene as { motion_graphic_renderer_id?: unknown }).motion_graphic_renderer_id;
 
     if (!Number.isInteger(number) || Number(number) < 1) {
       return { data: [], error: `${prefix}.index must be a positive integer.` };
@@ -1291,6 +1321,10 @@ function readGeneratedSceneManifestResult(projectId: string): JsonReadResult<Gen
       ...(typeof basedOnImageId === "string" && basedOnImageId.trim() ? { basedOnImageId: basedOnImageId.trim() } : {}),
       ...(typeof reusedExistingAsset === "boolean" ? { reusedExistingAsset } : {}),
       ...(typeof visualId === "string" && visualId.trim() ? { visualId: visualId.trim() } : {}),
+      ...(visualType === "motion_graphic" ? { visualType: "motion_graphic" as const } : {}),
+      ...(typeof motionGraphicId === "string" && motionGraphicId.trim() ? { motionGraphicId: motionGraphicId.trim() } : {}),
+      ...(typeof motionGraphicTemplateId === "string" && motionGraphicTemplateId.trim() ? { motionGraphicTemplateId: motionGraphicTemplateId.trim() } : {}),
+      ...(typeof motionGraphicRendererId === "string" && motionGraphicRendererId.trim() ? { motionGraphicRendererId: motionGraphicRendererId.trim() } : {}),
     });
   }
 
@@ -1346,12 +1380,20 @@ function sceneManifestNeedsSync(projectId: string, primary: JsonReadResult<Scene
       current.previewImage !== next.previewImage ||
       current.previewVideo !== next.previewVideo ||
       current.previewVideoBackgroundId !== next.previewVideoBackgroundId ||
+      current.visualType !== next.visualType ||
+      current.motionGraphicId !== next.motionGraphicId ||
+      current.motionGraphicTemplateId !== next.motionGraphicTemplateId ||
+      current.motionGraphicRendererId !== next.motionGraphicRendererId ||
       current.notes !== next.notes
     ) {
       return true;
     }
 
-    if ((current.image && !sceneMediaPathExists(projectId, current.image)) || (current.previewImage && !sceneMediaPathExists(projectId, current.previewImage))) {
+    if (
+      (current.image && !sceneMediaPathExists(projectId, current.image))
+      || (current.previewImage && !sceneMediaPathExists(projectId, current.previewImage))
+      || (current.previewVideo && !sceneMediaPathExists(projectId, current.previewVideo))
+    ) {
       return true;
     }
   }
@@ -1483,7 +1525,7 @@ export function synchronizeSceneImagesArtifacts(projectId: string) {
 
   if (shouldSyncManifest) {
     const strictManifest = {
-      scenes: generated.data.map(({ id, number, caption, startTime, endTime, image, previewImage, notes }) => ({
+      scenes: generated.data.map(({ id, number, caption, startTime, endTime, image, previewImage, previewVideo, visualType, motionGraphicId, motionGraphicTemplateId, motionGraphicRendererId, notes }) => ({
         id,
         number,
         caption,
@@ -1491,6 +1533,11 @@ export function synchronizeSceneImagesArtifacts(projectId: string) {
         ...(typeof endTime === "number" ? { endTime } : {}),
         ...(image ? { image } : {}),
         ...(previewImage ? { previewImage } : {}),
+        ...(previewVideo ? { previewVideo } : {}),
+        ...(visualType ? { visualType } : {}),
+        ...(motionGraphicId ? { motionGraphicId } : {}),
+        ...(motionGraphicTemplateId ? { motionGraphicTemplateId } : {}),
+        ...(motionGraphicRendererId ? { motionGraphicRendererId } : {}),
         ...(notes ? { notes } : {}),
       })),
     };
@@ -2356,8 +2403,10 @@ function buildScenePreviewVideoUrl(projectId: string, sceneId: string, backgroun
 function attachScenePreviewVideoUrls(projectId: string, scenes: SceneImageArtifact[], backgroundVideoId?: string) {
   return scenes.map((scene) => ({
     ...scene,
-    previewVideo: buildScenePreviewVideoUrl(projectId, scene.id, backgroundVideoId),
-    ...(backgroundVideoId ? { previewVideoBackgroundId: backgroundVideoId } : {}),
+    previewVideo: scene.previewVideo || buildScenePreviewVideoUrl(projectId, scene.id, backgroundVideoId),
+    ...(scene.previewVideo
+      ? { previewVideoBackgroundId: scene.previewVideoBackgroundId }
+      : backgroundVideoId ? { previewVideoBackgroundId: backgroundVideoId } : {}),
   }));
 }
 
@@ -2369,6 +2418,7 @@ function getSceneImagesStage(projectId: string, options?: { pending?: boolean })
     ...scene,
     image: scene.image ? toMediaUrl(projectId, scene.image, getProjectMediaVersion(projectId, scene.image)) : undefined,
     previewImage: scene.previewImage ? toMediaUrl(projectId, scene.previewImage, getProjectMediaVersion(projectId, scene.previewImage)) : undefined,
+    previewVideo: scene.previewVideo ? toMediaUrl(projectId, scene.previewVideo, getProjectMediaVersion(projectId, scene.previewVideo)) : undefined,
   }));
   const progressState = buildSceneImagesProgressState(projectId, manifestScenes, doc);
   return { ...doc, scenes: progressState.scenes, sceneProgress: progressState.sceneProgress, validationError: manifest.error };
@@ -2932,6 +2982,9 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
   const selectedHookId = resolvedSelectedHook?.id;
   const selectedHookText = resolvedSelectedHook?.text ?? nextMeta.selectedHookText;
   const resolvedImageStyle = resolveShortFormImageStyle(nextMeta.selectedImageStyleId);
+  const resolvedVisualGeneration = resolveShortFormVisualGenerationModel(
+    nextMeta.visualGenerationModelIdOverride,
+  );
   const resolvedVoice = resolveShortFormVoiceSelection(nextMeta.selectedVoiceId);
   const resolvedMusic = resolveShortFormMusicSelection(nextMeta.selectedMusicId);
   const resolvedBackground = resolveShortFormBackgroundVideoSelection(nextMeta.selectedBackgroundVideoId);
@@ -2969,6 +3022,11 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
     selectedHookText,
     selectedImageStyleId: resolvedImageStyle.resolvedStyleId,
     selectedImageStyleName: resolvedImageStyle.style.name,
+    visualGenerationModelId:
+      resolvedVisualGeneration.resolvedVisualGenerationModelId,
+    visualGenerationModelLabel: resolvedVisualGeneration.option.label,
+    visualGenerationModelSource: resolvedVisualGeneration.source,
+    visualGenerationModelOverrideId: nextMeta.visualGenerationModelIdOverride,
     selectedVoiceId: resolvedVoice.resolvedVoiceId,
     selectedVoiceName: resolvedVoice.voice.name,
     selectedMusicId: resolvedMusic.resolvedMusicId,

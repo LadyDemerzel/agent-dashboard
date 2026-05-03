@@ -159,6 +159,10 @@ export interface Scene {
   previewImage?: string;
   previewVideo?: string;
   previewVideoBackgroundId?: string;
+  visualType?: 'image' | 'motion_graphic';
+  motionGraphicId?: string;
+  motionGraphicTemplateId?: string;
+  motionGraphicRendererId?: string;
   notes?: string;
   imageId?: string;
   basedOnImageId?: string;
@@ -298,6 +302,10 @@ export interface ShortFormProjectClient {
   selectedHookText?: string;
   selectedImageStyleId?: string;
   selectedImageStyleName?: string;
+  visualGenerationModelId?: string;
+  visualGenerationModelLabel?: string;
+  visualGenerationModelSource?: 'project' | 'default';
+  visualGenerationModelOverrideId?: string;
   selectedVoiceId?: string;
   selectedVoiceName?: string;
   selectedMusicId?: string;
@@ -675,6 +683,10 @@ function normalizeScene(value: unknown): Scene | null {
     previewImage: asOptionalString(obj.previewImage),
     previewVideo: asOptionalString(obj.previewVideo),
     previewVideoBackgroundId: asOptionalString(obj.previewVideoBackgroundId),
+    visualType: obj.visualType === 'motion_graphic' ? 'motion_graphic' : obj.visualType === 'image' ? 'image' : undefined,
+    motionGraphicId: asOptionalString(obj.motionGraphicId),
+    motionGraphicTemplateId: asOptionalString(obj.motionGraphicTemplateId),
+    motionGraphicRendererId: asOptionalString(obj.motionGraphicRendererId),
     notes: asOptionalString(obj.notes),
     imageId: asOptionalString(obj.imageId),
     basedOnImageId: asOptionalString(obj.basedOnImageId),
@@ -755,6 +767,10 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
     selectedHookText: asOptionalString(obj.selectedHookText),
     selectedImageStyleId: asOptionalString(obj.selectedImageStyleId),
     selectedImageStyleName: asOptionalString(obj.selectedImageStyleName),
+    visualGenerationModelId: asOptionalString(obj.visualGenerationModelId),
+    visualGenerationModelLabel: asOptionalString(obj.visualGenerationModelLabel),
+    visualGenerationModelSource: obj.visualGenerationModelSource === 'project' ? 'project' : obj.visualGenerationModelSource === 'default' ? 'default' : undefined,
+    visualGenerationModelOverrideId: asOptionalString(obj.visualGenerationModelOverrideId),
     selectedVoiceId: asOptionalString(obj.selectedVoiceId),
     selectedVoiceName: asOptionalString(obj.selectedVoiceName),
     selectedMusicId: asOptionalString(obj.selectedMusicId),

@@ -62,6 +62,10 @@ import {
 } from "@/lib/short-form-video-navigation";
 import { getDetailRouteItems } from "@/lib/short-form-secondary-nav";
 import { dispatchShortFormProjectOptimisticUpdate } from "@/lib/short-form-project-events";
+import {
+  getShortFormVisualGenerationModelOptions,
+  type ShortFormVisualGenerationModelId,
+} from "@/lib/short-form-visual-generation";
 
 interface ApiResponse<T> {
   success: boolean;
@@ -140,6 +144,7 @@ interface WorkflowSettingsResponse {
   }>;
   imageStyles?: {
     defaultStyleId?: string;
+    defaultVisualGenerationModelId?: string;
     styles?: ImageStyleOption[];
   };
   videoRender?: {
@@ -195,6 +200,9 @@ interface SoundLibraryOption {
   layerRoles?: string[];
   literalness?: 'literal' | 'stylized' | 'emotional-metaphor';
 }
+
+const VISUAL_GENERATION_MODEL_OPTIONS =
+  getShortFormVisualGenerationModelOptions();
 
 type SoundDesignReviewRenderMode = "without-sfx" | "effects-only";
 
@@ -3431,11 +3439,19 @@ function SceneImagesSection({
     BackgroundVideoOption[]
   >([]);
   const [defaultStyleId, setDefaultStyleId] = useState<string>("");
+  const [defaultVisualGenerationModelId, setDefaultVisualGenerationModelId] =
+    useState<string>("");
   const [defaultBackgroundVideoId, setDefaultBackgroundVideoId] =
     useState<string>("");
   const [savingStyle, setSavingStyle] = useState(false);
   const [styleDialogOpen, setStyleDialogOpen] = useState(false);
   const [draftStyleId, setDraftStyleId] = useState("");
+  const [savingVisualGenerationModel, setSavingVisualGenerationModel] =
+    useState(false);
+  const [visualGenerationDialogOpen, setVisualGenerationDialogOpen] =
+    useState(false);
+  const [draftVisualGenerationModelId, setDraftVisualGenerationModelId] =
+    useState("");
   const [savingBackground, setSavingBackground] = useState(false);
   const [backgroundDialogOpen, setBackgroundDialogOpen] = useState(false);
   const [draftBackgroundVideoId, setDraftBackgroundVideoId] = useState("");
@@ -3474,6 +3490,10 @@ function SceneImagesSection({
       : [];
     setStyleOptions(nextStyles);
     setDefaultStyleId(imageSettingsPayload?.data?.imageStyles?.defaultStyleId || "");
+    setDefaultVisualGenerationModelId(
+      imageSettingsPayload?.data?.imageStyles?.defaultVisualGenerationModelId ||
+        "",
+    );
     setBackgroundOptions(nextBackgrounds);
     setDefaultBackgroundVideoId(
       imageSettingsPayload?.data?.backgroundVideos?.defaultBackgroundVideoId || "",
@@ -3513,6 +3533,36 @@ function SceneImagesSection({
       return false;
     } finally {
       setSavingStyle(false);
+    }
+  }
+
+  async function saveProjectVisualGenerationModel(
+    visualGenerationModelIdOverride: ShortFormVisualGenerationModelId | null,
+  ) {
+    setSavingVisualGenerationModel(true);
+    setError(null);
+    try {
+      await parseJsonResponse(
+        await fetch(`/api/short-form-videos/${project.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            visualGenerationModelIdOverride,
+          }),
+        }),
+        "Failed to update image generation provider/model",
+      );
+      await refresh();
+      return true;
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to update image generation provider/model",
+      );
+      return false;
+    } finally {
+      setSavingVisualGenerationModel(false);
     }
   }
 
@@ -3579,8 +3629,14 @@ function SceneImagesSection({
   const defaultStyleLabel =
     styleOptions.find((style) => style.id === defaultStyleId)?.name ||
     "default style";
+  const defaultVisualGenerationLabel =
+    VISUAL_GENERATION_MODEL_OPTIONS.find(
+      (option) => option.id === defaultVisualGenerationModelId,
+    )?.label || "global image generation provider";
   const activeStyleId = project.selectedImageStyleId || defaultStyleId || "";
   const activeStyleLabel = project.selectedImageStyleName || defaultStyleLabel;
+  const activeVisualGenerationLabel =
+    project.visualGenerationModelLabel || defaultVisualGenerationLabel;
   const defaultBackgroundLabel =
     backgroundOptions.find(
       (background) => background.id === defaultBackgroundVideoId,
@@ -3601,7 +3657,7 @@ function SceneImagesSection({
       mode="markdown"
       emptyText="No generated visuals yet. Generate them after approving the XML script."
       triggerLabel="Generate visuals"
-      triggerDescription={`This should create green-screen scene plates using the selected image style${project.selectedImageStyleName ? ` (${project.selectedImageStyleName})` : ""}${project.selectedBackgroundVideoName ? ` and prepare preview compositing against ${project.selectedBackgroundVideoName}` : ""}.`}
+      triggerDescription={`This should create green-screen scene plates using ${activeVisualGenerationLabel} and the selected image style${project.selectedImageStyleName ? ` (${project.selectedImageStyleName})` : ""}${project.selectedBackgroundVideoName ? `, then prepare preview compositing against ${project.selectedBackgroundVideoName}` : ""}.`}
       onRefresh={refresh}
       collapseDocumentByDefault
       hideReviewDocument
@@ -3614,6 +3670,143 @@ function SceneImagesSection({
               message={error}
             />
           ) : null}
+          <CompactSettingCard
+            title="Image generation provider/model"
+            globalDefault={
+              <>Global default: {defaultVisualGenerationLabel}</>
+            }
+            valueLines={[{ children: activeVisualGenerationLabel }]}
+            editTooltip="Edit image generation provider/model"
+            onEdit={() => {
+              setDraftVisualGenerationModelId(
+                project.visualGenerationModelOverrideId || "",
+              );
+              setError(null);
+              setVisualGenerationDialogOpen(true);
+            }}
+            links={
+              <CompactSettingLink
+                href={buildShortFormSettingsHref("images", {
+                  hash: "image-styles",
+                })}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open image settings ↗
+              </CompactSettingLink>
+            }
+            dialog={{
+              open: visualGenerationDialogOpen,
+              title: "Image generation provider/model",
+              description:
+                "Override this project's image-generation backend, or inherit the saved global default.",
+              children: (
+                <>
+                  {error ? (
+                    <ValidationNotice
+                      title="Visual change request failed"
+                      message={error}
+                    />
+                  ) : null}
+                  <CompactSettingLink
+                    href={buildShortFormSettingsHref("images", {
+                      hash: "image-styles",
+                    })}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open image settings ↗
+                  </CompactSettingLink>
+                  <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                    <button
+                      type="button"
+                      onClick={() => setDraftVisualGenerationModelId("")}
+                      disabled={savingVisualGenerationModel}
+                      className={`w-full cursor-pointer rounded-md border px-3 py-2 text-left text-sm transition disabled:cursor-not-allowed ${
+                        draftVisualGenerationModelId === ""
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-border bg-background/60 text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-medium">
+                          Use global default ({defaultVisualGenerationLabel})
+                        </span>
+                        <Badge variant="secondary">Global default</Badge>
+                      </div>
+                    </button>
+                    {VISUAL_GENERATION_MODEL_OPTIONS.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() =>
+                          setDraftVisualGenerationModelId(option.id)
+                        }
+                        disabled={savingVisualGenerationModel}
+                        className={`w-full cursor-pointer rounded-md border px-3 py-2 text-left text-sm transition disabled:cursor-not-allowed ${
+                          draftVisualGenerationModelId === option.id
+                            ? "border-primary bg-primary/10 text-foreground"
+                            : "border-border bg-background/60 text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="font-medium">{option.label}</span>
+                          {option.id === defaultVisualGenerationModelId ? (
+                            <Badge variant="secondary">Global default</Badge>
+                          ) : null}
+                        </div>
+                        <div className="mt-1 text-xs opacity-80">
+                          {option.description}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <DialogFooter className="mt-0 justify-start">
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        void saveProjectVisualGenerationModel(
+                          draftVisualGenerationModelId
+                            ? (draftVisualGenerationModelId as ShortFormVisualGenerationModelId)
+                            : null,
+                        ).then((saved) => {
+                          if (saved) setVisualGenerationDialogOpen(false);
+                        })
+                      }
+                      disabled={savingVisualGenerationModel}
+                    >
+                      {savingVisualGenerationModel ? "Saving…" : "Save"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        void saveProjectVisualGenerationModel(null).then(
+                          (saved) => {
+                            if (saved) setVisualGenerationDialogOpen(false);
+                          },
+                        )
+                      }
+                      disabled={
+                        savingVisualGenerationModel ||
+                        !project.visualGenerationModelOverrideId
+                      }
+                    >
+                      Use global default
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setVisualGenerationDialogOpen(false)}
+                      disabled={savingVisualGenerationModel}
+                    >
+                      Cancel
+                    </Button>
+                  </DialogFooter>
+                </>
+              ),
+            }}
+          />
           <CompactSettingCard
             title="Visual style"
             globalDefault={<>Global default style: {defaultStyleLabel}</>}
@@ -3882,9 +4075,7 @@ function SceneImagesSection({
                   const activeTab =
                     sceneTabById[scene.id] ||
                     (scene.previewVideo ? "preview" : "raw");
-                  const hasPreviewVideo = Boolean(
-                    scene.previewVideo && project.selectedBackgroundVideoId,
-                  );
+                  const hasPreviewVideo = Boolean(scene.previewVideo);
                   const hasRawImage = Boolean(scene.image);
                   const hasRenderableMedia =
                     hasPreviewVideo ||

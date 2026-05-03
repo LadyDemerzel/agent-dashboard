@@ -34,6 +34,10 @@ import {
   type ShortFormCaptionAnimationPresetEntry,
   type ShortFormCaptionAnimationTrack,
 } from "@/lib/short-form-caption-animation";
+import {
+  getShortFormVisualGenerationModelOptions,
+  type ShortFormVisualGenerationModelId,
+} from "@/lib/short-form-visual-generation";
 
 type PromptKey =
   | "hooksGenerate"
@@ -54,6 +58,7 @@ type SettingsSectionId =
   | "background-videos"
   | "image-templates"
   | "image-styles"
+  | "motion-graphics"
   | "prompt-hooks"
   | "prompt-research"
   | "text-script-prompts"
@@ -114,10 +119,14 @@ interface NanoBananaPromptTemplates {
 }
 
 interface ImageStyleSettings {
+  defaultVisualGenerationModelId: ShortFormVisualGenerationModelId;
   defaultStyleId: string;
   styles: ImageStyle[];
   promptTemplates: NanoBananaPromptTemplates;
 }
+
+const VISUAL_GENERATION_MODEL_OPTIONS =
+  getShortFormVisualGenerationModelOptions();
 
 const NANO_BANANA_PLACEHOLDER_ROWS = [
   {
@@ -387,6 +396,35 @@ interface XmlVisualPlanningSettings {
   revisionNotesPromptTemplate: string;
 }
 
+type MotionGraphicFieldType = "text" | "textarea" | "number" | "stringList" | "dataSeries";
+
+interface MotionGraphicTemplateField {
+  name: string;
+  label: string;
+  type: MotionGraphicFieldType;
+  required?: boolean;
+  description?: string;
+  defaultValue?: unknown;
+}
+
+interface MotionGraphicTemplateConfig {
+  id: string;
+  rendererId: string;
+  displayName: string;
+  description: string;
+  whenToUse: string;
+  durationSeconds: number;
+  stylePreset: string;
+  defaultArgs: Record<string, unknown>;
+  fields: MotionGraphicTemplateField[];
+  enabled: boolean;
+}
+
+interface MotionGraphicsSettings {
+  defaultStylePreset: string;
+  templates: MotionGraphicTemplateConfig[];
+}
+
 interface SoundLibraryEntry {
   id: string;
   name: string;
@@ -469,6 +507,8 @@ interface SettingsResponse {
     backgroundVideos: BackgroundVideoSettings;
     textScript: TextScriptSettings;
     xmlVisualPlanning: XmlVisualPlanningSettings;
+    motionGraphics: MotionGraphicsSettings;
+    supportedMotionGraphicRenderers: string[];
     soundDesign: SoundDesignSettings;
   };
   error?: string;
@@ -511,11 +551,34 @@ interface MusicPreviewResponse {
   error?: string;
 }
 
+interface MotionGraphicPreviewResponse {
+  success: boolean;
+  data?: {
+    templateId: string;
+    rendererId: string;
+    previewKey: string;
+    videoUrl: string;
+    posterUrl: string;
+    reusedExisting: boolean;
+    durationSeconds: number;
+  };
+  error?: string;
+}
+
 interface StyleTestState {
   isLoading: boolean;
   error: string | null;
   cleanImageUrl: string | null;
   previewImageUrl: string | null;
+}
+
+interface MotionGraphicPreviewState {
+  isLoading: boolean;
+  error: string | null;
+  previewKey: string | null;
+  videoUrl: string | null;
+  posterUrl: string | null;
+  reusedExisting: boolean | null;
 }
 
 interface StyleReferenceUploadState {
@@ -722,9 +785,9 @@ const SETTINGS_PAGE_META: Record<
     eyebrow: "Short-form workflow settings",
     title: "Images",
     description:
-      "Maintain the live Nano Banana prompt templates plus the reusable image-style library that feeds scene generation.",
-    summaryLabel: "2 editable sections",
-    sectionIds: ["image-templates", "image-styles"],
+      "Maintain deterministic motion graphics, Nano Banana prompt templates, and the reusable image-style library that feeds scene generation.",
+    summaryLabel: "3 editable sections",
+    sectionIds: ["motion-graphics", "image-templates", "image-styles"],
   },
   captions: {
     eyebrow: "Short-form workflow settings",
@@ -787,6 +850,7 @@ function createEmptySectionFeedback(): Record<
     "background-videos": { saving: false, error: null, message: null },
     "image-templates": { saving: false, error: null, message: null },
     "image-styles": { saving: false, error: null, message: null },
+    "motion-graphics": { saving: false, error: null, message: null },
     "prompt-hooks": { saving: false, error: null, message: null },
     "prompt-research": { saving: false, error: null, message: null },
     "text-script-prompts": { saving: false, error: null, message: null },
@@ -796,6 +860,29 @@ function createEmptySectionFeedback(): Record<
 
 function serializeForCompare(value: unknown) {
   return JSON.stringify(value);
+}
+
+function buildMotionTemplatePreviewKey(template: MotionGraphicTemplateConfig) {
+  return serializeForCompare({
+    id: template.id,
+    rendererId: template.rendererId,
+    durationSeconds: template.durationSeconds,
+    stylePreset: template.stylePreset,
+    defaultArgs: template.defaultArgs,
+  });
+}
+
+function createEmptyMotionPreviewState(
+  previewKey: string,
+): MotionGraphicPreviewState {
+  return {
+    isLoading: true,
+    error: null,
+    previewKey,
+    videoUrl: null,
+    posterUrl: null,
+    reusedExisting: null,
+  };
 }
 
 function pickPromptValues(
@@ -1099,6 +1186,16 @@ async function parseStyleTestResponse(response: Response) {
     .catch(() => ({}))) as StyleTestResponse;
   if (!response.ok || payload.success === false || !payload.data) {
     throw new Error(payload.error || "Failed to generate style test image");
+  }
+  return payload.data;
+}
+
+async function parseMotionGraphicPreviewResponse(response: Response) {
+  const payload = (await response
+    .json()
+    .catch(() => ({}))) as MotionGraphicPreviewResponse;
+  if (!response.ok || payload.success === false || !payload.data) {
+    throw new Error(payload.error || "Failed to render motion graphics preview");
   }
   return payload.data;
 }
@@ -1986,6 +2083,14 @@ export function ShortFormVideoSettingsView({
     initialXmlVisualPlanningSettings,
     setInitialXmlVisualPlanningSettings,
   ] = useState<XmlVisualPlanningSettings | null>(null);
+  const [motionGraphicsSettings, setMotionGraphicsSettings] =
+    useState<MotionGraphicsSettings | null>(null);
+  const [initialMotionGraphicsSettings, setInitialMotionGraphicsSettings] =
+    useState<MotionGraphicsSettings | null>(null);
+  const [supportedMotionGraphicRenderers, setSupportedMotionGraphicRenderers] =
+    useState<string[]>([]);
+  const [selectedMotionTemplateId, setSelectedMotionTemplateId] =
+    useState<string | null>(null);
   const [soundDesignSettings, setSoundDesignSettings] =
     useState<SoundDesignSettings | null>(null);
   const [initialSoundDesignSettings, setInitialSoundDesignSettings] =
@@ -2016,6 +2121,10 @@ export function ShortFormVideoSettingsView({
   const [styleTestsById, setStyleTestsById] = useState<
     Record<string, StyleTestState>
   >({});
+  const [motionTemplatePreviewsById, setMotionTemplatePreviewsById] = useState<
+    Record<string, MotionGraphicPreviewState>
+  >({});
+  const motionTemplatePreviewsRef = useRef(motionTemplatePreviewsById);
   const [styleReferenceUploadsById, setStyleReferenceUploadsById] = useState<
     Record<string, StyleReferenceUploadState>
   >({});
@@ -2049,6 +2158,99 @@ export function ShortFormVideoSettingsView({
     `short-form-video-settings:${activeSection}`,
     !loading,
   );
+
+  useEffect(() => {
+    motionTemplatePreviewsRef.current = motionTemplatePreviewsById;
+  }, [motionTemplatePreviewsById]);
+
+  const requestMotionTemplatePreview = useCallback(
+    async (
+      template: MotionGraphicTemplateConfig,
+      options?: { force?: boolean; signal?: AbortSignal },
+    ) => {
+      const previewKey = buildMotionTemplatePreviewKey(template);
+      setMotionTemplatePreviewsById((current) => ({
+        ...current,
+        [template.id]: {
+          ...(current[template.id] || createEmptyMotionPreviewState(previewKey)),
+          isLoading: true,
+          error: null,
+          previewKey,
+          reusedExisting: null,
+        },
+      }));
+
+      try {
+        const data = await parseMotionGraphicPreviewResponse(
+          await fetch("/api/short-form-videos/settings/motion-graphics-preview", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ template, force: options?.force }),
+            signal: options?.signal,
+          }),
+        );
+        setMotionTemplatePreviewsById((current) => ({
+          ...current,
+          [template.id]: {
+            isLoading: false,
+            error: null,
+            previewKey,
+            videoUrl: data.videoUrl,
+            posterUrl: data.posterUrl,
+            reusedExisting: data.reusedExisting,
+          },
+        }));
+        return data;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return null;
+        setMotionTemplatePreviewsById((current) => ({
+          ...current,
+          [template.id]: {
+            ...(current[template.id] || createEmptyMotionPreviewState(previewKey)),
+            isLoading: false,
+            error:
+              err instanceof Error
+                ? err.message
+                : "Failed to render motion graphics preview",
+            previewKey,
+          },
+        }));
+        return null;
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (activeSection !== "images" || !motionGraphicsSettings) return;
+
+    const controller = new AbortController();
+    let cancelled = false;
+    const timeout = window.setTimeout(() => {
+      void (async () => {
+        for (const template of motionGraphicsSettings.templates) {
+          if (cancelled) break;
+          const previewKey = buildMotionTemplatePreviewKey(template);
+          const currentPreview = motionTemplatePreviewsRef.current[template.id];
+          if (
+            currentPreview?.previewKey === previewKey &&
+            (currentPreview.videoUrl || currentPreview.isLoading)
+          ) {
+            continue;
+          }
+          await requestMotionTemplatePreview(template, {
+            signal: controller.signal,
+          });
+        }
+      })();
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [activeSection, motionGraphicsSettings, requestMotionTemplatePreview]);
 
   useEffect(() => {
     if (!imageStyles || imageStyles.styles.length === 0) return;
@@ -2150,6 +2352,12 @@ export function ShortFormVideoSettingsView({
       setInitialTextScriptSettings(data.textScript);
       setXmlVisualPlanningSettings(data.xmlVisualPlanning);
       setInitialXmlVisualPlanningSettings(data.xmlVisualPlanning);
+      setMotionGraphicsSettings(data.motionGraphics);
+      setInitialMotionGraphicsSettings(data.motionGraphics);
+      setSupportedMotionGraphicRenderers(data.supportedMotionGraphicRenderers || []);
+      setSelectedMotionTemplateId(
+        (current) => current || data.motionGraphics.templates[0]?.id || null,
+      );
       setSoundDesignSettings(data.soundDesign);
       setInitialSoundDesignSettings(data.soundDesign);
       setSelectedStyleId(
@@ -2209,6 +2417,16 @@ export function ShortFormVideoSettingsView({
       imageStyles?.styles.find((style) => style.id === selectedStyleId) || null,
     [imageStyles, selectedStyleId],
   );
+  const selectedMotionTemplate = useMemo(
+    () =>
+      motionGraphicsSettings?.templates.find(
+        (template) => template.id === selectedMotionTemplateId,
+      ) || null,
+    [motionGraphicsSettings, selectedMotionTemplateId],
+  );
+  const selectedMotionTemplatePreview = selectedMotionTemplate
+    ? motionTemplatePreviewsById[selectedMotionTemplate.id] || null
+    : null;
   const selectedVoice = useMemo(
     () =>
       videoRender?.voices.find((voice) => voice.id === selectedVoiceId) || null,
@@ -2553,10 +2771,14 @@ export function ShortFormVideoSettingsView({
         ? serializeForCompare({
             styles: imageStyles.styles,
             defaultStyleId: imageStyles.defaultStyleId,
+            defaultVisualGenerationModelId:
+              imageStyles.defaultVisualGenerationModelId,
           }) !==
           serializeForCompare({
             styles: initialImageStyles.styles,
             defaultStyleId: initialImageStyles.defaultStyleId,
+            defaultVisualGenerationModelId:
+              initialImageStyles.defaultVisualGenerationModelId,
           })
         : false;
     const ttsDirty =
@@ -2630,6 +2852,11 @@ export function ShortFormVideoSettingsView({
         ? serializeForCompare(xmlVisualPlanningSettings) !==
           serializeForCompare(initialXmlVisualPlanningSettings)
         : false;
+    const motionGraphicsDirty =
+      motionGraphicsSettings && initialMotionGraphicsSettings
+        ? serializeForCompare(motionGraphicsSettings) !==
+          serializeForCompare(initialMotionGraphicsSettings)
+        : false;
 
     const promptGroupDirty = Object.fromEntries(
       PROMPT_GROUPS.map((group) => [
@@ -2648,6 +2875,7 @@ export function ShortFormVideoSettingsView({
       "background-videos": backgroundVideosDirty,
       "image-templates": imageTemplateDirty,
       "image-styles": imageStyleLibraryDirty,
+      "motion-graphics": motionGraphicsDirty,
       "prompt-hooks": promptGroupDirty["prompt-hooks"],
       "prompt-research": promptGroupDirty["prompt-research"],
       "text-script-prompts": textScriptPromptsDirty,
@@ -2658,11 +2886,13 @@ export function ShortFormVideoSettingsView({
     imageStyles,
     initialBackgroundVideos,
     initialImageStyles,
+    initialMotionGraphicsSettings,
     initialPrompts,
     initialSoundDesignSettings,
     initialTextScriptSettings,
     initialVideoRender,
     initialXmlVisualPlanningSettings,
+    motionGraphicsSettings,
     prompts,
     soundDesignSettings,
     textScriptSettings,
@@ -4359,6 +4589,75 @@ export function ShortFormVideoSettingsView({
     });
   }
 
+  function updateSelectedMotionTemplate(
+    updater: (template: MotionGraphicTemplateConfig) => MotionGraphicTemplateConfig,
+  ) {
+    if (!motionGraphicsSettings || !selectedMotionTemplate) return;
+    updateSectionFeedbackState("motion-graphics", { error: null, message: null });
+    const previousId = selectedMotionTemplate.id;
+    let nextSelectedId = previousId;
+    setMotionGraphicsSettings({
+      ...motionGraphicsSettings,
+      templates: motionGraphicsSettings.templates.map((template) => {
+        if (template.id !== previousId) return template;
+        const nextTemplate = updater(template);
+        nextSelectedId = nextTemplate.id || previousId;
+        return nextTemplate;
+      }),
+    });
+    if (nextSelectedId !== selectedMotionTemplateId) {
+      setSelectedMotionTemplateId(nextSelectedId);
+    }
+  }
+
+  function addMotionTemplate() {
+    if (!motionGraphicsSettings) return;
+    const rendererId = supportedMotionGraphicRenderers[0] || "stat_reveal";
+    const id = `motion-template-${Date.now()}`;
+    const nextTemplate: MotionGraphicTemplateConfig = {
+      id,
+      rendererId,
+      displayName: "New motion template",
+      description: "Configured deterministic motion graphic template.",
+      whenToUse: "Use when this recurring visual pattern fits the scene better than a generated image.",
+      durationSeconds: 6,
+      stylePreset: motionGraphicsSettings.defaultStylePreset || "watercolor-editorial",
+      defaultArgs: { title: "New motion template" },
+      fields: [
+        { name: "title", label: "Title", type: "text", required: true },
+      ],
+      enabled: true,
+    };
+    setMotionGraphicsSettings({
+      ...motionGraphicsSettings,
+      templates: [...motionGraphicsSettings.templates, nextTemplate],
+    });
+    setSelectedMotionTemplateId(id);
+  }
+
+  function removeSelectedMotionTemplate() {
+    if (!motionGraphicsSettings || !selectedMotionTemplate) return;
+    const builtInIds = new Set([
+      "stat_reveal",
+      "bar_chart",
+      "comparison_before_after",
+      "timeline",
+      "process_flow",
+      "research_finding_card",
+    ]);
+    if (builtInIds.has(selectedMotionTemplate.id)) return;
+    const nextTemplates = motionGraphicsSettings.templates.filter(
+      (template) => template.id !== selectedMotionTemplate.id,
+    );
+    setMotionGraphicsSettings({ ...motionGraphicsSettings, templates: nextTemplates });
+    setSelectedMotionTemplateId(nextTemplates[0]?.id || null);
+  }
+
+  async function regenerateSelectedMotionPreview() {
+    if (!selectedMotionTemplate) return;
+    await requestMotionTemplatePreview(selectedMotionTemplate, { force: true });
+  }
+
   function updateSelectedStyle(updater: (style: ImageStyle) => ImageStyle) {
     if (!imageStyles || !selectedStyle) return;
     updateSectionFeedbackState("image-styles", { error: null, message: null });
@@ -4476,6 +4775,18 @@ export function ShortFormVideoSettingsView({
       return;
     }
 
+    if (sectionId === "motion-graphics") {
+      setMotionGraphicsSettings(data.motionGraphics);
+      setInitialMotionGraphicsSettings(data.motionGraphics);
+      setSupportedMotionGraphicRenderers(data.supportedMotionGraphicRenderers || []);
+      setSelectedMotionTemplateId((current) =>
+        current && data.motionGraphics.templates.some((template) => template.id === current)
+          ? current
+          : data.motionGraphics.templates[0]?.id || null,
+      );
+      return;
+    }
+
     if (sectionId === "image-templates") {
       setImageStyles((current) =>
         current
@@ -4497,6 +4808,8 @@ export function ShortFormVideoSettingsView({
               ...current,
               styles: data.imageStyles.styles,
               defaultStyleId: data.imageStyles.defaultStyleId,
+              defaultVisualGenerationModelId:
+                data.imageStyles.defaultVisualGenerationModelId,
             }
           : data.imageStyles,
       );
@@ -4506,6 +4819,8 @@ export function ShortFormVideoSettingsView({
               ...current,
               styles: data.imageStyles.styles,
               defaultStyleId: data.imageStyles.defaultStyleId,
+              defaultVisualGenerationModelId:
+                data.imageStyles.defaultVisualGenerationModelId,
             }
           : data.imageStyles,
       );
@@ -4584,6 +4899,10 @@ export function ShortFormVideoSettingsView({
         return xmlVisualPlanningSettings
           ? { xmlVisualPlanning: xmlVisualPlanningSettings }
           : null;
+      case "motion-graphics":
+        return motionGraphicsSettings
+          ? { motionGraphics: motionGraphicsSettings }
+          : null;
       case "image-templates":
         return imageStyles
           ? { imageStyles: { promptTemplates: imageStyles.promptTemplates } }
@@ -4594,6 +4913,8 @@ export function ShortFormVideoSettingsView({
               imageStyles: {
                 styles: imageStyles.styles,
                 defaultStyleId: imageStyles.defaultStyleId,
+                defaultVisualGenerationModelId:
+                  imageStyles.defaultVisualGenerationModelId,
               },
             }
           : null;
@@ -4644,6 +4965,8 @@ export function ShortFormVideoSettingsView({
                     : sectionId === "image-templates" ||
                         sectionId === "image-styles"
                       ? "Saved. New scene-image runs and tests will use this section immediately."
+                      : sectionId === "motion-graphics"
+                        ? "Saved. New Plan Visuals prompts and Generate Visuals runs will use this deterministic motion graphics registry immediately."
                       : sectionId === "text-script-prompts"
                         ? "Saved. New text-script runs will use these full Scribe prompt templates and the default max-iteration limit immediately."
                         : sectionId === "xml-visual-planning"
@@ -4770,6 +5093,16 @@ export function ShortFormVideoSettingsView({
       return;
     }
 
+    if (sectionId === "motion-graphics" && initialMotionGraphicsSettings) {
+      setMotionGraphicsSettings(initialMotionGraphicsSettings);
+      setSelectedMotionTemplateId((current) =>
+        current && initialMotionGraphicsSettings.templates.some((template) => template.id === current)
+          ? current
+          : initialMotionGraphicsSettings.templates[0]?.id || null,
+      );
+      return;
+    }
+
     if (sectionId === "image-templates" && imageStyles && initialImageStyles) {
       setImageStyles({
         ...imageStyles,
@@ -4783,6 +5116,8 @@ export function ShortFormVideoSettingsView({
         ...imageStyles,
         styles: initialImageStyles.styles,
         defaultStyleId: initialImageStyles.defaultStyleId,
+        defaultVisualGenerationModelId:
+          initialImageStyles.defaultVisualGenerationModelId,
       });
       setSelectedStyleId((current) => {
         if (
@@ -5603,6 +5938,8 @@ export function ShortFormVideoSettingsView({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             promptTemplates: imageStyles.promptTemplates,
+            visualGenerationModelId:
+              imageStyles.defaultVisualGenerationModelId,
             style: styleSnapshot,
           }),
         }),
@@ -6554,12 +6891,410 @@ export function ShortFormVideoSettingsView({
 
       {activeSection === "images" ? (
         <div className="space-y-6">
+          <section id="motion-graphics" className="scroll-mt-24">
+            <Card className="space-y-5 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <WorkflowSectionHeader
+                  title="Motion graphics templates"
+                  description="Deterministic animated slides, charts, comparisons, timelines, process flows, and research cards available to Scribe during Plan Visuals. The UI can add configured template metadata, but renderer ids stay constrained to supported deterministic renderers."
+                  status={dirtyBySection["motion-graphics"] ? "needs review" : "approved"}
+                />
+                <SectionActions
+                  dirty={dirtyBySection["motion-graphics"]}
+                  saving={sectionFeedback["motion-graphics"].saving}
+                  saveLabel="Save motion templates"
+                  onSave={() => void saveSection("motion-graphics")}
+                  onReset={() => resetSection("motion-graphics")}
+                />
+              </div>
+
+              {motionGraphicsSettings ? (
+                <div className="grid gap-5 lg:grid-cols-[18rem_1fr]">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">
+                        Default style preset
+                      </label>
+                      <Input
+                        value={motionGraphicsSettings.defaultStylePreset}
+                        onChange={(event) =>
+                          setMotionGraphicsSettings({
+                            ...motionGraphicsSettings,
+                            defaultStylePreset: event.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">
+                        Template
+                      </label>
+                      <Select
+                        value={selectedMotionTemplateId || ""}
+                        onChange={(event) =>
+                          setSelectedMotionTemplateId(event.target.value || null)
+                        }
+                      >
+                        {motionGraphicsSettings.templates.map((template) => (
+                          <option key={template.id} value={template.id}>
+                            {template.displayName} · {template.rendererId}
+                          </option>
+                        ))}
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Pick a template from the dropdown, then customize its
+                        renderer, default args, and field schema.
+                      </p>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={addMotionTemplate}>
+                      Add configured template
+                    </Button>
+                  </div>
+
+                  {selectedMotionTemplate ? (
+                    <div className="space-y-4">
+                      <div className="grid gap-4 lg:grid-cols-[minmax(15rem,0.9fr)_1.4fr]">
+                        <div className="overflow-hidden rounded-lg border bg-background">
+                          <div className="aspect-[9/16] bg-muted">
+                            {selectedMotionTemplatePreview?.videoUrl ? (
+                              <video
+                                key={selectedMotionTemplatePreview.videoUrl}
+                                className="h-full w-full object-cover"
+                                src={selectedMotionTemplatePreview.videoUrl}
+                                poster={selectedMotionTemplatePreview.posterUrl || undefined}
+                                controls
+                                muted
+                                playsInline
+                                loop
+                              />
+                            ) : selectedMotionTemplatePreview?.isLoading ? (
+                              <div className="flex h-full items-center justify-center p-6">
+                                <div className="w-full space-y-3">
+                                  <Skeleton className="h-72 w-full" />
+                                  <Skeleton className="h-4 w-2/3" />
+                                  <Skeleton className="h-4 w-1/2" />
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
+                                No preview rendered yet.
+                              </div>
+                            )}
+                          </div>
+                          <div className="space-y-2 p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-medium text-foreground">
+                                  Rendered preview
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Uses this template’s saved/default args.
+                                </p>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void regenerateSelectedMotionPreview()}
+                                disabled={selectedMotionTemplatePreview?.isLoading}
+                              >
+                                {selectedMotionTemplatePreview?.isLoading
+                                  ? "Rendering…"
+                                  : "Regenerate"}
+                              </Button>
+                            </div>
+                            {selectedMotionTemplatePreview?.error ? (
+                              <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                                {selectedMotionTemplatePreview.error}
+                              </p>
+                            ) : selectedMotionTemplatePreview?.reusedExisting ? (
+                              <p className="text-xs text-muted-foreground">
+                                Cached preview reused for this exact template
+                                configuration.
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-medium text-foreground">
+                                Selected template
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {selectedMotionTemplate.id} · {selectedMotionTemplate.rendererId}
+                              </p>
+                            </div>
+                            <Badge variant={selectedMotionTemplate.enabled ? "default" : "secondary"}>
+                              {selectedMotionTemplate.enabled ? "Enabled" : "Disabled"}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {selectedMotionTemplate.description}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-foreground">Template id</label>
+                          <Input
+                            value={selectedMotionTemplate.id}
+                            onChange={(event) =>
+                              updateSelectedMotionTemplate((template) => ({
+                                ...template,
+                                id: event.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-foreground">Renderer id</label>
+                          <Select
+                            value={selectedMotionTemplate.rendererId}
+                            onChange={(event) =>
+                              updateSelectedMotionTemplate((template) => ({
+                                ...template,
+                                rendererId: event.target.value,
+                              }))
+                            }
+                          >
+                            {supportedMotionGraphicRenderers.map((rendererId) => (
+                              <option key={rendererId} value={rendererId}>
+                                {rendererId}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-foreground">Display name</label>
+                          <Input
+                            value={selectedMotionTemplate.displayName}
+                            onChange={(event) =>
+                              updateSelectedMotionTemplate((template) => ({
+                                ...template,
+                                displayName: event.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-foreground">Duration seconds</label>
+                          <Input
+                            type="number"
+                            min={3}
+                            max={12}
+                            value={selectedMotionTemplate.durationSeconds}
+                            onChange={(event) =>
+                              updateSelectedMotionTemplate((template) => ({
+                                ...template,
+                                durationSeconds: Number(event.target.value),
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-foreground">Style preset</label>
+                          <Input
+                            value={selectedMotionTemplate.stylePreset}
+                            onChange={(event) =>
+                              updateSelectedMotionTemplate((template) => ({
+                                ...template,
+                                stylePreset: event.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-foreground">Description</label>
+                        <Textarea
+                          value={selectedMotionTemplate.description}
+                          onChange={(event) =>
+                            updateSelectedMotionTemplate((template) => ({
+                              ...template,
+                              description: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-foreground">When to use</label>
+                        <Textarea
+                          value={selectedMotionTemplate.whenToUse}
+                          onChange={(event) =>
+                            updateSelectedMotionTemplate((template) => ({
+                              ...template,
+                              whenToUse: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-foreground">Default args JSON</label>
+                          <Textarea
+                            className="min-h-40 font-mono text-xs"
+                            value={JSON.stringify(selectedMotionTemplate.defaultArgs, null, 2)}
+                            onChange={(event) => {
+                              try {
+                                const nextArgs = JSON.parse(event.target.value) as Record<string, unknown>;
+                                updateSelectedMotionTemplate((template) => ({ ...template, defaultArgs: nextArgs }));
+                              } catch {
+                                updateSectionFeedbackState("motion-graphics", { error: "Default args must be valid JSON before saving." });
+                              }
+                            }}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-foreground">Configurable fields JSON</label>
+                          <Textarea
+                            className="min-h-40 font-mono text-xs"
+                            value={JSON.stringify(selectedMotionTemplate.fields, null, 2)}
+                            onChange={(event) => {
+                              try {
+                                const nextFields = JSON.parse(event.target.value) as MotionGraphicTemplateField[];
+                                updateSelectedMotionTemplate((template) => ({ ...template, fields: nextFields }));
+                              } catch {
+                                updateSectionFeedbackState("motion-graphics", { error: "Configurable fields must be valid JSON before saving." });
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+                        <span>
+                          Enabled templates are auto-injected into Scribe’s Plan Visuals prompt via {"{{motionGraphicTemplates}}"}.
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={selectedMotionTemplate.enabled}
+                              onChange={(event) =>
+                                updateSelectedMotionTemplate((template) => ({
+                                  ...template,
+                                  enabled: event.target.checked,
+                                }))
+                              }
+                            />
+                            Enabled
+                          </label>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={removeSelectedMotionTemplate}
+                            disabled={[
+                              "stat_reveal",
+                              "bar_chart",
+                              "comparison_before_after",
+                              "timeline",
+                              "process_flow",
+                              "research_finding_card",
+                            ].includes(selectedMotionTemplate.id)}
+                          >
+                            Remove custom
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="space-y-3 lg:col-span-2">
+                    <div className="flex flex-wrap items-end justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-medium text-foreground">
+                          Template preview gallery
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          Cached poster frames are rendered for every motion
+                          graphics template so you can compare the visual style
+                          at a glance.
+                        </p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {motionGraphicsSettings.templates.length} templates
+                      </p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                      {motionGraphicsSettings.templates.map((template) => {
+                        const preview = motionTemplatePreviewsById[template.id];
+                        return (
+                          <div
+                            key={template.id}
+                            className={`overflow-hidden rounded-lg border bg-background ${
+                              selectedMotionTemplateId === template.id
+                                ? "border-primary"
+                                : "border-border"
+                            }`}
+                          >
+                            <div className="aspect-[9/16] bg-muted">
+                              {preview?.posterUrl ? (
+                                <video
+                                  className="h-full w-full object-cover"
+                                  src={preview.videoUrl || undefined}
+                                  poster={preview.posterUrl}
+                                  muted
+                                  playsInline
+                                  preload="metadata"
+                                />
+                              ) : preview?.isLoading ? (
+                                <div className="flex h-full items-center justify-center p-3">
+                                  <Skeleton className="h-full w-full" />
+                                </div>
+                              ) : (
+                                <div className="flex h-full items-center justify-center p-3 text-center text-xs text-muted-foreground">
+                                  Preview pending
+                                </div>
+                              )}
+                            </div>
+                            <div className="space-y-1 p-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="line-clamp-2 text-sm font-medium text-foreground">
+                                  {template.displayName}
+                                </p>
+                                <Badge
+                                  variant={template.enabled ? "success" : "outline"}
+                                  className="shrink-0"
+                                >
+                                  {template.enabled ? "On" : "Off"}
+                                </Badge>
+                              </div>
+                              <p className="truncate text-xs text-muted-foreground">
+                                {template.rendererId}
+                              </p>
+                              {preview?.error ? (
+                                <p className="line-clamp-2 text-xs text-destructive">
+                                  {preview.error}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <Skeleton className="h-10 w-64" />
+                  <Skeleton className="h-48 w-full" />
+                </div>
+              )}
+
+              <SectionFeedbackNotice feedback={sectionFeedback["motion-graphics"]} />
+            </Card>
+          </section>
+
           <section id="image-templates" className="scroll-mt-24">
             <Card className="space-y-5 p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <WorkflowSectionHeader
-                  title="Nano Banana prompt templates"
-                  description="These are the real editable templates used by the direct dashboard scene-image path. Shared visual rules and greenscreen requirements now live inside the style-instructions template itself, so what you edit here is what Nano Banana gets."
+                  title="Image prompt templates"
+                  description="These are the real editable templates used by the direct dashboard scene-image path. Shared visual rules and greenscreen requirements now live inside the style-instructions template itself, so what you edit here is what the selected image-generation provider receives."
                   status={
                     dirtyBySection["image-templates"]
                       ? "needs review"
@@ -6739,6 +7474,56 @@ export function ShortFormVideoSettingsView({
 
               {imageStyles ? (
                 <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
+                  <div className="xl:col-span-2 rounded-lg border border-border bg-background/40 p-4">
+                    <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-end">
+                      <div className="space-y-1">
+                        <h2 className="text-sm font-medium text-foreground">
+                          Global image generation provider/model
+                        </h2>
+                        <p className="text-xs text-muted-foreground">
+                          This default applies to style tests and Generate
+                          Visuals unless a project overrides it.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Provider/model
+                        </label>
+                        <Select
+                          value={imageStyles.defaultVisualGenerationModelId}
+                          onChange={(event) => {
+                            updateSectionFeedbackState("image-styles", {
+                              error: null,
+                              message: null,
+                            });
+                            setImageStyles({
+                              ...imageStyles,
+                              defaultVisualGenerationModelId:
+                                event.target
+                                  .value as ShortFormVisualGenerationModelId,
+                            });
+                          }}
+                          className="cursor-pointer"
+                        >
+                          {VISUAL_GENERATION_MODEL_OPTIONS.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      {
+                        VISUAL_GENERATION_MODEL_OPTIONS.find(
+                          (option) =>
+                            option.id ===
+                            imageStyles.defaultVisualGenerationModelId,
+                        )?.description
+                      }
+                    </p>
+                  </div>
+
                   <div className="space-y-3 rounded-lg border border-border bg-background/40 p-3">
                     <div className="flex items-center justify-between gap-2">
                       <h2 className="text-sm font-medium text-foreground">
@@ -7138,9 +7923,9 @@ export function ShortFormVideoSettingsView({
                             </h3>
                             <p className="mt-1 text-xs text-muted-foreground">
                               Lightweight one-scene generation loop using the
-                              current editor values, including the real Nano
-                              Banana templates and any uploaded style reference
-                              images with their usage instructions.
+                              current editor values, including the real scene-image
+                              templates and any uploaded style reference images
+                              with their usage instructions.
                             </p>
                           </div>
                           <Button

@@ -12,11 +12,15 @@ if (!jobPath) {
 }
 
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
+const HOOK_WEBHOOK_TIMEOUT_MS = 30_000;
 const XML_SCENE_IMAGES_SCRIPT = path.join(HOME_DIR, ".openclaw", "skills", "xml-scene-images", "scripts", "generate_from_xml.py");
 const XML_SCENE_VIDEO_SCRIPT = path.join(HOME_DIR, ".openclaw", "skills", "xml-scene-video", "scripts", "generate_video.py");
+const PROVIDER_AWARE_IMAGE_GENERATOR_SCRIPT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard", "scripts", "provider-aware-image-generate.py");
 const STATIC_CAPTION_OVERLAY_SCRIPT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard", "scripts", "render_static_caption_overlays.py");
 const ANIMATED_CAPTION_OVERLAY_SCRIPT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard", "scripts", "render_animated_caption_overlays.py");
-const DEFAULT_IMAGE_MODEL = "google/gemini-3-pro-image-preview";
+const MOTION_GRAPHIC_RENDERER_SCRIPT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard", "scripts", "render-motion-graphic.mjs");
+const DEFAULT_VISUAL_GENERATION_MODEL_ID = "openclaw-gpt-image-2";
+const DEFAULT_VISUAL_GENERATION_MODEL_REF = "openai/gpt-image-2";
 const DEFAULT_IMAGE_RESOLUTION = "1K";
 const DEFAULT_IMAGE_ASPECT_RATIO = "9:16";
 const DEFAULT_IMAGE_HEADER_PERCENT = "28";
@@ -1205,6 +1209,236 @@ function parseXmlAttributes(raw) {
   return attributes;
 }
 
+function escapeXmlAttribute(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function decodeXmlText(value) {
+  return String(value || "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+function collapseWhitespace(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function parseMotionGraphicAssets(xml) {
+  const assets = new Map();
+  const assetsBody = xml.match(/<assets\b[^>]*>([\s\S]*?)<\/assets>/i)?.[1] || "";
+  for (const match of assetsBody.matchAll(/<motionGraphic\b([^>]*)>([\s\S]*?)<\/motionGraphic>/gi)) {
+    const attributes = parseXmlAttributes(match[1] || "");
+    const id = collapseWhitespace(attributes.id);
+    const templateId = collapseWhitespace(attributes.templateId || attributes.template || attributes.motionGraphicType);
+    if (!id || !templateId) continue;
+    const body = match[2] || "";
+    const args = {};
+    for (const argMatch of body.matchAll(/<arg\b([^>]*)>([\s\S]*?)<\/arg>/gi)) {
+      const argAttrs = parseXmlAttributes(argMatch[1] || "");
+      const name = collapseWhitespace(argAttrs.name);
+      if (!name) continue;
+      args[name] = decodeXmlText(collapseWhitespace(argMatch[2] || ""));
+    }
+    const data = [];
+    for (const itemMatch of body.matchAll(/<item\b([^>]*?)\/?\s*>/gi)) {
+      const itemAttrs = parseXmlAttributes(itemMatch[1] || "");
+      const label = collapseWhitespace(itemAttrs.label);
+      const value = collapseWhitespace(itemAttrs.value);
+      if (!label || !value) continue;
+      data.push({
+        label: decodeXmlText(label),
+        value: Number.isFinite(Number(value)) ? Number(value) : decodeXmlText(value),
+        ...(itemAttrs.displayValue ? { displayValue: decodeXmlText(collapseWhitespace(itemAttrs.displayValue)) } : {}),
+      });
+    }
+    if (data.length > 0) args.data = data;
+    const steps = [];
+    for (const stepMatch of body.matchAll(/<step\b[^>]*>([\s\S]*?)<\/step>/gi)) {
+      const step = decodeXmlText(collapseWhitespace(stepMatch[1] || ""));
+      if (step) steps.push(step);
+    }
+    if (steps.length > 0) args.steps = steps;
+    assets.set(id, {
+      id,
+      templateId,
+      rendererId: collapseWhitespace(attributes.rendererId) || templateId,
+      stylePreset: collapseWhitespace(attributes.stylePreset),
+      durationSeconds: Number.isFinite(Number(attributes.durationSeconds)) ? Number(attributes.durationSeconds) : undefined,
+      args,
+    });
+  }
+  return assets;
+}
+
+function parseMotionGraphicVisuals(xml) {
+  const assets = parseMotionGraphicAssets(xml);
+  const timelineBody = xml.match(/<timeline\b[^>]*>([\s\S]*?)<\/timeline>/i)?.[1] || "";
+  const visuals = [];
+  let index = 0;
+  for (const match of timelineBody.matchAll(/<visual\b([^>]*?)(?:\/>|>([\s\S]*?)<\/visual>)/gi)) {
+    index += 1;
+    const attributes = parseXmlAttributes(match[1] || "");
+    const visualType = collapseWhitespace(attributes.visualType || attributes.type);
+    const motionGraphicId = collapseWhitespace(attributes.motionGraphicId || attributes.motionId || attributes.motionGraphic);
+    if (visualType !== "motion_graphic" && !motionGraphicId) continue;
+    const asset = assets.get(motionGraphicId);
+    if (!asset) {
+      throw new Error(`Motion graphic visual ${attributes.id || index} references missing motionGraphicId ${motionGraphicId || "(empty)"}`);
+    }
+    visuals.push({
+      index,
+      visualId: collapseWhitespace(attributes.id) || `visual-${index}`,
+      label: collapseWhitespace(attributes.label) || `Motion graphic ${index}`,
+      start: collapseWhitespace(attributes.start),
+      end: collapseWhitespace(attributes.end),
+      asset,
+    });
+  }
+  return visuals;
+}
+
+function sanitizeXmlForMotionGraphics(xml, motionVisuals) {
+  if (!motionVisuals.length) return xml;
+  let next = xml.replace(/\s*<motionGraphic\b[\s\S]*?<\/motionGraphic>\s*/gi, "\n");
+  const posterAssets = motionVisuals.map((visual) => {
+    const posterId = `__motion_graphic_${visual.asset.id}`;
+    return `    <image id="${escapeXmlAttribute(posterId)}"><prompt>Poster frame for deterministic motion graphic ${escapeXmlAttribute(visual.asset.templateId)}: ${escapeXmlAttribute(visual.label)}</prompt></image>`;
+  }).join("\n");
+  next = next.replace(/<\/assets>/i, `${posterAssets}\n  </assets>`);
+  let visualIndex = 0;
+  next = next.replace(/<visual\b([^>]*?)(?:\/>|>([\s\S]*?)<\/visual>)/gi, (full, rawAttrs, body) => {
+    visualIndex += 1;
+    const motionVisual = motionVisuals.find((visual) => visual.index === visualIndex);
+    if (!motionVisual) return full;
+    const attrs = parseXmlAttributes(rawAttrs || "");
+    delete attrs.visualType;
+    delete attrs.type;
+    delete attrs.motionGraphicId;
+    delete attrs.motionId;
+    delete attrs.motionGraphic;
+    attrs.imageId = `__motion_graphic_${motionVisual.asset.id}`;
+    const renderedAttrs = Object.entries(attrs)
+      .map(([key, value]) => `${key}="${escapeXmlAttribute(value)}"`)
+      .join(" ");
+    return body ? `<visual ${renderedAttrs}>${body}</visual>` : `<visual ${renderedAttrs} />`;
+  });
+  return next;
+}
+
+function motionGraphicsTemplateById(settings, templateId) {
+  const templates = Array.isArray(settings?.templates) ? settings.templates : [];
+  return templates.find((template) => template?.id === templateId || template?.rendererId === templateId) || null;
+}
+
+function mergeMotionGraphicConfig(settings, visual) {
+  const template = motionGraphicsTemplateById(settings, visual.asset.templateId);
+  const rendererId = visual.asset.rendererId || template?.rendererId || visual.asset.templateId;
+  return {
+    templateId: visual.asset.templateId,
+    rendererId,
+    stylePreset: visual.asset.stylePreset || template?.stylePreset || settings?.defaultStylePreset || "watercolor-editorial",
+    durationSeconds: visual.asset.durationSeconds || template?.durationSeconds || 6,
+    defaultArgs: template?.defaultArgs || {},
+    args: visual.asset.args || {},
+    label: visual.label,
+  };
+}
+
+function readManifestIfExists(manifestPath) {
+  if (!fs.existsSync(manifestPath)) return { schema_version: "2026-04-greenscreen-background-loop-v1", scenes: [] };
+  try {
+    const parsed = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+    return parsed && typeof parsed === "object" && Array.isArray(parsed.scenes)
+      ? parsed
+      : { schema_version: "2026-04-greenscreen-background-loop-v1", scenes: [] };
+  } catch {
+    return { schema_version: "2026-04-greenscreen-background-loop-v1", scenes: [] };
+  }
+}
+
+function renderMotionGraphicScenes({ outputDir, runDir, xmlPath, settings, sceneIndexes, backgroundVideoId, backgroundVideoName, backgroundVideoPath }) {
+  const xml = fs.readFileSync(xmlPath, "utf-8");
+  const motionVisuals = parseMotionGraphicVisuals(xml);
+  if (motionVisuals.length === 0) {
+    return { motionVisuals, rendered: [], sanitizedXml: xml, nonMotionSceneIndexes: [] };
+  }
+
+  const selected = new Set((Array.isArray(sceneIndexes) ? sceneIndexes : [])
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0));
+  const shouldRender = (visual) => selected.size === 0 || selected.has(visual.index);
+  const rendered = [];
+  const manifestPath = path.join(outputDir, "manifest.json");
+  const manifest = readManifestIfExists(manifestPath);
+  const byIndex = new Map((manifest.scenes || []).map((scene) => [Number(scene.index), scene]));
+
+  for (const visual of motionVisuals.filter(shouldRender)) {
+    const padded = String(visual.index).padStart(2, "0");
+    const videoPath = path.join(outputDir, `scene-${padded}-motion-graphic.mp4`);
+    const posterPath = path.join(outputDir, `scene-${padded}-uncaptioned-1080x1920.png`);
+    const captionedPath = path.join(outputDir, `scene-${padded}-captioned-1080x1920.png`);
+    const configPath = path.join(runDir, `scene-${padded}-motion-graphic.json`);
+    fs.writeFileSync(configPath, JSON.stringify(mergeMotionGraphicConfig(settings, visual, {
+      backgroundVideoId,
+      backgroundVideoName,
+      backgroundVideoPath,
+    }), null, 2), "utf-8");
+    const result = runCommand(process.execPath, [MOTION_GRAPHIC_RENDERER_SCRIPT, "--config", configPath, "--output", videoPath, "--poster", posterPath]);
+    fs.copyFileSync(posterPath, captionedPath);
+    byIndex.set(visual.index, {
+      index: visual.index,
+      duration: visual.start && visual.end ? `${visual.start}:${visual.end}` : undefined,
+      ...(visual.start && visual.end ? { start: Number(visual.start), end: Number(visual.end) } : {}),
+      text: visual.label,
+      image_prompt: `Deterministic motion graphic: ${visual.asset.templateId}`,
+      prompt_source: "motion_graphic",
+      uncaptioned: posterPath,
+      greenscreen_image: posterPath,
+      raw_legacy: posterPath,
+      captioned: captionedPath,
+      preview_video: videoPath,
+      motion_graphic_video: videoPath,
+      visual_type: "motion_graphic",
+      motion_graphic_id: visual.asset.id,
+      motion_graphic_template_id: visual.asset.templateId,
+      motion_graphic_renderer_id: visual.asset.rendererId || visual.asset.templateId,
+      image_id: `__motion_graphic_${visual.asset.id}`,
+      visual_id: visual.visualId,
+      renderer_stdout: result.stdout.trim(),
+      renderer_stderr: result.stderr.trim(),
+    });
+    rendered.push({ visual, videoPath, posterPath });
+  }
+
+  manifest.scenes = [...byIndex.values()].sort((a, b) => Number(a.index || 0) - Number(b.index || 0));
+  manifest.motion_graphics = motionVisuals.map((visual) => ({
+    index: visual.index,
+    visual_id: visual.visualId,
+    motion_graphic_id: visual.asset.id,
+    template_id: visual.asset.templateId,
+    renderer_id: visual.asset.rendererId || visual.asset.templateId,
+  }));
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
+
+  const motionIndexes = new Set(motionVisuals.map((visual) => visual.index));
+  const allVisualCount = (xml.match(/<visual\b/gi) || []).length;
+  const nonMotionSceneIndexes = Array.from({ length: allVisualCount }, (_, index) => index + 1)
+    .filter((index) => !motionIndexes.has(index));
+  return {
+    motionVisuals,
+    rendered,
+    sanitizedXml: sanitizeXmlForMotionGraphics(xml, motionVisuals),
+    nonMotionSceneIndexes,
+  };
+}
+
 function parseVisualRuntimeSpec(xmlPath) {
   if (!fs.existsSync(xmlPath)) {
     return { visuals: [], assetDependencies: new Map() };
@@ -1739,6 +1973,7 @@ async function spawnWorkflowAttempt({
 
   const response = await fetch(`${url}/hooks/agent`, {
     method: "POST",
+    signal: AbortSignal.timeout(HOOK_WEBHOOK_TIMEOUT_MS),
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
@@ -1766,7 +2001,7 @@ async function runTextScriptAgentStep(job, options) {
   const attempts = activeRunContext?.attempts || [];
   const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0
     ? job.preferredModels
-    : ["codex/gpt-5.4", "openrouter/anthropic/claude-3-haiku"];
+    : ["openai-codex/gpt-5.5", "openai/gpt-5.5"];
   let lastError = "Unknown error";
 
   for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {
@@ -2025,8 +2260,9 @@ function buildSceneImagesReviewDoc(projectId, scenes, options = {}) {
       : `${options.mode === "revise" ? "Regenerated the storyboard image set" : "Generated the storyboard image set"} from the approved XML script.`;
   const styleReferenceCount = Array.isArray(options.imageStyleReferences) ? options.imageStyleReferences.length : 0;
   const styleReferenceLine = styleReferenceCount > 0
-    ? ` This style also supplied ${styleReferenceCount} reusable style-level reference image${styleReferenceCount === 1 ? "" : "s"} with per-reference usage instructions, and those references were passed into Nano Banana for both style grounding and scene generation.`
+    ? ` This style also supplied ${styleReferenceCount} reusable style-level reference image${styleReferenceCount === 1 ? "" : "s"} with per-reference usage instructions, and those references were passed into the selected image-generation backend for both style grounding and scene generation.`
     : "";
+  const visualGenerationLabel = options.visualGenerationModelLabel || "the selected image-generation backend";
 
   return [
     "---",
@@ -2049,7 +2285,7 @@ function buildSceneImagesReviewDoc(projectId, scenes, options = {}) {
     "",
     `${scopeLabel} The direct dashboard workflow now calls the xml-scene-images generator deterministically instead of routing this execution step through Scribe. Each scene should now output a raw green-screen foreground plate for assembly, while dashboard preview videos composite that plate over the project's selected looping background video.`,
     "",
-    `This run ${modeLabel} **${scenes.length} visuals** using the structured Nano Banana path with the selected style **${options.imageStyleName || "Default charcoal"}**: one consistent character reference, the saved editable style-instructions template plus per-style art direction, natural top caption-safe headroom, and a hard greenscreen requirement so the final video can chroma-key the subject over a persistent looping background video. The generated artwork still contains no baked-in text. Reused XML imageIds stay deterministic, and any XML asset declared with basedOn keeps reference-derived variants explicit in the XML and manifest for debugging.${styleReferenceLine}`,
+    `This run ${modeLabel} **${scenes.length} visuals** using **${visualGenerationLabel}** with the selected style **${options.imageStyleName || "Default charcoal"}**: one consistent character reference, the saved editable style-instructions template plus per-style art direction, natural top caption-safe headroom, and a hard greenscreen requirement so the final video can chroma-key the subject over a persistent looping background video. The generated artwork still contains no baked-in text. Reused XML imageIds stay deterministic, and any XML asset declared with basedOn keeps reference-derived variants explicit in the XML and manifest for debugging.${styleReferenceLine}`,
     ...(options.notes ? ["", "## Request notes", "", options.notes] : []),
     "",
     "## Scene Breakdown",
@@ -2098,16 +2334,22 @@ function syncSceneImageArtifacts(job) {
     endTime: typeof scene?.end === "number" ? scene.end : undefined,
     image: toRelativeProjectPath(job.projectId, scene?.uncaptioned) || toRelativeProjectPath(job.projectId, scene?.raw_legacy),
     previewImage: toRelativeProjectPath(job.projectId, scene?.captioned),
+    previewVideo: toRelativeProjectPath(job.projectId, scene?.preview_video),
+    previewVideoBackgroundId: typeof scene?.preview_video_background_id === "string" && scene.preview_video_background_id.trim() ? scene.preview_video_background_id.trim() : undefined,
+    visualType: scene?.visual_type === "motion_graphic" ? "motion_graphic" : undefined,
+    motionGraphicId: typeof scene?.motion_graphic_id === "string" && scene.motion_graphic_id.trim() ? scene.motion_graphic_id.trim() : undefined,
+    motionGraphicTemplateId: typeof scene?.motion_graphic_template_id === "string" && scene.motion_graphic_template_id.trim() ? scene.motion_graphic_template_id.trim() : undefined,
+    motionGraphicRendererId: typeof scene?.motion_graphic_renderer_id === "string" && scene.motion_graphic_renderer_id.trim() ? scene.motion_graphic_renderer_id.trim() : undefined,
     notes: typeof scene?.image_prompt === "string" && scene.image_prompt.trim() ? scene.image_prompt.trim() : undefined,
     duration: typeof scene?.duration === "string" && scene.duration.trim() ? scene.duration.trim() : undefined,
-  })).filter((scene) => scene.caption && (scene.image || scene.previewImage));
+  })).filter((scene) => scene.caption && (scene.image || scene.previewImage || scene.previewVideo));
 
   if (scenes.length === 0) return;
 
   fs.writeFileSync(
     path.join(projectDir, "scene-images.json"),
     JSON.stringify({
-      scenes: scenes.map(({ id, number, caption, startTime, endTime, image, previewImage, notes }) => ({
+      scenes: scenes.map(({ id, number, caption, startTime, endTime, image, previewImage, previewVideo, previewVideoBackgroundId, visualType, motionGraphicId, motionGraphicTemplateId, motionGraphicRendererId, notes }) => ({
         id,
         number,
         caption,
@@ -2115,6 +2357,12 @@ function syncSceneImageArtifacts(job) {
         ...(typeof endTime === "number" ? { endTime } : {}),
         ...(image ? { image } : {}),
         ...(previewImage ? { previewImage } : {}),
+        ...(previewVideo ? { previewVideo } : {}),
+        ...(previewVideoBackgroundId ? { previewVideoBackgroundId } : {}),
+        ...(visualType ? { visualType } : {}),
+        ...(motionGraphicId ? { motionGraphicId } : {}),
+        ...(motionGraphicTemplateId ? { motionGraphicTemplateId } : {}),
+        ...(motionGraphicRendererId ? { motionGraphicRendererId } : {}),
         ...(notes ? { notes } : {}),
       })),
     }, null, 2),
@@ -3504,6 +3752,23 @@ function runDirectSceneImages(job) {
   ensureDir(config.outputDir);
 
   const runtimeXmlPath = resolveXmlRuntimePath(config.scriptPath, runDir, "scene-images-runtime.xml");
+  const requestedSceneIndexes = [parseSceneIdToIndex(config.sceneId)].filter(Boolean);
+  const preMotionSceneIndexes = requestedSceneIndexes.length > 0
+    ? requestedSceneIndexes
+    : [];
+  const motionGraphics = renderMotionGraphicScenes({
+    outputDir: config.outputDir,
+    runDir,
+    xmlPath: runtimeXmlPath,
+    settings: config.motionGraphicsSettings,
+    sceneIndexes: preMotionSceneIndexes,
+    backgroundVideoId: config.backgroundVideoId,
+    backgroundVideoName: config.backgroundVideoName,
+    backgroundVideoPath: config.backgroundVideoPath,
+  });
+  if (motionGraphics.motionVisuals.length > 0) {
+    fs.writeFileSync(runtimeXmlPath, `${motionGraphics.sanitizedXml.trim()}\n`, "utf-8");
+  }
   const styleReferences = Array.isArray(config.imageStyleReferences) ? config.imageStyleReferences : [];
   const primaryCharacterReference = styleReferences.find((reference) => reference?.usageType === "character");
   const extraReferencesPayload = styleReferences
@@ -3521,6 +3786,11 @@ function runDirectSceneImages(job) {
     fs.writeFileSync(promptTemplatesJsonPath, JSON.stringify(config.imagePromptTemplates, null, 2), "utf-8");
   }
 
+  const visualGenerationModelId =
+    config.visualGenerationModelId || DEFAULT_VISUAL_GENERATION_MODEL_ID;
+  const visualGenerationModelRef =
+    config.visualGenerationModelRef || DEFAULT_VISUAL_GENERATION_MODEL_REF;
+
   const args = [
     "run",
     "--with",
@@ -3530,8 +3800,10 @@ function runDirectSceneImages(job) {
     runtimeXmlPath,
     "--output-dir",
     config.outputDir,
+    "--generator-script",
+    PROVIDER_AWARE_IMAGE_GENERATOR_SCRIPT,
     "--model",
-    DEFAULT_IMAGE_MODEL,
+    visualGenerationModelRef,
     "--resolution",
     DEFAULT_IMAGE_RESOLUTION,
     "--aspect-ratio",
@@ -3562,11 +3834,16 @@ function runDirectSceneImages(job) {
     }
   }
 
-  const requestedSceneIndexes = [parseSceneIdToIndex(config.sceneId)].filter(Boolean);
   const sceneIndexes = expandSceneIndexesForDependencies(runtimeXmlPath, requestedSceneIndexes);
-  if (sceneIndexes.length > 0) {
-    args.push("--only-scenes", ...sceneIndexes.map((index) => String(index)));
-    config.sceneIndexes = sceneIndexes;
+  const motionSceneIndexes = new Set(motionGraphics.motionVisuals.map((visual) => visual.index));
+  const imageSceneIndexes = sceneIndexes.length > 0
+    ? sceneIndexes.filter((index) => !motionSceneIndexes.has(index))
+    : motionGraphics.motionVisuals.length > 0
+      ? motionGraphics.nonMotionSceneIndexes
+      : [];
+  if (imageSceneIndexes.length > 0) {
+    args.push("--only-scenes", ...imageSceneIndexes.map((index) => String(index)));
+    config.sceneIndexes = imageSceneIndexes;
   }
   if (config.notes && config.notes.trim()) {
     const primarySceneIndex = sceneIndexes[0];
@@ -3577,10 +3854,17 @@ function runDirectSceneImages(job) {
     }
   }
 
-  const result = runCommand("uv", args);
+  const shouldRunImageGenerator = motionGraphics.motionVisuals.length === 0 || imageSceneIndexes.length > 0;
+  const result = shouldRunImageGenerator
+    ? runCommand("uv", args)
+    : { stdout: "Skipped image generator; requested visuals are deterministic motion graphics only.", stderr: "" };
   syncSceneImageArtifacts(job);
   return {
-    command: ["uv", ...args].join(" "),
+    command: shouldRunImageGenerator ? ["uv", ...args].join(" ") : `node ${MOTION_GRAPHIC_RENDERER_SCRIPT}`,
+    visualGenerationModelId,
+    visualGenerationModelLabel: config.visualGenerationModelLabel,
+    visualGenerationModelRef,
+    motionGraphicsRendered: motionGraphics.rendered.length,
     stdout: result.stdout.trim(),
     stderr: result.stderr.trim(),
   };
@@ -3832,7 +4116,7 @@ async function main() {
 
   const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0
     ? job.preferredModels
-    : ["codex/gpt-5.4", "openrouter/anthropic/claude-3-haiku"];
+    : ["openai-codex/gpt-5.5", "openai/gpt-5.5"];
 
   for (let index = 0; index < models.length; index += 1) {
     const model = models[index];

@@ -1,5 +1,11 @@
 import fs from "fs";
 import path from "path";
+import {
+  DEFAULT_SHORT_FORM_VISUAL_GENERATION_MODEL_ID,
+  getShortFormVisualGenerationModelOption,
+  normalizeShortFormVisualGenerationModelId,
+  type ShortFormVisualGenerationModelId,
+} from "@/lib/short-form-visual-generation";
 
 export type ShortFormStyleReferenceUsageType = "general" | "style" | "character" | "lighting" | "composition" | "palette";
 
@@ -43,9 +49,17 @@ export interface ShortFormNanoBananaPromptTemplates {
 }
 
 export interface ShortFormImageStyleSettings {
+  defaultVisualGenerationModelId: ShortFormVisualGenerationModelId;
   defaultStyleId: string;
   styles: ShortFormImageStyle[];
   promptTemplates: ShortFormNanoBananaPromptTemplates;
+}
+
+export interface ResolvedShortFormVisualGenerationModel {
+  settings: ShortFormImageStyleSettings;
+  resolvedVisualGenerationModelId: ShortFormVisualGenerationModelId;
+  option: NonNullable<ReturnType<typeof getShortFormVisualGenerationModelOption>>;
+  source: "project" | "default";
 }
 
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
@@ -535,6 +549,8 @@ function normalizePromptTemplates(value: unknown): ShortFormNanoBananaPromptTemp
 
 function defaultSettings(): ShortFormImageStyleSettings {
   return {
+    defaultVisualGenerationModelId:
+      DEFAULT_SHORT_FORM_VISUAL_GENERATION_MODEL_ID,
     defaultStyleId: DEFAULT_STYLE_ID,
     styles: [DEFAULT_STYLE],
     promptTemplates: normalizePromptTemplates(undefined),
@@ -560,6 +576,10 @@ function normalizeSettings(value: unknown): ShortFormImageStyleSettings {
     : normalizedStyles[0].id;
 
   return {
+    defaultVisualGenerationModelId:
+      normalizeShortFormVisualGenerationModelId(
+        obj.defaultVisualGenerationModelId,
+      ),
     defaultStyleId,
     styles: normalizedStyles,
     promptTemplates: normalizePromptTemplates(obj.promptTemplates),
@@ -585,6 +605,10 @@ function normalizeSettingsForStorage(value: unknown): ShortFormImageStyleSetting
     : normalizedStyles[0].id;
 
   return {
+    defaultVisualGenerationModelId:
+      normalizeShortFormVisualGenerationModelId(
+        obj.defaultVisualGenerationModelId,
+      ),
     defaultStyleId,
     styles: normalizedStyles,
     promptTemplates: normalizePromptTemplates(obj.promptTemplates),
@@ -651,6 +675,34 @@ export function resolveShortFormImageStyle(styleId?: string | null) {
     resolvedStyleId: style.id,
     effectiveStylePrompt,
     combinedStylePrompt: effectiveStylePrompt,
+  };
+}
+
+export function resolveShortFormVisualGenerationModel(
+  preferredModelId?: string | null,
+): ResolvedShortFormVisualGenerationModel {
+  const settings = getShortFormImageStyleSettings();
+  const preferredOption = getShortFormVisualGenerationModelOption(
+    preferredModelId,
+  );
+  const defaultOption =
+    getShortFormVisualGenerationModelOption(
+      settings.defaultVisualGenerationModelId,
+    ) ||
+    getShortFormVisualGenerationModelOption(
+      DEFAULT_SHORT_FORM_VISUAL_GENERATION_MODEL_ID,
+    );
+
+  if (!defaultOption) {
+    throw new Error("Missing default short-form visual generation option");
+  }
+
+  const option = preferredOption || defaultOption;
+  return {
+    settings,
+    resolvedVisualGenerationModelId: option.id,
+    option,
+    source: preferredOption ? "project" : "default",
   };
 }
 

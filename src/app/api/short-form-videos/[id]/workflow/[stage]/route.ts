@@ -28,7 +28,11 @@ import {
 } from "@/lib/short-form-videos";
 import { hasVersions, initializeVersionHistory, addVersion } from "@/lib/versions";
 import { getShortFormWorkflowPrompts, renderShortFormPrompt } from "@/lib/short-form-workflow-prompts";
-import { resolveShortFormImageStyle } from "@/lib/short-form-image-styles";
+import { getShortFormMotionGraphicsSettings } from "@/lib/short-form-motion-graphics";
+import {
+  resolveShortFormImageStyle,
+  resolveShortFormVisualGenerationModel,
+} from "@/lib/short-form-image-styles";
 import {
   resolveShortFormBackgroundVideoAbsolutePath,
   resolveShortFormBackgroundVideoSelection,
@@ -426,6 +430,9 @@ export async function POST(
     ? randomUUID()
     : undefined;
   const resolvedImageStyle = resolveShortFormImageStyle(project.selectedImageStyleId);
+  const resolvedVisualGeneration = resolveShortFormVisualGenerationModel(
+    project.visualGenerationModelOverrideId,
+  );
   const resolvedBackgroundVideo = resolveShortFormBackgroundVideoSelection(project.selectedBackgroundVideoId);
   const resolvedCaptionStyle = resolveShortFormCaptionStyleSelection(project.selectedCaptionStyleId);
   const resolvedChromaKey = resolveShortFormChromaKeySelection(
@@ -449,6 +456,7 @@ export async function POST(
         ...(stage === "scene-images"
           ? [
               `Selected image style: ${resolvedImageStyle.style.name}`,
+              `Resolved image generation provider/model: ${resolvedVisualGeneration.option.label} (${resolvedVisualGeneration.option.modelRef})`,
               `Shared/common style constraints plus per-style instructions are already resolved and must stay applied for this run.`,
             ]
           : []),
@@ -534,11 +542,27 @@ export async function POST(
                 mode,
                 imageStyleId: resolvedImageStyle.resolvedStyleId,
                 imageStyleName: resolvedImageStyle.style.name,
+                visualGenerationModelId:
+                  resolvedVisualGeneration.resolvedVisualGenerationModelId,
+                visualGenerationModelLabel:
+                  resolvedVisualGeneration.option.label,
+                visualGenerationModelRef:
+                  resolvedVisualGeneration.option.modelRef,
                 imageStyleSubject: resolvedImageStyle.style.subjectPrompt,
                 imageStylePrompt: resolvedImageStyle.effectiveStylePrompt,
                 imageStyleHeaderPercent: resolvedImageStyle.style.headerPercent,
                 imageStyleReferences: resolvedImageStyle.style.references || [],
                 imagePromptTemplates: resolvedImageStyle.settings.promptTemplates,
+                motionGraphicsSettings: getShortFormMotionGraphicsSettings(),
+                ...(resolvedBackgroundVideo.background
+                  ? {
+                      backgroundVideoId: resolvedBackgroundVideo.resolvedBackgroundVideoId,
+                      backgroundVideoName: resolvedBackgroundVideo.background.name,
+                      backgroundVideoPath: resolveShortFormBackgroundVideoAbsolutePath(
+                        resolvedBackgroundVideo.background.videoRelativePath
+                      ),
+                    }
+                  : {}),
                 ...(requestNotes ? { notes: requestNotes } : {}),
                 ...(effectiveSceneId ? { sceneId: effectiveSceneId } : {}),
               },

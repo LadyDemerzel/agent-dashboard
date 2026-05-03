@@ -31,6 +31,12 @@ import {
   type ShortFormXmlVisualPlanningSettings,
 } from "@/lib/short-form-xml-visual-planning-settings";
 import {
+  getShortFormMotionGraphicsSettings,
+  saveShortFormMotionGraphicsSettings,
+  SUPPORTED_MOTION_GRAPHIC_RENDERERS,
+  type ShortFormMotionGraphicsSettings,
+} from "@/lib/short-form-motion-graphics";
+import {
   appendSoundLibraryUrls,
   getShortFormSoundDesignSettings,
   saveShortFormSoundDesignSettings,
@@ -48,6 +54,8 @@ function buildPayload() {
     backgroundVideos: getShortFormBackgroundVideoSettings(),
     textScript: getShortFormTextScriptSettings(),
     xmlVisualPlanning: getShortFormXmlVisualPlanningSettings(),
+    motionGraphics: getShortFormMotionGraphicsSettings(),
+    supportedMotionGraphicRenderers: SUPPORTED_MOTION_GRAPHIC_RENDERERS,
     soundDesign: appendSoundLibraryUrls(getShortFormSoundDesignSettings()),
   };
 }
@@ -117,10 +125,11 @@ export async function PATCH(request: NextRequest) {
   const backgroundVideos = body && typeof body === "object" && !Array.isArray(body) ? body.backgroundVideos : undefined;
   const textScript = body && typeof body === "object" && !Array.isArray(body) ? body.textScript : undefined;
   const xmlVisualPlanning = body && typeof body === "object" && !Array.isArray(body) ? body.xmlVisualPlanning : undefined;
+  const motionGraphics = body && typeof body === "object" && !Array.isArray(body) ? body.motionGraphics : undefined;
   const soundDesign = body && typeof body === "object" && !Array.isArray(body) ? body.soundDesign : undefined;
 
-  if (prompts === undefined && imageStyles === undefined && videoRender === undefined && backgroundVideos === undefined && textScript === undefined && xmlVisualPlanning === undefined && soundDesign === undefined) {
-    return NextResponse.json({ success: false, error: "prompts, imageStyles, videoRender, backgroundVideos, textScript, xmlVisualPlanning, or soundDesign is required" }, { status: 400 });
+  if (prompts === undefined && imageStyles === undefined && videoRender === undefined && backgroundVideos === undefined && textScript === undefined && xmlVisualPlanning === undefined && motionGraphics === undefined && soundDesign === undefined) {
+    return NextResponse.json({ success: false, error: "prompts, imageStyles, videoRender, backgroundVideos, textScript, xmlVisualPlanning, motionGraphics, or soundDesign is required" }, { status: 400 });
   }
 
   if (prompts !== undefined) {
@@ -415,6 +424,52 @@ export async function PATCH(request: NextRequest) {
     }
 
     saveShortFormXmlVisualPlanningSettings(candidate);
+  }
+
+  if (motionGraphics !== undefined) {
+    if (!motionGraphics || typeof motionGraphics !== "object" || Array.isArray(motionGraphics)) {
+      return NextResponse.json({ success: false, error: "motionGraphics must be an object" }, { status: 400 });
+    }
+
+    const candidate = {
+      ...getShortFormMotionGraphicsSettings(),
+      ...(motionGraphics as Partial<ShortFormMotionGraphicsSettings>),
+    } satisfies ShortFormMotionGraphicsSettings;
+
+    if (!Array.isArray(candidate.templates) || candidate.templates.length === 0) {
+      return NextResponse.json({ success: false, error: "At least one motion graphics template is required" }, { status: 400 });
+    }
+
+    const seenTemplateIds = new Set<string>();
+    for (const template of candidate.templates) {
+      if (typeof template.id !== "string" || !template.id.trim()) {
+        return NextResponse.json({ success: false, error: "Each motion graphics template must have an id" }, { status: 400 });
+      }
+      if (seenTemplateIds.has(template.id)) {
+        return NextResponse.json({ success: false, error: `Motion graphics template id ${template.id} is duplicated` }, { status: 400 });
+      }
+      seenTemplateIds.add(template.id);
+      if (!SUPPORTED_MOTION_GRAPHIC_RENDERERS.includes(template.rendererId)) {
+        return NextResponse.json({ success: false, error: `Motion graphics template ${template.id} uses an unsupported deterministic renderer` }, { status: 400 });
+      }
+      if (typeof template.displayName !== "string" || !template.displayName.trim()) {
+        return NextResponse.json({ success: false, error: `Motion graphics template ${template.id} needs a display name` }, { status: 400 });
+      }
+      if (typeof template.description !== "string" || !template.description.trim()) {
+        return NextResponse.json({ success: false, error: `Motion graphics template ${template.displayName} needs a description` }, { status: 400 });
+      }
+      if (typeof template.whenToUse !== "string" || !template.whenToUse.trim()) {
+        return NextResponse.json({ success: false, error: `Motion graphics template ${template.displayName} needs when-to-use guidance` }, { status: 400 });
+      }
+      if (typeof template.durationSeconds !== "number" || Number.isNaN(template.durationSeconds) || template.durationSeconds < 3 || template.durationSeconds > 12) {
+        return NextResponse.json({ success: false, error: `Motion graphics template ${template.displayName} duration must be between 3 and 12 seconds` }, { status: 400 });
+      }
+      if (!Array.isArray(template.fields) || template.fields.length === 0) {
+        return NextResponse.json({ success: false, error: `Motion graphics template ${template.displayName} needs at least one configurable field` }, { status: 400 });
+      }
+    }
+
+    saveShortFormMotionGraphicsSettings(candidate);
   }
 
   if (soundDesign !== undefined) {

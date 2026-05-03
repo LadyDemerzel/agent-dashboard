@@ -30,8 +30,8 @@ export const dynamic = "force-dynamic";
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
 const REPO_ROOT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard");
 const WORKER_PATH = path.join(REPO_ROOT, "scripts", "xml-script-worker.mjs");
-const DEFAULT_RELIABLE_MODEL = process.env.SHORT_FORM_RELIABLE_MODEL || "codex/gpt-5.4";
-const DEFAULT_RETRY_MODEL = process.env.SHORT_FORM_RETRY_MODEL || "openrouter/anthropic/claude-3-haiku";
+const DEFAULT_RELIABLE_MODEL = process.env.SHORT_FORM_RELIABLE_MODEL || "openai-codex/gpt-5.5";
+const DEFAULT_RETRY_MODEL = process.env.SHORT_FORM_RETRY_MODEL || "openai/gpt-5.5";
 
 type XmlWorkflowTask = "full" | "narration" | "silence" | "captions" | "visuals";
 

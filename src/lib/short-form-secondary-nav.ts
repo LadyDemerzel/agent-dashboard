@@ -344,10 +344,10 @@ export function getShortFormSettingsNavItems(summary?: ShortFormSettingsNavSumma
       href: buildShortFormSettingsHref('images'),
       label: 'Images',
       icon: 'images',
-      caption: 'Nano Banana prompt templates and the reusable image-style library.',
+      caption: 'Motion graphics, Nano Banana prompt templates, and the reusable image-style library.',
       meta: `${summary?.styleCount || 0} styles`,
-      status: dirty.has('image-templates') || dirty.has('image-styles') ? 'needs review' : 'approved',
-      dirty: dirty.has('image-templates') || dirty.has('image-styles'),
+      status: dirty.has('motion-graphics') || dirty.has('image-templates') || dirty.has('image-styles') ? 'needs review' : 'approved',
+      dirty: dirty.has('motion-graphics') || dirty.has('image-templates') || dirty.has('image-styles'),
     },
     {
       href: buildShortFormSettingsHref('captions'),

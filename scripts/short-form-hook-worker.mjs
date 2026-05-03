@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 
 const jobPath = process.argv[2];
+const HOOK_WEBHOOK_TIMEOUT_MS = 30_000;
 
 if (!jobPath) {
   process.exit(1);
@@ -88,6 +89,7 @@ async function spawnAttempt(job, model, attemptIndex) {
 
   const response = await fetch(`${url}/hooks/agent`, {
     method: "POST",
+    signal: AbortSignal.timeout(HOOK_WEBHOOK_TIMEOUT_MS),
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
@@ -128,7 +130,7 @@ async function main() {
 
   const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0
     ? job.preferredModels
-    : ["codex/gpt-5.4", "openrouter/anthropic/claude-3-haiku"];
+    : ["openai-codex/gpt-5.5", "openai/gpt-5.5"];
 
   for (let index = 0; index < models.length; index += 1) {
     const model = models[index];

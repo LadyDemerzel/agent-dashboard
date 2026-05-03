@@ -5,6 +5,7 @@ import path from "path";
 import { spawn, spawnSync } from "child_process";
 
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
+const HOOK_WEBHOOK_TIMEOUT_MS = 30_000;
 const isDirectRun = Boolean(process.argv[1]) && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname);
 const jobPath = isDirectRun ? process.argv[2] : null;
 if (isDirectRun && !jobPath) process.exit(1);
@@ -644,6 +645,7 @@ async function spawnAuthoringAttempt(job, model, attemptIndex) {
 
   const response = await fetch(`${url}/hooks/agent`, {
     method: "POST",
+    signal: AbortSignal.timeout(HOOK_WEBHOOK_TIMEOUT_MS),
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
@@ -1003,7 +1005,7 @@ async function main() {
       }
       writeTextIfChanged(promptPath, job.prompt);
       updateStatus();
-      const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0 ? job.preferredModels : ["codex/gpt-5.4"];
+      const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0 ? job.preferredModels : ["openai-codex/gpt-5.5"];
       let verified = false;
       for (let index = 0; index < models.length; index += 1) {
         const model = models[index];

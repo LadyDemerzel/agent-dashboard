@@ -3,6 +3,7 @@ import path from "path";
 
 const jobPath = process.argv[2];
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
+const HOOK_WEBHOOK_TIMEOUT_MS = 30_000;
 const OPENCLAW_CONFIG = path.join(HOME_DIR, ".openclaw", "openclaw.json");
 
 function readJson(filePath) {
@@ -35,6 +36,7 @@ async function spawnAuthoringAttempt(job, model, attemptIndex) {
 
   const response = await fetch(`${url}/hooks/agent`, {
     method: "POST",
+    signal: AbortSignal.timeout(HOOK_WEBHOOK_TIMEOUT_MS),
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
@@ -89,7 +91,7 @@ async function main() {
     attempts,
   });
 
-  const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0 ? job.preferredModels : ["codex/gpt-5.4"];
+  const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0 ? job.preferredModels : ["openai-codex/gpt-5.5"];
   let lastError = null;
 
   for (const [index, model] of models.entries()) {

@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { SHORT_FORM_VIDEOS_DIR } from "@/lib/short-form-videos";
+import { renderMotionGraphicTemplatePromptInjection } from "@/lib/short-form-motion-graphics";
 
 export interface ShortFormXmlVisualPlanningSettings {
   promptTemplate: string;
@@ -43,10 +44,15 @@ const DEFAULT_PROMPT_TEMPLATE = [
   `    <image id=\"asset-id-2\" basedOn=\"asset-id\">`,
   `      <prompt>Describe a NEW image to generate using the prior asset as a reference.</prompt>`,
   `    </image>`,
+  `    <motionGraphic id=\"motion-id\" templateId=\"bar_chart\">`,
+  `      <arg name=\"title\">Chart title</arg>`,
+  `      <item label=\"A\" value=\"35\" displayValue=\"35%\" />`,
+  `      <item label=\"B\" value=\"68\" displayValue=\"68%\" />`,
+  `    </motionGraphic>`,
   `  </assets>`,
   `  <timeline>`,
   `    <visual id=\"visual-1\" label=\"Hook setup\" start=\"0.00\" end=\"1.20\" imageId=\"asset-id\" cameraZoom=\"0.05\" />`,
-  `    <visual id=\"visual-2\" label=\"Reveal\" start=\"1.20\" end=\"2.40\" imageId=\"asset-id\" cameraZoomStart=\"0.02\" cameraZoomEnd=\"0.08\" />`,
+  `    <visual id=\"visual-2\" label=\"Data reveal\" start=\"1.20\" end=\"2.40\" visualType=\"motion_graphic\" motionGraphicId=\"motion-id\" />`,
   `  </timeline>`,
   `</video>`,
   "",
@@ -54,8 +60,13 @@ const DEFAULT_PROMPT_TEMPLATE = [
   "- <script> must match the approved plain text narration.",
   "- Captions do NOT belong in the XML anymore. Do not emit <caption> nodes anywhere.",
   "- The caption JSON is a separate deterministic artifact used by the final renderer and review timeline.",
-  "- <timeline><visual> entries should only describe visuals: label, start/end timing, imageId, and optional camera motion.",
+  "- <timeline><visual> entries should only describe visuals: label, start/end timing, imageId or motionGraphicId, visualType, and optional camera motion.",
   "- <assets>/<image id> defines reusable underlying image assets.",
+  "- <assets>/<motionGraphic id templateId> defines deterministic animated visuals rendered from approved templates.",
+  "- Use visualType=\"motion_graphic\" with motionGraphicId for animated slides/charts/motion graphics. Use imageId for normal generated image visuals.",
+  "- Do not invent renderer code. Configure only the allowed motion graphic template fields listed below.",
+  "",
+  "{{motionGraphicTemplates}}",
   "- Reusing the exact same image asset = multiple <visual> entries with the same imageId.",
   "- Generating a NEW image from a previous image reference = define a new <image id=... basedOn=...> asset.",
   "- Ensure there is an actual visual or camera change at least every 3 seconds across the timeline.",
@@ -135,10 +146,18 @@ export function saveShortFormXmlVisualPlanningSettings(patch: Partial<ShortFormX
 }
 
 export function renderShortFormXmlVisualPlanningPrompt(template: string, values: Record<string, string | undefined>) {
-  const withConditionalRevisionNotesBlock = template.replace(
+  const valuesWithMotionGraphics: Record<string, string | undefined> = {
+    ...values,
+    motionGraphicTemplates: values.motionGraphicTemplates ?? renderMotionGraphicTemplatePromptInjection(),
+  };
+  const templateWithMotionGraphicInjection = /\{\{\s*motionGraphicTemplates\s*\}\}/.test(template)
+    ? template
+    : `${template.trim()}\n\n{{motionGraphicTemplates}}`;
+  const withConditionalRevisionNotesBlock = templateWithMotionGraphicInjection.replace(
+
     /^[ \t]*\{\{\s*revisionNotesBlock\s*\}\}[ \t]*\n?/gm,
-    values.revisionNotesBlock ? `${values.revisionNotesBlock}\n` : ""
+    valuesWithMotionGraphics.revisionNotesBlock ? `${valuesWithMotionGraphics.revisionNotesBlock}\n` : ""
   );
 
-  return withConditionalRevisionNotesBlock.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "");
+  return withConditionalRevisionNotesBlock.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => valuesWithMotionGraphics[key] ?? "");
 }

@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 import {
   getEffectiveShortFormStylePrompt,
   normalizeShortFormNanoBananaPromptTemplates,
+  resolveShortFormVisualGenerationModel,
   getShortFormStyleReferenceImagesDir,
   getShortFormStyleTestsDir,
   saveShortFormImageStyleTestResult,
@@ -13,12 +14,16 @@ import {
   type ShortFormStyleReferenceImage,
   type ShortFormStyleReferenceUsageType,
 } from "@/lib/short-form-image-styles";
+import {
+  isShortFormVisualGenerationModelId,
+  type ShortFormVisualGenerationModelId,
+} from "@/lib/short-form-visual-generation";
 
 export const dynamic = "force-dynamic";
 
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
 const XML_SCENE_IMAGES_SCRIPT = path.join(HOME_DIR, ".openclaw", "skills", "xml-scene-images", "scripts", "generate_from_xml.py");
-const DEFAULT_IMAGE_MODEL = "google/gemini-3-pro-image-preview";
+const PROVIDER_AWARE_IMAGE_GENERATOR_SCRIPT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard", "scripts", "provider-aware-image-generate.py");
 const DEFAULT_IMAGE_RESOLUTION = "1K";
 const DEFAULT_IMAGE_ASPECT_RATIO = "9:16";
 const DEFAULT_IMAGE_STYLE_PRESET = "dark-charcoal-natural-header";
@@ -109,6 +114,14 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const style = validateStyle(body.style);
+    const requestedVisualGenerationModelId =
+      typeof body.visualGenerationModelId === "string"
+      && isShortFormVisualGenerationModelId(body.visualGenerationModelId.trim())
+        ? (body.visualGenerationModelId.trim() as ShortFormVisualGenerationModelId)
+        : undefined;
+    const resolvedVisualGeneration = resolveShortFormVisualGenerationModel(
+      requestedVisualGenerationModelId,
+    );
     const runId = randomUUID();
     const runDir = path.join(getShortFormStyleTestsDir(), runId);
     const outputDir = path.join(runDir, "output");
@@ -161,8 +174,10 @@ export async function POST(request: NextRequest) {
       xmlPath,
       "--output-dir",
       outputDir,
+      "--generator-script",
+      PROVIDER_AWARE_IMAGE_GENERATOR_SCRIPT,
       "--model",
-      DEFAULT_IMAGE_MODEL,
+      resolvedVisualGeneration.option.modelRef,
       "--resolution",
       DEFAULT_IMAGE_RESOLUTION,
       "--aspect-ratio",
@@ -226,6 +241,9 @@ export async function POST(request: NextRequest) {
         ...(cleanImageUrl ? { cleanImageUrl, cleanRelativePath } : {}),
         ...(previewImageUrl ? { previewImageUrl, previewRelativePath } : {}),
         updatedAt,
+        visualGenerationModelId: resolvedVisualGeneration.resolvedVisualGenerationModelId,
+        visualGenerationModelLabel: resolvedVisualGeneration.option.label,
+        visualGenerationModelRef: resolvedVisualGeneration.option.modelRef,
       },
     });
   } catch (error) {

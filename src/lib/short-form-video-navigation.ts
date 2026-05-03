@@ -69,6 +69,7 @@ export const SHORT_FORM_SETTINGS_ANCHOR_TO_SECTION: Record<string, ShortFormSett
   'pause-removal': 'audio',
   'tts-voice': 'audio',
   'sound-library': 'sound-library',
+  'motion-graphics': 'images',
   'image-templates': 'images',
   'image-styles': 'images',
   'caption-styles': 'captions',

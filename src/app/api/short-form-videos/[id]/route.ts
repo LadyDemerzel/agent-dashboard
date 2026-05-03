@@ -4,6 +4,7 @@ import { resolveShortFormImageStyle } from "@/lib/short-form-image-styles";
 import { getShortFormVideoRenderSettings } from "@/lib/short-form-video-render-settings";
 import { getShortFormBackgroundVideoSettings } from "@/lib/short-form-background-videos";
 import { getSoundDesignHandoffState } from "@/lib/short-form-sound-design-handoff";
+import { isShortFormVisualGenerationModelId } from "@/lib/short-form-visual-generation";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,11 @@ export async function PATCH(
   const topic = typeof body.topic === "string" ? body.topic.trim() : undefined;
   const title = typeof body.title === "string" ? body.title.trim() : undefined;
   const selectedImageStyleId = typeof body.selectedImageStyleId === "string" ? body.selectedImageStyleId.trim() : undefined;
+  const visualGenerationModelIdOverride = body.visualGenerationModelIdOverride === null
+    ? null
+    : typeof body.visualGenerationModelIdOverride === "string"
+      ? body.visualGenerationModelIdOverride.trim()
+      : undefined;
   const selectedVoiceId = typeof body.selectedVoiceId === "string" ? body.selectedVoiceId.trim() : undefined;
   const selectedMusicId = body.selectedMusicId === null ? null : typeof body.selectedMusicId === "string" ? body.selectedMusicId.trim() : undefined;
   const selectedCaptionStyleId = body.selectedCaptionStyleId === null ? null : typeof body.selectedCaptionStyleId === "string" ? body.selectedCaptionStyleId.trim() : undefined;
@@ -79,6 +85,17 @@ export async function PATCH(
     if (resolved.resolvedStyleId !== selectedImageStyleId) {
       return NextResponse.json({ success: false, error: "Selected image style no longer exists" }, { status: 400 });
     }
+  }
+
+  if (
+    visualGenerationModelIdOverride !== undefined
+    && visualGenerationModelIdOverride !== null
+    && !isShortFormVisualGenerationModelId(visualGenerationModelIdOverride)
+  ) {
+    return NextResponse.json(
+      { success: false, error: "Selected visual generation provider/model is unsupported" },
+      { status: 400 },
+    );
   }
 
   if (selectedVoiceId !== undefined || selectedMusicId !== undefined || selectedCaptionStyleId !== undefined) {
@@ -127,6 +144,14 @@ export async function PATCH(
     ...(topic !== undefined ? { topic } : {}),
     ...(title !== undefined ? { title } : topic ? { title: topic } : {}),
     ...(selectedImageStyleId !== undefined ? { selectedImageStyleId } : {}),
+    ...(visualGenerationModelIdOverride !== undefined
+      ? {
+          visualGenerationModelIdOverride:
+            visualGenerationModelIdOverride === null
+              ? undefined
+              : visualGenerationModelIdOverride,
+        }
+      : {}),
     ...(selectedVoiceId !== undefined ? { selectedVoiceId } : {}),
     ...(selectedMusicId !== undefined ? { selectedMusicId: selectedMusicId === null ? undefined : selectedMusicId } : {}),
     ...(selectedCaptionStyleId !== undefined ? { selectedCaptionStyleId: selectedCaptionStyleId === null ? undefined : selectedCaptionStyleId } : {}),
