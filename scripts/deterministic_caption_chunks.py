@@ -36,7 +36,7 @@ NUMERIC_FOLLOWERS = {
 }
 SPACY_MODEL_CANDIDATES = ["en_core_web_sm", "en_core_web_md", "en_core_web_lg"]
 NAMED_SPAN_CONNECTORS = {"of", "the", "and", "&"}
-WORD_RE = re.compile(r"\d+(?:,\d{3})+(?:\.\d+)?|[A-Za-z0-9]+(?:[’'\-][A-Za-z0-9]+)*")
+WORD_RE = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?|[A-Za-z0-9]+(?:[’'\-][A-Za-z0-9]+)*")
 WEAK_LEADING_POS = {"ADP", "PART", "SCONJ", "CCONJ"}
 WEAK_TRAILING_POS = {"ADP", "PART", "SCONJ", "CCONJ", "DET"}
 PREFERRED_BOUNDARY_REASONS = {
@@ -531,6 +531,14 @@ def secondary_division_for(
     if best_candidate is not None:
         _, boundary, boundary_reasons = best_candidate
         return boundary, boundary_reasons or ["best-fallback"]
+    hard_end_meta = boundary_meta(doc, words, hard_end, start, end, reasons, protected, attached_starts)
+    if hard_end_meta["splits_numeric"]:
+        for boundary in range(hard_end - 1, start + min_words - 1, -1):
+            if not is_viable_boundary(boundary, start, end, max_words, min_words):
+                continue
+            meta = boundary_meta(doc, words, boundary, start, end, reasons, protected, attached_starts)
+            if not meta["splits_numeric"]:
+                return boundary, meta["reasons"] or ["numeric-phrase-protection"]
     return hard_end, ["forced-max-words"]
 
 

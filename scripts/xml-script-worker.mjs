@@ -382,16 +382,24 @@ function ensureCaptionSpacyPython() {
 
 function splitSentences(text) {
   const sentences = [];
-  const regex = /[^.!?]+[.!?]+|[^.!?]+$/g;
-  for (const match of text.match(regex) || []) {
-    const sentence = match.trim();
+  let start = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char !== "." && char !== "!" && char !== "?") continue;
+    if (char === "." && /\d/.test(text[index - 1] || "") && /\d/.test(text[index + 1] || "")) {
+      continue;
+    }
+    const sentence = text.slice(start, index + 1).trim();
     if (sentence) sentences.push(sentence);
+    start = index + 1;
   }
+  const trailing = text.slice(start).trim();
+  if (trailing) sentences.push(trailing);
   return sentences;
 }
 
 function sentenceWordMatches(sentence) {
-  return Array.from(sentence.matchAll(/[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*/g));
+  return Array.from(sentence.matchAll(/\d+(?:,\d{3})*(?:\.\d+)?|[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*/g));
 }
 
 function normalizeCaptionText(value) {
