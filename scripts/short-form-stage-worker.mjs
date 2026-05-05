@@ -3070,9 +3070,7 @@ function updateSoundDesignFinalQa(projectId, resolution, finalVideoPath) {
   const previewFresh = resolution?.qa?.previewFresh === true;
   const finalInputSnapshot = getSoundDesignFinalInputSnapshot(projectId, resolution);
   const finalMtime = fs.existsSync(finalVideoPath) ? fs.statSync(finalVideoPath).mtimeMs : 0;
-  const priorFinalInputFingerprint = typeof resolution?.qa?.finalInputFingerprint === "string" ? resolution.qa.finalInputFingerprint : "";
-  const finalFingerprintMatches = priorFinalInputFingerprint ? priorFinalInputFingerprint === finalInputSnapshot.fingerprint : true;
-  const finalFresh = Boolean(finalMtime > 0 && finalFingerprintMatches && finalMtime >= finalInputSnapshot.lastChangedAtMs - 250);
+  const finalFresh = Boolean(finalMtime > 0 && finalMtime >= finalInputSnapshot.lastChangedAtMs - 250);
   const retainedIssues = Array.isArray(resolution?.qa?.issues)
     ? resolution.qa.issues.filter((issue) => issue && issue.code !== "final-stale" && issue.code !== "final-format-low-quality")
     : [];

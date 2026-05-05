@@ -4,7 +4,10 @@ import path from "path";
 const jobPath = process.argv[2];
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
 const HOOK_WEBHOOK_TIMEOUT_MS = 30_000;
-const OPENCLAW_CONFIG = path.join(HOME_DIR, ".openclaw", "openclaw.json");
+const OPENCLAW_CONFIG_CANDIDATES = [
+  path.join(HOME_DIR, ".openclaw", "openclaw.json"),
+  "/Users/ittaisvidler/.openclaw/openclaw.json",
+];
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf-8"));
@@ -18,9 +21,10 @@ function writeJson(filePath, value) {
 function getGatewayConfig() {
   let url = "http://127.0.0.1:18789";
   let token = "";
-  if (fs.existsSync(OPENCLAW_CONFIG)) {
+  const configPath = OPENCLAW_CONFIG_CANDIDATES.find((candidate) => fs.existsSync(candidate));
+  if (configPath) {
     try {
-      const config = JSON.parse(fs.readFileSync(OPENCLAW_CONFIG, "utf-8"));
+      const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
       if (config.gateway?.port) url = `http://127.0.0.1:${config.gateway.port}`;
       if (config.hooks?.token) token = config.hooks.token;
     } catch {}
@@ -28,11 +32,39 @@ function getGatewayConfig() {
   return { url, token };
 }
 
+function byteLength(value) {
+  return Buffer.byteLength(value, "utf-8");
+}
+
+function describeError(error) {
+  if (!(error instanceof Error)) return String(error);
+  const details = [error.message || error.name];
+  const cause = error.cause;
+  if (cause && typeof cause === "object") {
+    const causeParts = [];
+    if ("code" in cause && cause.code) causeParts.push(`code=${cause.code}`);
+    if ("errno" in cause && cause.errno) causeParts.push(`errno=${cause.errno}`);
+    if ("syscall" in cause && cause.syscall) causeParts.push(`syscall=${cause.syscall}`);
+    if ("message" in cause && cause.message) causeParts.push(`message=${cause.message}`);
+    if (causeParts.length > 0) details.push(`cause: ${causeParts.join(" ")}`);
+  }
+  return details.join("; ");
+}
+
 async function spawnAuthoringAttempt(job, model, attemptIndex) {
   const { url, token } = getGatewayConfig();
   if (!token) {
     throw new Error("Hooks token not found in config");
   }
+  const body = JSON.stringify({
+    message: job.prompt,
+    agentId: "scribe",
+    name: `sound-design-${job.projectId}-attempt-${attemptIndex + 1}`,
+    sessionKey: `hook:short-form:${job.projectId}:sound-design:${job.runId}:attempt-${attemptIndex + 1}`,
+    wakeMode: "now",
+    deliver: false,
+    model,
+  });
 
   const response = await fetch(`${url}/hooks/agent`, {
     method: "POST",
@@ -41,15 +73,7 @@ async function spawnAuthoringAttempt(job, model, attemptIndex) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      message: job.prompt,
-      agentId: "scribe",
-      name: `sound-design-${job.projectId}-attempt-${attemptIndex + 1}`,
-      sessionKey: `hook:short-form:${job.projectId}:sound-design:${job.runId}:attempt-${attemptIndex + 1}`,
-      wakeMode: "now",
-      deliver: false,
-      model,
-    }),
+    body,
   });
 
   if (!response.ok) {
@@ -68,6 +92,24 @@ function hasFreshArtifact(filePath, requestedAt) {
   } catch {
     return false;
   }
+}
+
+function countSoundDesignEffects(filePath) {
+  if (!fs.existsSync(filePath)) return 0;
+  const content = fs.readFileSync(filePath, "utf-8");
+  return (content.match(/<effect\b[^>]*\/>/g) || []).length
+    + (content.match(/<event\b[^>]*\/>/g) || []).length;
+}
+
+function setMarkdownStatus(filePath, status) {
+  if (!fs.existsSync(filePath)) return;
+  const content = fs.readFileSync(filePath, "utf-8");
+  const match = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
+  if (!match) return;
+  const frontMatter = match[1].match(/^status:\s*/m)
+    ? match[1].replace(/^status:\s*.*$/m, `status: ${status}`)
+    : `${match[1]}\nstatus: ${status}`;
+  fs.writeFileSync(filePath, `---\n${frontMatter}\n---\n${content.slice(match[0].length)}`, "utf-8");
 }
 
 async function waitForFile(filePath, requestedAt, timeoutMs = 10 * 60_000, pollMs = 5000) {
@@ -99,6 +141,8 @@ async function main() {
       index: index + 1,
       model,
       startedAt: new Date().toISOString(),
+      promptLength: typeof job.prompt === "string" ? job.prompt.length : 0,
+      promptBytes: typeof job.prompt === "string" ? byteLength(job.prompt) : 0,
     };
     attempts.push(attempt);
     writeJson(statusPath, {
@@ -118,6 +162,14 @@ async function main() {
       if (!ok) {
         throw new Error("Scribe run completed, but the sound-design XML artifact was not updated on disk.");
       }
+      const minEffectCount = Number.isFinite(Number(job.minEffectCount)) ? Number(job.minEffectCount) : 0;
+      if (minEffectCount > 0) {
+        const effectCount = countSoundDesignEffects(job.soundDesignPath);
+        if (effectCount < minEffectCount) {
+          setMarkdownStatus(job.soundDesignPath, "draft");
+          throw new Error(`Scribe updated the sound-design XML, but it only contains ${effectCount} effect cue${effectCount === 1 ? "" : "s"}; expected at least ${minEffectCount}.`);
+        }
+      }
       writeJson(statusPath, {
         status: "completed",
         runId: job.runId,
@@ -128,7 +180,7 @@ async function main() {
       return;
     } catch (error) {
       lastError = error;
-      attempt.error = error instanceof Error ? error.message : String(error);
+      attempt.error = describeError(error);
       attempt.finishedAt = new Date().toISOString();
     }
   }
@@ -138,7 +190,7 @@ async function main() {
     runId: job.runId,
     projectId: job.projectId,
     finishedAt: new Date().toISOString(),
-    errorMessage: lastError instanceof Error ? lastError.message : String(lastError || "Unknown error"),
+    errorMessage: describeError(lastError || "Unknown error"),
     attempts,
   });
   process.exitCode = 1;
@@ -148,7 +200,7 @@ main().catch((error) => {
   const statusPath = jobPath.replace(/\.job\.json$/, ".status.json");
   writeJson(statusPath, {
     status: "failed",
-    errorMessage: error instanceof Error ? error.message : String(error),
+    errorMessage: describeError(error),
     finishedAt: new Date().toISOString(),
   });
   process.exitCode = 1;

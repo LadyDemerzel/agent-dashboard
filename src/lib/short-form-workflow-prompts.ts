@@ -73,6 +73,10 @@ export const SHORT_FORM_PROMPT_DEFINITIONS: ShortFormPromptDefinition[] = [
 ];
 
 const SETTINGS_PATH = path.join(SHORT_FORM_VIDEOS_DIR, "_workflow-settings.json");
+const WORKFLOW_PROMPT_MIGRATIONS_KEY = "__workflowPromptMigrations";
+const LEGACY_RESEARCH_XML_PROMPT_RESET_KEY = "researchXmlPromptReset";
+
+type StoredWorkflowPromptSettings = Record<string, unknown>;
 
 const DEFAULT_SHORT_FORM_WORKFLOW_PROMPTS: ShortFormWorkflowPrompts = {
   hooksGenerate: [
@@ -215,6 +219,8 @@ const DEFAULT_SHORT_FORM_WORKFLOW_PROMPTS: ShortFormWorkflowPrompts = {
   ].join("\n\n"),
 };
 
+const SHORT_FORM_PROMPT_KEYS = Object.keys(DEFAULT_SHORT_FORM_WORKFLOW_PROMPTS) as ShortFormPromptKey[];
+
 function ensureSettingsDir() {
   fs.mkdirSync(path.dirname(SETTINGS_PATH), { recursive: true });
 }
@@ -230,27 +236,46 @@ function shouldResetStoredPrompt(key: ShortFormPromptKey, prompt: string) {
   }
 }
 
-function migrateStoredPrompts(stored: Partial<ShortFormWorkflowPrompts>) {
-  const migrated: Partial<ShortFormWorkflowPrompts> = { ...stored };
-  for (const key of Object.keys(DEFAULT_SHORT_FORM_WORKFLOW_PROMPTS) as ShortFormPromptKey[]) {
-    const current = migrated[key];
-    if (typeof current === "string" && shouldResetStoredPrompt(key, current)) {
+function readStoredSettings(): StoredWorkflowPromptSettings {
+  if (!fs.existsSync(SETTINGS_PATH)) return {};
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf-8")) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed as StoredWorkflowPromptSettings;
+  } catch {
+    return {};
+  }
+}
+
+function hasCompletedLegacyResearchReset(stored: StoredWorkflowPromptSettings) {
+  const migrations = stored[WORKFLOW_PROMPT_MIGRATIONS_KEY];
+  return Boolean(
+    migrations
+      && typeof migrations === "object"
+      && !Array.isArray(migrations)
+      && (migrations as Record<string, unknown>)[LEGACY_RESEARCH_XML_PROMPT_RESET_KEY] === true
+  );
+}
+
+function migrateStoredPrompts(stored: StoredWorkflowPromptSettings) {
+  const migrated: Partial<ShortFormWorkflowPrompts> = {};
+  const shouldRunLegacyResearchReset = !hasCompletedLegacyResearchReset(stored);
+
+  for (const key of SHORT_FORM_PROMPT_KEYS) {
+    const current = stored[key];
+    if (typeof current !== "string") continue;
+    if (shouldRunLegacyResearchReset && shouldResetStoredPrompt(key, current)) {
       migrated[key] = DEFAULT_SHORT_FORM_WORKFLOW_PROMPTS[key];
+      continue;
     }
+    migrated[key] = current;
   }
   return migrated;
 }
 
 function readStoredPrompts(): Partial<ShortFormWorkflowPrompts> {
-  if (!fs.existsSync(SETTINGS_PATH)) return {};
-
-  try {
-    const parsed = JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf-8")) as Partial<ShortFormWorkflowPrompts>;
-    if (!parsed || typeof parsed !== "object") return {};
-    return migrateStoredPrompts(parsed);
-  } catch {
-    return {};
-  }
+  return migrateStoredPrompts(readStoredSettings());
 }
 
 export function getShortFormWorkflowPrompts(): ShortFormWorkflowPrompts {
@@ -260,15 +285,35 @@ export function getShortFormWorkflowPrompts(): ShortFormWorkflowPrompts {
   };
 }
 
+function buildMigrationMetadata(stored: StoredWorkflowPromptSettings) {
+  const existing = stored[WORKFLOW_PROMPT_MIGRATIONS_KEY];
+  return {
+    ...(existing && typeof existing === "object" && !Array.isArray(existing)
+      ? (existing as Record<string, unknown>)
+      : {}),
+    [LEGACY_RESEARCH_XML_PROMPT_RESET_KEY]: true,
+  };
+}
+
 export function saveShortFormWorkflowPrompts(nextPrompts: Partial<ShortFormWorkflowPrompts>) {
   ensureSettingsDir();
+  const stored = readStoredSettings();
   const current = getShortFormWorkflowPrompts();
   const merged = {
     ...current,
     ...nextPrompts,
   } satisfies ShortFormWorkflowPrompts;
 
-  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(merged, null, 2), "utf-8");
+  const nextStored: StoredWorkflowPromptSettings = {
+    ...stored,
+    [WORKFLOW_PROMPT_MIGRATIONS_KEY]: buildMigrationMetadata(stored),
+  };
+
+  for (const key of SHORT_FORM_PROMPT_KEYS) {
+    nextStored[key] = merged[key];
+  }
+
+  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(nextStored, null, 2), "utf-8");
   return merged;
 }
 

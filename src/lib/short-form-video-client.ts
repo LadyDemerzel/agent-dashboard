@@ -317,6 +317,7 @@ export interface ShortFormProjectClient {
   captionStyleOverrideId?: string;
   soundDesignDecision?: 'approved' | 'skipped';
   soundDesignSkipReason?: string;
+  soundDesignApprovalWarning?: string;
   chromaKeyEnabled: boolean;
   chromaKeyEnabledSource: 'project' | 'default';
   chromaKeyEnabledOverride?: boolean;
@@ -782,6 +783,7 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
     captionStyleOverrideId: asOptionalString(obj.captionStyleOverrideId),
     soundDesignDecision: obj.soundDesignDecision === 'approved' || obj.soundDesignDecision === 'skipped' ? obj.soundDesignDecision : undefined,
     soundDesignSkipReason: asOptionalString(obj.soundDesignSkipReason),
+    soundDesignApprovalWarning: asOptionalString(obj.soundDesignApprovalWarning),
     chromaKeyEnabled: asBoolean(obj.chromaKeyEnabled),
     chromaKeyEnabledSource: obj.chromaKeyEnabledSource === 'project' ? 'project' : 'default',
     chromaKeyEnabledOverride: typeof obj.chromaKeyEnabledOverride === 'boolean' ? obj.chromaKeyEnabledOverride : undefined,

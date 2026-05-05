@@ -4254,8 +4254,10 @@ function SoundDesignSection({
   const [saving, setSaving] = useState(false);
   const [savingOverrides, setSavingOverrides] = useState(false);
   const [savingPlanStatus, setSavingPlanStatus] = useState(false);
+  const [autoFixingSoundDesign, setAutoFixingSoundDesign] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [overrideError, setOverrideError] = useState<string | null>(null);
+  const [autoFixError, setAutoFixError] = useState<string | null>(null);
   const [decisionError, setDecisionError] = useState<string | null>(null);
   const [planStatusError, setPlanStatusError] = useState<string | null>(null);
   const [savingDecision, setSavingDecision] = useState(false);
@@ -4358,7 +4360,7 @@ function SoundDesignSection({
     resolution?.previewUpdatedAt,
   ]);
 
-  const busy = saving || savingOverrides || savingDecision || savingPlanStatus;
+  const busy = saving || savingOverrides || savingDecision || savingPlanStatus || autoFixingSoundDesign;
   const overridesDirty = useMemo(
     () =>
       serializeSoundDesignOverrides(eventDrafts) !==
@@ -4375,6 +4377,22 @@ function SoundDesignSection({
       resolvedEvents.filter((event) => event.status !== "resolved").length,
   };
   const soundDesignQa = resolution?.qa;
+  const qaIssues = soundDesignQa?.issues || [];
+  const qaIssueSummary = qaIssues
+    .slice(0, 3)
+    .map((issue) => issue.message)
+    .join(" ");
+  const hasFailingSoundDesignQa = soundDesignQa?.status === "fail";
+  const autoFixableSoundDesignQaCodes = new Set([
+    "sfx-correlation-too-high",
+    "sfx-diff-too-quiet",
+    "audible-event-coverage-low",
+    "transient-punch-low",
+    "sfx-bus-too-quiet",
+  ]);
+  const hasAutoFixableSoundDesignFailure = qaIssues.some((issue) =>
+    autoFixableSoundDesignQaCodes.has(issue.code),
+  );
   const qaStatusLabel =
     soundDesignQa?.status === "fail"
       ? "Fail"
@@ -4482,8 +4500,36 @@ function SoundDesignSection({
   const soundDesignDecision = handoff.decision;
   const soundDesignReadyForVideo = handoff.canProceedToFinalVideo;
   const canApproveForVideo = Boolean(handoff.canApprove && !overridesDirty);
-  const showApproveSoundDesignAction =
-    canApproveForVideo && soundDesignDecision !== "approved";
+  const hasGeneratedSoundDesignReviewArtifact = Boolean(
+    handoff.hasPreview || project.soundDesign.resolution,
+  );
+  const showApproveSoundDesignAction = Boolean(
+    project.soundDesign.exists &&
+      hasGeneratedSoundDesignReviewArtifact &&
+      soundDesignDecision !== "approved",
+  );
+  const generateSoundDesignApprovalBlockReason =
+    showApproveSoundDesignAction && !canApproveForVideo
+      ? overridesDirty
+        ? "Save or discard Generate Sound Design override edits before approving the mix."
+        : handoff.gateReason || "Generate Sound Design is not ready to approve yet."
+      : null;
+  const generateSoundDesignApprovalWarning =
+    showApproveSoundDesignAction && canApproveForVideo && handoff.approvalWarnings.length > 0
+      ? `${handoff.approvalWarnings.join(" ")}${qaIssueSummary ? ` ${qaIssueSummary}` : ""}`
+      : null;
+  const canAutoFixSoundDesignFailures = Boolean(
+    hasAutoFixableSoundDesignFailure &&
+      project.soundDesign.content &&
+      resolution?.events?.length &&
+      !overridesDirty,
+  );
+  const autoFixSoundDesignDisabledReason =
+    hasAutoFixableSoundDesignFailure && !canAutoFixSoundDesignFailures
+      ? overridesDirty
+        ? "Save or discard Generate Sound Design override edits before auto-fixing QA failures."
+        : "Resolve sound-design events and render QA before auto-fixing failures."
+      : null;
   const canSkipForVideo = Boolean(
     skipReason.trim() || project.soundDesignSkipReason,
   );
@@ -4800,6 +4846,37 @@ function SoundDesignSection({
     });
   }
 
+  async function autoFixSoundDesignFailures() {
+    setAutoFixingSoundDesign(true);
+    setAutoFixError(null);
+
+    try {
+      const payload = await parseJsonResponse<SoundDesignPreviewResponse>(
+        await fetch(`/api/short-form-videos/${project.id}/sound-design/preview`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "auto-fix" }),
+        }),
+        "Failed to auto-fix sound design failures",
+      );
+      const nextUrl = payload.data?.previewAudioUrl;
+      if (nextUrl) {
+        setReviewVariantUrls((current) => ({
+          ...current,
+          mix: appendPreviewRefreshParam(nextUrl, String(Date.now())),
+        }));
+        setSelectedReviewKey("mix");
+      }
+      await refresh();
+    } catch (err) {
+      setAutoFixError(
+        err instanceof Error ? err.message : "Failed to auto-fix sound design failures",
+      );
+    } finally {
+      setAutoFixingSoundDesign(false);
+    }
+  }
+
   if (mode === "plan") {
     return (
       <section id="plan-sound-design" className="scroll-mt-24 space-y-5">
@@ -4827,7 +4904,7 @@ function SoundDesignSection({
               Open Sound Library settings ↗
             </Link>
           </div>
-          {project.soundDesign.exists && planSoundDesignStatus === "needs review" ? (
+          {project.soundDesign.exists && needsReviewStatus(planSoundDesignStatus) ? (
             <Button
               variant="secondary"
               onClick={() => void approvePlanSoundDesign()}
@@ -4927,14 +5004,29 @@ function SoundDesignSection({
         >
           Render preview mix
         </Button>
+        {hasAutoFixableSoundDesignFailure ? (
+          <Button
+            variant="outline"
+            onClick={() => void autoFixSoundDesignFailures()}
+            disabled={busy || project.soundDesign.pending || !canAutoFixSoundDesignFailures}
+            title={autoFixSoundDesignDisabledReason || undefined}
+          >
+            {autoFixingSoundDesign ? "Auto-fixing…" : "Auto-fix failures"}
+          </Button>
+        ) : null}
         {showApproveSoundDesignAction ? (
           <Button
             type="button"
             variant="secondary"
             onClick={() => void saveSoundDesignDecision("approved")}
             disabled={busy || !canApproveForVideo}
+            title={generateSoundDesignApprovalBlockReason || undefined}
           >
-            {savingDecision ? "Approving…" : "Approve"}
+            {savingDecision
+              ? "Approving…"
+              : generateSoundDesignApprovalWarning
+                ? "Approve anyway"
+                : "Approve"}
           </Button>
         ) : null}
         <Link
@@ -5055,10 +5147,33 @@ function SoundDesignSection({
           message={overrideError}
         />
       ) : null}
+      {autoFixError ? (
+        <ValidationNotice
+          title="Auto-fix failed"
+          message={autoFixError}
+        />
+      ) : null}
       {decisionError ? (
         <ValidationNotice
           title="Generate Sound Design approval failed"
           message={decisionError}
+        />
+      ) : null}
+      {generateSoundDesignApprovalWarning ? (
+        <ValidationNotice
+          title="Generate Sound Design QA warning"
+          message={`${generateSoundDesignApprovalWarning} Use Auto-fix failures first if you want the dashboard to boost audibility and rerender the preview before approval.`}
+        />
+      ) : hasFailingSoundDesignQa ? (
+        <ValidationNotice
+          title="Generate Sound Design QA warning"
+          message={`${qaIssueSummary || "Sound-design QA is failing."} Fix the blocking setup issue above before approval; audibility failures can be auto-fixed when enough resolved preview data exists.`}
+        />
+      ) : null}
+      {generateSoundDesignApprovalBlockReason ? (
+        <ValidationNotice
+          title="Generate Sound Design approval blocked"
+          message={generateSoundDesignApprovalBlockReason}
         />
       ) : null}
 

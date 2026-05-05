@@ -1,8 +1,9 @@
 import fs from "fs";
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
-import { getShortFormProject } from "@/lib/short-form-videos";
+import { getShortFormProject, updateProjectMeta } from "@/lib/short-form-videos";
 import {
+  autoFixShortFormSoundDesignAudibility,
   getShortFormSoundDesignPreviewFileName,
   renderShortFormSoundDesignPreview,
   resolveShortFormSoundDesign,
@@ -47,6 +48,7 @@ export async function POST(
 
   try {
     const body = await request.json().catch(() => ({}));
+    const autoFix = body && typeof body.action === "string" && body.action.trim() === "auto-fix";
     const requestedMode = body && typeof body.mode === "string" ? body.mode.trim() : "full";
     if (requestedMode !== "full" && requestedMode !== "without-sfx" && requestedMode !== "effects-only") {
       return NextResponse.json({ success: false, error: "mode must be one of full, without-sfx, or effects-only" }, { status: 400 });
@@ -58,7 +60,8 @@ export async function POST(
       return NextResponse.json({ success: false, error: "Narration audio is missing. Run XML Script first." }, { status: 400 });
     }
 
-    const resolution = resolveShortFormSoundDesign(id);
+    const autoFixResult = autoFix ? autoFixShortFormSoundDesignAudibility(id) : undefined;
+    const resolution = autoFixResult?.resolution || resolveShortFormSoundDesign(id);
     if (mode === "effects-only" && track) {
       const availableTracks = new Set(
         resolution.events
@@ -95,6 +98,11 @@ export async function POST(
       persistAsDefault: mode === "full" && !track,
     });
     const doc = readShortFormSoundDesignDocument(id);
+    updateProjectMeta(id, {
+      soundDesignDecision: undefined,
+      soundDesignSkipReason: undefined,
+      soundDesignApprovalWarning: undefined,
+    });
 
     return NextResponse.json({
       success: true,
@@ -105,6 +113,14 @@ export async function POST(
         previewMode: mode,
         previewTrack: track || null,
         resolution: doc.resolution,
+        ...(autoFixResult ? {
+          autoFix: {
+            changedEventCount: autoFixResult.changedEventCount,
+            changedMusicSegmentCount: autoFixResult.changedMusicSegmentCount,
+            boostDb: autoFixResult.boostDb,
+          },
+          message: `Auto-fixed audibility by boosting ${autoFixResult.changedEventCount} events and ${autoFixResult.changedMusicSegmentCount} music segments, then rendered a fresh preview.`,
+        } : {}),
       },
     });
   } catch (error) {

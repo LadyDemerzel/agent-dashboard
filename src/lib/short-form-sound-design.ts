@@ -1114,6 +1114,95 @@ export function writeShortFormSoundDesignResolution(projectId: string, resolutio
   return resolution;
 }
 
+const AUDIBILITY_AUTO_FIX_CODES = new Set([
+  "sfx-correlation-too-high",
+  "sfx-diff-too-quiet",
+  "audible-event-coverage-low",
+  "transient-punch-low",
+  "sfx-bus-too-quiet",
+]);
+
+function clampAutoFixGain(value: number, maxGainDb: number) {
+  return Math.round(Math.min(maxGainDb, Math.max(-36, value)) * 2) / 2;
+}
+
+function getAutoFixEventBoostDb(resolution: ShortFormSoundDesignResolution) {
+  const qa = resolution.qa;
+  const diffBoost = typeof qa?.fullVsNoSfxDiffRmsDb === "number"
+    ? Math.max(0, -25 - qa.fullVsNoSfxDiffRmsDb)
+    : 0;
+  const busBoost = typeof qa?.sfxOnlyMix?.integratedLufs === "number"
+    ? Math.max(0, -20 - qa.sfxOnlyMix.integratedLufs)
+    : 0;
+  const coverageBoost = typeof qa?.audibleEventPercent === "number" && qa.audibleEventPercent < 78 ? 4 : 0;
+  return Math.min(8, Math.max(3, diffBoost, busBoost, coverageBoost));
+}
+
+export function hasAutoFixableSoundDesignQaFailure(resolution?: ShortFormSoundDesignResolution) {
+  const issues = resolution?.qa?.issues || [];
+  return issues.some((issue) => AUDIBILITY_AUTO_FIX_CODES.has(issue.code));
+}
+
+export function autoFixShortFormSoundDesignAudibility(projectId: string) {
+  const resolution = readShortFormSoundDesignResolution(projectId) || resolveShortFormSoundDesign(projectId);
+  if (!hasAutoFixableSoundDesignQaFailure(resolution)) {
+    throw new Error("No auto-fixable sound-design QA failures were found.");
+  }
+
+  const eventBoostDb = getAutoFixEventBoostDb(resolution);
+  let boostedEvents = 0;
+  let boostedMusicSegments = 0;
+  const nextEvents = resolution.events.map((event) => {
+    if (event.status !== "resolved" || event.muted || !event.assetRelativePath || !isMeasuredAudibilityEvent(event)) {
+      return event;
+    }
+    const bus = classifySoundDesignBus(event);
+    const currentGain = typeof event.manualGainDb === "number" ? event.manualGainDb : event.resolvedGainDb;
+    const boost = bus === "ambience" ? Math.min(3, eventBoostDb) : eventBoostDb;
+    const maxGainDb = bus === "ambience" ? -16 : bus === "motion" ? -4 : -3;
+    const manualGainDb = clampAutoFixGain(currentGain + boost, maxGainDb);
+    if (manualGainDb <= currentGain) return event;
+    boostedEvents += 1;
+    return {
+      ...event,
+      manualGainDb,
+      resolvedGainDb: manualGainDb,
+    };
+  });
+
+  const nextMusicSegments = (resolution.musicSegments || []).map((segment) => {
+    if (segment.status !== "resolved" || !segment.musicRelativePath) return segment;
+    const currentGain = segment.resolvedGainDb;
+    const resolvedGainDb = clampAutoFixGain(currentGain + Math.min(5, eventBoostDb), -10);
+    if (resolvedGainDb <= currentGain) return segment;
+    boostedMusicSegments += 1;
+    return {
+      ...segment,
+      gainDb: resolvedGainDb,
+      resolvedGainDb,
+    };
+  });
+
+  if (boostedEvents === 0 && boostedMusicSegments === 0) {
+    throw new Error("Sound-design gains are already at the safe auto-fix ceiling.");
+  }
+
+  const updated: ShortFormSoundDesignResolution = {
+    ...resolution,
+    generatedAt: new Date().toISOString(),
+    qa: undefined,
+    events: nextEvents,
+    ...(nextMusicSegments.length > 0 ? { musicSegments: nextMusicSegments } : {}),
+  };
+  writeShortFormSoundDesignResolution(projectId, updated);
+  return {
+    resolution: updated,
+    changedEventCount: boostedEvents,
+    changedMusicSegmentCount: boostedMusicSegments,
+    boostDb: Math.round(eventBoostDb * 10) / 10,
+  };
+}
+
 function findSceneAnchorTime(event: ShortFormSoundDesignEvent, scenes: TimelineScene[]) {
   const fallbackScene = scenes[0];
   const scene = event.sceneId ? scenes.find((item) => item.id === event.sceneId) : fallbackScene;

@@ -22,6 +22,7 @@ const DEFAULT_PLANNING_BRIEF_TEMPLATE = [
   "Modern short-form design should lean on crisp clicks, ticks, taps, button-like UI accents, and micro-transient details more often than generic whooshes. Use whooshes secondarily, not as the default transition sound.",
   "Plan meaningful risers and uplifters before anticipation, transitions, and payoff beats. Layer short click/tick accents with risers so the mix has movement instead of a flat bed.",
   "Target a denser editorial pass: roughly one click/tick/micro-accent every 1.5-3 seconds during active narration or visual changes, plus risers around section turns and reveals. Avoid firing on every word; do hit phrase pivots, UI-like emphasis points, micro beats, and transitions.",
+  "A normal 30-90 second short must have sound cues across the beginning, middle, and end; one opening cue is invalid. Include at least 12 purposeful <effect /> cues unless the source video is unusually short.",
   "Bias away from under-designing. Plan richer, more frequent sound effects where the edit supports them, especially on transitions, reveals, movement, visual timing changes, and strong narration turns.",
   "Treat scene cuts, zooms, before/after reveals, whip moves, graphic changes, and image swaps as primary timing beats. Sound should lock to visual rhythm, not just the transcript.",
   "For major transitions, impacts, risers, whooshes, and useful ambience, plan frequency-layered cue groups: low weight/rumble, mid body/motion, and high air/tick/sparkle/texture. Give related layers the same groupId.",
@@ -29,6 +30,10 @@ const DEFAULT_PLANNING_BRIEF_TEMPLATE = [
   "Plan music transitions where useful: reverse-beat/tail risers, reverb tails on final beats, suckbacks under transitions, and impacts/slams on payoff beats.",
   "Use multiple music segments when the video has distinct beats or mood changes. Choose saved music trackIds from the music library, timestamp each segment, and use fades/gain so the soundtrack changes mood/pacing professionally instead of one static loop.",
   "Narration owns the mix. Plan music ducking plus midrange EQ carving around speech; do not rely only on lowering gain.",
+  "Audibility target: music and SFX must be clearly audible on phone speakers while staying below narration. Do not bury the bed or one-shots into inaudibility.",
+  "Use practical starting ranges: music segment gainDb about -14 to -10 with musicDuckingDb about -6 to -4; transient clicks/hits/risers about -10 to -4; whooshes/motion about -12 to -6; ambience beds about -22 to -16.",
+  "Avoid extreme attenuation by default. Do not set music segments near -18 dB or musicDuckingDb near -10 unless a specific safety/quiet beat requires it.",
+  "Before writing, sanity-check relative audibility: if the no-SFX/no-music version would sound almost identical to the full mix, raise planned gains or reduce ducking.",
   "Keep narration clear and well-supported, but do not default to sparse minimal coverage.",
   "Captions, transcript, forced alignment, and visual timing are input context only. Do not time effects to caption boundaries by default.",
   "Return compact timestamp-only XML inside <sound_design> with layered <track> tags and self-closing <effect /> tags.",
@@ -82,6 +87,7 @@ function buildTopLevelSoundDesignPromptTemplate(planningBriefTemplate: string) {
     "- Optional music structure: add <music_segments> before/after the SFX tracks, with self-closing <segment id=\"...\" trackId=\"saved-music-id\" start=\"seconds\" end=\"seconds\" gainDb=\"...\" fadeInMs=\"...\" fadeOutMs=\"...\" mood=\"...\" pacing=\"...\" rationale=\"...\" /> entries. Use absolute timestamps only.",
     "- Every effect must include id, type, and start=\"seconds\". Include end=\"seconds\" or duration=\"seconds\" for beds/risers/tails when useful.",
     "- Optional effect attrs: assetId, description, searchQuery, category, priority, gainDb, fadeInMs, fadeOutMs, groupId, frequencyBand, layerRole, stylePalette, literalness, rationale, overlap, musicDuckingDb, musicEqCutDb, musicEqFrequencyHz, musicEqQ, musicLowCutHz, musicHighCutHz.",
+    "- Use audible default gain ranges unless a beat explicitly needs restraint: music segment gainDb -14 to -10, transient SFX -10 to -4, motion/risers -12 to -6, ambience -22 to -16, musicDuckingDb -6 to -4.",
     "- Placement must be timestamp-only. Use captions, transcript, word-level forced alignment, and visual timing data to choose sounds and timestamps, but do not emit anchors, sceneId, captionId, caption tags, scene references, or caption-boundary timing properties in the XML.",
     "- Keep cues tasteful and narration-supportive, but do not under-design the soundtrack.",
     "- Bias toward purposeful cue density where the edit supports it, especially across hook punctuation, transitions, reveals, motion accents, and strong narration turns.",
@@ -696,6 +702,20 @@ function normalizePromptTemplate(value: unknown) {
     );
   }
 
+  if (!normalized.includes("one opening cue is invalid")) {
+    normalized = normalized.replace(
+      /\nArtifact requirements:/,
+      "\nCue-count coverage rules:\n- A normal 30-90 second short must have sound cues across the beginning, middle, and end; one opening cue is invalid.\n- Include at least 12 purposeful <effect /> cues unless the source video is unusually short, with coverage across hook punctuation, transitions, reveals, movement accents, and final payoff/reset beats.\n\nArtifact requirements:",
+    );
+  }
+
+  if (!normalized.includes("Audibility target: music and SFX must be clearly audible") && !normalized.includes("Audibility and loudness rules:")) {
+    normalized = normalized.replace(
+      /\nArtifact requirements:/,
+      "\nAudibility and loudness rules:\n- Music and SFX must be clearly audible on phone speakers while staying below narration; do not bury the bed or one-shots into inaudibility.\n- Use practical starting ranges: music segment gainDb about -14 to -10 with musicDuckingDb about -6 to -4; transient clicks/hits/risers about -10 to -4; whooshes/motion about -12 to -6; ambience beds about -22 to -16.\n- Avoid extreme attenuation by default. Do not set music segments near -18 dB or musicDuckingDb near -10 unless a specific safety/quiet beat requires it.\n- Before writing, sanity-check relative audibility: if the no-SFX/no-music version would sound almost identical to the full mix, raise planned gains or reduce ducking.\n\nArtifact requirements:",
+    );
+  }
+
   if (!normalized.includes("Saved music library JSON:")) {
     normalized = normalized.replace(
       "Saved sound library JSON:\n{{soundLibraryJson}}",
@@ -759,6 +779,20 @@ function normalizePromptTemplate(value: unknown) {
     );
   }
 
+  if (!normalized.includes("one opening cue is invalid")) {
+    normalized = normalized.replace(
+      /\nArtifact requirements:/,
+      "\nCue-count coverage rules:\n- A normal 30-90 second short must have sound cues across the beginning, middle, and end; one opening cue is invalid.\n- Include at least 12 purposeful <effect /> cues unless the source video is unusually short, with coverage across hook punctuation, transitions, reveals, movement accents, and final payoff/reset beats.\n\nArtifact requirements:",
+    );
+  }
+
+  if (!normalized.includes("Audibility target: music and SFX must be clearly audible") && !normalized.includes("Audibility and loudness rules:")) {
+    normalized = normalized.replace(
+      /\nArtifact requirements:/,
+      "\nAudibility and loudness rules:\n- Music and SFX must be clearly audible on phone speakers while staying below narration; do not bury the bed or one-shots into inaudibility.\n- Use practical starting ranges: music segment gainDb about -14 to -10 with musicDuckingDb about -6 to -4; transient clicks/hits/risers about -10 to -4; whooshes/motion about -12 to -6; ambience beds about -22 to -16.\n- Avoid extreme attenuation by default. Do not set music segments near -18 dB or musicDuckingDb near -10 unless a specific safety/quiet beat requires it.\n- Before writing, sanity-check relative audibility: if the no-SFX/no-music version would sound almost identical to the full mix, raise planned gains or reduce ducking.\n\nArtifact requirements:",
+    );
+  }
+
   if (!normalized.includes("Saved music library JSON:")) {
     normalized = normalized.replace(
       "Saved sound library JSON:\n{{soundLibraryJson}}",
@@ -791,14 +825,14 @@ function normalizeSettings(candidate: Partial<ShortFormSoundDesignSettings> | nu
   return {
     promptTemplate: normalizePromptTemplate(candidate?.promptTemplate),
     revisionPromptTemplate: normalizeRevisionPromptTemplate(candidate?.revisionPromptTemplate),
-    defaultDuckingDb: normalizeNumber(candidate?.defaultDuckingDb, -24, 0, -8, 1),
-    ambienceDuckingDb: normalizeNumber(candidate?.ambienceDuckingDb, -24, 0, candidate?.defaultDuckingDb ?? -8, 1),
-    motionDuckingDb: normalizeNumber(candidate?.motionDuckingDb, -24, 0, -3, 1),
+    defaultDuckingDb: normalizeNumber(candidate?.defaultDuckingDb, -24, 0, -6, 1),
+    ambienceDuckingDb: normalizeNumber(candidate?.ambienceDuckingDb, -24, 0, candidate?.defaultDuckingDb ?? -6, 1),
+    motionDuckingDb: normalizeNumber(candidate?.motionDuckingDb, -24, 0, -2, 1),
     transientDuckingDb: normalizeNumber(candidate?.transientDuckingDb, -12, 6, 0, 1),
-    transientBusGainDb: normalizeNumber(candidate?.transientBusGainDb, -12, 12, 3, 1),
-    maxConcurrentOneShots: normalizeNumber(candidate?.maxConcurrentOneShots, 1, 8, 2, 0),
-    musicDuckingDb: normalizeNumber(candidate?.musicDuckingDb, -24, 0, -6, 1),
-    musicEqCutDb: normalizeNumber(candidate?.musicEqCutDb, -18, 0, -4, 1),
+    transientBusGainDb: normalizeNumber(candidate?.transientBusGainDb, -12, 12, 5, 1),
+    maxConcurrentOneShots: normalizeNumber(candidate?.maxConcurrentOneShots, 1, 8, 4, 0),
+    musicDuckingDb: normalizeNumber(candidate?.musicDuckingDb, -24, 0, -5, 1),
+    musicEqCutDb: normalizeNumber(candidate?.musicEqCutDb, -18, 0, -3, 1),
     musicEqFrequencyHz: normalizeNumber(candidate?.musicEqFrequencyHz, 120, 8000, 1800, 0),
     musicEqQ: normalizeNumber(candidate?.musicEqQ, 0.1, 10, 1.1, 2),
     musicLowCutHz: normalizeNumber(candidate?.musicLowCutHz, 0, 500, 60, 0),
@@ -1056,17 +1090,39 @@ export function renderShortFormSoundDesignPrompt(template: string, values: Recor
   return withConditionalRevisionNotesBlock.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "");
 }
 
+function compactPromptText(value: string | undefined, maxLength = 220) {
+  if (!value) return undefined;
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3).trimEnd()}...` : normalized;
+}
+
+function compactPromptStringArray(value: string[] | undefined, maxItems = 6) {
+  const items = (value || []).map((item) => item.trim()).filter(Boolean);
+  return items.length > maxItems ? items.slice(0, maxItems) : items;
+}
+
 function buildPromptSoundLibraryJson(library: ShortFormSoundLibraryEntry[]) {
-  return JSON.stringify(library.map((entry) => {
-    const rest: Record<string, unknown> = { ...entry };
-    delete rest.defaultAnchor;
-    const anchorRatio = typeof rest.anchorRatio === "number" ? rest.anchorRatio : undefined;
-    delete rest.anchorRatio;
-    return {
-      ...rest,
-      ...(typeof anchorRatio === "number" ? { sourceSyncPointRatio: anchorRatio } : {}),
-    };
-  }), null, 2);
+  return JSON.stringify(library.map((entry) => ({
+    id: entry.id,
+    name: entry.name,
+    category: entry.category,
+    semanticTypes: compactPromptStringArray(entry.semanticTypes),
+    tags: compactPromptStringArray(entry.tags, 8),
+    stylePalettes: compactPromptStringArray(entry.stylePalettes),
+    frequencyBand: entry.frequencyBand,
+    layerRoles: compactPromptStringArray(entry.layerRoles),
+    literalness: entry.literalness,
+    timingType: entry.timingType,
+    defaultGainDb: entry.defaultGainDb,
+    defaultFadeInMs: entry.defaultFadeInMs,
+    defaultFadeOutMs: entry.defaultFadeOutMs,
+    durationSeconds: entry.durationSeconds,
+    sourceSyncPointRatio: entry.anchorRatio,
+    hasSavedAudio: Boolean(entry.audioRelativePath),
+    recommendedUses: compactPromptText(entry.recommendedUses),
+    avoidUses: compactPromptText(entry.avoidUses),
+    notes: compactPromptText(entry.notes),
+  })), null, 2);
 }
 
 function buildPromptMusicLibraryJson() {

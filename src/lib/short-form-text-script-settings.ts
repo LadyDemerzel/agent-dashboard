@@ -17,6 +17,8 @@ const DEFAULT_GENERATE_WRITER_FRAGMENT = [
   "Create the plain full text script for the Agent Dashboard short-form workflow.",
   "Topic: {{topic}}",
   "Selected hook: {{selectedHookTextOrFallback}}",
+  "The first sentence of the text script must use the selected hook wording unchanged, with only terminal punctuation normalized to a period if needed.",
+  "The first sentence is the hook; never rewrite, paraphrase, shorten, expand, or replace it during text-script generation.",
   "Use the `video-script-retention` skill as the retention rulebook for this draft. Do not recreate the playbook inside this prompt.",
   "Use the approved research and selected hook to write the narration text only — no XML, no scene list, no image directions.",
   "Use the approved research as actual proof, not just background context. When it includes studies, statistics, named findings, measurements, or other concrete data, work the strongest specifics directly into the script to support claims and increase credibility.",
@@ -30,7 +32,12 @@ const DEFAULT_GENERATE_WRITER_FRAGMENT = [
   "Target total runtime roughly 60–120 seconds.",
   "The first sentence is the hook and must be 10 or fewer words.",
   "Write the hook as a normal opening sentence in the same paragraph as the rest of the script — do not put it on its own line or add a special line break after it.",
-  "End the hook sentence with a period.",
+  "The hook must end with a period. Preserve the selected hook wording and casing exactly, but normalize only the hook's terminal punctuation to a period if needed.",
+  "Never insert a line break immediately after the hook.",
+  "Do not hedge or over-level-set in ways that kill engagement. Avoid apologetic, caveated, or deflating expectation-setting like `this will not change bone structure`, `results may vary`, `this is only a subtle change`, or `be realistic` unless it is legally or medically essential.",
+  "Keep claims confident and punchy while avoiding false medical or scientific claims. Frame appearance changes through trained muscles, posture, tension, expression, or camera-visible effects instead of defensive disclaimers.",
+  "Every line/sentence must be a complete grammatical sentence.",
+  "Never use sentence fragments or elliptical standalone phrases like \"Ten reps.\", \"Now hold.\", or \"That's it.\" Rewrite them as full sentences.",
   "Do not write captions, scene breakdowns, timing marks, XML tags, bullet lists, or image notes in this artifact.",
   "Approved research:\n{{approvedResearch}}",
   "Project directory: {{projectDir}}",
@@ -40,6 +47,8 @@ const DEFAULT_REVISE_WRITER_FRAGMENT = [
   "Create the plain full text script for the Agent Dashboard short-form workflow.",
   "Topic: {{topic}}",
   "Selected hook: {{selectedHookTextOrFallback}}",
+  "The first sentence of the text script must use the provided hook wording unchanged, with only terminal punctuation normalized to a period if needed.",
+  "The first sentence is the hook; never rewrite, paraphrase, shorten, expand, or replace it during text-script revision.",
   "Use the `video-script-retention` skill as the retention rulebook for this rewrite. Do not recreate the playbook inside this prompt.",
   "{{revisionInstructionLine}}",
   "Rebuild the script around the approved research, not around generic claims. When the approved research includes studies, statistics, named findings, measurements, or other concrete data, use the strongest relevant specifics directly in the narration where they make the point more credible and persuasive.",
@@ -53,11 +62,31 @@ const DEFAULT_REVISE_WRITER_FRAGMENT = [
   "Target total runtime roughly 60–120 seconds unless the feedback clearly asks for something else.",
   "Keep the first sentence as the hook within 10 or fewer words.",
   "Keep the hook as a normal opening sentence in the same paragraph as the rest of the script — no standalone hook line and no special line break after it.",
-  "End the hook sentence with a period.",
+  "The hook must end with a period. Preserve the provided hook wording and casing exactly, but normalize only the hook's terminal punctuation to a period if needed.",
+  "Never insert a line break immediately after the hook.",
+  "Do not hedge or over-level-set in ways that kill engagement. Avoid apologetic, caveated, or deflating expectation-setting like `this will not change bone structure`, `results may vary`, `this is only a subtle change`, or `be realistic` unless it is legally or medically essential.",
+  "Keep claims confident and punchy while avoiding false medical or scientific claims. Frame appearance changes through trained muscles, posture, tension, expression, or camera-visible effects instead of defensive disclaimers.",
+  "Every line/sentence must be a complete grammatical sentence.",
+  "Never use sentence fragments or elliptical standalone phrases like \"Ten reps.\", \"Now hold.\", or \"That's it.\" Rewrite them as full sentences.",
   "Do not write captions, scene breakdowns, timing marks, XML tags, bullet lists, or image notes in this artifact.",
   "Approved research:\n{{approvedResearch}}",
   "Project directory: {{projectDir}}",
 ].join("\n\n");
+
+const WRITER_HOOK_AND_SENTENCE_REQUIREMENTS = [
+  "Hook and sentence requirements:",
+  "- The first sentence of the text script must use the selected/provided hook wording unchanged: {{selectedHookTextOrFallback}}",
+  "- The first sentence is the hook; never rewrite, paraphrase, shorten, expand, or replace it during text-script generation or revision.",
+  "- The hook is the first sentence, not a standalone heading, label, special first line, or separated opener.",
+  "- Put the hook on the same line and in the same paragraph as the rest of the narration text.",
+  "- Never insert a line break immediately after the hook.",
+  "- The hook must end with a period.",
+  "- Preserve the selected/provided hook wording and casing exactly, but normalize only the hook's terminal punctuation to a period if needed; otherwise do not rewrite, paraphrase, shorten, expand, or replace it.",
+  "- Every line/sentence in the script body must be a complete grammatical sentence.",
+  "- Never use sentence fragments or elliptical standalone phrases like \"Ten reps.\", \"Now hold.\", or \"That's it.\" Rewrite them as full sentences.",
+  "- Do not hedge or over-level-set in ways that kill engagement. Avoid apologetic, caveated, or deflating expectation-setting like `this will not change bone structure`, `results may vary`, `this is only a subtle change`, `be realistic`, or similar limitation-first language unless it is legally or medically essential.",
+  "- Keep claims confident and punchy while avoiding false medical or scientific claims. Frame visual or appearance changes as trained muscles, posture, tension, expression, or camera-visible effects rather than defensive disclaimers.",
+].join("\n");
 
 const DEFAULT_REVIEW_FRAGMENT = [
   "Use the `video-script-retention-grader` skill for every text-script review in this workflow.",
@@ -125,6 +154,8 @@ function buildWriterPromptTemplate(fragment: string) {
     "",
     "Dashboard writer instructions for this project:",
     fragment,
+    "",
+    WRITER_HOOK_AND_SENTENCE_REQUIREMENTS,
     "",
     "Artifact requirements:",
     "- Write exactly one YAML-front-matter markdown draft to {{draftPath}}.",
@@ -200,6 +231,42 @@ function ensureSettingsDir() {
 
 function normalizePromptText(value: string) {
   return value.replace(/\r/g, "").trim();
+}
+
+function hasCurrentWriterRequirements(prompt: string) {
+  return prompt.includes("The first sentence of the text script must use the selected/provided hook wording unchanged")
+    && prompt.includes("The hook is the first sentence, not a standalone heading")
+    && prompt.includes("Never insert a line break immediately after the hook")
+    && prompt.includes("normalize only the hook's terminal punctuation to a period")
+    && prompt.includes("Do not hedge or over-level-set in ways that kill engagement")
+    && prompt.includes("Every line/sentence in the script body must be a complete grammatical sentence")
+    && prompt.includes("Never use sentence fragments or elliptical standalone phrases like \"Ten reps.\"");
+}
+
+function removeLegacyWriterRequirementConflicts(prompt: string) {
+  return prompt
+    .replace(/\n{1,2}End the hook sentence with a period\./g, "")
+    .replace(/\n{1,2}The first sentence of the text script must be exactly the selected hook, unchanged\./g, "")
+    .replace(/\n{1,2}The first sentence of the text script must be exactly the provided hook, unchanged\./g, "")
+    .replace(/\n- The first sentence of the text script must be exactly the selected\/provided hook: \{\{selectedHookTextOrFallback\}\}/g, "")
+    .replace(/\n{1,2}Preserve the selected hook text exactly, including wording, casing, and punctuation\. Do not add or remove punctuation from the hook\./g, "")
+    .replace(/\n{1,2}Preserve the provided hook text exactly, including wording, casing, and punctuation\. Do not add or remove punctuation from the hook\./g, "")
+    .replace(/\n- Preserve the selected\/provided hook text exactly, including wording, casing, and punctuation\. Do not add or remove punctuation from that hook\./g, "")
+    .trim();
+}
+
+function ensureCurrentWriterRequirements(prompt: string) {
+  const normalized = removeLegacyWriterRequirementConflicts(normalizePromptText(prompt));
+  if (hasCurrentWriterRequirements(normalized)) {
+    return normalized;
+  }
+
+  const artifactHeader = "\nArtifact requirements:";
+  if (normalized.includes(artifactHeader)) {
+    return normalized.replace(artifactHeader, `\n${WRITER_HOOK_AND_SENTENCE_REQUIREMENTS}\n${artifactHeader}`);
+  }
+
+  return `${normalized}\n\n${WRITER_HOOK_AND_SENTENCE_REQUIREMENTS}`;
 }
 
 function readLegacyWorkflowSettings() {
@@ -287,13 +354,13 @@ function normalizeGeneratePrompt(
 
   const normalized = normalizePromptText(value);
   if (!options.migrateLegacy) {
-    return normalized;
+    return ensureCurrentWriterRequirements(normalized);
   }
   if (FULL_WRITER_PROMPT_MARKERS.every((marker) => normalized.includes(marker))) {
-    return normalized;
+    return ensureCurrentWriterRequirements(normalized);
   }
 
-  return buildWriterPromptTemplate(normalizeLegacyWriterFragment("generate", normalized, options));
+  return ensureCurrentWriterRequirements(buildWriterPromptTemplate(normalizeLegacyWriterFragment("generate", normalized, options)));
 }
 
 function normalizeRevisePrompt(
@@ -309,13 +376,13 @@ function normalizeRevisePrompt(
 
   const normalized = normalizePromptText(value);
   if (!options.migrateLegacy) {
-    return normalized;
+    return ensureCurrentWriterRequirements(normalized);
   }
   if (FULL_WRITER_PROMPT_MARKERS.every((marker) => normalized.includes(marker))) {
-    return normalized;
+    return ensureCurrentWriterRequirements(normalized);
   }
 
-  return buildWriterPromptTemplate(normalizeLegacyWriterFragment("revise", normalized, options));
+  return ensureCurrentWriterRequirements(buildWriterPromptTemplate(normalizeLegacyWriterFragment("revise", normalized, options)));
 }
 
 function normalizeReviewPrompt(value: unknown, { migrateLegacy }: { migrateLegacy: boolean }) {

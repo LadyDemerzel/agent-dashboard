@@ -193,6 +193,7 @@ export interface ShortFormProjectMeta {
   selectedCaptionStyleId?: string;
   soundDesignDecision?: "approved" | "skipped";
   soundDesignSkipReason?: string;
+  soundDesignApprovalWarning?: string;
   chromaKeyEnabledOverride?: boolean;
   textScriptMaxIterationsOverride?: number;
   captionMaxWordsOverride?: number;
@@ -334,6 +335,7 @@ export interface ShortFormProject {
   captionStyleOverrideId?: string;
   soundDesignDecision?: "approved" | "skipped";
   soundDesignSkipReason?: string;
+  soundDesignApprovalWarning?: string;
   chromaKeyEnabled: boolean;
   chromaKeyEnabledSource: "project" | "default";
   chromaKeyEnabledOverride?: boolean;
@@ -1518,6 +1520,22 @@ export function synchronizeSceneImagesArtifacts(projectId: string) {
 
   const generatedMtime = getFileMtimeMs(generatedPath);
   const primaryMtime = getFileMtimeMs(primaryPath);
+  const latestRequest = getLatestStageRequest(projectId, "scene-images");
+  const latestRequestMs = latestRequest?.requestedAt ? Date.parse(latestRequest.requestedAt) : Number.NaN;
+  const generatedIsForLatestRequest = Number.isFinite(latestRequestMs)
+    ? generatedMtime > latestRequestMs + 1_000
+    : false;
+  const requiredSceneIndexes = generatedIsForLatestRequest
+    ? getRequiredSceneImageIndexesForLatestRequest(projectId)
+    : [];
+  const generatedSceneIndexes = new Set(generated.data.map((scene) => scene.number));
+  const generatedIsPartialLatestRun =
+    requiredSceneIndexes.length > 0 &&
+    !requiredSceneIndexes.every((number) => generatedSceneIndexes.has(number));
+
+  if (generatedIsPartialLatestRun) {
+    return;
+  }
 
   const shouldSyncManifest =
     generatedMtime > primaryMtime + 1000 ||
@@ -1850,7 +1868,7 @@ function buildSceneImagesProgressState(projectId: string, scenes: SceneImageArti
     if (shouldTrackFreshness) {
       const freshScene = buildSceneArtifactFromDerivedPaths(projectId, base, { requireFreshSinceMs: requestedAtMs });
       if (freshScene.previewImage || freshScene.image) {
-        return { ...freshScene, status: "completed" as const };
+        return { ...current, ...freshScene, status: "completed" as const };
       }
       return { ...base, status: "in-progress" as const };
     }
@@ -1899,6 +1917,43 @@ function hasFreshSceneImageMedia(projectId: string, scenes: SceneImageArtifact[]
   });
 }
 
+function getRequiredSceneImageIndexesForLatestRequest(projectId: string) {
+  const latestRequest = getLatestStageRequest(projectId, "scene-images");
+  const expectedVisualSpec = readExpectedScriptVisualSpec(projectId);
+  if (expectedVisualSpec.scenes.length === 0) return [];
+
+  const targetSceneIndex = parseSceneIdToIndex(
+    latestRequest?.action === "request-scene-change" ? latestRequest.sceneId ?? undefined : undefined,
+  );
+  const scopedIndexes = expandRequestedSceneIndexesForDependencies(
+    expectedVisualSpec.scenes,
+    expectedVisualSpec.assetDependencies,
+    targetSceneIndex,
+  );
+
+  return scopedIndexes.length > 0
+    ? scopedIndexes
+    : expectedVisualSpec.scenes.map((scene) => scene.number);
+}
+
+function hasFreshSceneImageMediaForEveryRequiredScene(
+  projectId: string,
+  scenes: SceneImageArtifact[],
+  requestedAtMs: number,
+  requiredSceneIndexes: number[],
+) {
+  if (!Number.isFinite(requestedAtMs) || scenes.length === 0 || requiredSceneIndexes.length === 0) return false;
+
+  const sceneByNumber = new Map(scenes.map((scene) => [scene.number, scene]));
+  return requiredSceneIndexes.every((number) => {
+    const scene = sceneByNumber.get(number);
+    if (!scene) return false;
+
+    const candidatePaths = [scene.image, scene.previewImage, scene.previewVideo].filter((value): value is string => Boolean(value));
+    return candidatePaths.some((relativePath) => hasFreshFileAtPath(path.join(getProjectDir(projectId), relativePath), requestedAtMs));
+  });
+}
+
 function hasFreshStageArtifact(projectId: string, stage: ShortFormStageKey, doc: StageDocumentSummary, requestedAt?: string) {
   const requestedAtMs = requestedAt ? Date.parse(requestedAt) : Number.NaN;
   const filePath = getStageFilePath(projectId, stage);
@@ -1912,7 +1967,10 @@ function hasFreshStageArtifact(projectId: string, stage: ShortFormStageKey, doc:
     case "scene-images": {
       const manifest = readSceneManifestResult(projectId);
       const manifestUpdated = hasFreshFileAtPath(getSceneManifestPath(projectId), requestedAtMs);
-      const mediaUpdated = hasFreshSceneImageMedia(projectId, manifest.data, requestedAtMs);
+      const requiredSceneIndexes = getRequiredSceneImageIndexesForLatestRequest(projectId);
+      const mediaUpdated = requiredSceneIndexes.length > 0
+        ? hasFreshSceneImageMediaForEveryRequiredScene(projectId, manifest.data, requestedAtMs, requiredSceneIndexes)
+        : hasFreshSceneImageMedia(projectId, manifest.data, requestedAtMs);
       return stageDocUpdated && manifestUpdated && mediaUpdated && manifest.data.length > 0;
     }
     case "sound-design": {
@@ -2314,17 +2372,17 @@ function deriveStageRevisionState(
     return undefined;
   }
 
+  const workflowRun = stage === "sound-design"
+    ? findRelevantSoundDesignRun(projectId, requestedAt, latestRequest?.runId)
+    : findRelevantWorkflowRun(projectId, stage, requestedAt, latestRequest?.runId);
   const shouldTrack = mode === "revise"
-    ? doc.status === "requested changes" || Boolean(options?.pending)
-    : Boolean(options?.pending) || !hasMeaningfulStageOutput(stage, doc);
+    ? doc.status === "requested changes" || Boolean(options?.pending) || Boolean(workflowRun)
+    : Boolean(options?.pending) || Boolean(workflowRun) || !hasMeaningfulStageOutput(stage, doc);
 
   if (!shouldTrack) {
     return undefined;
   }
 
-  const workflowRun = stage === "sound-design"
-    ? findRelevantSoundDesignRun(projectId, requestedAt, latestRequest?.runId)
-    : findRelevantWorkflowRun(projectId, stage, requestedAt, latestRequest?.runId);
   const agentRun = workflowRun || findRelevantAgentRun(stage, filePath, requestedAt);
   const now = Date.now();
   const lastEventMs = agentRun?.lastEventAt ? Date.parse(agentRun.lastEventAt) : Number.NaN;
@@ -3038,6 +3096,7 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
     captionStyleOverrideId: nextMeta.selectedCaptionStyleId,
     soundDesignDecision: nextMeta.soundDesignDecision,
     soundDesignSkipReason: nextMeta.soundDesignDecision === "skipped" ? nextMeta.soundDesignSkipReason : undefined,
+    soundDesignApprovalWarning: nextMeta.soundDesignDecision === "approved" ? nextMeta.soundDesignApprovalWarning : undefined,
     chromaKeyEnabled: resolvedChromaKey.enabled,
     chromaKeyEnabledSource: resolvedChromaKey.source,
     chromaKeyEnabledOverride: nextMeta.chromaKeyEnabledOverride,

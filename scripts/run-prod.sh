@@ -4,12 +4,17 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+USER_HOME="$(cd "$ROOT_DIR/../../.." && pwd)"
+export HOME="${DASHBOARD_HOME:-$USER_HOME}"
+
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-3000}"
 RUN_DIR="$ROOT_DIR/.run"
 PID_FILE="$RUN_DIR/agent-dashboard.pid"
 LOG_FILE="$RUN_DIR/agent-dashboard.log"
 LSOF_BIN="${LSOF_BIN:-$(command -v lsof || true)}"
+TMUX_BIN="${TMUX_BIN:-$(command -v tmux || true)}"
+TMUX_SESSION="${TMUX_SESSION:-agent-dashboard-prod}"
 
 if [[ -z "$LSOF_BIN" && -x /usr/sbin/lsof ]]; then
   LSOF_BIN="/usr/sbin/lsof"
@@ -75,35 +80,45 @@ echo "Building Agent Dashboard..."
 npm run build
 
 echo "Starting Agent Dashboard in the background on $HOST:$PORT ..."
-nohup ./node_modules/.bin/next start --hostname "$HOST" --port "$PORT" >"$LOG_FILE" 2>&1 &
-LAUNCH_PID=$!
-SERVER_PID=""
+LAUNCH_PID=""
+
+if [[ -n "$TMUX_BIN" ]]; then
+  "$TMUX_BIN" kill-session -t "$TMUX_SESSION" 2>/dev/null || true
+  "$TMUX_BIN" new-session -d -s "$TMUX_SESSION" -c "$ROOT_DIR" \
+    "exec ./node_modules/.bin/next start --hostname '$HOST' --port '$PORT' > '$LOG_FILE' 2>&1"
+else
+  nohup ./node_modules/.bin/next start --hostname "$HOST" --port "$PORT" >"$LOG_FILE" 2>&1 < /dev/null &
+  LAUNCH_PID=$!
+  echo "$LAUNCH_PID" > "$PID_FILE"
+fi
 
 for _ in {1..20}; do
-  if SERVER_PID="$(resolve_dashboard_pid)"; then
-    break
+  if curl -fsS "http://127.0.0.1:$PORT/api/status" >/dev/null 2>&1; then
+    SERVER_PID="$(resolve_dashboard_pid || true)"
+    if [[ -n "$SERVER_PID" ]]; then
+      echo "$SERVER_PID" > "$PID_FILE"
+    fi
+    echo "Agent Dashboard running."
+    echo "PID: ${SERVER_PID:-$LAUNCH_PID}"
+    echo "URL: http://$HOST:$PORT"
+    echo "Log: $LOG_FILE"
+    exit 0
   fi
 
-  if ! kill -0 "$LAUNCH_PID" 2>/dev/null; then
+  if [[ -n "$LAUNCH_PID" ]] && ! kill -0 "$LAUNCH_PID" 2>/dev/null; then
     break
   fi
 
   sleep 1
 done
 
-if [[ -n "$SERVER_PID" ]]; then
-  echo "$SERVER_PID" > "$PID_FILE"
-  echo "Agent Dashboard running."
-  echo "PID: $SERVER_PID"
-  echo "URL: http://$HOST:$PORT"
-  echo "Log: $LOG_FILE"
-  exit 0
-fi
-
 echo "Agent Dashboard failed to start. Recent log output:"
 tail -n 80 "$LOG_FILE" || true
-if kill -0 "$LAUNCH_PID" 2>/dev/null; then
+if [[ -n "$LAUNCH_PID" ]] && kill -0 "$LAUNCH_PID" 2>/dev/null; then
   kill "$LAUNCH_PID" 2>/dev/null || true
+fi
+if [[ -n "$TMUX_BIN" ]]; then
+  "$TMUX_BIN" kill-session -t "$TMUX_SESSION" 2>/dev/null || true
 fi
 rm -f "$PID_FILE"
 exit 1

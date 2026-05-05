@@ -140,6 +140,14 @@ export async function PATCH(
     }
   }
 
+  const soundDesignApprovalWarning = soundDesignDecision === "approved"
+    ? getSoundDesignHandoffState({
+        soundDesignDecision,
+        soundDesignSkipReason: soundDesignSkipReason ?? project.soundDesignSkipReason,
+        soundDesign: project.soundDesign,
+      }).approvalWarnings.join(" ")
+    : undefined;
+
   const updated = updateProjectMeta(id, {
     ...(topic !== undefined ? { topic } : {}),
     ...(title !== undefined ? { title } : topic ? { title: topic } : {}),
@@ -163,6 +171,7 @@ export async function PATCH(
             soundDesignDecision === "skipped"
               ? (soundDesignSkipReason === null ? undefined : soundDesignSkipReason || undefined)
               : undefined,
+          soundDesignApprovalWarning: soundDesignApprovalWarning || undefined,
         }
       : soundDesignSkipReason !== undefined
         ? { soundDesignSkipReason: soundDesignSkipReason === null ? undefined : soundDesignSkipReason || undefined }
