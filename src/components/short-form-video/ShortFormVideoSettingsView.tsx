@@ -386,6 +386,8 @@ interface BackgroundVideoSettings {
 
 interface TextScriptSettings {
   defaultMaxIterations: number;
+  enforceNaturalContractions: boolean;
+  formatNumericPercentages: boolean;
   generatePrompt: string;
   revisePrompt: string;
   reviewPrompt: string;
@@ -3194,6 +3196,61 @@ export function ShortFormVideoSettingsView({
                 from the Text Script section, but this is the dashboard-wide
                 default.
               </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="flex items-start gap-3 rounded-md border bg-muted/30 p-3 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={textScriptSettings.enforceNaturalContractions}
+                  onChange={(event) => {
+                    updateSectionFeedbackState("text-script-prompts", {
+                      error: null,
+                      message: null,
+                    });
+                    setTextScriptSettings({
+                      ...textScriptSettings,
+                      enforceNaturalContractions: event.target.checked,
+                    });
+                  }}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="block font-medium">
+                    Contract natural two-word forms
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    Applies once after the final Text Script loop draft is
+                    selected.
+                  </span>
+                </span>
+              </label>
+
+              <label className="flex items-start gap-3 rounded-md border bg-muted/30 p-3 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={textScriptSettings.formatNumericPercentages}
+                  onChange={(event) => {
+                    updateSectionFeedbackState("text-script-prompts", {
+                      error: null,
+                      message: null,
+                    });
+                    setTextScriptSettings({
+                      ...textScriptSettings,
+                      formatNumericPercentages: event.target.checked,
+                    });
+                  }}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="block font-medium">
+                    Convert numeric percent phrases
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    Converts values like 87.8 percent or 87.8 per cent to 87.8%.
+                  </span>
+                </span>
+              </label>
             </div>
 
             <div className="space-y-2">

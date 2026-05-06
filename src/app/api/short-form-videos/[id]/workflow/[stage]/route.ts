@@ -259,6 +259,8 @@ function buildTextScriptWorkflowConfig(
       maxIterations,
       ...(maxIterationsOverride ? { overrideMaxIterations: maxIterationsOverride } : {}),
       passingScore,
+      enforceNaturalContractions: textScriptSettings.enforceNaturalContractions,
+      formatNumericPercentages: textScriptSettings.formatNumericPercentages,
       generatePromptTemplate: textScriptSettings.generatePrompt,
       revisePromptTemplate: textScriptSettings.revisePrompt,
       reviewPromptTemplate: textScriptSettings.reviewPrompt,

@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { spawnSync } from "child_process";
+import { postProcessTextScriptMarkdown } from "./short-form-text-post-processing.mjs";
 
 const jobPath = process.argv[2];
 
@@ -1851,6 +1852,11 @@ function createTextScriptRunManifest(config) {
     maxIterations: config.maxIterations,
     passingScore: config.passingScore,
     overrideMaxIterations: typeof config.overrideMaxIterations === "number" ? config.overrideMaxIterations : null,
+    postProcessing: {
+      enforceNaturalContractions: config.enforceNaturalContractions !== false,
+      formatNumericPercentages: config.formatNumericPercentages !== false,
+      applied: false,
+    },
     reviewPrompt: config.reviewPromptTemplate,
     activeStep: "writing",
     activeIterationNumber: 1,
@@ -2060,10 +2066,15 @@ async function runTextScriptAgentStep(job, options) {
 }
 
 function publishFinalTextScript(config, manifest, iterationNumber, draftContent, status, statusText) {
-  fs.writeFileSync(config.scriptPath, draftContent, "utf-8");
+  const postProcessingOptions = {
+    enforceContractions: config.enforceNaturalContractions !== false,
+    formatNumericPercentages: config.formatNumericPercentages !== false,
+  };
+  const publishedDraftContent = postProcessTextScriptMarkdown(draftContent, postProcessingOptions);
+  fs.writeFileSync(config.scriptPath, publishedDraftContent, "utf-8");
   const publishedContent = readTextFileStrict(config.scriptPath, "final published script");
-  if (publishedContent !== draftContent) {
-    throw new Error("Final published script does not match the final iteration draft.");
+  if (publishedContent !== publishedDraftContent) {
+    throw new Error("Final published script does not match the post-processed final draft.");
   }
 
   manifest.iterations = manifest.iterations.map((entry) => ({
@@ -2073,6 +2084,12 @@ function publishFinalTextScript(config, manifest, iterationNumber, draftContent,
   manifest.finalIterationNumber = iterationNumber;
   manifest.status = status;
   manifest.completedAt = new Date().toISOString();
+  manifest.postProcessing = {
+    enforceNaturalContractions: postProcessingOptions.enforceContractions,
+    formatNumericPercentages: postProcessingOptions.formatNumericPercentages,
+    applied: publishedDraftContent !== draftContent,
+    appliedAt: new Date().toISOString(),
+  };
   manifest.activeStep = "completed";
   manifest.activeIterationNumber = iterationNumber;
   manifest.activeStatusText = statusText;

@@ -402,6 +402,12 @@ export async function PATCH(request: NextRequest) {
     if (typeof candidate.defaultMaxIterations !== "number" || Number.isNaN(candidate.defaultMaxIterations) || candidate.defaultMaxIterations < 1 || candidate.defaultMaxIterations > 8) {
       return NextResponse.json({ success: false, error: "Default text-script max iterations must be a number between 1 and 8" }, { status: 400 });
     }
+    if (typeof candidate.enforceNaturalContractions !== "boolean") {
+      return NextResponse.json({ success: false, error: "Text-script contraction post-processing must be enabled or disabled" }, { status: 400 });
+    }
+    if (typeof candidate.formatNumericPercentages !== "boolean") {
+      return NextResponse.json({ success: false, error: "Text-script numeric percent post-processing must be enabled or disabled" }, { status: 400 });
+    }
 
     saveShortFormTextScriptSettings(candidate);
   }

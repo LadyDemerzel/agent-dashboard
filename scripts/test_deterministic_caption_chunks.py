@@ -111,6 +111,19 @@ class DeterministicCaptionChunkTests(unittest.TestCase):
         chunks = self.build_text_chunks("The value is 87.8. Then stop.", max_words=6)
         self.assertEqual(chunks, ["The value is 87.8", "Then stop"])
 
+    def test_preserves_decimal_percent_before_sentence_period(self) -> None:
+        chunks = self.build_text_chunks("The value is 87.8%. Then stop.", max_words=6)
+        self.assertEqual(chunks, ["The value is 87.8", "Then stop"])
+
+    def test_preserves_decimal_percent_phrase_as_one_caption_token(self) -> None:
+        chunks = self.build_text_chunks(
+            "StatPearls puts it at about 87.8% fast-twitch fibers, so the rep should feel quick and precise, not crushed.",
+            max_words=3,
+        )
+        self.assertNotIn("at about 87", chunks)
+        self.assertNotIn("8 fast-twitch", chunks)
+        self.assertTrue(any("87.8" in chunk for chunk in chunks), chunks)
+
     def test_preserves_commas_inside_numbers(self) -> None:
         chunks = self.build_text_chunks("alpha beta 1,000 people noticed a change quickly.", max_words=3)
         self.assertEqual(chunks, ["alpha beta 1,000", "people noticed", "a change quickly"])

@@ -4,6 +4,8 @@ import { SHORT_FORM_VIDEOS_DIR } from "@/lib/short-form-videos";
 
 export interface ShortFormTextScriptSettings {
   defaultMaxIterations: number;
+  enforceNaturalContractions: boolean;
+  formatNumericPercentages: boolean;
   generatePrompt: string;
   revisePrompt: string;
   reviewPrompt: string;
@@ -204,6 +206,8 @@ function buildReviewPromptTemplate(fragment: string) {
 
 const DEFAULT_SHORT_FORM_TEXT_SCRIPT_SETTINGS: ShortFormTextScriptSettings = {
   defaultMaxIterations: 3,
+  enforceNaturalContractions: true,
+  formatNumericPercentages: true,
   generatePrompt: buildWriterPromptTemplate(DEFAULT_GENERATE_WRITER_FRAGMENT),
   revisePrompt: buildWriterPromptTemplate(DEFAULT_REVISE_WRITER_FRAGMENT),
   reviewPrompt: buildReviewPromptTemplate(DEFAULT_REVIEW_FRAGMENT),
@@ -427,11 +431,19 @@ function normalize(
   const defaultMaxIterations = typeof defaultMaxIterationsRaw === "number" && Number.isFinite(defaultMaxIterationsRaw)
     ? Math.max(1, Math.min(8, Math.round(defaultMaxIterationsRaw)))
     : DEFAULT_SHORT_FORM_TEXT_SCRIPT_SETTINGS.defaultMaxIterations;
+  const enforceNaturalContractions = typeof candidate?.enforceNaturalContractions === "boolean"
+    ? candidate.enforceNaturalContractions
+    : DEFAULT_SHORT_FORM_TEXT_SCRIPT_SETTINGS.enforceNaturalContractions;
+  const formatNumericPercentages = typeof candidate?.formatNumericPercentages === "boolean"
+    ? candidate.formatNumericPercentages
+    : DEFAULT_SHORT_FORM_TEXT_SCRIPT_SETTINGS.formatNumericPercentages;
 
   const legacyWorkflowSettings = options.migrateLegacy ? readLegacyWorkflowSettings() : {};
 
   return {
     defaultMaxIterations,
+    enforceNaturalContractions,
+    formatNumericPercentages,
     generatePrompt: normalizeGeneratePrompt(candidate?.generatePrompt, {
       migrateLegacy: options.migrateLegacy,
       legacyFragment: legacyWorkflowSettings.scriptGenerate,
