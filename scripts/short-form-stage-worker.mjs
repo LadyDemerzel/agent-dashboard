@@ -5,6 +5,10 @@ import path from "path";
 import crypto from "crypto";
 import { spawnSync } from "child_process";
 import { postProcessTextScriptMarkdown } from "./short-form-text-post-processing.mjs";
+import {
+  readMotionGraphicSuppressionRanges,
+  suppressCaptionTimelineForRanges,
+} from "./short-form-caption-suppression.mjs";
 
 const jobPath = process.argv[2];
 
@@ -3458,7 +3462,7 @@ function applyCaptionOverlayBurnIn({ baseVideoPath, finalVideoPath, overlayManif
   return overlayTrack;
 }
 
-function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDir, alignmentPath, captionsJsonPath, captionStyleSelection }) {
+function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDir, alignmentPath, captionsJsonPath, captionStyleSelection, motionGraphicSuppressionRanges = [] }) {
   const alignmentWords = readAlignmentWords(alignmentPath);
   const captions = readCaptionSections(captionsJsonPath);
   if (alignmentWords.length === 0 || captions.length === 0) {
@@ -3466,9 +3470,39 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
   }
 
   const timeline = mapCaptionWordsToAlignment(captions, alignmentWords);
+  const captionTimeline = suppressCaptionTimelineForRanges(timeline, motionGraphicSuppressionRanges);
   const assPath = path.join(videoWorkDir, "captions-word-highlight.ass");
   ensureDir(path.dirname(assPath));
-  fs.writeFileSync(assPath, buildAnimatedCaptionAssContent(timeline, captionStyleSelection.style), "utf-8");
+  fs.writeFileSync(assPath, buildAnimatedCaptionAssContent(captionTimeline, captionStyleSelection.style), "utf-8");
+
+  const suppressionRanges = Array.isArray(motionGraphicSuppressionRanges) ? motionGraphicSuppressionRanges : [];
+  const suppressionMetadata = suppressionRanges.length > 0
+    ? {
+        motionGraphicSuppressionRanges: suppressionRanges.map((range) => ({
+          start: Number(range.start),
+          end: Number(range.end),
+          ...(Number.isFinite(Number(range.sceneIndex)) ? { sceneIndex: Number(range.sceneIndex) } : {}),
+        })),
+        originalCaptionCount: timeline.length,
+        visibleCaptionSegmentCount: captionTimeline.length,
+      }
+    : {};
+
+  if (captionTimeline.length === 0) {
+    if (path.resolve(baseVideoPath) !== path.resolve(finalVideoPath)) {
+      fs.copyFileSync(baseVideoPath, finalVideoPath);
+    }
+    return {
+      mode: "captions-suppressed-by-motion-graphics-v1",
+      requestedMode: "motion-graphic-suppression-v1",
+      assPath,
+      timeline: captionTimeline,
+      baseVideoPath,
+      renderer: "none",
+      fallbackReason: "All caption intervals overlapped deterministic motion graphic visuals, so no final caption overlay was burned in.",
+      ...suppressionMetadata,
+    };
+  }
 
   const overlayFps = getMediaFrameRate(baseVideoPath);
   const overlayPresetSlug = captionStyleSelection.animationPreset?.slug || captionStyleSelection.style.animationPreset || "stable-pop";
@@ -3477,7 +3511,7 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
 
   if (usesConfigDrivenPreset || requiresStableWordSpacingOverlay) {
     const overlayManifest = renderAnimatedCaptionOverlays({
-      captionTimeline: timeline,
+      captionTimeline,
       videoWorkDir,
       captionStyleSelection,
       fps: overlayFps,
@@ -3501,6 +3535,7 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
       overlayVideoPath: overlayTrack.overlayTrackPath,
       overlayConcatPath: overlayTrack.concatPath,
       renderer: "pillow-word-highlight-v1",
+      ...suppressionMetadata,
       fallbackReason: usesConfigDrivenPreset
         ? `Caption preset ${captionStyleSelection.animationPreset?.name || overlayPresetSlug} now renders through the animated overlay renderer so the saved config-driven timing, easing, motion tracks, layout mode, and color-source settings are applied during final render.`
         : "Non-zero caption word spacing now uses the animated overlay renderer because ASS/libass cannot tighten or widen inter-word gaps independently without compromising glyph spacing; the overlay path applies the exact saved word spacing while preserving fixed word slots.",
@@ -3509,7 +3544,7 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
 
   const renderAnimatedOverlayFallback = (assReason) => {
     const overlayManifest = renderAnimatedCaptionOverlays({
-      captionTimeline: timeline,
+      captionTimeline,
       videoWorkDir,
       captionStyleSelection,
       fps: overlayFps,
@@ -3535,6 +3570,7 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
         overlayConcatPath: overlayTrack.concatPath,
         renderer: "pillow-word-highlight-v1",
         assUnavailableReason: assReason,
+        ...suppressionMetadata,
       };
     } catch (overlayError) {
       const overlayReason = overlayError instanceof Error ? overlayError.message : String(overlayError);
@@ -3581,8 +3617,10 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
       mode: "ass-word-highlight-v1",
       requestedMode: "ass-word-highlight-v1",
       assPath,
-      timeline,
+      timeline: captionTimeline,
       baseVideoPath,
+      renderer: "ffmpeg-subtitles-v1",
+      ...suppressionMetadata,
     };
   } catch (assError) {
     return renderAnimatedOverlayFallback(assError instanceof Error ? assError.message : String(assError));
@@ -3620,6 +3658,9 @@ function updateVideoManifestCaptionRendering(projectId, config, captionStyleSele
     ...(captionRender.overlayVideoPath ? { overlayVideoRelativePath: toProjectRelativePath(projectId, captionRender.overlayVideoPath) } : {}),
     ...(captionRender.overlayConcatPath ? { overlayConcatRelativePath: toProjectRelativePath(projectId, captionRender.overlayConcatPath) } : {}),
     ...(captionRender.renderer ? { renderer: captionRender.renderer } : {}),
+    ...(captionRender.motionGraphicSuppressionRanges ? { motionGraphicSuppressionRanges: captionRender.motionGraphicSuppressionRanges } : {}),
+    ...(Number.isFinite(Number(captionRender.originalCaptionCount)) ? { originalCaptionCount: Number(captionRender.originalCaptionCount) } : {}),
+    ...(Number.isFinite(Number(captionRender.visibleCaptionSegmentCount)) ? { visibleCaptionSegmentCount: Number(captionRender.visibleCaptionSegmentCount) } : {}),
     ...(captionRender.assUnavailableReason ? { assUnavailableReason: captionRender.assUnavailableReason } : {}),
     ...(captionRender.fallbackReason ? { fallbackReason: captionRender.fallbackReason } : {}),
     updatedAt: new Date().toISOString(),
@@ -4012,6 +4053,7 @@ function runDirectVideo(job) {
   updateDirectVideoProgress("render-base-video", "Rendering the base final video from the XML scene pipeline.");
   const result = runCommand("uv", args);
   const baseVideoPath = writeBaseVideoArtifact(config.finalVideoPath, config.videoWorkDir);
+  const motionGraphicSuppressionRanges = readMotionGraphicSuppressionRanges(path.join(config.videoWorkDir, "manifest.json"));
   updateDirectVideoProgress("burn-captions", "Burning captions into the rendered base video.");
   const captionRender = applyAnimatedCaptionBurnIn({
     baseVideoPath,
@@ -4020,6 +4062,7 @@ function runDirectVideo(job) {
     alignmentPath: existingAlignmentPath,
     captionsJsonPath,
     captionStyleSelection,
+    motionGraphicSuppressionRanges,
   });
   const soundDesignMixPath = renderProjectSoundDesignMix({
     projectId: job.projectId,

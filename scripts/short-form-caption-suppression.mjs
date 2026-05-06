@@ -1,0 +1,120 @@
+import fs from "fs";
+
+const MIN_VISIBLE_CAPTION_SECONDS = 0.04;
+
+function finiteNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isMotionGraphicScene(scene) {
+  return (
+    scene?.visual_type === "motion_graphic"
+    || scene?.applied_motion?.mode === "motion_graphic_template"
+    || (typeof scene?.motion_graphic_source_video === "string" && scene.motion_graphic_source_video.trim())
+    || (typeof scene?.final_video_input === "string" && scene.final_video_input.trim() && scene?.applied_motion?.source_motion_graphic_video)
+  );
+}
+
+export function mergeTimeRanges(ranges) {
+  const normalized = (Array.isArray(ranges) ? ranges : [])
+    .map((range) => ({
+      start: finiteNumber(range?.start),
+      end: finiteNumber(range?.end),
+    }))
+    .filter((range) => range.start !== null && range.end !== null && range.end > range.start)
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+
+  const merged = [];
+  for (const range of normalized) {
+    const previous = merged[merged.length - 1];
+    if (previous && range.start <= previous.end + 0.001) {
+      previous.end = Math.max(previous.end, range.end);
+    } else {
+      merged.push({ ...range });
+    }
+  }
+  return merged;
+}
+
+export function subtractTimeRanges(start, end, blockedRanges) {
+  const safeStart = finiteNumber(start);
+  const safeEnd = finiteNumber(end);
+  if (safeStart === null || safeEnd === null || safeEnd <= safeStart) return [];
+
+  let visible = [{ start: safeStart, end: safeEnd }];
+  for (const blocked of mergeTimeRanges(blockedRanges)) {
+    visible = visible.flatMap((range) => {
+      if (blocked.end <= range.start || blocked.start >= range.end) return [range];
+      return [
+        { start: range.start, end: Math.min(range.end, blocked.start) },
+        { start: Math.max(range.start, blocked.end), end: range.end },
+      ].filter((candidate) => candidate.end - candidate.start >= MIN_VISIBLE_CAPTION_SECONDS);
+    });
+    if (visible.length === 0) break;
+  }
+  return visible;
+}
+
+export function suppressCaptionTimelineForRanges(captionTimeline, blockedRanges) {
+  const mergedBlockedRanges = mergeTimeRanges(blockedRanges);
+  if (mergedBlockedRanges.length === 0) return Array.isArray(captionTimeline) ? captionTimeline : [];
+
+  const suppressed = [];
+  for (const caption of Array.isArray(captionTimeline) ? captionTimeline : []) {
+    const visibleRanges = subtractTimeRanges(caption?.start, caption?.end, mergedBlockedRanges);
+    if (visibleRanges.length === 0) continue;
+
+    if (
+      visibleRanges.length === 1
+      && Math.abs(visibleRanges[0].start - Number(caption.start)) <= 0.001
+      && Math.abs(visibleRanges[0].end - Number(caption.end)) <= 0.001
+    ) {
+      suppressed.push(caption);
+      continue;
+    }
+
+    visibleRanges.forEach((range, index) => {
+      suppressed.push({
+        ...caption,
+        id: `${caption.id || `caption-${caption.index || suppressed.length + 1}`}-visible-${index + 1}`,
+        start: range.start,
+        end: range.end,
+      });
+    });
+  }
+  return suppressed;
+}
+
+export function deriveMotionGraphicRangesFromVideoManifest(manifest) {
+  const scenes = Array.isArray(manifest?.scenes) ? manifest.scenes : [];
+  const ranges = [];
+  let cursor = 0;
+
+  for (const scene of scenes) {
+    const duration = finiteNumber(scene?.duration);
+    const start = finiteNumber(scene?.background_start) ?? cursor;
+    const end = finiteNumber(scene?.background_end) ?? (duration !== null ? start + duration : null);
+    if (isMotionGraphicScene(scene) && end !== null && end > start) {
+      ranges.push({
+        start,
+        end,
+        sceneIndex: finiteNumber(scene?.index),
+      });
+    }
+    cursor = end !== null && end > start
+      ? end
+      : cursor + Math.max(0, duration ?? 0);
+  }
+
+  return mergeTimeRanges(ranges);
+}
+
+export function readMotionGraphicSuppressionRanges(manifestPath) {
+  if (!manifestPath || !fs.existsSync(manifestPath)) return [];
+  try {
+    return deriveMotionGraphicRangesFromVideoManifest(JSON.parse(fs.readFileSync(manifestPath, "utf-8")));
+  } catch {
+    return [];
+  }
+}
