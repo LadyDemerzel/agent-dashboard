@@ -70,6 +70,7 @@ function normalizeTemplate(value: unknown) {
     templateId: typeof template.id === "string" && template.id.trim() ? template.id.trim() : rendererId,
     rendererId,
     durationSeconds,
+    ...(rendererId === "caption_word_wall" ? { allowSyntheticTiming: true } : {}),
     stylePreset:
       typeof template.stylePreset === "string" && template.stylePreset.trim()
         ? template.stylePreset.trim()

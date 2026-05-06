@@ -1235,6 +1235,10 @@ function collapseWhitespace(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
+function parseBooleanAttribute(value) {
+  return value === true || ["true", "1", "yes", "emphasized", "emphasis"].includes(String(value || "").trim().toLowerCase());
+}
+
 function parseMotionGraphicAssets(xml) {
   const assets = new Map();
   const assetsBody = xml.match(/<assets\b[^>]*>([\s\S]*?)<\/assets>/i)?.[1] || "";
@@ -1272,6 +1276,26 @@ function parseMotionGraphicAssets(xml) {
       if (text) steps.push(label ? { label, text } : text);
     }
     if (steps.length > 0) args.steps = steps;
+    const lines = [];
+    const linePattern = /<(line|blankLine)\b([^>]*)\/?\s*>(?:([\s\S]*?)<\/\1>)?/gi;
+    for (const lineMatch of body.matchAll(linePattern)) {
+      const tagName = String(lineMatch[1] || "").toLowerCase();
+      const lineAttrs = parseXmlAttributes(lineMatch[2] || "");
+      if (tagName === "blankline" || parseBooleanAttribute(lineAttrs.blank)) {
+        lines.push({ blank: true });
+        continue;
+      }
+      const text = decodeXmlText(collapseWhitespace(lineMatch[3] || ""));
+      if (!text) {
+        lines.push({ blank: true });
+        continue;
+      }
+      lines.push({
+        text,
+        ...(parseBooleanAttribute(lineAttrs.emphasized || lineAttrs.emphasis) ? { emphasized: true } : {}),
+      });
+    }
+    if (lines.length > 0) args.lines = lines;
     assets.set(id, {
       id,
       templateId,
@@ -1347,11 +1371,18 @@ function motionGraphicsTemplateById(settings, templateId) {
 function mergeMotionGraphicConfig(settings, visual) {
   const template = motionGraphicsTemplateById(settings, visual.asset.templateId);
   const rendererId = visual.asset.rendererId || template?.rendererId || visual.asset.templateId;
+  const visualStart = Number(visual.start);
+  const visualEnd = Number(visual.end);
+  const visualDuration = Number.isFinite(visualStart) && Number.isFinite(visualEnd) && visualEnd > visualStart
+    ? visualEnd - visualStart
+    : null;
   return {
     templateId: visual.asset.templateId,
     rendererId,
     stylePreset: visual.asset.stylePreset || template?.stylePreset || settings?.defaultStylePreset || "watercolor-editorial",
-    durationSeconds: visual.asset.durationSeconds || template?.durationSeconds || 6,
+    durationSeconds: visualDuration || visual.asset.durationSeconds || template?.durationSeconds || 6,
+    ...(Number.isFinite(visualStart) ? { visualStartSeconds: visualStart } : {}),
+    ...(Number.isFinite(visualEnd) ? { visualEndSeconds: visualEnd } : {}),
     defaultArgs: template?.defaultArgs || {},
     args: visual.asset.args || {},
     label: visual.label,
@@ -1370,7 +1401,7 @@ function readManifestIfExists(manifestPath) {
   }
 }
 
-function renderMotionGraphicScenes({ outputDir, runDir, xmlPath, settings, sceneIndexes, backgroundVideoId, backgroundVideoName, backgroundVideoPath }) {
+function renderMotionGraphicScenes({ outputDir, runDir, xmlPath, settings, sceneIndexes, backgroundVideoId, backgroundVideoName, backgroundVideoPath, alignmentPath }) {
   const xml = fs.readFileSync(xmlPath, "utf-8");
   const motionVisuals = parseMotionGraphicVisuals(xml);
   if (motionVisuals.length === 0) {
@@ -1392,11 +1423,14 @@ function renderMotionGraphicScenes({ outputDir, runDir, xmlPath, settings, scene
     const posterPath = path.join(outputDir, `scene-${padded}-uncaptioned-1080x1920.png`);
     const captionedPath = path.join(outputDir, `scene-${padded}-captioned-1080x1920.png`);
     const configPath = path.join(runDir, `scene-${padded}-motion-graphic.json`);
-    fs.writeFileSync(configPath, JSON.stringify(mergeMotionGraphicConfig(settings, visual, {
+    const mergedConfig = mergeMotionGraphicConfig(settings, visual);
+    fs.writeFileSync(configPath, JSON.stringify({
+      ...mergedConfig,
       backgroundVideoId,
       backgroundVideoName,
       backgroundVideoPath,
-    }), null, 2), "utf-8");
+      ...(alignmentPath && fs.existsSync(alignmentPath) ? { alignmentPath } : {}),
+    }, null, 2), "utf-8");
     const result = runCommand(process.execPath, [MOTION_GRAPHIC_RENDERER_SCRIPT, "--config", configPath, "--output", videoPath, "--poster", posterPath]);
     fs.copyFileSync(posterPath, captionedPath);
     byIndex.set(visual.index, {
@@ -3810,6 +3844,8 @@ function runDirectSceneImages(job) {
   ensureDir(config.outputDir);
 
   const runtimeXmlPath = resolveXmlRuntimePath(config.scriptPath, runDir, "scene-images-runtime.xml");
+  const xmlWorkDir = path.join(getProjectDir(job.projectId), "output", "xml-script-work");
+  const existingAlignmentPath = path.join(xmlWorkDir, "alignment", "word-timestamps.json");
   const requestedSceneIndexes = [parseSceneIdToIndex(config.sceneId)].filter(Boolean);
   const preMotionSceneIndexes = requestedSceneIndexes.length > 0
     ? requestedSceneIndexes
@@ -3823,6 +3859,7 @@ function runDirectSceneImages(job) {
     backgroundVideoId: config.backgroundVideoId,
     backgroundVideoName: config.backgroundVideoName,
     backgroundVideoPath: config.backgroundVideoPath,
+    alignmentPath: existingAlignmentPath,
   });
   if (motionGraphics.motionVisuals.length > 0) {
     fs.writeFileSync(runtimeXmlPath, `${motionGraphics.sanitizedXml.trim()}\n`, "utf-8");

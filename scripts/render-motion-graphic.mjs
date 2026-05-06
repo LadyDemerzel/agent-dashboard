@@ -3,12 +3,15 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { fileURLToPath, pathToFileURL } from "url";
 import { spawnSync } from "child_process";
+import * as fontkit from "fontkit";
 import sharp from "sharp";
 
 const WIDTH = 1080;
 const HEIGHT = 1920;
 const FPS = 30;
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SHORT_FORM_VIDEOS_DIR = path.join(os.homedir(), "tenxsolo", "business", "content", "deliverables", "short-form-videos");
 const BACKGROUND_VIDEO_SETTINGS_PATH = path.join(SHORT_FORM_VIDEOS_DIR, "_background-video-settings.json");
 const BACKGROUND_VIDEOS_DIR = path.join(SHORT_FORM_VIDEOS_DIR, "_background-videos");
@@ -26,8 +29,63 @@ const UNIFIED_PALETTE = {
   mutedPeach: "#d6ae8f@0.74",
   mutedLavender: "#b9add1@0.72",
 };
+const STAT_REVEAL_TEXT_STYLE = {
+  value: {
+    fontFamily: UNIFIED_FONT_FAMILY,
+    fontWeight: 400,
+    fontSize: 186,
+    color: UNIFIED_PALETTE.offWhite,
+    lineHeight: (186 + 18) / 186,
+    shadowOpacity: 0.78,
+    shadowOffsetY: 6,
+  },
+  title: {
+    fontFamily: UNIFIED_FONT_FAMILY,
+    fontWeight: 400,
+    fontSize: 64,
+    color: UNIFIED_PALETTE.offWhite,
+    maxChars: 20,
+    lineGap: 20,
+    lineHeight: (64 + 20) / 64,
+    shadowOpacity: 0.72,
+    shadowOffsetY: 4,
+  },
+};
+const CAPTION_WORD_WALL_ACTIVE_WORD_BASE_FONT_WEIGHT = STAT_REVEAL_TEXT_STYLE.title.fontWeight;
+const CAPTION_WORD_WALL_ACTIVE_WORD_PEAK_FONT_WEIGHT = 600;
+const CAPTION_WORD_WALL_ACTIVE_WORD_POP_KEYFRAMES = [
+  { progress: 0, scale: 1, translateYEm: 0, fontWeight: CAPTION_WORD_WALL_ACTIVE_WORD_BASE_FONT_WEIGHT, easingToNext: "ease-out-quart" },
+  { progress: 0.2, scale: 1.35, translateYEm: 0.08, fontWeight: CAPTION_WORD_WALL_ACTIVE_WORD_PEAK_FONT_WEIGHT, easingToNext: "ease-out-cubic" },
+  { progress: 1, scale: 1, translateYEm: 0, fontWeight: CAPTION_WORD_WALL_ACTIVE_WORD_BASE_FONT_WEIGHT },
+];
+const CAPTION_WORD_WALL_ACTIVE_WORD_MAX_SCALE = Math.max(...CAPTION_WORD_WALL_ACTIVE_WORD_POP_KEYFRAMES.map((frame) => frame.scale));
+const CAPTION_WORD_WALL_ACTIVE_WORD_MAX_TRANSLATE_Y_EM = Math.max(...CAPTION_WORD_WALL_ACTIVE_WORD_POP_KEYFRAMES.map((frame) => frame.translateYEm));
+const CAPTION_WORD_WALL_ACTIVE_WORD_MAX_FONT_WEIGHT = Math.max(...CAPTION_WORD_WALL_ACTIVE_WORD_POP_KEYFRAMES.map((frame) => frame.fontWeight));
+const CAPTION_WORD_WALL_STYLE = {
+  fontFamily: "CaptionWordWallInter",
+  fallbackFontFamily: `${STAT_REVEAL_TEXT_STYLE.title.fontFamily}, Helvetica, Arial, sans-serif`,
+  fontWeight: STAT_REVEAL_TEXT_STYLE.title.fontWeight,
+  activeFontWeight: CAPTION_WORD_WALL_ACTIVE_WORD_MAX_FONT_WEIGHT,
+  fontSize: STAT_REVEAL_TEXT_STYLE.title.fontSize,
+  emphasizedFontSize: STAT_REVEAL_TEXT_STYLE.value.fontSize,
+  lineHeight: STAT_REVEAL_TEXT_STYLE.title.lineHeight,
+  emphasizedLineHeight: STAT_REVEAL_TEXT_STYLE.value.lineHeight,
+  wrapGapEm: 0,
+  lineGapEm: STAT_REVEAL_TEXT_STYLE.title.lineGap / STAT_REVEAL_TEXT_STYLE.title.fontSize,
+  blankGapEm: 0.42,
+  spaceEm: 0.32,
+  horizontalPadding: 124,
+  activeScale: CAPTION_WORD_WALL_ACTIVE_WORD_MAX_SCALE,
+  activeTranslateYEm: CAPTION_WORD_WALL_ACTIVE_WORD_MAX_TRANSLATE_Y_EM,
+  activeWordColor: STAT_REVEAL_TEXT_STYLE.title.color,
+  spokenWordColor: STAT_REVEAL_TEXT_STYLE.title.color,
+  upcomingWordColor: "#bab7b1@0.42",
+  shadowColor: "#000000",
+  shadowBlur: 0,
+};
 const INTER_FONT_CANDIDATES = [
   process.env.INTER_FONT_FILE,
+  path.join(REPO_ROOT, "public", "fonts", "InterVariable.ttf"),
   path.join(os.homedir(), ".cache", "convex", "dashboard", "out", "_next", "static", "media", "inter-latin-wght-normal.6c596dfc.woff2"),
   path.join(os.homedir(), ".cache", "convex", "dashboard", "out", "_next", "static", "media", "inter-latin-ext-wght-normal.3835a68e.woff2"),
 ].filter(Boolean);
@@ -37,6 +95,17 @@ function resolveFirstExistingPath(candidates) {
 }
 
 const INTER_FONT_FILE = resolveFirstExistingPath(INTER_FONT_CANDIDATES);
+const INTER_VARIABLE_FONT = (() => {
+  if (!INTER_FONT_FILE) return null;
+  try {
+    const loaded = fontkit.openSync(INTER_FONT_FILE);
+    return loaded?.variationAxes?.wght ? loaded : null;
+  } catch {
+    return null;
+  }
+})();
+const INTER_VARIABLE_WEIGHT_AXIS = INTER_VARIABLE_FONT?.variationAxes?.wght || null;
+const captionWordWallVariationFontCache = new Map();
 
 function readArg(name, fallback) {
   const index = process.argv.indexOf(name);
@@ -112,6 +181,501 @@ function asData(value) {
     }).filter((item) => item.label && Number.isFinite(item.value));
   }
   return [];
+}
+
+function asCaptionWordWallLines(value, fallback = []) {
+  const source = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/\r?\n/).map((line) => ({ text: line }))
+      : fallback;
+  return source
+    .map((line) => {
+      if (line && typeof line === "object") {
+        const text = asText(line.text ?? line.caption ?? line.words);
+        const blank = line.blank === true || !text;
+        return {
+          ...(blank ? { blank: true } : { text }),
+          ...(line.emphasized === true || line.emphasis === true || String(line.emphasized || line.emphasis).toLowerCase() === "true" ? { emphasized: true } : {}),
+        };
+      }
+      const text = asText(line);
+      return text ? { text } : { blank: true };
+    })
+    .filter((line) => line.blank || line.text);
+}
+
+function normalizeWordToken(value) {
+  const normalized = String(value || "")
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/['`]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+  return normalized || String(value || "").toLowerCase().trim();
+}
+
+function splitDisplayWords(value) {
+  return String(value || "").split(/\s+/).map((word) => word.trim()).filter(Boolean);
+}
+
+function readAlignmentWords(alignmentPath) {
+  if (!alignmentPath || !fs.existsSync(alignmentPath)) return [];
+  const payload = JSON.parse(fs.readFileSync(alignmentPath, "utf-8"));
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  return items
+    .map((item, index) => ({
+      index,
+      text: asText(item?.text),
+      normalized: normalizeWordToken(item?.text),
+      start: Number(item?.start_time),
+      end: Number(item?.end_time),
+    }))
+    .filter((item) => item.text && item.normalized && Number.isFinite(item.start) && Number.isFinite(item.end) && item.end >= item.start);
+}
+
+function estimateWordWidth(word, fontSize) {
+  const weightedChars = String(word || "").split("").reduce((sum, char) => {
+    if (/[ilI.,'!|]/.test(char)) return sum + 0.28;
+    if (/[MW@#%&]/.test(char)) return sum + 0.86;
+    if (/[A-Z0-9]/.test(char)) return sum + 0.62;
+    return sum + 0.5;
+  }, 0);
+  return Math.max(fontSize * 0.35, weightedChars * fontSize);
+}
+
+function clampCaptionWordWallFontWeight(weight) {
+  const parsed = Number(weight);
+  const fallback = CAPTION_WORD_WALL_ACTIVE_WORD_BASE_FONT_WEIGHT;
+  if (!Number.isFinite(parsed)) return fallback;
+  const min = INTER_VARIABLE_WEIGHT_AXIS?.min ?? 100;
+  const max = INTER_VARIABLE_WEIGHT_AXIS?.max ?? 900;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+function captionWordWallVariableFontForWeight(weight) {
+  if (!INTER_VARIABLE_FONT) return null;
+  const clampedWeight = clampCaptionWordWallFontWeight(weight);
+  const cacheKey = clampedWeight.toFixed(2);
+  const cached = captionWordWallVariationFontCache.get(cacheKey);
+  if (cached) return cached;
+  const variation = INTER_VARIABLE_FONT.getVariation({ wght: clampedWeight });
+  captionWordWallVariationFontCache.set(cacheKey, variation);
+  return variation;
+}
+
+function measureCaptionWordWallText(value, fontSize, fontWeight = CAPTION_WORD_WALL_ACTIVE_WORD_BASE_FONT_WEIGHT) {
+  const textValue = String(value || "");
+  const variation = captionWordWallVariableFontForWeight(fontWeight);
+  if (!variation) {
+    return textValue === " " ? Math.max(10, fontSize * CAPTION_WORD_WALL_STYLE.spaceEm) : estimateWordWidth(textValue, fontSize);
+  }
+  const run = variation.layout(textValue);
+  const widthUnits = run.positions.reduce((sum, position) => sum + (Number(position.xAdvance) || 0), 0);
+  return Math.max(0, widthUnits * (fontSize / variation.unitsPerEm));
+}
+
+function captionWordWallPathForText({ value, x, baselineY, fontSize, fontWeight, fill, filterId }) {
+  const variation = captionWordWallVariableFontForWeight(fontWeight);
+  if (!variation) return "";
+  const run = variation.layout(String(value || ""));
+  const scale = fontSize / variation.unitsPerEm;
+  let cursorX = 0;
+  const paths = [];
+  for (let index = 0; index < run.glyphs.length; index += 1) {
+    const glyph = run.glyphs[index];
+    const position = run.positions[index];
+    const pathData = glyph.path.toSVG();
+    if (pathData) {
+      const glyphX = x + ((Number(position.xOffset) || 0) + cursorX) * scale;
+      const glyphY = baselineY - (Number(position.yOffset) || 0) * scale;
+      paths.push(`<path d="${pathData}" transform="translate(${glyphX.toFixed(3)} ${glyphY.toFixed(3)}) scale(${scale.toFixed(6)} ${(-scale).toFixed(6)})"/>`);
+    }
+    cursorX += Number(position.xAdvance) || 0;
+  }
+  if (paths.length === 0) return "";
+  return `<g fill="${fill}" filter="url(#${filterId})">${paths.join("")}</g>`;
+}
+
+function easeOutCubic(progress) {
+  const p = Math.max(0, Math.min(1, Number(progress) || 0));
+  return 1 - ((1 - p) ** 3);
+}
+
+function easeInCubic(progress) {
+  const p = Math.max(0, Math.min(1, Number(progress) || 0));
+  return p ** 3;
+}
+
+function easeInOutCubic(progress) {
+  const p = Math.max(0, Math.min(1, Number(progress) || 0));
+  return p < 0.5 ? 4 * p ** 3 : 1 - ((-2 * p + 2) ** 3) / 2;
+}
+
+function easeOutQuart(progress) {
+  const p = Math.max(0, Math.min(1, Number(progress) || 0));
+  return 1 - ((1 - p) ** 4);
+}
+
+function applyCaptionWordWallSegmentEasing(progress, easing) {
+  if (easing === "ease-out-quart") return easeOutQuart(progress);
+  if (easing === "ease-in-cubic") return easeInCubic(progress);
+  if (easing === "ease-out-cubic") return easeOutCubic(progress);
+  if (easing === "ease-in-out-cubic") return easeInOutCubic(progress);
+  return Math.max(0, Math.min(1, Number(progress) || 0));
+}
+
+function interpolateNumber(from, to, progress) {
+  return from + (to - from) * progress;
+}
+
+function activeWordPopFrame(progress) {
+  const p = Math.max(0, Math.min(1, Number(progress) || 0));
+  const keyframes = CAPTION_WORD_WALL_ACTIVE_WORD_POP_KEYFRAMES;
+  if (p <= keyframes[0].progress) {
+    return { scale: keyframes[0].scale, translateYEm: keyframes[0].translateYEm, fontWeight: keyframes[0].fontWeight };
+  }
+  for (let index = 0; index < keyframes.length - 1; index += 1) {
+    const from = keyframes[index];
+    const to = keyframes[index + 1];
+    if (p <= to.progress) {
+      const segmentProgress = (p - from.progress) / Math.max(0.0001, to.progress - from.progress);
+      const easedProgress = applyCaptionWordWallSegmentEasing(segmentProgress, from.easingToNext);
+      return {
+        scale: interpolateNumber(from.scale, to.scale, easedProgress),
+        translateYEm: interpolateNumber(from.translateYEm, to.translateYEm, easedProgress),
+        fontWeight: interpolateNumber(from.fontWeight, to.fontWeight, easedProgress),
+      };
+    }
+  }
+  const last = keyframes[keyframes.length - 1];
+  return {
+    scale: last.scale,
+    translateYEm: last.translateYEm,
+    fontWeight: last.fontWeight,
+  };
+}
+
+function resolveWordWallState(words, sampleTime) {
+  if (sampleTime < words[0]?.start) return { activeIndex: -1, spokenThroughIndex: 0, progress: 0 };
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
+    if (sampleTime < word.start) return { activeIndex: -1, spokenThroughIndex: index, progress: 0 };
+    if (word.start <= sampleTime && sampleTime < word.end) {
+      const wordDuration = Math.max(0.001, word.end - word.start);
+      const wordProgress = (sampleTime - word.start) / wordDuration;
+      return {
+        activeIndex: index,
+        spokenThroughIndex: index,
+        progress: Math.max(0, Math.min(1, wordProgress)),
+      };
+    }
+  }
+  return { activeIndex: -1, spokenThroughIndex: words.length, progress: 0 };
+}
+
+function buildCaptionWordWallTimeline({ lines, alignmentWords, visualStartSeconds, durationSeconds, allowSyntheticTiming = false }) {
+  const normalizedLines = asCaptionWordWallLines(lines, [
+    { text: "most people miss this part" },
+    { text: "the words become the visual", emphasized: true },
+    { blank: true },
+    { text: "and every highlight follows the voice" },
+  ]);
+  if (normalizedLines.length === 0) throw new Error("caption_word_wall requires at least one <line> or <blankLine /> entry.");
+
+  const hasRealAlignment = alignmentWords.length > 0;
+  if (!hasRealAlignment) {
+    if (!allowSyntheticTiming) {
+      throw new Error("caption_word_wall requires forced-alignment word timestamps. Run the XML Script narration/alignment steps before rendering this motion graphic.");
+    }
+    const spokenLines = normalizedLines.filter((line) => !line.blank && line.text);
+    const fallbackWords = spokenLines.flatMap((line) => splitDisplayWords(line.text));
+    if (fallbackWords.length === 0) throw new Error("caption_word_wall preview needs at least one spoken word.");
+    const step = Math.max(0.08, durationSeconds / fallbackWords.length);
+    let cursor = 0;
+    const syntheticWords = fallbackWords.map((word, index) => ({
+      index,
+      text: word,
+      normalized: normalizeWordToken(word),
+      start: cursor + index * step,
+      end: Math.min(durationSeconds, cursor + (index + 0.82) * step),
+    }));
+    return buildCaptionWordWallTimeline({ lines: normalizedLines, alignmentWords: syntheticWords, visualStartSeconds: 0, durationSeconds, allowSyntheticTiming: true });
+  }
+
+  let cursor = 0;
+  const wordEntries = [];
+  const resolvedLines = normalizedLines.map((line, lineIndex) => {
+    if (line.blank) return { blank: true, emphasized: false, words: [] };
+    const words = splitDisplayWords(line.text);
+    const resolvedWords = words.map((wordText) => {
+      const normalized = normalizeWordToken(wordText);
+      let matchIndex = -1;
+      for (let searchIndex = cursor; searchIndex < alignmentWords.length; searchIndex += 1) {
+        if (alignmentWords[searchIndex]?.normalized === normalized) {
+          matchIndex = searchIndex;
+          break;
+        }
+      }
+      if (matchIndex === -1) {
+        throw new Error(`caption_word_wall could not match spoken word "${wordText}" in forced-alignment data. Keep <line> text exact and in narration order.`);
+      }
+      const matched = alignmentWords[matchIndex];
+      cursor = matchIndex + 1;
+      const localStart = matched.start - visualStartSeconds;
+      const localEnd = matched.end - visualStartSeconds;
+      if (localEnd < -0.05 || localStart > durationSeconds + 0.05) {
+        throw new Error(`caption_word_wall word "${wordText}" is outside the visual start/end range. Align the motion graphic visual range with the spoken words it displays.`);
+      }
+      const entry = {
+        text: wordText,
+        normalized,
+        start: Math.max(0, localStart),
+        end: Math.min(durationSeconds, Math.max(localStart + 0.05, localEnd)),
+        lineIndex,
+        emphasized: Boolean(line.emphasized),
+        globalIndex: wordEntries.length,
+      };
+      wordEntries.push(entry);
+      return entry;
+    });
+    return {
+      text: line.text,
+      emphasized: Boolean(line.emphasized),
+      words: resolvedWords,
+      lineStart: resolvedWords[0]?.start ?? 0,
+      lineEnd: resolvedWords[resolvedWords.length - 1]?.end ?? 0,
+    };
+  });
+
+  if (wordEntries.length === 0) throw new Error("caption_word_wall needs at least one spoken word line.");
+  return { lines: resolvedLines, words: wordEntries };
+}
+
+function layoutCaptionWordWall(timeline) {
+  const style = CAPTION_WORD_WALL_STYLE;
+  const maxWidth = WIDTH - style.horizontalPadding * 2;
+  const maxHeight = HEIGHT - 480;
+  const leftX = style.horizontalPadding;
+  const scaleCandidates = [1, 0.94, 0.88, 0.82, 0.76, 0.7, 0.64, 0.58, 0.52];
+
+  for (const scale of scaleCandidates) {
+    const normalSize = Math.round(style.fontSize * scale);
+    const emphasizedSize = Math.round(style.emphasizedFontSize * scale);
+    const rows = [];
+    for (let lineIndex = 0; lineIndex < timeline.lines.length; lineIndex += 1) {
+      const line = timeline.lines[lineIndex];
+      if (line.blank) {
+        rows.push({ blank: true, lineIndex, height: Math.round(normalSize * style.blankGapEm), words: [] });
+        continue;
+      }
+      const fontSize = line.emphasized ? emphasizedSize : normalSize;
+      const lineHeight = line.emphasized ? style.emphasizedLineHeight : style.lineHeight;
+      const spaceWidth = Math.max(10, measureCaptionWordWallText(" ", fontSize, style.fontWeight));
+      let current = [];
+      let currentWidth = 0;
+      let wrapIndex = 0;
+      for (const word of line.words) {
+        const width = measureCaptionWordWallText(word.text, fontSize, style.fontWeight);
+        const activeWidth = measureCaptionWordWallText(word.text, fontSize * style.activeScale, style.activeFontWeight);
+        const activeReserve = Math.max(10, activeWidth - width);
+        const nextWidth = current.length ? currentWidth + spaceWidth + width : width;
+        if (current.length && nextWidth + activeReserve > maxWidth) {
+          rows.push({
+            fontSize,
+            emphasized: line.emphasized,
+            lineIndex,
+            wrapIndex,
+            words: current,
+            width: currentWidth,
+            height: Math.round(fontSize * lineHeight),
+            spaceWidth,
+            lineStart: line.lineStart,
+            x: leftX,
+          });
+          wrapIndex += 1;
+          current = [word];
+          currentWidth = width;
+        } else {
+          current.push(word);
+          currentWidth = nextWidth;
+        }
+      }
+      if (current.length) {
+        rows.push({
+          fontSize,
+          emphasized: line.emphasized,
+          lineIndex,
+          wrapIndex,
+          words: current,
+          width: currentWidth,
+          height: Math.round(fontSize * lineHeight),
+          spaceWidth,
+          lineStart: line.lineStart,
+          x: leftX,
+        });
+      }
+    }
+    const gapAfter = (row, nextRow) => {
+      if (!nextRow) return 0;
+      if (row.blank || nextRow.blank) return Math.round(normalSize * style.blankGapEm);
+      if (row.lineIndex === nextRow.lineIndex) return Math.round(normalSize * style.wrapGapEm);
+      return Math.round(normalSize * style.lineGapEm);
+    };
+    const gaps = rows.map((row, index) => gapAfter(row, rows[index + 1]));
+    const totalHeight = rows.reduce((sum, row, index) => sum + row.height + gaps[index], 0);
+    if (totalHeight <= maxHeight || scale === scaleCandidates[scaleCandidates.length - 1]) {
+      let y = Math.round((HEIGHT - totalHeight) / 2);
+      return {
+        alignment: "left",
+        x: leftX,
+        spacingMode: "svg-fixed-space-tspans-active-font-pop",
+        rows: rows.map((row, index) => {
+          const next = { ...row, y, gapAfter: gaps[index] };
+          y += row.height + gaps[index];
+          return next;
+        }),
+        normalSize,
+        totalHeight,
+      };
+    }
+  }
+  throw new Error("Unable to layout caption_word_wall text.");
+}
+
+function svgEsc(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function captionWordWallFontCss() {
+  if (!INTER_FONT_FILE) return "";
+  const fontFormat = INTER_FONT_FILE.toLowerCase().endsWith(".ttf") ? "truetype" : "woff2";
+  return `
+  @font-face {
+    font-family: '${CAPTION_WORD_WALL_STYLE.fontFamily}';
+    src: url('${pathToFileURL(INTER_FONT_FILE).href}') format('${fontFormat}');
+    font-weight: 100 900;
+  }`;
+}
+
+function renderCaptionWordWallSvg(timeline, layout, state) {
+  void timeline;
+  const style = CAPTION_WORD_WALL_STYLE;
+  const textNodes = [];
+  const shadowFilter = (id, textStyle) => `
+  <filter id="${id}" x="-20%" y="-25%" width="145%" height="160%">
+    <feDropShadow dx="0" dy="${textStyle.shadowOffsetY}" stdDeviation="${style.shadowBlur}" flood-color="${style.shadowColor}" flood-opacity="${textStyle.shadowOpacity}"/>
+  </filter>`;
+  textNodes.push(`
+<defs>
+  <style><![CDATA[
+${captionWordWallFontCss()}
+    .caption-word-wall-text {
+      font-family: '${style.fontFamily}', ${style.fallbackFontFamily};
+      font-kerning: normal;
+    }
+  ]]></style>
+  ${shadowFilter("titleTextShadow", STAT_REVEAL_TEXT_STYLE.title)}
+  ${shadowFilter("valueTextShadow", STAT_REVEAL_TEXT_STYLE.value)}
+</defs>`);
+
+  for (const row of layout.rows) {
+    if (row.blank || !row.words?.length) continue;
+    if (state.sampleTime + 0.0001 < row.lineStart) continue;
+    const baselineY = row.y + row.fontSize;
+    const filterId = row.emphasized ? "valueTextShadow" : "titleTextShadow";
+    if (INTER_VARIABLE_FONT) {
+      let cursorX = row.x;
+      const wordPaths = [];
+      for (const word of row.words) {
+        const wordState = word.globalIndex === state.activeIndex
+          ? "active"
+          : word.globalIndex < state.spokenThroughIndex
+            ? "spoken"
+            : "upcoming";
+        const pop = wordState === "active" ? activeWordPopFrame(state.progress) : { scale: 1, translateYEm: 0, fontWeight: style.fontWeight };
+        const fontSize = row.fontSize * pop.scale;
+        const fontWeight = wordState === "active" ? pop.fontWeight : style.fontWeight;
+        const liftPx = pop.translateYEm ? pop.translateYEm * fontSize : 0;
+        const fill = svgColor(wordState === "active" ? style.activeWordColor : wordState === "spoken" ? style.spokenWordColor : style.upcomingWordColor);
+        wordPaths.push(captionWordWallPathForText({
+          value: word.text,
+          x: cursorX,
+          baselineY: baselineY - liftPx,
+          fontSize,
+          fontWeight,
+          fill,
+          filterId,
+        }));
+        cursorX += measureCaptionWordWallText(word.text, fontSize, fontWeight) + row.spaceWidth;
+      }
+      textNodes.push(`<g class="caption-word-wall-text" data-renderer="inter-variable-fontkit-paths">${wordPaths.join("")}</g>`);
+      continue;
+    }
+    const tspans = [];
+    for (const word of row.words) {
+      const wordState = word.globalIndex === state.activeIndex
+        ? "active"
+        : word.globalIndex < state.spokenThroughIndex
+          ? "spoken"
+          : "upcoming";
+      const pop = wordState === "active" ? activeWordPopFrame(state.progress) : { scale: 1, translateYEm: 0, fontWeight: style.fontWeight };
+      const fontSize = Math.round(row.fontSize * pop.scale);
+      const fontWeight = wordState === "active" ? Math.round(pop.fontWeight) : style.fontWeight;
+      const fill = svgColor(wordState === "active" ? style.activeWordColor : wordState === "spoken" ? style.spokenWordColor : style.upcomingWordColor);
+      if (tspans.length) {
+        tspans.push(`<tspan font-size="${row.fontSize}" font-weight="${style.fontWeight}"> </tspan>`);
+      }
+      const baselineShift = pop.translateYEm ? ` baseline-shift="${(pop.translateYEm).toFixed(4)}em"` : "";
+      tspans.push(`<tspan fill="${fill}" font-size="${fontSize}" font-weight="${fontWeight}"${baselineShift}>${svgEsc(word.text)}</tspan>`);
+    }
+    textNodes.push(`<text class="caption-word-wall-text" x="${row.x}" y="${baselineY}" text-anchor="start" xml:space="preserve" font-size="${row.fontSize}" font-weight="${style.fontWeight}" fill="${svgColor(style.upcomingWordColor)}" filter="url(#${filterId})">${tspans.join("")}</text>`);
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">${textNodes.join("\n")}</svg>`;
+}
+
+async function renderCaptionWordWallFrames({ config, tempDir, duration }) {
+  const args = { ...(config.defaultArgs || {}), ...(config.args || {}) };
+  const visualStartSeconds = Number.isFinite(Number(config.visualStartSeconds)) ? Number(config.visualStartSeconds) : 0;
+  const alignmentWords = readAlignmentWords(config.alignmentPath);
+  const timeline = buildCaptionWordWallTimeline({
+    lines: args.lines,
+    alignmentWords,
+    visualStartSeconds,
+    durationSeconds: duration,
+    allowSyntheticTiming: config.allowSyntheticTiming === true,
+  });
+  const layout = layoutCaptionWordWall(timeline);
+  const frameDir = path.join(tempDir, "caption-word-wall-frames");
+  fs.mkdirSync(frameDir, { recursive: true });
+  const frameCount = Math.max(1, Math.ceil(duration * FPS));
+  const renderCache = new Map();
+  for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
+    const sampleTime = Math.min(duration - 0.0001, frameIndex / FPS + 0.5 / FPS);
+    const state = resolveWordWallState(timeline.words, sampleTime);
+    const visibleLineCount = timeline.lines.filter((line) => !line.blank && Number.isFinite(line.lineStart) && sampleTime + 0.0001 >= line.lineStart).length;
+    const cacheKey = `${state.activeIndex}:${state.spokenThroughIndex}:${visibleLineCount}:${state.progress.toFixed(4)}`;
+    const framePath = path.join(frameDir, `frame-${String(frameIndex + 1).padStart(5, "0")}.png`);
+    const cached = renderCache.get(cacheKey);
+    if (cached) {
+      fs.copyFileSync(cached, framePath);
+      continue;
+    }
+    const svg = renderCaptionWordWallSvg(timeline, layout, { ...state, sampleTime });
+    await sharp(Buffer.from(svg)).png().toFile(framePath);
+    renderCache.set(cacheKey, framePath);
+  }
+  return {
+    framePattern: path.join(frameDir, "frame-%05d.png"),
+    timeline,
+    layout,
+    frameCount,
+    usesForcedAlignment: alignmentWords.length > 0,
+  };
 }
 
 function esc(value) {
@@ -460,10 +1024,12 @@ function statReveal(args, stylePreset, overlayInputs) {
   void overlayInputs;
   const titleStart = 1.12;
   const titleRevealDuration = 0.54;
+  const valueStyle = STAT_REVEAL_TEXT_STYLE.value;
+  const titleStyle = STAT_REVEAL_TEXT_STYLE.title;
   return [
     ...baseFilters(stylePreset),
-    animatedUnifiedText(args.value || "73%", 124, 564, 186, UNIFIED_PALETTE.offWhite, 0.72, 58, textShadow(0.78, 6), 0.66),
-    ...animatedUnifiedTextLines(args.title || "people notice the change", 132, 804, 64, UNIFIED_PALETTE.offWhite, titleStart, 20, 20, 52),
+    animatedUnifiedText(args.value || "73%", 124, 564, valueStyle.fontSize, valueStyle.color, 0.72, 58, textShadow(valueStyle.shadowOpacity, valueStyle.shadowOffsetY), 0.66),
+    ...animatedUnifiedTextLines(args.title || "people notice the change", 132, 804, titleStyle.fontSize, titleStyle.color, titleStart, titleStyle.maxChars, titleStyle.lineGap, 52),
     ...animatedHorizontalRule(132, 1064, 616, 4, UNIFIED_PALETTE.faintGrey, titleStart, titleRevealDuration),
   ];
 }
@@ -801,19 +1367,37 @@ function buildFilterComplex({ config, filters, overlayInputs, duration }) {
   return graph.join(";");
 }
 
+function buildCaptionWordWallFilterComplex({ duration }) {
+  const basePrep = [
+    `scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase`,
+    `crop=${WIDTH}:${HEIGHT}`,
+    "setsar=1",
+    "fps=30",
+    "format=rgba",
+    box(0, 0, WIDTH, HEIGHT, UNIFIED_BACKGROUND_DARKEN_OVERLAY),
+  ];
+  return [
+    `[0:v]${basePrep.join(",")}[base0]`,
+    "[1:v]format=rgba[wall0]",
+    `[base0][wall0]overlay=0:0:shortest=1:eof_action=pass,fade=t=in:st=0:d=0.35,fade=t=out:st=${Math.max(0.5, duration - 0.35).toFixed(3)}:d=0.35,format=yuv420p[vout]`,
+  ].join(";");
+}
+
 async function main() {
   const configPath = readArg("--config");
   const output = readArg("--output");
   const poster = readArg("--poster");
   if (!configPath || !output) throw new Error("Usage: render-motion-graphic.mjs --config config.json --output out.mp4 [--poster poster.png]");
   const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-  const duration = Math.min(12, Math.max(3, asNumber(config.durationSeconds, 6)));
+  const isCaptionWordWall = (config.rendererId || config.templateId) === "caption_word_wall";
+  const duration = isCaptionWordWall
+    ? Math.min(12, Math.max(0.5, asNumber(config.durationSeconds, 6)))
+    : Math.min(12, Math.max(3, asNumber(config.durationSeconds, 6)));
   ensureDir(output);
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "motion-graphic-render-"));
   const overlayInputs = [];
   overlayInputs.tempDir = tempDir;
   overlayInputs.duration = duration;
-  const filters = await filtersFor(config, overlayInputs);
   const backgroundImagePath = resolveUnifiedBackgroundImagePath(config);
   const backgroundVideoPath = backgroundImagePath ? "" : resolveBackgroundVideoPath(config);
   const inputArgs = backgroundImagePath
@@ -821,10 +1405,112 @@ async function main() {
     : backgroundVideoPath
       ? ["-fflags", "+genpts+discardcorrupt", "-err_detect", "ignore_err", "-stream_loop", "-1", "-i", backgroundVideoPath]
       : ["-f", "lavfi", "-i", `color=c=0x101116:s=${WIDTH}x${HEIGHT}:d=${duration}:r=${FPS}`];
-  for (const overlay of overlayInputs) {
-    inputArgs.push("-loop", "1", "-i", overlay.filePath);
+  let filterComplex;
+  let rendererMetadata = {};
+  if (isCaptionWordWall) {
+    const wordWall = await renderCaptionWordWallFrames({ config, tempDir, duration });
+    inputArgs.push("-framerate", String(FPS), "-i", wordWall.framePattern);
+    filterComplex = buildCaptionWordWallFilterComplex({ duration });
+    rendererMetadata = {
+      renderer: "caption_word_wall",
+      usesForcedAlignment: wordWall.usesForcedAlignment,
+      displayWords: wordWall.timeline.words.map((word) => word.text),
+      wordCount: wordWall.timeline.words.length,
+      lineCount: wordWall.timeline.lines.length,
+      lineVisibility: wordWall.timeline.lines
+        .map((line, lineIndex) => line.blank ? null : ({
+          lineIndex,
+          firstWordStart: Number(line.lineStart.toFixed(3)),
+          lastWordEnd: Number(line.lineEnd.toFixed(3)),
+          text: line.text,
+        }))
+        .filter(Boolean),
+      activeWordPop: {
+        maxScale: CAPTION_WORD_WALL_STYLE.activeScale,
+        maxTranslateYEm: CAPTION_WORD_WALL_STYLE.activeTranslateYEm,
+        baseFontWeight: CAPTION_WORD_WALL_ACTIVE_WORD_BASE_FONT_WEIGHT,
+        maxFontWeight: CAPTION_WORD_WALL_STYLE.activeFontWeight,
+        progressBasis: "word spoken duration",
+        keyframes: CAPTION_WORD_WALL_ACTIVE_WORD_POP_KEYFRAMES.map((frame) => ({
+          progress: frame.progress,
+          scale: frame.scale,
+          translateYEm: frame.translateYEm,
+          fontWeight: frame.fontWeight,
+          ...(frame.easingToNext ? { easingToNext: frame.easingToNext } : {}),
+        })),
+        fontWeightRenderMode: INTER_VARIABLE_FONT
+          ? "InterVariable.ttf wght axis is sampled with fontkit per frame, converted to SVG paths, then rasterized by Sharp; this avoids Sharp/Pango's discrete SVG font-weight buckets"
+          : "Fallback Sharp/Pango SVG text path; intermediate font-weight values may rasterize discretely depending on installed fonts",
+        mode: INTER_VARIABLE_FONT
+          ? "caption_word_wall keyframed onset pop with active Inter variable-font path scale, baseline lift, and continuous wght-axis interpolation"
+          : "caption_word_wall keyframed onset pop with active tspan font-size expansion, baseline lift, and font-weight increase",
+        variableFont: {
+          requestedFamily: "Inter",
+          loadedPath: INTER_FONT_FILE ? path.relative(REPO_ROOT, INTER_FONT_FILE) : null,
+          renderer: INTER_VARIABLE_FONT ? "fontkit-svg-paths" : "sharp-pango-svg-text-fallback",
+          weightAxis: INTER_VARIABLE_WEIGHT_AXIS
+            ? {
+                min: INTER_VARIABLE_WEIGHT_AXIS.min,
+                default: INTER_VARIABLE_WEIGHT_AXIS.default,
+                max: INTER_VARIABLE_WEIGHT_AXIS.max,
+              }
+            : null,
+          activeWeightValues: "continuous values from 400 to 600 to 400 using the same eased progress as scale and lift",
+        },
+      },
+      typography: {
+        regular: {
+          mirrors: "stat_reveal.title",
+          fontFamily: STAT_REVEAL_TEXT_STYLE.title.fontFamily,
+          fontWeight: STAT_REVEAL_TEXT_STYLE.title.fontWeight,
+          fontSize: STAT_REVEAL_TEXT_STYLE.title.fontSize,
+          color: STAT_REVEAL_TEXT_STYLE.title.color,
+          lineGap: STAT_REVEAL_TEXT_STYLE.title.lineGap,
+          lineHeight: Number(STAT_REVEAL_TEXT_STYLE.title.lineHeight.toFixed(6)),
+          shadowOpacity: STAT_REVEAL_TEXT_STYLE.title.shadowOpacity,
+          shadowOffsetY: STAT_REVEAL_TEXT_STYLE.title.shadowOffsetY,
+        },
+        emphasized: {
+          mirrors: "stat_reveal.value",
+          fontFamily: STAT_REVEAL_TEXT_STYLE.value.fontFamily,
+          fontWeight: STAT_REVEAL_TEXT_STYLE.value.fontWeight,
+          fontSize: STAT_REVEAL_TEXT_STYLE.value.fontSize,
+          color: STAT_REVEAL_TEXT_STYLE.value.color,
+          lineHeight: Number(STAT_REVEAL_TEXT_STYLE.value.lineHeight.toFixed(6)),
+          shadowOpacity: STAT_REVEAL_TEXT_STYLE.value.shadowOpacity,
+          shadowOffsetY: STAT_REVEAL_TEXT_STYLE.value.shadowOffsetY,
+        },
+        upcomingWordColor: CAPTION_WORD_WALL_STYLE.upcomingWordColor,
+        previousUpcomingWordColor: "#e8e5dd@0.42",
+      },
+      layout: {
+        alignment: wordWall.layout.alignment,
+        x: wordWall.layout.x,
+        spacingMode: wordWall.layout.spacingMode,
+        rows: wordWall.layout.rows
+          .filter((row) => !row.blank)
+          .map((row) => ({
+            x: row.x,
+            y: row.y,
+            width: Number(row.width.toFixed(2)),
+            fontSize: row.fontSize,
+            emphasized: Boolean(row.emphasized),
+            lineIndex: row.lineIndex,
+            lineStart: Number(row.lineStart.toFixed(3)),
+            wrapIndex: row.wrapIndex,
+            gapAfter: row.gapAfter,
+            words: row.words.map((word) => word.text),
+          })),
+      },
+      frameCount: wordWall.frameCount,
+    };
+  } else {
+    const filters = await filtersFor(config, overlayInputs);
+    for (const overlay of overlayInputs) {
+      inputArgs.push("-loop", "1", "-i", overlay.filePath);
+    }
+    filterComplex = buildFilterComplex({ config, filters, overlayInputs, duration });
   }
-  const filterComplex = buildFilterComplex({ config, filters, overlayInputs, duration });
   try {
     run("ffmpeg", [
       "-y",
@@ -846,7 +1532,7 @@ async function main() {
     ensureDir(poster);
     run("ffmpeg", ["-y", "-ss", "1", "-i", output, "-frames:v", "1", poster]);
   }
-  console.log(JSON.stringify({ output, poster, durationSeconds: duration, backgroundImagePath: backgroundImagePath || null, backgroundVideoPath: backgroundVideoPath || null }, null, 2));
+  console.log(JSON.stringify({ output, poster, durationSeconds: duration, backgroundImagePath: backgroundImagePath || null, backgroundVideoPath: backgroundVideoPath || null, ...rendererMetadata }, null, 2));
 }
 
 try {

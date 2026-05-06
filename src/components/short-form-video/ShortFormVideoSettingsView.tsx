@@ -398,7 +398,7 @@ interface XmlVisualPlanningSettings {
   revisionNotesPromptTemplate: string;
 }
 
-type MotionGraphicFieldType = "text" | "textarea" | "number" | "stringList" | "timelineSteps" | "dataSeries";
+type MotionGraphicFieldType = "text" | "textarea" | "number" | "stringList" | "timelineSteps" | "dataSeries" | "captionWordWallLines";
 
 interface MotionGraphicTemplateField {
   name: string;
@@ -4715,6 +4715,7 @@ export function ShortFormVideoSettingsView({
       "comparison_before_after",
       "timeline",
       "cause_effect",
+      "caption_word_wall",
     ]);
     if (builtInIds.has(selectedMotionTemplate.id)) return;
     const nextTemplates = motionGraphicsSettings.templates.filter(
@@ -7274,6 +7275,7 @@ export function ShortFormVideoSettingsView({
                               "comparison_before_after",
                               "timeline",
                               "cause_effect",
+                              "caption_word_wall",
                             ].includes(selectedMotionTemplate.id)}
                           >
                             Remove custom
