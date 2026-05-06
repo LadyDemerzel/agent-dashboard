@@ -1239,6 +1239,14 @@ function parseBooleanAttribute(value) {
   return value === true || ["true", "1", "yes", "emphasized", "emphasis"].includes(String(value || "").trim().toLowerCase());
 }
 
+function parseCaptionWordWallLineSize(value, attrs = {}) {
+  const raw = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (raw === "regular" || raw === "normal" || raw === "base") return "regular";
+  if (raw === "large" || raw === "big") return "large";
+  if (raw === "extra_large" || raw === "extralarge" || raw === "extra" || raw === "xl" || raw === "xlarge") return "extra_large";
+  return parseBooleanAttribute(attrs.emphasized || attrs.emphasis) ? "extra_large" : "regular";
+}
+
 function parseMotionGraphicAssets(xml) {
   const assets = new Map();
   const assetsBody = xml.match(/<assets\b[^>]*>([\s\S]*?)<\/assets>/i)?.[1] || "";
@@ -1290,9 +1298,11 @@ function parseMotionGraphicAssets(xml) {
         lines.push({ blank: true });
         continue;
       }
+      const size = parseCaptionWordWallLineSize(lineAttrs.size || lineAttrs.lineSize, lineAttrs);
       lines.push({
         text,
-        ...(parseBooleanAttribute(lineAttrs.emphasized || lineAttrs.emphasis) ? { emphasized: true } : {}),
+        size,
+        ...(size === "extra_large" && parseBooleanAttribute(lineAttrs.emphasized || lineAttrs.emphasis) ? { emphasized: true } : {}),
       });
     }
     if (lines.length > 0) args.lines = lines;
@@ -4283,6 +4293,12 @@ process.on("unhandledRejection", (reason) => {
   });
   process.exit(1);
 });
+
+if (process.env.SHORT_FORM_STAGE_WORKER_PARSE_MOTION_GRAPHICS_TEST === "1") {
+  const xml = fs.readFileSync(jobPath, "utf-8");
+  console.log(JSON.stringify([...parseMotionGraphicAssets(xml).values()], null, 2));
+  process.exit(0);
+}
 
 main().catch((error) => {
   if (activeRunContext?.job?.directConfig?.kind === "text-script") {

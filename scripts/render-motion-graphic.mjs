@@ -52,10 +52,10 @@ const STAT_REVEAL_TEXT_STYLE = {
   },
 };
 const CAPTION_WORD_WALL_ACTIVE_WORD_BASE_FONT_WEIGHT = STAT_REVEAL_TEXT_STYLE.title.fontWeight;
-const CAPTION_WORD_WALL_ACTIVE_WORD_PEAK_FONT_WEIGHT = 600;
+const CAPTION_WORD_WALL_ACTIVE_WORD_PEAK_FONT_WEIGHT = 500;
 const CAPTION_WORD_WALL_ACTIVE_WORD_POP_KEYFRAMES = [
   { progress: 0, scale: 1, translateYEm: 0, fontWeight: CAPTION_WORD_WALL_ACTIVE_WORD_BASE_FONT_WEIGHT, easingToNext: "ease-out-quart" },
-  { progress: 0.2, scale: 1.35, translateYEm: 0.08, fontWeight: CAPTION_WORD_WALL_ACTIVE_WORD_PEAK_FONT_WEIGHT, easingToNext: "ease-out-cubic" },
+  { progress: 0.2, scale: 1.2, translateYEm: 0.5, fontWeight: CAPTION_WORD_WALL_ACTIVE_WORD_PEAK_FONT_WEIGHT, easingToNext: "ease-out-cubic" },
   { progress: 1, scale: 1, translateYEm: 0, fontWeight: CAPTION_WORD_WALL_ACTIVE_WORD_BASE_FONT_WEIGHT },
 ];
 const CAPTION_WORD_WALL_ACTIVE_WORD_MAX_SCALE = Math.max(...CAPTION_WORD_WALL_ACTIVE_WORD_POP_KEYFRAMES.map((frame) => frame.scale));
@@ -66,10 +66,29 @@ const CAPTION_WORD_WALL_STYLE = {
   fallbackFontFamily: `${STAT_REVEAL_TEXT_STYLE.title.fontFamily}, Helvetica, Arial, sans-serif`,
   fontWeight: STAT_REVEAL_TEXT_STYLE.title.fontWeight,
   activeFontWeight: CAPTION_WORD_WALL_ACTIVE_WORD_MAX_FONT_WEIGHT,
-  fontSize: STAT_REVEAL_TEXT_STYLE.title.fontSize,
-  emphasizedFontSize: STAT_REVEAL_TEXT_STYLE.value.fontSize,
-  lineHeight: STAT_REVEAL_TEXT_STYLE.title.lineHeight,
-  emphasizedLineHeight: STAT_REVEAL_TEXT_STYLE.value.lineHeight,
+  lineSizes: {
+    regular: {
+      mirrors: "stat_reveal.title",
+      fontSize: STAT_REVEAL_TEXT_STYLE.title.fontSize,
+      lineHeight: STAT_REVEAL_TEXT_STYLE.title.lineHeight,
+      shadowOpacity: STAT_REVEAL_TEXT_STYLE.title.shadowOpacity,
+      shadowOffsetY: STAT_REVEAL_TEXT_STYLE.title.shadowOffsetY,
+    },
+    large: {
+      mirrors: "intermediate between stat_reveal.title and stat_reveal.value",
+      fontSize: 112,
+      lineHeight: (112 + 16) / 112,
+      shadowOpacity: 0.75,
+      shadowOffsetY: 5,
+    },
+    extra_large: {
+      mirrors: "stat_reveal.value",
+      fontSize: STAT_REVEAL_TEXT_STYLE.value.fontSize,
+      lineHeight: STAT_REVEAL_TEXT_STYLE.value.lineHeight,
+      shadowOpacity: STAT_REVEAL_TEXT_STYLE.value.shadowOpacity,
+      shadowOffsetY: STAT_REVEAL_TEXT_STYLE.value.shadowOffsetY,
+    },
+  },
   wrapGapEm: 0,
   lineGapEm: STAT_REVEAL_TEXT_STYLE.title.lineGap / STAT_REVEAL_TEXT_STYLE.title.fontSize,
   blankGapEm: 0.42,
@@ -183,6 +202,15 @@ function asData(value) {
   return [];
 }
 
+function normalizeCaptionWordWallLineSize(value, line = {}) {
+  const raw = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (raw === "regular" || raw === "normal" || raw === "base") return "regular";
+  if (raw === "large" || raw === "big") return "large";
+  if (raw === "extra_large" || raw === "extralarge" || raw === "extra" || raw === "xl" || raw === "xlarge") return "extra_large";
+  const emphasizedValue = line.emphasized ?? line.emphasis;
+  return emphasizedValue === true || String(emphasizedValue || "").trim().toLowerCase() === "true" ? "extra_large" : "regular";
+}
+
 function asCaptionWordWallLines(value, fallback = []) {
   const source = Array.isArray(value)
     ? value
@@ -194,9 +222,11 @@ function asCaptionWordWallLines(value, fallback = []) {
       if (line && typeof line === "object") {
         const text = asText(line.text ?? line.caption ?? line.words);
         const blank = line.blank === true || !text;
+        const size = normalizeCaptionWordWallLineSize(line.size ?? line.lineSize, line);
         return {
           ...(blank ? { blank: true } : { text }),
-          ...(line.emphasized === true || line.emphasis === true || String(line.emphasized || line.emphasis).toLowerCase() === "true" ? { emphasized: true } : {}),
+          ...(!blank ? { size } : {}),
+          ...(size === "extra_large" && (line.emphasized === true || line.emphasis === true || String(line.emphasized || line.emphasis).toLowerCase() === "true") ? { emphasized: true } : {}),
         };
       }
       const text = asText(line);
@@ -376,7 +406,8 @@ function resolveWordWallState(words, sampleTime) {
 function buildCaptionWordWallTimeline({ lines, alignmentWords, visualStartSeconds, durationSeconds, allowSyntheticTiming = false }) {
   const normalizedLines = asCaptionWordWallLines(lines, [
     { text: "most people miss this part" },
-    { text: "the words become the visual", emphasized: true },
+    { text: "the words become the visual", size: "large" },
+    { text: "with one extra large row", size: "extra_large" },
     { blank: true },
     { text: "and every highlight follows the voice" },
   ]);
@@ -405,7 +436,8 @@ function buildCaptionWordWallTimeline({ lines, alignmentWords, visualStartSecond
   let cursor = 0;
   const wordEntries = [];
   const resolvedLines = normalizedLines.map((line, lineIndex) => {
-    if (line.blank) return { blank: true, emphasized: false, words: [] };
+    if (line.blank) return { blank: true, size: "regular", emphasized: false, words: [] };
+    const size = normalizeCaptionWordWallLineSize(line.size, line);
     const words = splitDisplayWords(line.text);
     const resolvedWords = words.map((wordText) => {
       const normalized = normalizeWordToken(wordText);
@@ -432,7 +464,8 @@ function buildCaptionWordWallTimeline({ lines, alignmentWords, visualStartSecond
         start: Math.max(0, localStart),
         end: Math.min(durationSeconds, Math.max(localStart + 0.05, localEnd)),
         lineIndex,
-        emphasized: Boolean(line.emphasized),
+        size,
+        emphasized: size === "extra_large",
         globalIndex: wordEntries.length,
       };
       wordEntries.push(entry);
@@ -440,7 +473,8 @@ function buildCaptionWordWallTimeline({ lines, alignmentWords, visualStartSecond
     });
     return {
       text: line.text,
-      emphasized: Boolean(line.emphasized),
+      size,
+      emphasized: size === "extra_large",
       words: resolvedWords,
       lineStart: resolvedWords[0]?.start ?? 0,
       lineEnd: resolvedWords[resolvedWords.length - 1]?.end ?? 0,
@@ -459,8 +493,13 @@ function layoutCaptionWordWall(timeline) {
   const scaleCandidates = [1, 0.94, 0.88, 0.82, 0.76, 0.7, 0.64, 0.58, 0.52];
 
   for (const scale of scaleCandidates) {
-    const normalSize = Math.round(style.fontSize * scale);
-    const emphasizedSize = Math.round(style.emphasizedFontSize * scale);
+    const normalSize = Math.round(style.lineSizes.regular.fontSize * scale);
+    const scaledLineSizes = Object.fromEntries(
+      Object.entries(style.lineSizes).map(([size, lineStyle]) => [size, {
+        ...lineStyle,
+        fontSize: Math.round(lineStyle.fontSize * scale),
+      }]),
+    );
     const rows = [];
     for (let lineIndex = 0; lineIndex < timeline.lines.length; lineIndex += 1) {
       const line = timeline.lines[lineIndex];
@@ -468,8 +507,9 @@ function layoutCaptionWordWall(timeline) {
         rows.push({ blank: true, lineIndex, height: Math.round(normalSize * style.blankGapEm), words: [] });
         continue;
       }
-      const fontSize = line.emphasized ? emphasizedSize : normalSize;
-      const lineHeight = line.emphasized ? style.emphasizedLineHeight : style.lineHeight;
+      const lineSize = scaledLineSizes[line.size] || scaledLineSizes.regular;
+      const fontSize = lineSize.fontSize;
+      const lineHeight = lineSize.lineHeight;
       const spaceWidth = Math.max(10, measureCaptionWordWallText(" ", fontSize, style.fontWeight));
       let current = [];
       let currentWidth = 0;
@@ -482,7 +522,8 @@ function layoutCaptionWordWall(timeline) {
         if (current.length && nextWidth + activeReserve > maxWidth) {
           rows.push({
             fontSize,
-            emphasized: line.emphasized,
+            size: line.size,
+            emphasized: line.size === "extra_large",
             lineIndex,
             wrapIndex,
             words: current,
@@ -503,7 +544,8 @@ function layoutCaptionWordWall(timeline) {
       if (current.length) {
         rows.push({
           fontSize,
-          emphasized: line.emphasized,
+          size: line.size,
+          emphasized: line.size === "extra_large",
           lineIndex,
           wrapIndex,
           words: current,
@@ -579,6 +621,7 @@ ${captionWordWallFontCss()}
     }
   ]]></style>
   ${shadowFilter("titleTextShadow", STAT_REVEAL_TEXT_STYLE.title)}
+  ${shadowFilter("largeTextShadow", CAPTION_WORD_WALL_STYLE.lineSizes.large)}
   ${shadowFilter("valueTextShadow", STAT_REVEAL_TEXT_STYLE.value)}
 </defs>`);
 
@@ -586,7 +629,7 @@ ${captionWordWallFontCss()}
     if (row.blank || !row.words?.length) continue;
     if (state.sampleTime + 0.0001 < row.lineStart) continue;
     const baselineY = row.y + row.fontSize;
-    const filterId = row.emphasized ? "valueTextShadow" : "titleTextShadow";
+    const filterId = row.size === "extra_large" ? "valueTextShadow" : row.size === "large" ? "largeTextShadow" : "titleTextShadow";
     if (INTER_VARIABLE_FONT) {
       let cursorX = row.x;
       const wordPaths = [];
@@ -1422,6 +1465,7 @@ async function main() {
           lineIndex,
           firstWordStart: Number(line.lineStart.toFixed(3)),
           lastWordEnd: Number(line.lineEnd.toFixed(3)),
+          size: line.size,
           text: line.text,
         }))
         .filter(Boolean),
@@ -1455,30 +1499,63 @@ async function main() {
                 max: INTER_VARIABLE_WEIGHT_AXIS.max,
               }
             : null,
-          activeWeightValues: "continuous values from 400 to 600 to 400 using the same eased progress as scale and lift",
+          activeWeightValues: `continuous values from ${CAPTION_WORD_WALL_ACTIVE_WORD_BASE_FONT_WEIGHT} to ${CAPTION_WORD_WALL_ACTIVE_WORD_PEAK_FONT_WEIGHT} to ${CAPTION_WORD_WALL_ACTIVE_WORD_BASE_FONT_WEIGHT} using the same eased progress as scale and lift`,
         },
       },
       typography: {
+        lineSizes: Object.fromEntries(
+          Object.entries(CAPTION_WORD_WALL_STYLE.lineSizes).map(([size, lineStyle]) => [size, {
+            mirrors: lineStyle.mirrors,
+            fontFamily: STAT_REVEAL_TEXT_STYLE.title.fontFamily,
+            fontWeight: STAT_REVEAL_TEXT_STYLE.title.fontWeight,
+            fontSize: lineStyle.fontSize,
+            color: STAT_REVEAL_TEXT_STYLE.title.color,
+            lineHeight: Number(lineStyle.lineHeight.toFixed(6)),
+            shadowOpacity: lineStyle.shadowOpacity,
+            shadowOffsetY: lineStyle.shadowOffsetY,
+          }]),
+        ),
         regular: {
           mirrors: "stat_reveal.title",
           fontFamily: STAT_REVEAL_TEXT_STYLE.title.fontFamily,
           fontWeight: STAT_REVEAL_TEXT_STYLE.title.fontWeight,
-          fontSize: STAT_REVEAL_TEXT_STYLE.title.fontSize,
+          fontSize: CAPTION_WORD_WALL_STYLE.lineSizes.regular.fontSize,
           color: STAT_REVEAL_TEXT_STYLE.title.color,
           lineGap: STAT_REVEAL_TEXT_STYLE.title.lineGap,
-          lineHeight: Number(STAT_REVEAL_TEXT_STYLE.title.lineHeight.toFixed(6)),
-          shadowOpacity: STAT_REVEAL_TEXT_STYLE.title.shadowOpacity,
-          shadowOffsetY: STAT_REVEAL_TEXT_STYLE.title.shadowOffsetY,
+          lineHeight: Number(CAPTION_WORD_WALL_STYLE.lineSizes.regular.lineHeight.toFixed(6)),
+          shadowOpacity: CAPTION_WORD_WALL_STYLE.lineSizes.regular.shadowOpacity,
+          shadowOffsetY: CAPTION_WORD_WALL_STYLE.lineSizes.regular.shadowOffsetY,
         },
-        emphasized: {
+        large: {
+          mirrors: CAPTION_WORD_WALL_STYLE.lineSizes.large.mirrors,
+          fontFamily: STAT_REVEAL_TEXT_STYLE.title.fontFamily,
+          fontWeight: STAT_REVEAL_TEXT_STYLE.title.fontWeight,
+          fontSize: CAPTION_WORD_WALL_STYLE.lineSizes.large.fontSize,
+          color: STAT_REVEAL_TEXT_STYLE.title.color,
+          lineHeight: Number(CAPTION_WORD_WALL_STYLE.lineSizes.large.lineHeight.toFixed(6)),
+          shadowOpacity: CAPTION_WORD_WALL_STYLE.lineSizes.large.shadowOpacity,
+          shadowOffsetY: CAPTION_WORD_WALL_STYLE.lineSizes.large.shadowOffsetY,
+        },
+        extra_large: {
           mirrors: "stat_reveal.value",
           fontFamily: STAT_REVEAL_TEXT_STYLE.value.fontFamily,
           fontWeight: STAT_REVEAL_TEXT_STYLE.value.fontWeight,
-          fontSize: STAT_REVEAL_TEXT_STYLE.value.fontSize,
+          fontSize: CAPTION_WORD_WALL_STYLE.lineSizes.extra_large.fontSize,
           color: STAT_REVEAL_TEXT_STYLE.value.color,
-          lineHeight: Number(STAT_REVEAL_TEXT_STYLE.value.lineHeight.toFixed(6)),
-          shadowOpacity: STAT_REVEAL_TEXT_STYLE.value.shadowOpacity,
-          shadowOffsetY: STAT_REVEAL_TEXT_STYLE.value.shadowOffsetY,
+          lineHeight: Number(CAPTION_WORD_WALL_STYLE.lineSizes.extra_large.lineHeight.toFixed(6)),
+          shadowOpacity: CAPTION_WORD_WALL_STYLE.lineSizes.extra_large.shadowOpacity,
+          shadowOffsetY: CAPTION_WORD_WALL_STYLE.lineSizes.extra_large.shadowOffsetY,
+        },
+        emphasized: {
+          aliasFor: "extra_large",
+          mirrors: "stat_reveal.value",
+          fontFamily: STAT_REVEAL_TEXT_STYLE.value.fontFamily,
+          fontWeight: STAT_REVEAL_TEXT_STYLE.value.fontWeight,
+          fontSize: CAPTION_WORD_WALL_STYLE.lineSizes.extra_large.fontSize,
+          color: STAT_REVEAL_TEXT_STYLE.value.color,
+          lineHeight: Number(CAPTION_WORD_WALL_STYLE.lineSizes.extra_large.lineHeight.toFixed(6)),
+          shadowOpacity: CAPTION_WORD_WALL_STYLE.lineSizes.extra_large.shadowOpacity,
+          shadowOffsetY: CAPTION_WORD_WALL_STYLE.lineSizes.extra_large.shadowOffsetY,
         },
         upcomingWordColor: CAPTION_WORD_WALL_STYLE.upcomingWordColor,
         previousUpcomingWordColor: "#e8e5dd@0.42",
@@ -1494,6 +1571,7 @@ async function main() {
             y: row.y,
             width: Number(row.width.toFixed(2)),
             fontSize: row.fontSize,
+            size: row.size,
             emphasized: Boolean(row.emphasized),
             lineIndex: row.lineIndex,
             lineStart: Number(row.lineStart.toFixed(3)),

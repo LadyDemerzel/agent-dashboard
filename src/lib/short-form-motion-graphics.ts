@@ -20,7 +20,7 @@ export interface MotionGraphicTemplateField {
   type: MotionGraphicFieldType;
   required?: boolean;
   description?: string;
-  defaultValue?: string | number | string[] | Array<{ label: string; text: string }> | Array<{ label: string; value: number | string; displayValue?: string }> | Array<{ text?: string; emphasized?: boolean; blank?: boolean }>;
+  defaultValue?: string | number | string[] | Array<{ label: string; text: string }> | Array<{ label: string; value: number | string; displayValue?: string }> | Array<{ text?: string; size?: "regular" | "large" | "extra_large"; emphasized?: boolean; blank?: boolean }>;
 }
 
 export interface MotionGraphicTemplateConfig {
@@ -140,7 +140,8 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     defaultArgs: {
       lines: [
         { text: "most people miss this part" },
-        { text: "the words become the visual", emphasized: true },
+        { text: "the words become the visual", size: "large" },
+        { text: "with one extra large row", size: "extra_large" },
         { blank: true },
         { text: "and every highlight follows the voice" },
       ],
@@ -151,10 +152,11 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         label: "Caption lines",
         type: "captionWordWallLines",
         required: true,
-        description: "Ordered caption wall lines. Use blank entries for intentional empty spacer lines. Set emphasized=true only when that whole line should render much larger.",
+        description: "Ordered caption wall lines. Use blank entries for intentional empty spacer lines. Set size=\"regular\", size=\"large\", or size=\"extra_large\" per whole line.",
         defaultValue: [
           { text: "most people miss this part" },
-          { text: "the words become the visual", emphasized: true },
+          { text: "the words become the visual", size: "large" },
+          { text: "with one extra large row", size: "extra_large" },
           { blank: true },
           { text: "and every highlight follows the voice" },
         ],
@@ -200,16 +202,25 @@ function normalizeTimelineSteps(value: unknown) {
     : [];
 }
 
+function normalizeCaptionWordWallLineSize(value: unknown, candidate: { emphasized?: unknown; emphasis?: unknown } = {}) {
+  const raw = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (raw === "regular" || raw === "normal" || raw === "base") return "regular" as const;
+  if (raw === "large" || raw === "big") return "large" as const;
+  if (raw === "extra_large" || raw === "extralarge" || raw === "extra" || raw === "xl" || raw === "xlarge") return "extra_large" as const;
+  return candidate.emphasized === true || candidate.emphasis === true || String(candidate.emphasized || candidate.emphasis).toLowerCase() === "true" ? "extra_large" as const : "regular" as const;
+}
+
 function normalizeCaptionWordWallLines(value: unknown) {
   if (!Array.isArray(value)) return [];
   return value
     .map((line) => {
       if (line && typeof line === "object" && !Array.isArray(line)) {
-        const candidate = line as { text?: unknown; caption?: unknown; words?: unknown; emphasized?: unknown; emphasis?: unknown; blank?: unknown };
+        const candidate = line as { text?: unknown; caption?: unknown; words?: unknown; size?: unknown; lineSize?: unknown; emphasized?: unknown; emphasis?: unknown; blank?: unknown };
         const blank = candidate.blank === true || String(candidate.text ?? candidate.caption ?? candidate.words ?? "").trim() === "";
+        const size = normalizeCaptionWordWallLineSize(candidate.size ?? candidate.lineSize, candidate);
         return {
           ...(blank ? { blank: true } : { text: cleanString(candidate.text ?? candidate.caption ?? candidate.words, "") }),
-          ...(candidate.emphasized === true || candidate.emphasis === true || String(candidate.emphasized || candidate.emphasis).toLowerCase() === "true" ? { emphasized: true } : {}),
+          ...(!blank ? { size } : {}),
         };
       }
       const text = cleanString(line, "");
@@ -300,7 +311,7 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
       return selectedFields.map((field) => ({
         ...field,
         type: "captionWordWallLines" as const,
-        description: field.description || "Ordered line objects: { text, emphasized? } or { blank: true }. Emphasis is whole-line only.",
+        description: "Ordered line objects: { text, size?: \"regular\" | \"large\" | \"extra_large\" } or { blank: true }. Size is whole-line only; do not size individual inline words. Legacy emphasized=true maps to size=\"extra_large\".",
         defaultValue: normalizeCaptionWordWallLines(field.defaultValue).length > 0
           ? normalizeCaptionWordWallLines(field.defaultValue)
           : field.defaultValue,
@@ -396,7 +407,7 @@ export function renderMotionGraphicTemplatePromptInjection(settings = getShortFo
     "- For dataSeries fields, use repeated <item label=\"...\" value=\"...\" displayValue=\"...\" /> inside the motionGraphic.",
     "- For stringList fields, use repeated <step>...</step> inside the motionGraphic.",
     "- For timelineSteps fields, use repeated <step label=\"custom left label\">step text</step>. Omit label only when you want the renderer to auto-label steps as 01, 02, 03.",
-    "- For captionWordWallLines fields, use ordered <line>spoken words for this row</line>, <line emphasized=\"true\">larger emphasized row</line>, and <blankLine /> entries inside the motionGraphic. Emphasis is whole-line only; do not emphasize individual inline words.",
+    "- For captionWordWallLines fields, use ordered <line size=\"regular\">spoken words for this row</line>, <line size=\"large\">intermediate emphasis row</line>, <line size=\"extra_large\">largest emphasis row</line>, and <blankLine /> entries inside the motionGraphic. Size is whole-line only; do not size individual inline words. Legacy <line emphasized=\"true\"> still maps to size=\"extra_large\".",
     "- For caption_word_wall specifically, line text must be exact spoken narration words in order from that visual's time range. The renderer uses forced-alignment word timestamps directly and does not use the deterministic caption JSON max-word chunks.",
     "- Reference it from the timeline as <visual visualType=\"motion_graphic\" motionGraphicId=\"...\" start=\"...\" end=\"...\" label=\"...\" />.",
     "- Motion graphics are normal visuals; they must not include captions/subtitles/transcript text unless a configured field explicitly represents ordinary on-slide text. The caption_word_wall template is the only full-screen caption replacement and should not be paired with ordinary bottom captions.",
