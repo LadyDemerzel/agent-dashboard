@@ -1260,9 +1260,11 @@ function parseMotionGraphicAssets(xml) {
     }
     if (data.length > 0) args.data = data;
     const steps = [];
-    for (const stepMatch of body.matchAll(/<step\b[^>]*>([\s\S]*?)<\/step>/gi)) {
-      const step = decodeXmlText(collapseWhitespace(stepMatch[1] || ""));
-      if (step) steps.push(step);
+    for (const stepMatch of body.matchAll(/<step\b([^>]*)>([\s\S]*?)<\/step>/gi)) {
+      const stepAttrs = parseXmlAttributes(stepMatch[1] || "");
+      const text = decodeXmlText(collapseWhitespace(stepMatch[2] || ""));
+      const label = decodeXmlText(collapseWhitespace(stepAttrs.label || stepAttrs.leftLabel || stepAttrs.marker));
+      if (text) steps.push(label ? { label, text } : text);
     }
     if (steps.length > 0) args.steps = steps;
     assets.set(id, {

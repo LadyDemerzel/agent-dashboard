@@ -11,12 +11,15 @@ import {
 export const dynamic = "force-dynamic";
 
 const PREVIEW_DIR = path.join(SHORT_FORM_VIDEOS_DIR, "_motion-graphic-previews");
-const PROCESS_FLOW_BACKGROUND_IMAGE_PATH = path.join(
+const UNIFIED_MOTION_GRAPHICS_BACKGROUND_IMAGE_PATH = path.join(
   SHORT_FORM_VIDEOS_DIR,
   "_motion-graphic-assets",
   "process-flow-dark-pastel-watercolor-bg.png",
 );
 const RENDER_SCRIPT_PATH = path.join(process.cwd(), "scripts", "render-motion-graphic.mjs");
+const LEGACY_RENDERER_FALLBACKS: Record<string, string> = {
+  process_flow: "timeline",
+};
 
 interface PreviewRequestBody {
   template?: Partial<MotionGraphicTemplateConfig>;
@@ -39,21 +42,22 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function resolvePreviewBackgroundImage(_rendererId: string) {
-  if (!fs.existsSync(PROCESS_FLOW_BACKGROUND_IMAGE_PATH)) return null;
+  if (!fs.existsSync(UNIFIED_MOTION_GRAPHICS_BACKGROUND_IMAGE_PATH)) return null;
 
-  const stat = fs.statSync(PROCESS_FLOW_BACKGROUND_IMAGE_PATH);
+  const stat = fs.statSync(UNIFIED_MOTION_GRAPHICS_BACKGROUND_IMAGE_PATH);
   return {
     backgroundImageName: "Dark pastel watercolor unified motion-graphics background",
-    backgroundImagePath: PROCESS_FLOW_BACKGROUND_IMAGE_PATH,
+    backgroundImagePath: UNIFIED_MOTION_GRAPHICS_BACKGROUND_IMAGE_PATH,
     backgroundImageMtimeMs: Math.round(stat.mtimeMs),
   };
 }
 
 function normalizeTemplate(value: unknown) {
   const template = asRecord(value);
-  const rendererId = typeof template.rendererId === "string" ? template.rendererId : "stat_reveal";
+  const rawRendererId = typeof template.rendererId === "string" ? template.rendererId : "stat_reveal";
+  const rendererId = LEGACY_RENDERER_FALLBACKS[rawRendererId] || rawRendererId;
   if (!(SUPPORTED_MOTION_GRAPHIC_RENDERERS as readonly string[]).includes(rendererId)) {
-    throw new Error(`Unsupported motion graphics renderer: ${rendererId}`);
+    throw new Error(`Unsupported motion graphics renderer: ${rawRendererId}`);
   }
 
   const durationNumber = Number(template.durationSeconds);

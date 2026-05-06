@@ -70,6 +70,34 @@ function asList(value, fallback = []) {
   return fallback;
 }
 
+function autoTimelineLabel(index) {
+  return String(index + 1).padStart(2, "0");
+}
+
+function asTimelineSteps(value, fallback = []) {
+  const normalizeItem = (item, index) => {
+    if (item && typeof item === "object") {
+      const textValue = item.text ?? item.copy ?? item.title ?? item.step ?? item.value;
+      const text = asText(textValue);
+      if (!text) return null;
+      return {
+        label: asText(item.label ?? item.leftLabel ?? item.marker, autoTimelineLabel(index)).slice(0, 60),
+        text,
+      };
+    }
+    const text = asText(item);
+    return text ? { label: autoTimelineLabel(index), text } : null;
+  };
+
+  const source = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[|\n,]+/).map((item) => item.trim()).filter(Boolean)
+      : fallback;
+  const steps = source.map(normalizeItem).filter(Boolean);
+  return steps.length > 0 ? steps : fallback.map(normalizeItem).filter(Boolean);
+}
+
 function asData(value) {
   if (Array.isArray(value)) {
     return value.map((item, index) => {
@@ -140,10 +168,11 @@ function activeWindowExpr(start, end, fade = 0.32) {
   return `min(${smoothStepExpr(start, fade)}\\,1-(${smoothStepExpr(end, fade)}))`;
 }
 
-function processFlowAlphaExpr(revealStart, activeStart, activeEnd, dim = 0.46, fade = 0.34) {
+function processFlowAlphaExpr(revealStart, activeStart, activeEnd, finalBrightAt, dim = 0.46, fade = 0.34) {
   const reveal = smoothStepExpr(revealStart, fade);
   const active = activeWindowExpr(activeStart, activeEnd, 0.32);
-  return `(${reveal})*(${dim.toFixed(2)}+${(1 - dim).toFixed(2)}*(${active}))`;
+  const finalBright = `gte(t\\,${finalBrightAt.toFixed(3)})`;
+  return `(${reveal})*(${dim.toFixed(2)}+${(1 - dim).toFixed(2)}*max(${active}\\,${finalBright}))`;
 }
 
 function revealEnable(start) {
@@ -154,8 +183,47 @@ function slideXExpr(x, start, distance = 66, duration = 0.5) {
   return `'${x}-${distance}*(1-${smoothStepExpr(start, duration)})'`;
 }
 
-function animatedText(value, x, y, size, color, start, distance = 48, extra = "", font = "Helvetica", duration = 0.5) {
-  return text(value, slideXExpr(x, start, distance, duration), y, size, color, `${extra}:alpha='${smoothStepExpr(start, 0.34)}'${revealEnable(start)}`, font);
+function slideYDownExpr(y, start, distance = 48, duration = 0.5) {
+  return `'${y}-${distance}*(1-${smoothStepExpr(start, duration)})'`;
+}
+
+function centerXExpr(centerX) {
+  return `'${Math.round(centerX)}-text_w/2'`;
+}
+
+function rightXExpr(rightX) {
+  return `'${Math.round(rightX)}-text_w'`;
+}
+
+function animatedText(value, x, y, size, color, start, distance = 48, extra = "", font = "Helvetica", duration = 0.5, alphaDuration = 0.34) {
+  return text(value, slideXExpr(x, start, distance, duration), y, size, color, `${extra}:alpha='${smoothStepExpr(start, alphaDuration)}'${revealEnable(start)}`, font);
+}
+
+function animatedTextSlideDown(value, x, y, size, color, start, distance = 48, extra = "", font = "Helvetica", duration = 0.5, alphaDuration = 0.34) {
+  return text(value, x, slideYDownExpr(y, start, distance, duration), size, color, `${extra}:alpha='${smoothStepExpr(start, alphaDuration)}'${revealEnable(start)}`, font);
+}
+
+function animatedRightAlignedTextSlideDown(value, rightX, y, size, color, start, distance = 48, extra = "", font = "Helvetica", duration = 0.5, alphaDuration = 0.34) {
+  return text(value, rightXExpr(rightX), slideYDownExpr(y, start, distance, duration), size, color, `${extra}:alpha='${smoothStepExpr(start, alphaDuration)}'${revealEnable(start)}`, font);
+}
+
+function animatedCenteredText(value, centerX, y, size, color, start, extra = "", font = "Helvetica", duration = 0.38) {
+  return text(value, centerXExpr(centerX), y, size, color, `${extra}:alpha='${smoothStepExpr(start, duration)}'${revealEnable(start)}`, font);
+}
+
+function animatedRisingCenteredText(value, centerX, finalY, travelDistance, size, color, start, extra = "", font = "Helvetica", duration = 0.4) {
+  const steps = Math.ceil(duration * FPS);
+  const filters = [];
+  for (let frameIndex = 0; frameIndex < steps; frameIndex += 1) {
+    const segmentStart = start + frameIndex / FPS;
+    const segmentEnd = start + (frameIndex + 1) / FPS;
+    const progress = Math.min(1, Math.max(0, (frameIndex + 0.5) / steps));
+    const eased = progress * progress * (3 - 2 * progress);
+    const currentY = Math.round(finalY + travelDistance * (1 - eased));
+    filters.push(text(value, centerXExpr(centerX), currentY, size, color, `${extra}:alpha=${eased.toFixed(4)}:enable='between(t\\,${segmentStart.toFixed(3)}\\,${segmentEnd.toFixed(3)})'`, font));
+  }
+  filters.push(text(value, centerXExpr(centerX), finalY, size, color, `${extra}:alpha=1:enable='gte(t\\,${(start + duration).toFixed(3)})'`, font));
+  return filters;
 }
 
 function unifiedFont() {
@@ -166,36 +234,65 @@ function textShadow(strength = 0.72, y = 4) {
   return `:shadowcolor=0x000000@${strength.toFixed(2)}:shadowx=0:shadowy=${y}`;
 }
 
-function animatedUnifiedText(value, x, y, size, color, start, distance = 46, extra = "", duration = 0.52) {
-  return animatedText(value, x, y, size, color, start, distance, `${textShadow()}${extra}`, unifiedFont(), duration);
+function animatedUnifiedText(value, x, y, size, color, start, distance = 46, extra = "", duration = 0.52, alphaDuration = 0.34) {
+  return animatedText(value, x, y, size, color, start, distance, `${textShadow()}${extra}`, unifiedFont(), duration, alphaDuration);
 }
 
-function animatedUnifiedTextLines(value, x, y, size, color, start, max = 24, lineGap = 18, distance = 46, extra = "") {
+function animatedUnifiedTextSlideDown(value, x, y, size, color, start, distance = 46, extra = "", duration = 0.52, alphaDuration = 0.34) {
+  return animatedTextSlideDown(value, x, y, size, color, start, distance, `${textShadow()}${extra}`, unifiedFont(), duration, alphaDuration);
+}
+
+function animatedUnifiedRightAlignedTextSlideDown(value, rightX, y, size, color, start, distance = 46, extra = "", duration = 0.52, alphaDuration = 0.34) {
+  return animatedRightAlignedTextSlideDown(value, rightX, y, size, color, start, distance, `${textShadow()}${extra}`, unifiedFont(), duration, alphaDuration);
+}
+
+function animatedUnifiedCenteredText(value, centerX, y, size, color, start, extra = "", duration = 0.38) {
+  return animatedCenteredText(value, centerX, y, size, color, start, `${textShadow()}${extra}`, unifiedFont(), duration);
+}
+
+function animatedUnifiedRisingCenteredText(value, centerX, finalY, travelDistance, size, color, start, extra = "", duration = 0.4) {
+  return animatedRisingCenteredText(value, centerX, finalY, travelDistance, size, color, start, `${textShadow()}${extra}`, unifiedFont(), duration);
+}
+
+function animatedUnifiedTextLines(value, x, y, size, color, start, max = 24, lineGap = 18, distance = 46, extra = "", duration = 0.54, lineStagger = 0.045, alphaDuration = 0.34) {
   return wrap(value, max)
     .split("\n")
     .filter(Boolean)
-    .map((line, lineIndex) => animatedUnifiedText(line, x, y + lineIndex * (size + lineGap), size, color, start + lineIndex * 0.045, distance, extra, 0.54));
+    .map((line, lineIndex) => animatedUnifiedText(line, x, y + lineIndex * (size + lineGap), size, color, start + lineIndex * lineStagger, distance, extra, duration, alphaDuration));
 }
 
-function clipDuration(overlayInputs, fallback = 6) {
-  return typeof overlayInputs?.duration === "number" && Number.isFinite(overlayInputs.duration)
-    ? overlayInputs.duration
-    : fallback;
+function animatedUnifiedTextLinesSlideDown(value, x, y, size, color, start, max = 24, lineGap = 18, distance = 46, extra = "", duration = 0.54, lineStagger = 0, alphaDuration = 0.34) {
+  return wrap(value, max)
+    .split("\n")
+    .filter(Boolean)
+    .map((line, lineIndex) => animatedUnifiedTextSlideDown(line, x, y + lineIndex * (size + lineGap), size, color, start + lineIndex * lineStagger, distance, extra, duration, alphaDuration));
 }
 
-function sequenceTiming(index, count, duration, options = {}) {
-  const startPad = options.startPad ?? 0.36;
-  const endPad = options.endPad ?? 0.74;
-  const usable = Math.max(1.6, duration - startPad - endPad);
-  const segment = usable / Math.max(1, count);
-  const segmentStart = startPad + index * segment;
-  const revealAt = segmentStart + Math.min(0.34, Math.max(0.12, segment * 0.17));
-  const activeEnd = Math.min(duration - 0.36, startPad + (index + 1) * segment - 0.06);
-  return { segment, segmentStart, revealAt, activeEnd };
+function animatedUnifiedCenteredTextLines(value, centerX, y, size, color, start, max = 24, lineGap = 18, extra = "", duration = 0.42, lineStagger = 0.045) {
+  return wrap(value, max)
+    .split("\n")
+    .filter(Boolean)
+    .map((line, lineIndex) => animatedUnifiedCenteredText(line, centerX, y + lineIndex * (size + lineGap), size, color, start + lineIndex * lineStagger, extra, duration));
+}
+
+function fixedRevealTiming(index, options = {}) {
+  const firstRevealAt = options.firstRevealAt ?? 0.36;
+  const revealDuration = options.revealDuration ?? 0.38;
+  const gapAfterReveal = options.gapAfterReveal ?? 0.58;
+  const revealAt = firstRevealAt + index * (revealDuration + gapAfterReveal);
+  return {
+    revealAt,
+    revealDuration,
+    finishAt: revealAt + revealDuration,
+  };
 }
 
 function animatedBox(x, y, w, h, color, start) {
   return box(x, y, w, h, color, revealEnable(start));
+}
+
+function animatedBoxSlideDown(x, y, w, h, color, start, distance = 34, duration = 0.36) {
+  return box(x, slideYDownExpr(y, start, distance, duration), w, h, color, `:enable='gte(t\\,${start.toFixed(3)})'`);
 }
 
 function animatedVerticalRule(x, y, h, color, start, width = 4) {
@@ -203,23 +300,94 @@ function animatedVerticalRule(x, y, h, color, start, width = 4) {
   return box(x, y, width, `'${h}*${p}'`, color, revealEnable(start));
 }
 
-function animatedBar(x, baseY, w, h, color, start) {
-  const p = smoothStepExpr(start, 0.58);
-  return box(x, `'${baseY}-${h}*${p}'`, w, `'max(2\\,${h}*${p})'`, color, revealEnable(start));
+function animatedVerticalRuleForDuration(x, y, h, color, start, duration, width = 4) {
+  const steps = Math.max(1, Math.ceil(duration * FPS));
+  const filters = [];
+  for (let frameIndex = 0; frameIndex < steps; frameIndex += 1) {
+    const segmentStart = start + frameIndex / FPS;
+    const segmentEnd = Math.min(start + (frameIndex + 1) / FPS, start + duration);
+    const progress = Math.min(1, Math.max(0, (frameIndex + 0.5) / steps));
+    const eased = progress * progress * (3 - 2 * progress);
+    const currentH = Math.max(1, Math.min(Math.floor(h * eased), Math.max(1, Math.floor(h) - 1)));
+    filters.push(box(x, y, width, currentH, color, `:enable='between(t\\,${segmentStart.toFixed(3)}\\,${segmentEnd.toFixed(3)})'`));
+  }
+  filters.push(box(x, y, width, h, color, `:enable='gte(t\\,${(start + duration).toFixed(3)})'`));
+  return filters;
 }
 
-function processFlowText(value, x, y, size, color, start, activeStart, activeEnd, distance = 48, extra = "", font = "Helvetica", duration = 0.5, dim = 0.46) {
-  return text(value, slideXExpr(x, start, distance, duration), y, size, color, `${extra}:alpha='${processFlowAlphaExpr(start, activeStart, activeEnd, dim)}'${revealEnable(start)}`, font);
+function animatedHorizontalRule(x, y, w, h, color, start, duration = 0.58) {
+  const steps = Math.ceil(duration * FPS);
+  const filters = [];
+  for (let frameIndex = 0; frameIndex < steps; frameIndex += 1) {
+    const segmentStart = start + frameIndex / FPS;
+    const segmentEnd = start + (frameIndex + 1) / FPS;
+    const progress = Math.min(1, Math.max(0, (frameIndex + 0.5) / steps));
+    const eased = progress * progress * (3 - 2 * progress);
+    const currentW = Math.max(2, Math.round(w * eased));
+    filters.push(box(x, y, currentW, h, color, `:enable='between(t\\,${segmentStart.toFixed(3)}\\,${segmentEnd.toFixed(3)})'`));
+  }
+  filters.push(box(x, y, w, h, color, `:enable='gte(t\\,${(start + duration).toFixed(3)})'`));
+  return filters;
 }
 
-function processFlowTextLines(value, x, y, size, color, start, activeStart, activeEnd, distance = 48, extra = "", font = "Helvetica", max = 24) {
+function animatedCenterOutHorizontalRule(x, y, w, h, color, start, duration = 0.36) {
+  const steps = Math.ceil(duration * FPS);
+  const filters = [];
+  const centerX = x + w / 2;
+  for (let frameIndex = 0; frameIndex < steps; frameIndex += 1) {
+    const segmentStart = start + frameIndex / FPS;
+    const segmentEnd = start + (frameIndex + 1) / FPS;
+    const progress = Math.min(1, Math.max(0, (frameIndex + 0.5) / steps));
+    const eased = progress * progress * (3 - 2 * progress);
+    const currentW = Math.max(2, Math.round(w * eased));
+    const currentX = Math.round(centerX - currentW / 2);
+    filters.push(box(currentX, y, currentW, h, color, `:enable='between(t\\,${segmentStart.toFixed(3)}\\,${segmentEnd.toFixed(3)})'`));
+  }
+  filters.push(box(x, y, w, h, color, `:enable='gte(t\\,${(start + duration).toFixed(3)})'`));
+  return filters;
+}
+
+function animatedBar(x, baseY, w, h, color, start, duration = 0.58) {
+  const steps = Math.ceil(duration * FPS);
+  const filters = [];
+  for (let frameIndex = 0; frameIndex < steps; frameIndex += 1) {
+    const segmentStart = start + frameIndex / FPS;
+    const segmentEnd = start + (frameIndex + 1) / FPS;
+    const progress = Math.min(1, Math.max(0, (frameIndex + 0.5) / steps));
+    const eased = progress * progress * (3 - 2 * progress);
+    const currentH = Math.max(2, Math.round(h * eased));
+    filters.push(box(x, baseY - currentH, w, currentH, color, `:enable='between(t\\,${segmentStart.toFixed(3)}\\,${segmentEnd.toFixed(3)})'`));
+  }
+  filters.push(box(x, baseY - h, w, h, color, `:enable='gte(t\\,${(start + duration).toFixed(3)})'`));
+  return filters;
+}
+
+function processFlowText(value, x, y, size, color, start, activeStart, activeEnd, finalBrightAt, distance = 48, extra = "", font = "Helvetica", duration = 0.5, dim = 0.46) {
+  return text(value, x, slideYDownExpr(y, start, distance, duration), size, color, `${extra}:alpha='${processFlowAlphaExpr(start, activeStart, activeEnd, finalBrightAt, dim, duration)}'${revealEnable(start)}`, font);
+}
+
+function processFlowTextLines(value, x, y, size, color, start, activeStart, activeEnd, finalBrightAt, distance = 48, extra = "", font = "Helvetica", max = 24, duration = 0.52, lineStagger = 0) {
   return wrap(value, max)
     .split("\n")
     .filter(Boolean)
-    .map((line, lineIndex) => processFlowText(line, x, y + lineIndex * (size + 18), size, color, start + lineIndex * 0.04, activeStart, activeEnd, distance, extra, font, 0.52));
+    .map((line, lineIndex) => processFlowText(line, x, y + lineIndex * (size + 18), size, color, start + lineIndex * lineStagger, activeStart, activeEnd, finalBrightAt, distance, extra, font, duration));
 }
 
-async function createDownArrowOverlay({ tempDir, centerX, topY, height, color, start, index, fadeIn = 0.26, fadeOut = 0.32, exitStart }) {
+async function createDownArrowOverlay({
+  tempDir,
+  centerX,
+  topY,
+  height,
+  color,
+  start,
+  index,
+  fadeIn = 0.26,
+  fadeOut = 0.32,
+  exitStart,
+  enterYOffset = 16,
+  exitYOffset = 9,
+  growDownDuration,
+}) {
   const imageWidth = 64;
   const imageHeight = Math.max(52, Math.round(height));
   const x = Math.round(centerX - imageWidth / 2);
@@ -240,7 +408,7 @@ async function createDownArrowOverlay({ tempDir, centerX, topY, height, color, s
     .resize(imageWidth, imageHeight, { kernel: "lanczos3" })
     .png()
     .toFile(filePath);
-  return { filePath, x, y, start, enterYOffset: 16, exitYOffset: 9, fadeIn, fadeOut, exitStart };
+  return { filePath, x, y, height: imageHeight, start, enterYOffset, exitYOffset, fadeIn, fadeOut, exitStart, growDownDuration };
 }
 
 function wrap(value, max = 24) {
@@ -260,28 +428,56 @@ function wrap(value, max = 24) {
   return lines.slice(0, 4).join("\n");
 }
 
+function compactTimelineLabelLine(line, maxChars) {
+  if (line.length <= maxChars) return line;
+  if (maxChars <= 3) return line.slice(0, maxChars);
+  return `${line.slice(0, maxChars - 3)}...`;
+}
+
+function timelineLabelLayout(value) {
+  const maxCharsPerLine = 8;
+  const maxLines = 2;
+  let lines = wrap(value, maxCharsPerLine).split("\n").filter(Boolean);
+  if (lines.length === 0) lines = ["01"];
+  const hadOverflow = lines.length > maxLines || lines.some((line) => line.length > maxCharsPerLine + 2);
+  lines = lines.slice(0, maxLines).map((line) => compactTimelineLabelLine(line, maxCharsPerLine));
+  if (hadOverflow && lines.length > 0 && !lines[lines.length - 1].endsWith("...")) {
+    lines[lines.length - 1] = compactTimelineLabelLine(`${lines[lines.length - 1]}...`, maxCharsPerLine);
+  }
+  const longestLineLength = Math.max(...lines.map((line) => line.length));
+  const fontSize = lines.length > 1 ? 26 : longestLineLength >= 7 ? 30 : longestLineLength >= 6 ? 34 : 38;
+  const lineGap = lines.length > 1 ? 6 : 0;
+  const blockHeight = lines.length * fontSize + Math.max(0, lines.length - 1) * lineGap;
+  return { lines, fontSize, lineGap, blockHeight };
+}
+
 function baseFilters(stylePreset) {
   void stylePreset;
   return [];
 }
 
 function statReveal(args, stylePreset, overlayInputs) {
-  const duration = clipDuration(overlayInputs, 6);
-  const noteStart = Math.min(duration - 1.28, 2.24);
+  void overlayInputs;
+  const titleStart = 1.12;
+  const titleRevealDuration = 0.54;
   return [
     ...baseFilters(stylePreset),
-    animatedUnifiedText(args.eyebrow || "Key finding", 126, 296, 38, UNIFIED_PALETTE.dimGrey, 0.38, 34),
     animatedUnifiedText(args.value || "73%", 124, 564, 186, UNIFIED_PALETTE.offWhite, 0.72, 58, textShadow(0.78, 6), 0.66),
-    ...animatedUnifiedTextLines(args.title || "people notice the change", 132, 804, 64, UNIFIED_PALETTE.offWhite, 1.12, 20, 20, 52),
-    animatedBox(132, 1064, 616, 4, UNIFIED_PALETTE.faintGrey, 1.72),
-    ...animatedUnifiedTextLines(args.note || "Short source or context line.", 132, 1138, 39, UNIFIED_PALETTE.softGrey, noteStart, 31, 16, 38),
+    ...animatedUnifiedTextLines(args.title || "people notice the change", 132, 804, 64, UNIFIED_PALETTE.offWhite, titleStart, 20, 20, 52),
+    ...animatedHorizontalRule(132, 1064, 616, 4, UNIFIED_PALETTE.faintGrey, titleStart, titleRevealDuration),
   ];
 }
 
 function barChart(args, stylePreset, overlayInputs) {
+  void overlayInputs;
   const data = asData(args.data).slice(0, 5);
   const max = Math.max(1, ...data.map((item) => Math.abs(item.value)));
-  const duration = clipDuration(overlayInputs, 7);
+  const firstRevealAt = 0.36;
+  const titleRevealDuration = 0.3;
+  const barRevealDuration = 0.4;
+  const barGapAfterReveal = 0.3;
+  const revealSlotCount = Math.max(1, data.length);
+  const lastRevealFinish = firstRevealAt + (revealSlotCount - 1) * (barRevealDuration + barGapAfterReveal) + barRevealDuration;
   const barBaseY = 1398;
   const barMaxH = 610;
   const gap = data.length <= 3 ? 64 : 42;
@@ -289,29 +485,28 @@ function barChart(args, stylePreset, overlayInputs) {
   const accents = [UNIFIED_PALETTE.mutedBlue, UNIFIED_PALETTE.mutedSage, UNIFIED_PALETTE.mutedPeach, UNIFIED_PALETTE.mutedLavender, "#d7d2c9@0.66"];
   const filters = [
     ...baseFilters(stylePreset),
-    ...animatedUnifiedTextLines(args.title || "What changed most", 124, 260, 62, UNIFIED_PALETTE.offWhite, 0.36, 22, 18),
-    animatedUnifiedText(args.subtitle || "Relative lift", 128, 420, 34, UNIFIED_PALETTE.dimGrey, 0.66, 34),
-    animatedBox(124, barBaseY + 22, 832, 3, UNIFIED_PALETTE.faintGrey, 0.94),
+    ...animatedUnifiedTextLines(args.title || "What changed most", 124, 260, 62, UNIFIED_PALETTE.offWhite, firstRevealAt, 22, 18, 46, "", titleRevealDuration, 0, titleRevealDuration),
+    ...animatedHorizontalRule(124, barBaseY + 22, 832, 3, UNIFIED_PALETTE.faintGrey, firstRevealAt, lastRevealFinish - firstRevealAt),
   ];
   data.forEach((item, i) => {
-    const timing = sequenceTiming(i, data.length, duration, { startPad: 1.04, endPad: 1.1 });
+    const timing = fixedRevealTiming(i, { firstRevealAt, revealDuration: barRevealDuration, gapAfterReveal: barGapAfterReveal });
     const x = 130 + i * (barW + gap);
+    const centerX = x + barW / 2;
     const h = Math.max(40, Math.round((Math.abs(item.value) / max) * barMaxH));
     const valueY = barBaseY - h - 72;
-    filters.push(animatedBar(x, barBaseY, barW, h, accents[i % accents.length], timing.revealAt));
-    filters.push(animatedUnifiedText(item.displayValue || String(item.value), x, valueY, 34, UNIFIED_PALETTE.offWhite, timing.revealAt + 0.22, 24, textShadow(0.7, 3), 0.46));
-    filters.push(...animatedUnifiedTextLines(item.label, x, barBaseY + 76, 28, UNIFIED_PALETTE.softGrey, timing.revealAt + 0.32, 9, 9, 18));
+    filters.push(...animatedBar(x, barBaseY, barW, h, accents[i % accents.length], timing.revealAt, timing.revealDuration));
+    filters.push(...animatedUnifiedRisingCenteredText(item.displayValue || String(item.value), centerX, valueY, h, 34, UNIFIED_PALETTE.offWhite, timing.revealAt, textShadow(0.7, 3), timing.revealDuration));
+    filters.push(...animatedUnifiedCenteredTextLines(item.label, centerX, barBaseY + 76, 28, UNIFIED_PALETTE.softGrey, timing.revealAt, 9, 9, "", timing.revealDuration, 0));
   });
   return filters;
 }
 
 function comparison(args, stylePreset, overlayInputs) {
-  const duration = clipDuration(overlayInputs, 6);
+  void overlayInputs;
   const leftStart = 1.08;
-  const rightStart = Math.min(duration - 1.8, 2.38);
+  const rightStart = 2.38;
   return [
     ...baseFilters(stylePreset),
-    ...animatedUnifiedTextLines(args.title || "The visible difference", 124, 246, 60, UNIFIED_PALETTE.offWhite, 0.36, 22, 18),
     animatedVerticalRule(538, 574, 720, UNIFIED_PALETTE.faintGrey, 0.92, 4),
     animatedUnifiedText(args.beforeLabel || "Before", 126, 612, 42, UNIFIED_PALETTE.dimGrey, leftStart, 32),
     ...animatedUnifiedTextLines(args.before || "Problem state", 126, 740, 56, UNIFIED_PALETTE.offWhite, leftStart + 0.22, 13, 17, 44),
@@ -323,23 +518,118 @@ function comparison(args, stylePreset, overlayInputs) {
 }
 
 function timeline(args, stylePreset, overlayInputs) {
-  const steps = asList(args.steps, ["Setup", "Signal", "Visible change"]).slice(0, 5);
-  const duration = clipDuration(overlayInputs, 7);
+  void overlayInputs;
+  const steps = asTimelineSteps(args.steps, ["Setup", "Signal", "Visible change"]).slice(0, 5);
+  const firstRevealAt = 0.64;
+  // Fixed, duration-independent timing: each step reveals for 360ms, then the next step starts 300ms later.
+  const stepRevealDuration = 0.36;
+  const gapAfterStepReveal = 0.3;
+  const lastRevealFinish = firstRevealAt + (steps.length - 1) * (stepRevealDuration + gapAfterStepReveal) + stepRevealDuration;
   const stepGap = steps.length <= 3 ? 266 : steps.length === 4 ? 218 : 180;
-  const totalH = (steps.length - 1) * stepGap;
-  const startY = Math.round((HEIGHT - totalH) / 2) + (steps.length <= 3 ? 80 : 40);
+  const stepFontSize = steps.length <= 3 ? 54 : 48;
+  const stepTextTopOffset = -14;
+  const stepTextMaxChars = 24;
+  const stepTextLineGap = 16;
+  const stepSlideDistance = 44;
+  const ruleH = 4;
+  const ruleW = 62;
+  const verticalRuleW = 4;
+  const verticalRuleX = 260;
+  const stepTextX = 338;
+  const verticalRuleCenterX = verticalRuleX + verticalRuleW / 2;
+  const ruleX = Math.round(verticalRuleCenterX - ruleW / 2);
+  const labelSafeGap = 26;
+  const labelRightX = ruleX - labelSafeGap;
+  const labelCenterOffset = stepTextTopOffset + stepFontSize / 2 - 2;
+  const labelLayouts = steps.map((step) => timelineLabelLayout(step.label));
+  const lineCounts = steps.map((step) => Math.max(1, wrap(step.text, stepTextMaxChars).split("\n").filter(Boolean).length));
+  const stepExtents = lineCounts.map((lineCount, i) => {
+    const relativeY = i * stepGap;
+    const textTop = relativeY + stepTextTopOffset;
+    const textBottom = textTop + lineCount * stepFontSize + Math.max(0, lineCount - 1) * stepTextLineGap;
+    const labelLayout = labelLayouts[i];
+    const labelTop = relativeY + labelCenterOffset - labelLayout.blockHeight / 2;
+    const labelBottom = labelTop + labelLayout.blockHeight;
+    const ruleTop = Math.round(relativeY + stepTextTopOffset + stepFontSize / 2 - ruleH / 2);
+    return {
+      top: Math.min(textTop, labelTop, ruleTop),
+      bottom: Math.max(textBottom, labelBottom, ruleTop + ruleH),
+      ruleCenterY: ruleTop + ruleH / 2,
+    };
+  });
+  const groupTop = Math.min(...stepExtents.map((extent) => extent.top));
+  const groupBottom = Math.max(...stepExtents.map((extent) => extent.bottom));
+  const startY = Math.round(HEIGHT / 2 - (groupTop + groupBottom) / 2);
+  const firstRuleCenterY = startY + stepExtents[0].ruleCenterY;
+  const lastRuleCenterY = startY + stepExtents[stepExtents.length - 1].ruleCenterY;
   const filters = [
     ...baseFilters(stylePreset),
-    ...animatedUnifiedTextLines(args.title || "What happens next", 124, 232, 60, UNIFIED_PALETTE.offWhite, 0.36, 22, 18),
-    animatedVerticalRule(228, startY - 22, totalH + 44, UNIFIED_PALETTE.faintGrey, 0.86, 4),
+    ...animatedVerticalRuleForDuration(verticalRuleX, firstRuleCenterY, lastRuleCenterY - firstRuleCenterY, UNIFIED_PALETTE.faintGrey, firstRevealAt, lastRevealFinish - firstRevealAt, verticalRuleW),
   ];
   steps.forEach((step, i) => {
-    const timing = sequenceTiming(i, steps.length, duration, { startPad: 0.82, endPad: 1.0 });
+    const timing = fixedRevealTiming(i, { firstRevealAt, revealDuration: stepRevealDuration, gapAfterReveal: gapAfterStepReveal });
     const y = startY + i * stepGap;
-    filters.push(animatedBox(198, y + 20, 62, 4, i % 2 ? UNIFIED_PALETTE.mutedSage : UNIFIED_PALETTE.mutedPeach, timing.revealAt));
-    filters.push(animatedUnifiedText(String(i + 1).padStart(2, "0"), 124, y - 8, 38, UNIFIED_PALETTE.dimGrey, timing.revealAt, 28, textShadow(0.68, 3), 0.46));
-    filters.push(...animatedUnifiedTextLines(step, 306, y - 14, steps.length <= 3 ? 54 : 48, UNIFIED_PALETTE.offWhite, timing.revealAt + 0.14, 24, 16, 44));
+    const connectorY = Math.round(y + stepTextTopOffset + stepFontSize / 2 - ruleH / 2);
+    filters.push(...animatedCenterOutHorizontalRule(ruleX, connectorY, ruleW, ruleH, i % 2 ? UNIFIED_PALETTE.mutedSage : UNIFIED_PALETTE.mutedPeach, timing.revealAt, timing.revealDuration));
+    const labelLayout = labelLayouts[i];
+    const labelTop = y + labelCenterOffset - labelLayout.blockHeight / 2;
+    labelLayout.lines.forEach((line, lineIndex) => {
+      const lineY = labelTop + lineIndex * (labelLayout.fontSize + labelLayout.lineGap);
+      filters.push(animatedUnifiedRightAlignedTextSlideDown(line, labelRightX, lineY, labelLayout.fontSize, UNIFIED_PALETTE.dimGrey, timing.revealAt, 28, textShadow(0.68, 3), timing.revealDuration, timing.revealDuration));
+    });
+    filters.push(...animatedUnifiedTextLinesSlideDown(step.text, stepTextX, y + stepTextTopOffset, stepFontSize, UNIFIED_PALETTE.offWhite, timing.revealAt, stepTextMaxChars, stepTextLineGap, stepSlideDistance, "", timing.revealDuration, 0, timing.revealDuration));
   });
+  return filters;
+}
+
+async function causeEffect(args, stylePreset, overlayInputs) {
+  const cause = asText(args.cause, "Small daily tension");
+  const effect = asText(args.effect, "Jaw and neck read tighter");
+  const contentX = 126;
+  const arrowStemX = contentX + 48;
+  const labelSize = 34;
+  const bodySize = 62;
+  const bodyLineGap = 20;
+  const labelToTextGap = 86;
+  const arrowMargin = 84;
+  const arrowHeight = 156;
+  const arrowStart = 1.12;
+  const arrowColor = UNIFIED_PALETTE.mutedBlue;
+  const labelColor = UNIFIED_PALETTE.dimGrey;
+  const bodyLineHeight = bodySize + bodyLineGap;
+  const causeLines = wrap(cause, 21).split("\n").filter(Boolean);
+  const effectLines = wrap(effect, 21).split("\n").filter(Boolean);
+  const textBlockHeight = (lineCount) => bodySize + Math.max(0, lineCount - 1) * bodyLineHeight;
+  const sectionHeight = (lineCount) => labelToTextGap + textBlockHeight(lineCount);
+  const causeHeight = sectionHeight(causeLines.length || 1);
+  const effectHeight = sectionHeight(effectLines.length || 1);
+  const totalHeight = causeHeight + arrowMargin + arrowHeight + arrowMargin + effectHeight;
+  const causeLabelY = Math.round((HEIGHT - totalHeight) / 2);
+  const causeTextY = causeLabelY + labelToTextGap;
+  const arrowTopY = causeLabelY + causeHeight + arrowMargin;
+  const effectLabelY = arrowTopY + arrowHeight + arrowMargin;
+  const effectTextY = effectLabelY + labelToTextGap;
+  const filters = [
+    ...baseFilters(stylePreset),
+    animatedUnifiedTextSlideDown("CAUSE", contentX, causeLabelY, labelSize, labelColor, 0.36, 28, textShadow(0.68, 3), 0.44, 0.44),
+    ...animatedUnifiedTextLinesSlideDown(cause, contentX, causeTextY, bodySize, UNIFIED_PALETTE.offWhite, 0.56, 21, bodyLineGap, 44, "", 0.54, 0.045),
+    animatedUnifiedTextSlideDown("EFFECT", contentX, effectLabelY, labelSize, labelColor, 1.7, 28, textShadow(0.68, 3), 0.44, 0.44),
+    ...animatedUnifiedTextLinesSlideDown(effect, contentX, effectTextY, bodySize, UNIFIED_PALETTE.offWhite, 1.9, 21, bodyLineGap, 44, "", 0.54, 0.045),
+  ];
+  overlayInputs.push(await createDownArrowOverlay({
+    tempDir: overlayInputs.tempDir,
+    centerX: arrowStemX,
+    topY: arrowTopY,
+    height: arrowHeight,
+    color: arrowColor,
+    start: arrowStart,
+    index: "cause-effect",
+    fadeIn: 0.76,
+    fadeOut: 0.32,
+    enterYOffset: 0,
+    exitYOffset: 0,
+    growDownDuration: 0.76,
+  }));
   return filters;
 }
 
@@ -360,27 +650,26 @@ async function processFlow(args, _stylePreset, overlayInputs) {
   const connectorActiveGrey = "#e8e5dd@0.54";
   const textShadow = ":shadowcolor=0x000000@0.72:shadowx=0:shadowy=4";
   const numberShadow = ":shadowcolor=0x000000@0.64:shadowx=0:shadowy=3";
-
-  const clipDuration = typeof overlayInputs.duration === "number" && Number.isFinite(overlayInputs.duration)
-    ? overlayInputs.duration
-    : 7;
-  const segmentDuration = clipDuration / Math.max(1, steps.length);
-  const revealLead = Math.min(0.42, Math.max(0.22, segmentDuration * 0.18));
-  const activeHold = Math.min(segmentDuration * 0.82, Math.max(0.78, segmentDuration - 0.28));
+  const firstRevealAt = 0.42;
+  // Fixed, duration-independent timing: each step reveals for 520ms, then the next step starts 300ms later.
+  const stepRevealDuration = 0.52;
+  const gapAfterStepReveal = 0.3;
+  const stepStagger = stepRevealDuration + gapAfterStepReveal;
+  const activeHold = 0.88;
+  const arrowLead = 0.18;
+  const lastRevealFinish = firstRevealAt + (steps.length - 1) * stepStagger + stepRevealDuration;
 
   for (let i = 0; i < steps.length; i += 1) {
     const step = steps[i];
-    const segmentStart = i * segmentDuration;
-    const revealAt = Math.max(0.26, segmentStart + revealLead);
+    const revealAt = firstRevealAt + i * stepStagger;
     const activeStart = revealAt + 0.02;
-    const activeEnd = Math.min(clipDuration - 0.3, segmentStart + activeHold);
+    const activeEnd = activeStart + activeHold;
     const y = startY + i * (cardH + gap);
-    filters.push(processFlowText(String(i + 1).padStart(2, "0"), numberX, y + 42, 48, offWhiteGrey, revealAt + 0.1, activeStart, activeEnd, 38, numberShadow, mediumFont, 0.5, 0.42));
-    filters.push(...processFlowTextLines(step, textX, y + 34, steps.length <= 3 ? 58 : 51, offWhiteGrey, revealAt + 0.16, activeStart, activeEnd, 46, textShadow, mediumFont, 24));
+    filters.push(processFlowText(String(i + 1).padStart(2, "0"), numberX, y + 42, 48, offWhiteGrey, revealAt, activeStart, activeEnd, lastRevealFinish, 38, numberShadow, mediumFont, stepRevealDuration, 0.42));
+    filters.push(...processFlowTextLines(step, textX, y + 34, steps.length <= 3 ? 58 : 51, offWhiteGrey, revealAt, activeStart, activeEnd, lastRevealFinish, 46, textShadow, mediumFont, 24, stepRevealDuration, 0));
     if (i < steps.length - 1) {
-      const nextSegmentStart = (i + 1) * segmentDuration;
-      const nextRevealAt = Math.max(0.26, nextSegmentStart + revealLead);
-      const arrowRevealAt = Math.max(revealAt + 0.35, nextRevealAt - Math.min(0.34, segmentDuration * 0.16));
+      const nextRevealAt = firstRevealAt + (i + 1) * stepStagger;
+      const arrowRevealAt = Math.max(revealAt + 0.35, nextRevealAt - arrowLead);
       const arrowTop = y + cardH + 28;
       const arrowHeight = Math.min(56, gap - 50);
       overlayInputs.push(await createDownArrowOverlay({
@@ -391,6 +680,7 @@ async function processFlow(args, _stylePreset, overlayInputs) {
         color: connectorDimGrey,
         start: arrowRevealAt,
         index: `${i + 1}-dim`,
+        enterYOffset: -22,
       }));
       overlayInputs.push(await createDownArrowOverlay({
         tempDir: overlayInputs.tempDir,
@@ -402,35 +692,35 @@ async function processFlow(args, _stylePreset, overlayInputs) {
         index: `${i + 1}-active`,
         fadeIn: 0.24,
         fadeOut: 0.38,
-        exitStart: Math.min(clipDuration - 0.35, nextSegmentStart + activeHold),
+        exitStart: nextRevealAt + activeHold,
+        enterYOffset: -22,
       }));
     }
   }
   return filters;
 }
 
-function researchCard(args, stylePreset, overlayInputs) {
-  const duration = clipDuration(overlayInputs, 6);
-  const findingStart = 0.96;
-  const implicationStart = Math.min(duration - 1.7, 2.74);
-  return [
-    ...baseFilters(stylePreset),
-    animatedUnifiedText("RESEARCH NOTE", 126, 276, 34, UNIFIED_PALETTE.dimGrey, 0.36, 30),
-    ...animatedUnifiedTextLines(args.source || "Study finding", 126, 388, 40, UNIFIED_PALETTE.softGrey, 0.58, 28, 14, 34),
-    ...animatedUnifiedTextLines(args.finding || "Core research finding.", 126, 592, 62, UNIFIED_PALETTE.offWhite, findingStart, 20, 19, 52),
-    animatedBox(126, 1134, 620, 4, UNIFIED_PALETTE.faintGrey, implicationStart - 0.34),
-    ...animatedUnifiedTextLines(args.implication || "Practical takeaway.", 126, 1222, 42, UNIFIED_PALETTE.softGrey, implicationStart, 29, 15, 38),
-  ];
-}
-
 async function filtersFor(config, overlayInputs) {
   const args = { ...(config.defaultArgs || {}), ...(config.args || {}) };
-  switch (config.rendererId || config.templateId) {
+  const rendererKey = config.rendererId || config.templateId;
+  if (rendererKey === "research_finding_card") {
+    return statReveal(
+      {
+        value: asText(args.source, "Finding"),
+        title: asText(args.finding, asText(args.implication, "Research finding")),
+      },
+      config.stylePreset,
+      overlayInputs,
+    );
+  }
+  if (rendererKey === "process_flow") {
+    return timeline(args, config.stylePreset, overlayInputs);
+  }
+  switch (rendererKey) {
     case "bar_chart": return barChart(args, config.stylePreset, overlayInputs);
     case "comparison_before_after": return comparison(args, config.stylePreset, overlayInputs);
     case "timeline": return timeline(args, config.stylePreset, overlayInputs);
-    case "process_flow": return processFlow(args, config.stylePreset, overlayInputs);
-    case "research_finding_card": return researchCard(args, config.stylePreset, overlayInputs);
+    case "cause_effect": return causeEffect(args, config.stylePreset, overlayInputs);
     case "stat_reveal":
     default: return statReveal(args, config.stylePreset, overlayInputs);
   }
@@ -461,10 +751,6 @@ function resolveUnifiedBackgroundImagePath(config) {
   return "";
 }
 
-function rendererIdFor(config) {
-  return String(config.rendererId || config.templateId || "stat_reveal");
-}
-
 function buildFilterComplex({ config, filters, overlayInputs, duration }) {
   void config;
   const basePrep = [
@@ -486,6 +772,26 @@ function buildFilterComplex({ config, filters, overlayInputs, duration }) {
     const fadeOut = overlay.fadeOut ?? 0.32;
     const exitStart = overlay.exitStart ?? Math.max(overlay.start + fadeIn + 0.6, duration - 0.76 + index * 0.055);
     const disableAt = Math.min(duration, exitStart + fadeOut + 0.08);
+    if (overlay.growDownDuration) {
+      const revealDuration = overlay.growDownDuration;
+      const steps = Math.ceil(revealDuration * FPS);
+      for (let frameIndex = 0; frameIndex < steps; frameIndex += 1) {
+        const segmentStart = overlay.start + frameIndex / FPS;
+        const segmentEnd = overlay.start + (frameIndex + 1) / FPS;
+        const progress = Math.min(1, Math.max(0, (frameIndex + 0.5) / steps));
+        const eased = progress * progress * (3 - 2 * progress);
+        const currentH = Math.max(2, Math.round(overlay.height * eased));
+        const segmentPrepared = `${prepared}s${frameIndex}`;
+        const segmentOut = `${out}s${frameIndex}`;
+        graph.push(`[${inputIndex}:v]format=rgba,crop=w=iw:h=${currentH}:x=0:y=0,colorchannelmixer=aa=${eased.toFixed(4)}[${segmentPrepared}]`);
+        graph.push(`[${previous}][${segmentPrepared}]overlay=x=${overlay.x}:y=${overlay.y}:enable='between(t\\,${segmentStart.toFixed(3)}\\,${segmentEnd.toFixed(3)})'[${segmentOut}]`);
+        previous = segmentOut;
+      }
+      graph.push(`[${inputIndex}:v]format=rgba,fade=t=out:st=${exitStart.toFixed(3)}:d=${fadeOut.toFixed(3)}:alpha=1[${prepared}]`);
+      graph.push(`[${previous}][${prepared}]overlay=x=${overlay.x}:y=${overlay.y}:enable='between(t\\,${(overlay.start + revealDuration).toFixed(3)}\\,${disableAt.toFixed(3)})'[${out}]`);
+      previous = out;
+      return;
+    }
     const yExpr = `'${overlay.y}+${overlay.enterYOffset ?? 14}*(1-${smoothStepExpr(overlay.start, fadeIn)})-${overlay.exitYOffset ?? 8}*${smoothStepExpr(exitStart, fadeOut)}'`;
     graph.push(`[${inputIndex}:v]format=rgba,fade=t=in:st=${overlay.start.toFixed(3)}:d=${fadeIn.toFixed(3)}:alpha=1,fade=t=out:st=${exitStart.toFixed(3)}:d=${fadeOut.toFixed(3)}:alpha=1[${prepared}]`);
     graph.push(`[${previous}][${prepared}]overlay=x=${overlay.x}:y=${yExpr}:enable='between(t\\,${overlay.start.toFixed(3)}\\,${disableAt.toFixed(3)})'[${out}]`);

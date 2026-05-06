@@ -396,7 +396,7 @@ interface XmlVisualPlanningSettings {
   revisionNotesPromptTemplate: string;
 }
 
-type MotionGraphicFieldType = "text" | "textarea" | "number" | "stringList" | "dataSeries";
+type MotionGraphicFieldType = "text" | "textarea" | "number" | "stringList" | "timelineSteps" | "dataSeries";
 
 interface MotionGraphicTemplateField {
   name: string;
@@ -2091,6 +2091,8 @@ export function ShortFormVideoSettingsView({
     useState<string[]>([]);
   const [selectedMotionTemplateId, setSelectedMotionTemplateId] =
     useState<string | null>(null);
+  const [motionDefaultArgsJsonDraft, setMotionDefaultArgsJsonDraft] = useState("");
+  const [motionFieldsJsonDraft, setMotionFieldsJsonDraft] = useState("");
   const [soundDesignSettings, setSoundDesignSettings] =
     useState<SoundDesignSettings | null>(null);
   const [initialSoundDesignSettings, setInitialSoundDesignSettings] =
@@ -2427,6 +2429,19 @@ export function ShortFormVideoSettingsView({
   const selectedMotionTemplatePreview = selectedMotionTemplate
     ? motionTemplatePreviewsById[selectedMotionTemplate.id] || null
     : null;
+
+  useEffect(() => {
+    setMotionDefaultArgsJsonDraft(
+      selectedMotionTemplate
+        ? JSON.stringify(selectedMotionTemplate.defaultArgs, null, 2)
+        : "",
+    );
+    setMotionFieldsJsonDraft(
+      selectedMotionTemplate
+        ? JSON.stringify(selectedMotionTemplate.fields, null, 2)
+        : "",
+    );
+  }, [selectedMotionTemplate?.id]);
   const selectedVoice = useMemo(
     () =>
       videoRender?.voices.find((voice) => voice.id === selectedVoiceId) || null,
@@ -4642,8 +4657,7 @@ export function ShortFormVideoSettingsView({
       "bar_chart",
       "comparison_before_after",
       "timeline",
-      "process_flow",
-      "research_finding_card",
+      "cause_effect",
     ]);
     if (builtInIds.has(selectedMotionTemplate.id)) return;
     const nextTemplates = motionGraphicsSettings.templates.filter(
@@ -6896,7 +6910,7 @@ export function ShortFormVideoSettingsView({
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <WorkflowSectionHeader
                   title="Motion graphics templates"
-                  description="Deterministic animated slides, charts, comparisons, timelines, process flows, and research cards available to Scribe during Plan Visuals. The UI can add configured template metadata, but renderer ids stay constrained to supported deterministic renderers."
+                  description="Deterministic animated slides, charts, comparisons, timelines, and cause-effect visuals available to Scribe during Plan Visuals. The UI can add configured template metadata, but renderer ids stay constrained to supported deterministic renderers."
                   status={dirtyBySection["motion-graphics"] ? "needs review" : "approved"}
                 />
                 <SectionActions
@@ -7137,10 +7151,15 @@ export function ShortFormVideoSettingsView({
                           <label className="text-sm font-medium text-foreground">Default args JSON</label>
                           <Textarea
                             className="min-h-40 font-mono text-xs"
-                            value={JSON.stringify(selectedMotionTemplate.defaultArgs, null, 2)}
+                            value={motionDefaultArgsJsonDraft}
                             onChange={(event) => {
+                              const draft = event.target.value;
+                              setMotionDefaultArgsJsonDraft(draft);
                               try {
-                                const nextArgs = JSON.parse(event.target.value) as Record<string, unknown>;
+                                const nextArgs = JSON.parse(draft) as Record<string, unknown>;
+                                if (!nextArgs || typeof nextArgs !== "object" || Array.isArray(nextArgs)) {
+                                  throw new Error("Default args must be a JSON object.");
+                                }
                                 updateSelectedMotionTemplate((template) => ({ ...template, defaultArgs: nextArgs }));
                               } catch {
                                 updateSectionFeedbackState("motion-graphics", { error: "Default args must be valid JSON before saving." });
@@ -7152,10 +7171,15 @@ export function ShortFormVideoSettingsView({
                           <label className="text-sm font-medium text-foreground">Configurable fields JSON</label>
                           <Textarea
                             className="min-h-40 font-mono text-xs"
-                            value={JSON.stringify(selectedMotionTemplate.fields, null, 2)}
+                            value={motionFieldsJsonDraft}
                             onChange={(event) => {
+                              const draft = event.target.value;
+                              setMotionFieldsJsonDraft(draft);
                               try {
-                                const nextFields = JSON.parse(event.target.value) as MotionGraphicTemplateField[];
+                                const nextFields = JSON.parse(draft) as MotionGraphicTemplateField[];
+                                if (!Array.isArray(nextFields)) {
+                                  throw new Error("Configurable fields must be a JSON array.");
+                                }
                                 updateSelectedMotionTemplate((template) => ({ ...template, fields: nextFields }));
                               } catch {
                                 updateSectionFeedbackState("motion-graphics", { error: "Configurable fields must be valid JSON before saving." });
@@ -7192,8 +7216,7 @@ export function ShortFormVideoSettingsView({
                               "bar_chart",
                               "comparison_before_after",
                               "timeline",
-                              "process_flow",
-                              "research_finding_card",
+                              "cause_effect",
                             ].includes(selectedMotionTemplate.id)}
                           >
                             Remove custom

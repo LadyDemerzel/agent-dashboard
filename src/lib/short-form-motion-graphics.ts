@@ -7,12 +7,11 @@ export const SUPPORTED_MOTION_GRAPHIC_RENDERERS = [
   "bar_chart",
   "comparison_before_after",
   "timeline",
-  "process_flow",
-  "research_finding_card",
+  "cause_effect",
 ] as const;
 
 export type MotionGraphicRendererId = (typeof SUPPORTED_MOTION_GRAPHIC_RENDERERS)[number];
-export type MotionGraphicFieldType = "text" | "textarea" | "number" | "stringList" | "dataSeries";
+export type MotionGraphicFieldType = "text" | "textarea" | "number" | "stringList" | "timelineSteps" | "dataSeries";
 
 export interface MotionGraphicTemplateField {
   name: string;
@@ -20,7 +19,7 @@ export interface MotionGraphicTemplateField {
   type: MotionGraphicFieldType;
   required?: boolean;
   description?: string;
-  defaultValue?: string | number | string[] | Array<{ label: string; value: number | string; displayValue?: string }>;
+  defaultValue?: string | number | string[] | Array<{ label: string; text: string }> | Array<{ label: string; value: number | string; displayValue?: string }>;
 }
 
 export interface MotionGraphicTemplateConfig {
@@ -43,6 +42,7 @@ export interface ShortFormMotionGraphicsSettings {
 
 const SETTINGS_PATH = path.join(SHORT_FORM_VIDEOS_DIR, "_motion-graphics-settings.json");
 const DEFAULT_STYLE_PRESET = "dark-pastel-watercolor";
+const REMOVED_TEMPLATE_IDS = new Set(["research_finding_card", "process_flow"]);
 
 const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
   {
@@ -53,12 +53,10 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     whenToUse: "Use for a single memorable statistic, percentage, dollar amount, study result, or surprising quantified claim that should feel premium and focused.",
     durationSeconds: 6,
     stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: { eyebrow: "Key finding", value: "73%", title: "people notice the change", note: "Use one credible, specific stat only." },
+    defaultArgs: { value: "73%", title: "people notice the change" },
     fields: [
-      { name: "eyebrow", label: "Eyebrow", type: "text", defaultValue: "Key finding" },
       { name: "value", label: "Main value", type: "text", required: true, defaultValue: "73%" },
       { name: "title", label: "Title", type: "text", required: true, defaultValue: "people notice the change" },
-      { name: "note", label: "Note/source line", type: "textarea", defaultValue: "Short source or context line." },
     ],
     enabled: true,
   },
@@ -70,10 +68,9 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     whenToUse: "Use when comparing 2–5 categories, routines, channels, habits, or measured outcomes.",
     durationSeconds: 7,
     stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: { title: "What changed most", subtitle: "Relative lift", data: [{ label: "A", value: 35, displayValue: "35" }, { label: "B", value: 68, displayValue: "68" }, { label: "C", value: 92, displayValue: "92" }] },
+    defaultArgs: { title: "What changed most", data: [{ label: "A", value: 35, displayValue: "35" }, { label: "B", value: 68, displayValue: "68" }, { label: "C", value: 92, displayValue: "92" }] },
     fields: [
       { name: "title", label: "Title", type: "text", required: true, defaultValue: "What changed most" },
-      { name: "subtitle", label: "Subtitle", type: "text", defaultValue: "Relative lift" },
       { name: "data", label: "Data points", type: "dataSeries", required: true, defaultValue: [{ label: "A", value: 35, displayValue: "35" }, { label: "B", value: 68, displayValue: "68" }] },
     ],
     enabled: true,
@@ -86,9 +83,8 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     whenToUse: "Use for transformations, posture/routine contrasts, old-vs-new workflow, or mistake-vs-fix moments.",
     durationSeconds: 6,
     stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: { title: "The visible difference", beforeLabel: "Before", afterLabel: "After", before: "Tension stacked under the chin", after: "Neck long, jawline reads cleaner" },
+    defaultArgs: { beforeLabel: "Before", afterLabel: "After", before: "Tension stacked under the chin", after: "Neck long, jawline reads cleaner" },
     fields: [
-      { name: "title", label: "Title", type: "text", required: true, defaultValue: "The visible difference" },
       { name: "beforeLabel", label: "Before label", type: "text", defaultValue: "Before" },
       { name: "afterLabel", label: "After label", type: "text", defaultValue: "After" },
       { name: "before", label: "Before copy", type: "textarea", required: true, defaultValue: "Problem state" },
@@ -104,40 +100,31 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     whenToUse: "Use for sequence, history, program phases, study timeline, or what happens over the next few seconds/days/weeks.",
     durationSeconds: 7,
     stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: { title: "What happens next", steps: ["Setup", "Signal", "Visible change"] },
+    defaultArgs: { steps: [{ label: "DAY 1", text: "Setup" }, { label: "DAY 7", text: "Signal" }, { label: "DAY 30", text: "Visible change" }] },
     fields: [
-      { name: "title", label: "Title", type: "text", required: true, defaultValue: "What happens next" },
-      { name: "steps", label: "Timeline steps", type: "stringList", required: true, defaultValue: ["Setup", "Signal", "Visible change"] },
+      {
+        name: "steps",
+        label: "Timeline steps",
+        type: "timelineSteps",
+        required: true,
+        description: "Array of { label, text } objects. Legacy string arrays still work and auto-label as 01, 02, 03.",
+        defaultValue: [{ label: "DAY 1", text: "Setup" }, { label: "DAY 7", text: "Signal" }, { label: "DAY 30", text: "Visible change" }],
+      },
     ],
     enabled: true,
   },
   {
-    id: "process_flow",
-    rendererId: "process_flow",
-    displayName: "Process flow",
-    description: "Minimal 3–5 step process text with directional connectors over a heavily dimmed dark pastel watercolor background.",
-    whenToUse: "Use for frameworks, checklists, causal chains, anatomy mechanisms, or repeatable operating procedures when a simple text/connectors-only motion graphic should feel premium and focused.",
-    durationSeconds: 7,
-    stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: { steps: ["Notice", "Adjust", "Repeat"] },
-    fields: [
-      { name: "steps", label: "Process steps", type: "stringList", required: true, defaultValue: ["Notice", "Adjust", "Repeat"] },
-    ],
-    enabled: true,
-  },
-  {
-    id: "research_finding_card",
-    rendererId: "research_finding_card",
-    displayName: "Research finding card",
-    description: "Editorial research note over the unified dark pastel watercolor background with source, finding, and implication, without a card box.",
-    whenToUse: "Use when citing research, evidence, expert reports, or turning a study into a clear practical takeaway without visual clutter.",
+    id: "cause_effect",
+    rendererId: "cause_effect",
+    displayName: "Cause / effect",
+    description: "Vertically stacked cause-to-effect relationship over the unified dark pastel watercolor background with a deterministic downward arrow reveal.",
+    whenToUse: "Use when explaining mechanisms, causal relationships, inputs that drive outcomes, or why one action creates a visible result.",
     durationSeconds: 6,
     stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: { source: "Study finding", finding: "Small posture changes altered perceived facial definition.", implication: "Use this as support, not as a magic-result promise." },
+    defaultArgs: { cause: "Small daily tension", effect: "Jaw and neck read tighter" },
     fields: [
-      { name: "source", label: "Source/study label", type: "text", required: true, defaultValue: "Study finding" },
-      { name: "finding", label: "Finding", type: "textarea", required: true, defaultValue: "Core research finding." },
-      { name: "implication", label: "Implication", type: "textarea", defaultValue: "Practical takeaway." },
+      { name: "cause", label: "Cause", type: "textarea", required: true, defaultValue: "Small daily tension" },
+      { name: "effect", label: "Effect", type: "textarea", required: true, defaultValue: "Jaw and neck read tighter" },
     ],
     enabled: true,
   },
@@ -155,9 +142,38 @@ function cleanString(value: unknown, fallback: string) {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
+function autoTimelineStepLabel(index: number) {
+  return String(index + 1).padStart(2, "0");
+}
+
+function normalizeTimelineStep(value: unknown, index: number) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const candidate = value as { label?: unknown; leftLabel?: unknown; marker?: unknown; text?: unknown; copy?: unknown; title?: unknown; step?: unknown; value?: unknown };
+    const text = cleanString(candidate.text ?? candidate.copy ?? candidate.title ?? candidate.step ?? candidate.value, "");
+    if (!text) return null;
+    return {
+      label: cleanString(candidate.label ?? candidate.leftLabel ?? candidate.marker, autoTimelineStepLabel(index)),
+      text,
+    };
+  }
+  const text = cleanString(value, "");
+  return text ? { label: autoTimelineStepLabel(index), text } : null;
+}
+
+function normalizeTimelineSteps(value: unknown) {
+  return Array.isArray(value)
+    ? value.map((step, index) => normalizeTimelineStep(step, index)).filter((step): step is { label: string; text: string } => Boolean(step))
+    : [];
+}
+
+function normalizeTimelineDefaultArgs(args: Record<string, unknown>) {
+  const steps = normalizeTimelineSteps(args.steps);
+  return steps.length > 0 ? { ...args, steps } : args;
+}
+
 function normalizeField(value: unknown, fallback: MotionGraphicTemplateField): MotionGraphicTemplateField {
   const candidate = value && typeof value === "object" && !Array.isArray(value) ? value as Partial<MotionGraphicTemplateField> : {};
-  const type = ["text", "textarea", "number", "stringList", "dataSeries"].includes(String(candidate.type))
+  const type = ["text", "textarea", "number", "stringList", "timelineSteps", "dataSeries"].includes(String(candidate.type))
     ? candidate.type as MotionGraphicFieldType
     : fallback.type;
   return {
@@ -172,21 +188,57 @@ function normalizeField(value: unknown, fallback: MotionGraphicTemplateField): M
 
 function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig, index: number): MotionGraphicTemplateConfig {
   const candidate = value && typeof value === "object" && !Array.isArray(value) ? value as Partial<MotionGraphicTemplateConfig> : {};
+  const hasUnsupportedRenderer = typeof candidate.rendererId === "string" && !isRendererId(candidate.rendererId);
   const rendererId = isRendererId(candidate.rendererId) ? candidate.rendererId : fallback.rendererId;
-  const fields = Array.isArray(candidate.fields) && candidate.fields.length > 0
+  const fields = !hasUnsupportedRenderer && Array.isArray(candidate.fields) && candidate.fields.length > 0
     ? candidate.fields.map((field, fieldIndex) => normalizeField(field, fallback.fields[fieldIndex] || fallback.fields[0]))
     : fallback.fields;
-  const rawDefaultArgs = candidate.defaultArgs && typeof candidate.defaultArgs === "object" && !Array.isArray(candidate.defaultArgs)
+  const rawDefaultArgs = !hasUnsupportedRenderer && candidate.defaultArgs && typeof candidate.defaultArgs === "object" && !Array.isArray(candidate.defaultArgs)
     ? candidate.defaultArgs as Record<string, unknown>
     : fallback.defaultArgs;
-  const defaultArgs = rendererId === "process_flow"
-    ? Object.fromEntries(Object.entries(rawDefaultArgs).filter(([key]) => key !== "title"))
-    : rawDefaultArgs;
-  const processFlowFields = fields.filter((field) => field.name !== "title");
-  const fallbackProcessFlowFields = fallback.fields.filter((field) => field.name !== "title");
-  const normalizedFields = rendererId === "process_flow"
-    ? (processFlowFields.length > 0 ? processFlowFields : fallbackProcessFlowFields)
-    : fields;
+  const defaultArgs = Object.fromEntries(
+    Object.entries(rawDefaultArgs).filter(([key]) => {
+      if (rendererId === "stat_reveal") return key !== "eyebrow" && key !== "note";
+      if (rendererId === "bar_chart") return key !== "subtitle";
+      if (rendererId === "timeline") return key !== "title";
+      if (rendererId === "comparison_before_after") return key !== "title";
+      return true;
+    }),
+  );
+  const normalizedDefaultArgs = rendererId === "timeline" ? normalizeTimelineDefaultArgs(defaultArgs) : defaultArgs;
+  const normalizedFields = (() => {
+    if (rendererId === "stat_reveal") {
+      const statRevealFields = fields.filter((field) => field.name !== "eyebrow" && field.name !== "note");
+      const fallbackStatRevealFields = fallback.fields.filter((field) => field.name !== "eyebrow" && field.name !== "note");
+      return statRevealFields.length > 0 ? statRevealFields : fallbackStatRevealFields;
+    }
+    if (rendererId === "bar_chart") {
+      const barChartFields = fields.filter((field) => field.name !== "subtitle");
+      const fallbackBarChartFields = fallback.fields.filter((field) => field.name !== "subtitle");
+      return barChartFields.length > 0 ? barChartFields : fallbackBarChartFields;
+    }
+    if (rendererId === "timeline") {
+      const timelineFields = fields.filter((field) => field.name !== "title");
+      const fallbackTimelineFields = fallback.fields.filter((field) => field.name !== "title");
+      const selectedFields = timelineFields.length > 0 ? timelineFields : fallbackTimelineFields;
+      return selectedFields.map((field) => {
+        if (field.name !== "steps") return field;
+        const defaultValue = normalizeTimelineSteps(field.defaultValue);
+        return {
+          ...field,
+          type: "timelineSteps" as const,
+          description: field.description || "Array of { label, text } objects. Legacy string arrays still work and auto-label as 01, 02, 03.",
+          defaultValue: defaultValue.length > 0 ? defaultValue : field.defaultValue,
+        };
+      });
+    }
+    if (rendererId === "comparison_before_after") {
+      const comparisonFields = fields.filter((field) => field.name !== "title");
+      const fallbackComparisonFields = fallback.fields.filter((field) => field.name !== "title");
+      return comparisonFields.length > 0 ? comparisonFields : fallbackComparisonFields;
+    }
+    return fields;
+  })();
   return {
     id: cleanString(candidate.id, fallback.id || `motion-graphic-${index + 1}`),
     rendererId,
@@ -197,7 +249,7 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
       ? Math.min(12, Math.max(3, candidate.durationSeconds))
       : fallback.durationSeconds,
     stylePreset: cleanString(candidate.stylePreset, fallback.stylePreset || DEFAULT_STYLE_PRESET),
-    defaultArgs,
+    defaultArgs: normalizedDefaultArgs,
     fields: normalizedFields,
     enabled: candidate.enabled !== false,
   };
@@ -210,7 +262,7 @@ function normalizeSettings(candidate: Partial<ShortFormMotionGraphicsSettings> |
   const customTemplates = inputTemplates
     .filter((template) => {
       const id = typeof (template as { id?: unknown }).id === "string" ? (template as { id: string }).id : "";
-      return id && !DEFAULT_TEMPLATES.some((fallback) => fallback.id === id);
+      return id && !REMOVED_TEMPLATE_IDS.has(id) && !DEFAULT_TEMPLATES.some((fallback) => fallback.id === id);
     })
     .map((template, index) => normalizeTemplate(template, DEFAULT_TEMPLATES[0], DEFAULT_TEMPLATES.length + index));
 
@@ -274,6 +326,7 @@ export function renderMotionGraphicTemplatePromptInjection(settings = getShortFo
     "- Use <arg name=\"fieldName\">value</arg> for text/number fields.",
     "- For dataSeries fields, use repeated <item label=\"...\" value=\"...\" displayValue=\"...\" /> inside the motionGraphic.",
     "- For stringList fields, use repeated <step>...</step> inside the motionGraphic.",
+    "- For timelineSteps fields, use repeated <step label=\"custom left label\">step text</step>. Omit label only when you want the renderer to auto-label steps as 01, 02, 03.",
     "- Reference it from the timeline as <visual visualType=\"motion_graphic\" motionGraphicId=\"...\" start=\"...\" end=\"...\" label=\"...\" />.",
     "- Motion graphics are normal visuals; they must not include captions/subtitles/transcript text unless a configured field explicitly represents ordinary on-slide text.",
     "- Use imageId for image visuals and motionGraphicId for motion_graphic visuals; do not put both on the same <visual>.",
