@@ -980,10 +980,6 @@ function fixedRevealTiming(index, options = {}) {
   };
 }
 
-function animatedBox(x, y, w, h, color, start) {
-  return box(x, y, w, h, color, revealEnable(start));
-}
-
 function animatedBoxSlideDown(x, y, w, h, color, start, distance = 34, duration = 0.36) {
   return box(x, slideYDownExpr(y, start, distance, duration), w, h, color, `:enable='gte(t\\,${start.toFixed(3)})'`);
 }
@@ -1196,19 +1192,51 @@ function barChart(args, stylePreset, overlayInputs) {
   return filters;
 }
 
+const COMPARISON_TIMING = {
+  beforeStart: 1.08,
+  beforeCopyOffset: 0.22,
+  labelRevealDuration: 0.52,
+  copyRevealDuration: 0.54,
+  copyLineStagger: 0.045,
+  afterDelayAfterBeforeFinish: 1,
+  copyMaxChars: 13,
+};
+
+function comparisonWrappedLineCount(value, maxChars = COMPARISON_TIMING.copyMaxChars) {
+  return Math.max(1, wrap(value, maxChars).split("\n").filter(Boolean).length);
+}
+
+function comparisonRevealTiming(args = {}) {
+  const beforeText = args.before || "Problem state";
+  const beforeCopyStart = COMPARISON_TIMING.beforeStart + COMPARISON_TIMING.beforeCopyOffset;
+  const beforeCopyLineCount = comparisonWrappedLineCount(beforeText);
+  const beforeLabelFinish = COMPARISON_TIMING.beforeStart + COMPARISON_TIMING.labelRevealDuration;
+  const beforeCopyFinish = beforeCopyStart
+    + Math.max(0, beforeCopyLineCount - 1) * COMPARISON_TIMING.copyLineStagger
+    + COMPARISON_TIMING.copyRevealDuration;
+  const beforeFinish = Math.max(beforeLabelFinish, beforeCopyFinish);
+  const afterStart = beforeFinish + COMPARISON_TIMING.afterDelayAfterBeforeFinish;
+  return {
+    beforeStart: COMPARISON_TIMING.beforeStart,
+    beforeCopyStart,
+    beforeFinish,
+    afterStart,
+    afterCopyStart: afterStart + COMPARISON_TIMING.beforeCopyOffset,
+    afterDelayAfterBeforeFinish: COMPARISON_TIMING.afterDelayAfterBeforeFinish,
+    beforeCopyLineCount,
+  };
+}
+
 function comparison(args, stylePreset, overlayInputs) {
   void overlayInputs;
-  const leftStart = 1.08;
-  const rightStart = 2.38;
+  const timing = comparisonRevealTiming(args);
   return [
     ...baseFilters(stylePreset),
     animatedVerticalRule(538, 574, 720, UNIFIED_PALETTE.faintGrey, 0.92, 4),
-    animatedUnifiedText(args.beforeLabel || "Before", 126, 612, 42, UNIFIED_PALETTE.dimGrey, leftStart, 32),
-    ...animatedUnifiedTextLines(args.before || "Problem state", 126, 740, 56, UNIFIED_PALETTE.offWhite, leftStart + 0.22, 13, 17, 44),
-    animatedBox(126, 1124, 236, 3, UNIFIED_PALETTE.faintGrey, leftStart + 0.46),
-    animatedUnifiedText(args.afterLabel || "After", 600, 612, 42, UNIFIED_PALETTE.dimGrey, rightStart, 32),
-    ...animatedUnifiedTextLines(args.after || "Improved state", 600, 740, 56, UNIFIED_PALETTE.offWhite, rightStart + 0.22, 13, 17, 44),
-    animatedBox(600, 1124, 236, 3, UNIFIED_PALETTE.faintGrey, rightStart + 0.46),
+    animatedUnifiedText(args.beforeLabel || "Before", 126, 612, 42, UNIFIED_PALETTE.dimGrey, timing.beforeStart, 32),
+    ...animatedUnifiedTextLines(args.before || "Problem state", 126, 740, 56, UNIFIED_PALETTE.offWhite, timing.beforeCopyStart, COMPARISON_TIMING.copyMaxChars, 17, 44),
+    animatedUnifiedText(args.afterLabel || "After", 600, 612, 42, UNIFIED_PALETTE.dimGrey, timing.afterStart, 32),
+    ...animatedUnifiedTextLines(args.after || "Improved state", 600, 740, 56, UNIFIED_PALETTE.offWhite, timing.afterCopyStart, COMPARISON_TIMING.copyMaxChars, 17, 44),
   ];
 }
 
@@ -1711,9 +1739,19 @@ async function main() {
   console.log(JSON.stringify({ output, poster, durationSeconds: duration, backgroundImagePath: backgroundImagePath || null, backgroundVideoPath: backgroundVideoPath || null, ...rendererMetadata }, null, 2));
 }
 
-try {
-  await main();
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+export {
+  COMPARISON_TIMING,
+  comparison,
+  comparisonRevealTiming,
+};
+
+const isCli = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+
+if (isCli) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
 }
