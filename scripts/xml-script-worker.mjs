@@ -399,7 +399,7 @@ function splitSentences(text) {
 }
 
 function sentenceWordMatches(sentence) {
-  return Array.from(sentence.matchAll(/\d+(?:,\d{3})*(?:\.\d+)?|[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*/g));
+  return Array.from(sentence.matchAll(/\d+(?:,\d{3})*(?:\.\d+)?%?|[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*/g));
 }
 
 function normalizeCaptionText(value) {

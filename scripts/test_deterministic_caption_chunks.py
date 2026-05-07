@@ -113,7 +113,7 @@ class DeterministicCaptionChunkTests(unittest.TestCase):
 
     def test_preserves_decimal_percent_before_sentence_period(self) -> None:
         chunks = self.build_text_chunks("The value is 87.8%. Then stop.", max_words=6)
-        self.assertEqual(chunks, ["The value is 87.8", "Then stop"])
+        self.assertEqual(chunks, ["The value is 87.8%", "Then stop"])
 
     def test_preserves_decimal_percent_phrase_as_one_caption_token(self) -> None:
         chunks = self.build_text_chunks(
@@ -122,7 +122,19 @@ class DeterministicCaptionChunkTests(unittest.TestCase):
         )
         self.assertNotIn("at about 87", chunks)
         self.assertNotIn("8 fast-twitch", chunks)
-        self.assertTrue(any("87.8" in chunk for chunk in chunks), chunks)
+        self.assertTrue(any("87.8%" in chunk for chunk in chunks), chunks)
+
+    def test_preserves_numeric_percent_at_caption_boundary(self) -> None:
+        chunks = self.build_text_chunks(
+            "It is comprised of about 87.8% fast-twitch fibers.",
+            max_words=3,
+        )
+        self.assertTrue(any("87.8%" in chunk for chunk in chunks), chunks)
+        self.assertFalse(any(chunk.endswith("87.8") for chunk in chunks), chunks)
+
+        chunks = self.build_text_chunks("People chose it 93% of the time.", max_words=3)
+        self.assertTrue(any("93%" in chunk for chunk in chunks), chunks)
+        self.assertFalse(any(chunk.endswith("93") for chunk in chunks), chunks)
 
     def test_preserves_commas_inside_numbers(self) -> None:
         chunks = self.build_text_chunks("alpha beta 1,000 people noticed a change quickly.", max_words=3)
