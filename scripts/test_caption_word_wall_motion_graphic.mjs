@@ -127,7 +127,7 @@ try {
   assert.equal(metadata.lineCount, 4);
   assert.deepEqual(metadata.displayWords.slice(0, 5), ["most", "people,", "miss", "this", "part."]);
   assert.equal(metadata.layout.alignment, "left");
-  assert.equal(metadata.layout.spacingMode, "svg-fixed-space-tspans-active-font-pop");
+  assert.equal(metadata.layout.spacingMode, "svg-fixed-space-tspans-active-font-pop-with-vertical-reflow");
   assert.deepEqual(Object.keys(metadata.typography.lineSizes), ["regular", "large", "extra_large"]);
   assert.equal(metadata.typography.regular.fontSize, 64);
   assert.equal(metadata.typography.regular.fontWeight, 400);
@@ -143,7 +143,7 @@ try {
   assert.equal(metadata.typography.emphasized.aliasFor, "extra_large");
   assert.equal(metadata.typography.upcomingWordColor, "#bab7b1@0.42");
   assert.equal(metadata.activeWordPop.maxScale, 1.2);
-  assert.equal(metadata.activeWordPop.maxTranslateYEm, 0.5);
+  assert.equal(metadata.activeWordPop.maxTranslateYEm, 0.09);
   assert.equal(metadata.activeWordPop.baseFontWeight, 400);
   assert.equal(metadata.activeWordPop.maxFontWeight, 500);
   assert.equal(metadata.activeWordPop.progressBasis, "word spoken duration");
@@ -154,9 +154,20 @@ try {
   assert.match(metadata.activeWordPop.variableFont.activeWeightValues, /continuous values from 400 to 500 to 400/);
   assert.deepEqual(metadata.activeWordPop.keyframes, [
     { progress: 0, scale: 1, translateYEm: 0, fontWeight: 400, easingToNext: "ease-out-quart" },
-    { progress: 0.2, scale: 1.2, translateYEm: 0.5, fontWeight: 500, easingToNext: "ease-out-cubic" },
+    { progress: 0.2, scale: 1.2, translateYEm: 0.09, fontWeight: 500, easingToNext: "ease-out-cubic" },
     { progress: 1, scale: 1, translateYEm: 0, fontWeight: 400 },
   ]);
+  assert.equal(metadata.activeWordPop.verticalReflow.mode, "subtle-active-row-expanded-line-box-center-preserved");
+  assert.equal(metadata.activeWordPop.verticalReflow.scaleExpansionTopShare, 0.68);
+  assert.equal(metadata.activeWordPop.verticalReflow.scaleExpansionBottomShare, 0.32);
+  assert.equal(metadata.activeWordPop.verticalReflow.expansionContributionMultiplier, 0.28);
+  assert.equal(metadata.activeWordPop.verticalReflow.rowDisplacementMultiplier, 0.5);
+  assert.ok(metadata.activeWordPop.verticalReflow.maxRawExpansionPx > 35, "active lift/scale should still compute a raw expansion");
+  assert.ok(metadata.activeWordPop.verticalReflow.maxReservedExpansionPx > 9, "subtle active lift/scale should still reserve measurable vertical reflow space");
+  assert.ok(metadata.activeWordPop.verticalReflow.maxReservedExpansionPx < 20, "vertical reflow expansion should stay subtle");
+  assert.ok(metadata.activeWordPop.verticalReflow.maxRowDisplacementPx > 4, "nearby rows should still breathe around the active word");
+  assert.ok(metadata.activeWordPop.verticalReflow.maxRowDisplacementPx < 9, "nearby rows should shift gently");
+  assert.ok(metadata.activeWordPop.verticalReflow.maxOuterPaddingPx > 100, "active lift/scale should keep safe frame padding after reflow");
   assert.equal(metadata.lineVisibility[0].firstWordStart, 0);
   assert.equal(metadata.lineVisibility[1].firstWordStart, 1.24);
   assert.equal(metadata.lineVisibility[1].size, "large");

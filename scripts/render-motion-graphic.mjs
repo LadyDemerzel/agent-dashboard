@@ -53,9 +53,10 @@ const STAT_REVEAL_TEXT_STYLE = {
 };
 const CAPTION_WORD_WALL_ACTIVE_WORD_BASE_FONT_WEIGHT = STAT_REVEAL_TEXT_STYLE.title.fontWeight;
 const CAPTION_WORD_WALL_ACTIVE_WORD_PEAK_FONT_WEIGHT = 500;
+const CAPTION_WORD_WALL_ACTIVE_WORD_PEAK_TRANSLATE_Y_EM = 0.09;
 const CAPTION_WORD_WALL_ACTIVE_WORD_POP_KEYFRAMES = [
   { progress: 0, scale: 1, translateYEm: 0, fontWeight: CAPTION_WORD_WALL_ACTIVE_WORD_BASE_FONT_WEIGHT, easingToNext: "ease-out-quart" },
-  { progress: 0.2, scale: 1.2, translateYEm: 0.5, fontWeight: CAPTION_WORD_WALL_ACTIVE_WORD_PEAK_FONT_WEIGHT, easingToNext: "ease-out-cubic" },
+  { progress: 0.2, scale: 1.2, translateYEm: CAPTION_WORD_WALL_ACTIVE_WORD_PEAK_TRANSLATE_Y_EM, fontWeight: CAPTION_WORD_WALL_ACTIVE_WORD_PEAK_FONT_WEIGHT, easingToNext: "ease-out-cubic" },
   { progress: 1, scale: 1, translateYEm: 0, fontWeight: CAPTION_WORD_WALL_ACTIVE_WORD_BASE_FONT_WEIGHT },
 ];
 const CAPTION_WORD_WALL_ACTIVE_WORD_MAX_SCALE = Math.max(...CAPTION_WORD_WALL_ACTIVE_WORD_POP_KEYFRAMES.map((frame) => frame.scale));
@@ -101,6 +102,13 @@ const CAPTION_WORD_WALL_STYLE = {
   upcomingWordColor: "#bab7b1@0.42",
   shadowColor: "#000000",
   shadowBlur: 0,
+};
+const CAPTION_WORD_WALL_VERTICAL_REFLOW = {
+  mode: "subtle-active-row-expanded-line-box-center-preserved",
+  scaleExpansionTopShare: 0.68,
+  scaleExpansionBottomShare: 0.32,
+  expansionContributionMultiplier: 0.28,
+  rowDisplacementMultiplier: 0.5,
 };
 const INTER_FONT_CANDIDATES = [
   process.env.INTER_FONT_FILE,
@@ -385,6 +393,23 @@ function activeWordPopFrame(progress) {
   };
 }
 
+function captionWordWallActiveWordExpansion(fontSize, pop) {
+  const scaleExpansion = Math.max(0, (Number(pop?.scale) || 1) - 1) * fontSize;
+  const liftExpansion = Math.max(0, Number(pop?.translateYEm) || 0) * fontSize * (Number(pop?.scale) || 1);
+  const rawTop = scaleExpansion * CAPTION_WORD_WALL_VERTICAL_REFLOW.scaleExpansionTopShare + liftExpansion;
+  const rawBottom = scaleExpansion * CAPTION_WORD_WALL_VERTICAL_REFLOW.scaleExpansionBottomShare;
+  const top = rawTop * CAPTION_WORD_WALL_VERTICAL_REFLOW.expansionContributionMultiplier;
+  const bottom = rawBottom * CAPTION_WORD_WALL_VERTICAL_REFLOW.expansionContributionMultiplier;
+  return {
+    rawTop,
+    rawBottom,
+    rawTotal: rawTop + rawBottom,
+    top,
+    bottom,
+    total: top + bottom,
+  };
+}
+
 function resolveWordWallState(words, sampleTime) {
   if (sampleTime < words[0]?.start) return { activeIndex: -1, spokenThroughIndex: 0, progress: 0 };
   for (let index = 0; index < words.length; index += 1) {
@@ -566,11 +591,29 @@ function layoutCaptionWordWall(timeline) {
     const gaps = rows.map((row, index) => gapAfter(row, rows[index + 1]));
     const totalHeight = rows.reduce((sum, row, index) => sum + row.height + gaps[index], 0);
     if (totalHeight <= maxHeight || scale === scaleCandidates[scaleCandidates.length - 1]) {
+      const maxActiveWordExpansion = Math.max(
+        0,
+        ...rows
+          .filter((row) => !row.blank && Number.isFinite(row.fontSize))
+          .map((row) => captionWordWallActiveWordExpansion(row.fontSize, {
+            scale: CAPTION_WORD_WALL_ACTIVE_WORD_MAX_SCALE,
+            translateYEm: CAPTION_WORD_WALL_ACTIVE_WORD_MAX_TRANSLATE_Y_EM,
+          }).total),
+      );
+      const maxRawActiveWordExpansion = Math.max(
+        0,
+        ...rows
+          .filter((row) => !row.blank && Number.isFinite(row.fontSize))
+          .map((row) => captionWordWallActiveWordExpansion(row.fontSize, {
+            scale: CAPTION_WORD_WALL_ACTIVE_WORD_MAX_SCALE,
+            translateYEm: CAPTION_WORD_WALL_ACTIVE_WORD_MAX_TRANSLATE_Y_EM,
+          }).rawTotal),
+      );
       let y = Math.round((HEIGHT - totalHeight) / 2);
       return {
         alignment: "left",
         x: leftX,
-        spacingMode: "svg-fixed-space-tspans-active-font-pop",
+        spacingMode: "svg-fixed-space-tspans-active-font-pop-with-vertical-reflow",
         rows: rows.map((row, index) => {
           const next = { ...row, y, gapAfter: gaps[index] };
           y += row.height + gaps[index];
@@ -578,6 +621,9 @@ function layoutCaptionWordWall(timeline) {
         }),
         normalSize,
         totalHeight,
+        maxDynamicExpansion: maxActiveWordExpansion,
+        maxRawDynamicExpansion: maxRawActiveWordExpansion,
+        maxRowDisplacement: maxActiveWordExpansion * CAPTION_WORD_WALL_VERTICAL_REFLOW.rowDisplacementMultiplier,
       };
     }
   }
@@ -603,6 +649,45 @@ function captionWordWallFontCss() {
   }`;
 }
 
+function resolveCaptionWordWallFrameRows(layout, state) {
+  const activeRowIndex = state.activeIndex >= 0
+    ? layout.rows.findIndex((row) => !row.blank && row.words?.some((word) => word.globalIndex === state.activeIndex))
+    : -1;
+  if (activeRowIndex < 0) {
+    return {
+      rows: layout.rows,
+      activeRowIndex,
+      activeWordExpansion: { top: 0, bottom: 0, total: 0 },
+      centerShift: 0,
+      rowShift: 0,
+    };
+  }
+
+  const activeRow = layout.rows[activeRowIndex];
+  const pop = activeWordPopFrame(state.progress);
+  const activeWordExpansion = captionWordWallActiveWordExpansion(activeRow.fontSize, pop);
+  const centerShift = (activeWordExpansion.bottom - activeWordExpansion.top) * CAPTION_WORD_WALL_VERTICAL_REFLOW.rowDisplacementMultiplier;
+  const rowShift = activeWordExpansion.total * CAPTION_WORD_WALL_VERTICAL_REFLOW.rowDisplacementMultiplier;
+  const activeRowShift = -centerShift;
+  return {
+    rows: layout.rows.map((row, index) => {
+      let yOffset = activeRowShift;
+      if (index < activeRowIndex) yOffset = -rowShift;
+      if (index > activeRowIndex) yOffset = rowShift;
+      return {
+        ...row,
+        y: row.y + yOffset,
+        baseY: row.y,
+        verticalOffset: yOffset,
+      };
+    }),
+    activeRowIndex,
+    activeWordExpansion,
+    centerShift,
+    rowShift,
+  };
+}
+
 function renderCaptionWordWallSvg(timeline, layout, state) {
   void timeline;
   const style = CAPTION_WORD_WALL_STYLE;
@@ -625,7 +710,8 @@ ${captionWordWallFontCss()}
   ${shadowFilter("valueTextShadow", STAT_REVEAL_TEXT_STYLE.value)}
 </defs>`);
 
-  for (const row of layout.rows) {
+  const frameLayout = resolveCaptionWordWallFrameRows(layout, state);
+  for (const row of frameLayout.rows) {
     if (row.blank || !row.words?.length) continue;
     if (state.sampleTime + 0.0001 < row.lineStart) continue;
     const baselineY = row.y + row.fontSize;
@@ -1482,6 +1568,18 @@ async function main() {
           fontWeight: frame.fontWeight,
           ...(frame.easingToNext ? { easingToNext: frame.easingToNext } : {}),
         })),
+        verticalReflow: {
+          mode: CAPTION_WORD_WALL_VERTICAL_REFLOW.mode,
+          description: "The active word's eased scale and lift create a reduced effective line-box expansion each frame; rows above and below shift by a tunable fraction so the wall breathes gently around the active word.",
+          scaleExpansionTopShare: CAPTION_WORD_WALL_VERTICAL_REFLOW.scaleExpansionTopShare,
+          scaleExpansionBottomShare: CAPTION_WORD_WALL_VERTICAL_REFLOW.scaleExpansionBottomShare,
+          expansionContributionMultiplier: CAPTION_WORD_WALL_VERTICAL_REFLOW.expansionContributionMultiplier,
+          rowDisplacementMultiplier: CAPTION_WORD_WALL_VERTICAL_REFLOW.rowDisplacementMultiplier,
+          maxRawExpansionPx: Number(wordWall.layout.maxRawDynamicExpansion.toFixed(2)),
+          maxReservedExpansionPx: Number(wordWall.layout.maxDynamicExpansion.toFixed(2)),
+          maxRowDisplacementPx: Number(wordWall.layout.maxRowDisplacement.toFixed(2)),
+          maxOuterPaddingPx: Number(((HEIGHT - wordWall.layout.totalHeight - wordWall.layout.maxDynamicExpansion) / 2).toFixed(2)),
+        },
         fontWeightRenderMode: INTER_VARIABLE_FONT
           ? "InterVariable.ttf wght axis is sampled with fontkit per frame, converted to SVG paths, then rasterized by Sharp; this avoids Sharp/Pango's discrete SVG font-weight buckets"
           : "Fallback Sharp/Pango SVG text path; intermediate font-weight values may rasterize discretely depending on installed fonts",
