@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { extractBody, generateFrontMatter, parseFrontMatter } from "@/lib/frontmatter";
+import { extractBody, generateFrontMatter, normalizeFrontMatterContent, parseFrontMatter } from "@/lib/frontmatter";
 import {
   resolveShortFormVoiceSelection,
   type ShortFormPauseRemovalSettings,
@@ -82,6 +82,12 @@ interface XmlScriptRunStatus {
 interface XmlScriptRunStatusFile extends XmlScriptRunStatus {
   filePath: string;
   mtimeMs: number;
+}
+
+interface XmlScriptFrontMatterRepairResult {
+  content: string;
+  repaired: boolean;
+  leadingText?: string;
 }
 
 const XML_SCRIPT_STALE_RUNNING_MS = 30 * 60 * 1000;
@@ -168,7 +174,10 @@ export function getXmlScriptRunsDir(projectId: string) {
 
 export function ensureXmlScriptDocument(projectId: string, topic: string) {
   const filePath = getXmlScriptPath(projectId);
-  if (fs.existsSync(filePath)) return filePath;
+  if (fs.existsSync(filePath)) {
+    repairXmlScriptDocumentFrontMatter(projectId);
+    return filePath;
+  }
 
   const content = [
     generateFrontMatter({
@@ -189,14 +198,33 @@ export function ensureXmlScriptDocument(projectId: string, topic: string) {
 export function writeXmlScriptDocument(projectId: string, content: string) {
   const filePath = getXmlScriptPath(projectId);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, content, "utf-8");
+  const normalized = normalizeFrontMatterContent(content);
+  fs.writeFileSync(filePath, normalized.content, "utf-8");
   return filePath;
+}
+
+export function repairXmlScriptDocumentFrontMatter(projectId: string) {
+  const filePath = getXmlScriptPath(projectId);
+  if (!fs.existsSync(filePath)) return undefined;
+
+  const content = fs.readFileSync(filePath, "utf-8");
+  const normalized = normalizeFrontMatterContent(content);
+  if (!normalized.repaired) {
+    return { content, repaired: false } satisfies XmlScriptFrontMatterRepairResult;
+  }
+
+  fs.writeFileSync(filePath, normalized.content, "utf-8");
+  return {
+    content: normalized.content,
+    repaired: true,
+    leadingText: normalized.leadingText,
+  } satisfies XmlScriptFrontMatterRepairResult;
 }
 
 export function updateXmlScriptFrontMatterStatus(projectId: string, status: string) {
   const filePath = getXmlScriptPath(projectId);
   if (!fs.existsSync(filePath)) return null;
-  const content = fs.readFileSync(filePath, "utf-8");
+  const content = repairXmlScriptDocumentFrontMatter(projectId)?.content ?? fs.readFileSync(filePath, "utf-8");
   const parsed = parseFrontMatter(content);
   if (!parsed) {
     const next = `${generateFrontMatter({ title: "XML script", status, date: new Date().toISOString(), agent: "workflow", tags: ["short-form-video", "xml-script"] })}\n\n${content}`;
@@ -355,7 +383,8 @@ export function getXmlScriptDocument(
     captionPlanPath,
   ]);
 
-  const content = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf-8") : "";
+  const frontMatterRepair = fs.existsSync(filePath) ? repairXmlScriptDocumentFrontMatter(projectId) : undefined;
+  const content = frontMatterRepair?.content ?? "";
   const exists = Boolean(content);
   const status = normalizeStatus(content);
   const audioPath = path.join(getProjectDir(projectId), audioRelative);
@@ -450,6 +479,9 @@ export function getXmlScriptDocument(
   const pauseRemovalMismatchWarning = options?.expectedPauseRemoval && !pauseRemovalMatchesExpected
     ? "Pause-removal artifacts were generated with older silence settings. Re-run pause removal + alignment so downstream captions and final video use the latest narration timing."
     : undefined;
+  const frontMatterRepairWarning = frontMatterRepair?.repaired
+    ? `Repaired XML script YAML front matter by removing accidental leading text before the --- block: "${frontMatterRepair.leadingText?.trim() || "blank leading text"}".`
+    : undefined;
 
   const doneMap: Record<string, boolean> = {
     narration: narrationDone,
@@ -468,7 +500,10 @@ export function getXmlScriptDocument(
     return false;
   };
   const stepActive = (stepId: string, prerequisitesMet = true) => {
-    if (!runActive || !prerequisitesMet) return false;
+    if (!runActive) return false;
+    if (activeTask === "captions" && stepId === "captions") return true;
+    if (activeTask === "visuals" && stepId === "xml") return true;
+    if (!prerequisitesMet) return false;
     if (activeTask === "full") return activeProgressStep ? activeProgressStep === stepId : !doneMap[stepId];
     if (activeTask === "narration") {
       if (activeProgressStep) return activeProgressStep === stepId;
@@ -483,8 +518,6 @@ export function getXmlScriptDocument(
       if (stepId === "alignment") return silenceRemovalDone;
       return false;
     }
-    if (activeTask === "captions") return stepId === "captions";
-    if (activeTask === "visuals") return stepId === "xml";
     return false;
   };
 
@@ -620,7 +653,7 @@ export function getXmlScriptDocument(
       alignmentOutputPath: alignmentDone ? alignmentOutputPath : undefined,
       captionPlanPath: captionsDone ? captionPlanPath : undefined,
       pauseRemovalSettingsPath: pauseRemovalSettingsFreshAt ? pauseRemovalSettingsPath : undefined,
-      warning: [voiceMismatchWarning, pauseRemovalMismatchWarning, latestRun?.errorMessage].filter(Boolean).join(" ") || undefined,
+      warning: [frontMatterRepairWarning, voiceMismatchWarning, pauseRemovalMismatchWarning, latestRun?.errorMessage].filter(Boolean).join(" ") || undefined,
       steps,
     },
   };

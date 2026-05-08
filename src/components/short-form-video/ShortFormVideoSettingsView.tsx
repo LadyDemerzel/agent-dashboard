@@ -416,6 +416,7 @@ interface MotionGraphicTemplateConfig {
   description: string;
   whenToUse: string;
   durationSeconds: number;
+  durationGuidance: string;
   stylePreset: string;
   defaultArgs: Record<string, unknown>;
   fields: MotionGraphicTemplateField[];
@@ -4693,6 +4694,7 @@ export function ShortFormVideoSettingsView({
       description: "Configured deterministic motion graphic template.",
       whenToUse: "Use when this recurring visual pattern fits the scene better than a generated image.",
       durationSeconds: 6,
+      durationGuidance: "Set visual start/end times to match the planned animation beat; do not assume a fixed template duration.",
       stylePreset: motionGraphicsSettings.defaultStylePreset || "watercolor-editorial",
       defaultArgs: { title: "New motion template" },
       fields: [
@@ -7152,7 +7154,7 @@ export function ShortFormVideoSettingsView({
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="text-sm font-medium text-foreground">Duration seconds</label>
+                          <label className="text-sm font-medium text-foreground">Preview duration seconds</label>
                           <Input
                             type="number"
                             min={3}
@@ -7165,6 +7167,9 @@ export function ShortFormVideoSettingsView({
                               }))
                             }
                           />
+                          <p className="text-xs text-muted-foreground">
+                            Used only for the settings-page preview. Real project renders use Scribe&apos;s visual start/end times.
+                          </p>
                         </div>
                         <div className="space-y-2">
                           <label className="text-sm font-medium text-foreground">Style preset</label>
@@ -7200,6 +7205,18 @@ export function ShortFormVideoSettingsView({
                             updateSelectedMotionTemplate((template) => ({
                               ...template,
                               whenToUse: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-foreground">Duration guidance</label>
+                        <Textarea
+                          value={selectedMotionTemplate.durationGuidance}
+                          onChange={(event) =>
+                            updateSelectedMotionTemplate((template) => ({
+                              ...template,
+                              durationGuidance: event.target.value,
                             }))
                           }
                         />

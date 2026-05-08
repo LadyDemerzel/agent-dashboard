@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { parseFrontMatter, generateFrontMatter, extractBody } from "@/lib/frontmatter";
+import { parseFrontMatter, generateFrontMatter, extractBody, normalizeFrontMatterContent } from "@/lib/frontmatter";
 import { readStatusLog } from "@/lib/status";
 import { readFeedback, type FeedbackThread } from "@/lib/feedback";
 import {
@@ -3242,7 +3242,7 @@ export function listShortFormProjects(): ShortFormProject[] {
 export function writeStageDocument(projectId: string, stage: ShortFormStageKey, content: string) {
   const filePath = getStageFilePath(projectId, stage);
   ensureDir(path.dirname(filePath));
-  fs.writeFileSync(filePath, content, "utf-8");
+  fs.writeFileSync(filePath, normalizeFrontMatterContent(content).content, "utf-8");
   updateProjectMeta(projectId, {});
   return filePath;
 }

@@ -217,7 +217,7 @@ export async function POST(
   writeJson(statusPath, { status: "running", runId, projectId: id, task, startedAt: requestedAt, attempts: [] });
 
   if (task === "full" || task === "visuals") {
-    updateXmlScriptFrontMatterStatus(id, "needs review");
+    updateXmlScriptFrontMatterStatus(id, "working");
   }
   updateProjectMeta(id, {});
 
@@ -259,31 +259,50 @@ export async function PATCH(
     return NextResponse.json({ success: false, error: "Project not found" }, { status: 404 });
   }
 
-  const body = await request.json().catch(() => ({}));
-  const content = typeof body.content === "string" ? body.content : undefined;
-  const status = typeof body.status === "string" ? body.status : undefined;
+  try {
+    const body = await request.json().catch(() => ({}));
+    const content = typeof body.content === "string" ? body.content : undefined;
+    const status = typeof body.status === "string" ? body.status.trim() : undefined;
 
-  if (content !== undefined) {
-    writeXmlScriptDocument(id, content);
+    if (content !== undefined) {
+      if (!content.trim()) {
+        return NextResponse.json(
+          { success: false, error: "XML script content cannot be empty." },
+          { status: 400 }
+        );
+      }
+      writeXmlScriptDocument(id, content);
+    }
+    if (status) {
+      updateXmlScriptFrontMatterStatus(id, status);
+    }
+
+    const expectedPauseRemoval = resolveShortFormPauseRemovalSettings({
+      ...(typeof project.pauseRemovalMinSilenceDurationSecondsOverride === "number"
+        ? { minSilenceDurationSeconds: project.pauseRemovalMinSilenceDurationSecondsOverride }
+        : {}),
+      ...(typeof project.pauseRemovalSilenceThresholdDbOverride === "number"
+        ? { silenceThresholdDb: project.pauseRemovalSilenceThresholdDbOverride }
+        : {}),
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: getXmlScriptDocument(id, {
+        expectedVoiceId: project.selectedVoiceId,
+        expectedPauseRemoval,
+      }),
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? `Failed to save XML script: ${error.message}`
+            : "Failed to save XML script.",
+      },
+      { status: 500 }
+    );
   }
-  if (status) {
-    updateXmlScriptFrontMatterStatus(id, status);
-  }
-
-  const expectedPauseRemoval = resolveShortFormPauseRemovalSettings({
-    ...(typeof project.pauseRemovalMinSilenceDurationSecondsOverride === "number"
-      ? { minSilenceDurationSeconds: project.pauseRemovalMinSilenceDurationSecondsOverride }
-      : {}),
-    ...(typeof project.pauseRemovalSilenceThresholdDbOverride === "number"
-      ? { silenceThresholdDb: project.pauseRemovalSilenceThresholdDbOverride }
-      : {}),
-  });
-
-  return NextResponse.json({
-    success: true,
-    data: getXmlScriptDocument(id, {
-      expectedVoiceId: project.selectedVoiceId,
-      expectedPauseRemoval,
-    }),
-  });
 }

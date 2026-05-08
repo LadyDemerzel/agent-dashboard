@@ -30,6 +30,7 @@ export interface MotionGraphicTemplateConfig {
   description: string;
   whenToUse: string;
   durationSeconds: number;
+  durationGuidance: string;
   stylePreset: string;
   defaultArgs: Record<string, unknown>;
   fields: MotionGraphicTemplateField[];
@@ -53,6 +54,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Large animated number over the unified dark pastel watercolor background with minimal supporting context.",
     whenToUse: "Use for a single memorable statistic, percentage, dollar amount, study result, or surprising quantified claim that should feel premium and focused.",
     durationSeconds: 6,
+    durationGuidance: "Usually 4-6 seconds: long enough for the number to reveal, settle, and give the viewer a beat to read the title.",
     stylePreset: DEFAULT_STYLE_PRESET,
     defaultArgs: { value: "73%", title: "people notice the change" },
     fields: [
@@ -68,6 +70,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Minimal animated bar chart over the unified dark pastel watercolor background with subdued labels and pastel accents.",
     whenToUse: "Use when comparing 2–5 categories, routines, channels, habits, or measured outcomes.",
     durationSeconds: 7,
+    durationGuidance: "Around 2 seconds for the setup plus about 1 second per bar, so 3 bars should land around 5 seconds and 5 bars around 7 seconds.",
     stylePreset: DEFAULT_STYLE_PRESET,
     defaultArgs: { title: "What changed most", data: [{ label: "A", value: 35, displayValue: "35" }, { label: "B", value: 68, displayValue: "68" }, { label: "C", value: 92, displayValue: "92" }] },
     fields: [
@@ -83,6 +86,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Minimal two-column comparison over the unified dark pastel watercolor background with no panels or card boxes.",
     whenToUse: "Use for transformations, posture/routine contrasts, old-vs-new workflow, or mistake-vs-fix moments.",
     durationSeconds: 6,
+    durationGuidance: "Usually 5-7 seconds: give the before side time to read first, then reveal the after side with a short pause before the visual ends.",
     stylePreset: DEFAULT_STYLE_PRESET,
     defaultArgs: { beforeLabel: "Before", afterLabel: "After", before: "Tension stacked under the chin", after: "Neck long, jawline reads cleaner" },
     fields: [
@@ -100,6 +104,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Minimal stepped timeline over the unified dark pastel watercolor background with smooth equal-segment reveals.",
     whenToUse: "Use for sequence, history, program phases, study timeline, or what happens over the next few seconds/days/weeks.",
     durationSeconds: 7,
+    durationGuidance: "Around 3 seconds for each step on the timeline, e.g. 4 steps should be around 12 seconds.",
     stylePreset: DEFAULT_STYLE_PRESET,
     defaultArgs: { steps: [{ label: "DAY 1", text: "Setup" }, { label: "DAY 7", text: "Signal" }, { label: "DAY 30", text: "Visible change" }] },
     fields: [
@@ -121,6 +126,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Vertically stacked cause-to-effect relationship over the unified dark pastel watercolor background with a deterministic downward arrow reveal.",
     whenToUse: "Use when explaining mechanisms, causal relationships, inputs that drive outcomes, or why one action creates a visible result.",
     durationSeconds: 6,
+    durationGuidance: "Usually 5-7 seconds: give the cause a readable beat, then reveal the arrow and effect with enough time for the effect copy to land.",
     stylePreset: DEFAULT_STYLE_PRESET,
     defaultArgs: { cause: "Small daily tension", effect: "Jaw and neck read tighter" },
     fields: [
@@ -136,6 +142,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Full-screen caption wall that replaces both the normal scene visual and bottom captions, using forced-alignment word timing with stat-reveal-style typography and an active-word pop.",
     whenToUse: "Use for retention-heavy moments where the spoken words should take over the full frame as a kinetic caption wall instead of sitting over a generated image.",
     durationSeconds: 6,
+    durationGuidance: "Match the exact spoken narration range for the caption wall. The start/end times should cover only the words represented by the configured lines.",
     stylePreset: DEFAULT_STYLE_PRESET,
     defaultArgs: {
       lines: [
@@ -328,6 +335,7 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
     durationSeconds: typeof candidate.durationSeconds === "number" && Number.isFinite(candidate.durationSeconds)
       ? Math.min(12, Math.max(3, candidate.durationSeconds))
       : fallback.durationSeconds,
+    durationGuidance: cleanString(candidate.durationGuidance, fallback.durationGuidance),
     stylePreset: cleanString(candidate.stylePreset, fallback.stylePreset || DEFAULT_STYLE_PRESET),
     defaultArgs: normalizedDefaultArgs,
     fields: normalizedFields,
@@ -387,7 +395,7 @@ export function renderMotionGraphicTemplatePromptInjection(settings = getShortFo
     return [
       `- ${template.id} (${template.displayName})`,
       `  rendererId: ${template.rendererId}`,
-      `  durationSeconds default: ${template.durationSeconds}`,
+      `  Duration guidance: ${template.durationGuidance}`,
       `  stylePreset default: ${template.stylePreset}`,
       `  Description: ${template.description}`,
       `  When to use: ${template.whenToUse}`,

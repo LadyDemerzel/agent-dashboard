@@ -189,6 +189,40 @@ function stripFrontMatter(content) {
   return (match ? match[1] : content).trim();
 }
 
+function updateMarkdownFrontMatterStatus(filePath, status) {
+  if (!fs.existsSync(filePath)) return;
+  const content = fs.readFileSync(filePath, "utf-8");
+  const updatedAt = new Date().toISOString();
+  if (!content.startsWith("---\n")) {
+    fs.writeFileSync(
+      filePath,
+      [
+        "---",
+        `status: ${status}`,
+        `updatedAt: "${updatedAt}"`,
+        "---",
+        "",
+        content,
+      ].join("\n"),
+      "utf-8",
+    );
+    return;
+  }
+
+  const closingIndex = content.indexOf("\n---", 4);
+  if (closingIndex === -1) return;
+
+  const frontMatter = content.slice(4, closingIndex);
+  const body = content.slice(closingIndex);
+  const withStatus = /^status:\s*.*$/m.test(frontMatter)
+    ? frontMatter.replace(/^status:\s*.*$/m, `status: ${status}`)
+    : `${frontMatter.replace(/\s*$/, "")}\nstatus: ${status}\n`;
+  const withUpdatedAt = /^updatedAt:\s*.*$/m.test(withStatus)
+    ? withStatus.replace(/^updatedAt:\s*.*$/m, `updatedAt: "${updatedAt}"`)
+    : `${withStatus.replace(/\s*$/, "")}\nupdatedAt: "${updatedAt}"\n`;
+  fs.writeFileSync(filePath, `---\n${withUpdatedAt}${body}`, "utf-8");
+}
+
 function normalizeScriptText(content) {
   return stripFrontMatter(content)
     .replace(/\r/g, "")
@@ -732,6 +766,9 @@ async function main() {
   };
 
   updateStatus();
+  if (task === "full" || task === "visuals") {
+    updateMarkdownFrontMatterStatus(job.xmlScriptPath, "working");
+  }
 
   try {
     ensureDir(voiceDir);
@@ -1037,6 +1074,9 @@ async function main() {
       }
     }
 
+    if (task === "full" || task === "visuals") {
+      updateMarkdownFrontMatterStatus(job.xmlScriptPath, "needs review");
+    }
     writeJson(statusPath, { status: "verified", runId: job.runId, projectId: job.projectId, task, startedAt, verifiedAt: new Date().toISOString(), attempts });
   } catch (error) {
     writeJson(statusPath, {

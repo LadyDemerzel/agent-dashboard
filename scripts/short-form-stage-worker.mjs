@@ -9,6 +9,10 @@ import {
   readMotionGraphicSuppressionRanges,
   suppressCaptionTimelineForRanges,
 } from "./short-form-caption-suppression.mjs";
+import {
+  buildCaptionOverlayFramePlan,
+  formatCaptionOverlayFrameAudit,
+} from "./short-form-caption-overlay-track.mjs";
 
 const jobPath = process.argv[2];
 
@@ -1345,6 +1349,29 @@ function parseMotionGraphicVisuals(xml) {
   return visuals;
 }
 
+function cleanupStaleMotionGraphicVideos(outputDir, motionVisuals) {
+  const currentMotionIndexes = new Set((Array.isArray(motionVisuals) ? motionVisuals : [])
+    .map((visual) => Number(visual.index))
+    .filter((index) => Number.isInteger(index) && index > 0));
+  const removed = [];
+  if (!fs.existsSync(outputDir)) return removed;
+  for (const entry of fs.readdirSync(outputDir, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const match = entry.name.match(/^scene-(\d+)-motion-graphic\.mp4$/);
+    if (!match) continue;
+    const index = Number(match[1]);
+    if (currentMotionIndexes.has(index)) continue;
+    const filePath = path.join(outputDir, entry.name);
+    try {
+      fs.unlinkSync(filePath);
+      removed.push(filePath);
+    } catch {
+      // Best-effort stale artifact cleanup. The final renderer also ignores stale files.
+    }
+  }
+  return removed;
+}
+
 function sanitizeXmlForMotionGraphics(xml, motionVisuals) {
   if (!motionVisuals.length) return xml;
   let next = xml.replace(/\s*<motionGraphic\b[\s\S]*?<\/motionGraphic>\s*/gi, "\n");
@@ -1378,21 +1405,32 @@ function motionGraphicsTemplateById(settings, templateId) {
   return templates.find((template) => template?.id === templateId || template?.rendererId === templateId) || null;
 }
 
+function describeMotionGraphicVisual(visual) {
+  const visualName = visual?.visualId || visual?.label || `visual-${visual?.index || "unknown"}`;
+  const assetName = visual?.asset?.id || visual?.asset?.templateId || "unknown motion graphic";
+  return `${visualName} (${assetName})`;
+}
+
 function mergeMotionGraphicConfig(settings, visual) {
   const template = motionGraphicsTemplateById(settings, visual.asset.templateId);
   const rendererId = visual.asset.rendererId || template?.rendererId || visual.asset.templateId;
   const visualStart = Number(visual.start);
   const visualEnd = Number(visual.end);
-  const visualDuration = Number.isFinite(visualStart) && Number.isFinite(visualEnd) && visualEnd > visualStart
-    ? visualEnd - visualStart
-    : null;
+  if (!Number.isFinite(visualStart) || !Number.isFinite(visualEnd) || visualEnd <= visualStart) {
+    const startText = typeof visual.start === "string" && visual.start.trim() ? visual.start : "(missing)";
+    const endText = typeof visual.end === "string" && visual.end.trim() ? visual.end : "(missing)";
+    throw new Error(
+      `Motion graphic visual ${describeMotionGraphicVisual(visual)} requires valid start and end times with end greater than start; got start="${startText}" end="${endText}". Set explicit start/end attributes in Scribe's XML plan.`,
+    );
+  }
+  const visualDuration = visualEnd - visualStart;
   return {
     templateId: visual.asset.templateId,
     rendererId,
     stylePreset: visual.asset.stylePreset || template?.stylePreset || settings?.defaultStylePreset || "watercolor-editorial",
-    durationSeconds: visualDuration || visual.asset.durationSeconds || template?.durationSeconds || 6,
-    ...(Number.isFinite(visualStart) ? { visualStartSeconds: visualStart } : {}),
-    ...(Number.isFinite(visualEnd) ? { visualEndSeconds: visualEnd } : {}),
+    durationSeconds: visualDuration,
+    visualStartSeconds: visualStart,
+    visualEndSeconds: visualEnd,
     defaultArgs: template?.defaultArgs || {},
     args: visual.asset.args || {},
     label: visual.label,
@@ -1414,8 +1452,9 @@ function readManifestIfExists(manifestPath) {
 function renderMotionGraphicScenes({ outputDir, runDir, xmlPath, settings, sceneIndexes, backgroundVideoId, backgroundVideoName, backgroundVideoPath, alignmentPath }) {
   const xml = fs.readFileSync(xmlPath, "utf-8");
   const motionVisuals = parseMotionGraphicVisuals(xml);
+  const staleMotionGraphicVideosRemoved = cleanupStaleMotionGraphicVideos(outputDir, motionVisuals);
   if (motionVisuals.length === 0) {
-    return { motionVisuals, rendered: [], sanitizedXml: xml, nonMotionSceneIndexes: [] };
+    return { motionVisuals, rendered: [], sanitizedXml: xml, nonMotionSceneIndexes: [], staleMotionGraphicVideosRemoved };
   }
 
   const selected = new Set((Array.isArray(sceneIndexes) ? sceneIndexes : [])
@@ -1445,8 +1484,9 @@ function renderMotionGraphicScenes({ outputDir, runDir, xmlPath, settings, scene
     fs.copyFileSync(posterPath, captionedPath);
     byIndex.set(visual.index, {
       index: visual.index,
-      duration: visual.start && visual.end ? `${visual.start}:${visual.end}` : undefined,
-      ...(visual.start && visual.end ? { start: Number(visual.start), end: Number(visual.end) } : {}),
+      duration: `${mergedConfig.visualStartSeconds}:${mergedConfig.visualEndSeconds}`,
+      start: mergedConfig.visualStartSeconds,
+      end: mergedConfig.visualEndSeconds,
       text: visual.label,
       image_prompt: `Deterministic motion graphic: ${visual.asset.templateId}`,
       prompt_source: "motion_graphic",
@@ -1476,6 +1516,7 @@ function renderMotionGraphicScenes({ outputDir, runDir, xmlPath, settings, scene
     template_id: visual.asset.templateId,
     renderer_id: visual.asset.rendererId || visual.asset.templateId,
   }));
+  manifest.stale_motion_graphic_videos_removed = staleMotionGraphicVideosRemoved;
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
 
   const motionIndexes = new Set(motionVisuals.map((visual) => visual.index));
@@ -1487,6 +1528,7 @@ function renderMotionGraphicScenes({ outputDir, runDir, xmlPath, settings, scene
     rendered,
     sanitizedXml: sanitizeXmlForMotionGraphics(xml, motionVisuals),
     nonMotionSceneIndexes,
+    staleMotionGraphicVideosRemoved,
   };
 }
 
@@ -3361,7 +3403,7 @@ function muxAudioOntoVideo(videoPath, audioPath, workDir) {
   fs.renameSync(muxedPath, videoPath);
 }
 
-function buildCaptionOverlayTrack({ overlayManifest, totalDurationSeconds, emptyMessage, buildMessage }) {
+function buildCaptionOverlayTrack({ overlayManifest, totalDurationSeconds, fps, emptyMessage, buildMessage }) {
   const entries = Array.isArray(overlayManifest.entries)
     ? overlayManifest.entries
       .filter((entry) => entry && typeof entry === "object")
@@ -3369,6 +3411,7 @@ function buildCaptionOverlayTrack({ overlayManifest, totalDurationSeconds, empty
         relativePath: typeof entry.relativePath === "string" ? entry.relativePath : "",
         start: Number(entry.start),
         end: Number(entry.end),
+        frameIndex: Number.isInteger(Number(entry.frameIndex)) ? Number(entry.frameIndex) : null,
       }))
       .filter((entry) => entry.relativePath && Number.isFinite(entry.start) && Number.isFinite(entry.end) && entry.end > entry.start)
       .sort((a, b) => a.start - b.start || a.end - b.end)
@@ -3384,6 +3427,8 @@ function buildCaptionOverlayTrack({ overlayManifest, totalDurationSeconds, empty
     if (
       previous
       && previous.relativePath === entry.relativePath
+      && previous.frameIndex == null
+      && entry.frameIndex == null
       && Math.abs(previous.end - entry.start) <= 0.001
     ) {
       previous.end = entry.end;
@@ -3408,50 +3453,52 @@ function buildCaptionOverlayTrack({ overlayManifest, totalDurationSeconds, empty
   }
 
   const concatPath = path.join(overlayManifest.outputDir, "overlay-track.concat.txt");
+  const frameListPath = path.join(overlayManifest.outputDir, "overlay-track.frames.txt");
+  const frameDir = path.join(overlayManifest.outputDir, "overlay-track-frames");
   const overlayTrackPath = path.join(overlayManifest.outputDir, "overlay-track.mov");
-  const lines = [];
-  let cursor = 0;
-  let lastPathForConcat = blankOverlayPath;
+  const existingEntries = mergedEntries.filter((entry) => fs.existsSync(path.join(overlayManifest.outputDir, entry.relativePath)));
+  const framePlan = buildCaptionOverlayFramePlan({
+    entries: existingEntries,
+    outputDir: overlayManifest.outputDir,
+    blankOverlayPath,
+    totalDurationSeconds,
+    fps: fps || overlayManifest.fps,
+  });
 
-  const pushStill = (filePath, durationSeconds) => {
-    const safeDuration = Number(durationSeconds);
-    if (!Number.isFinite(safeDuration) || safeDuration <= 0.001) return;
-    lines.push(`file '${escapeConcatFilePath(filePath)}'`);
-    lines.push(`duration ${safeDuration.toFixed(3)}`);
-    lastPathForConcat = filePath;
-  };
-
-  for (const entry of mergedEntries) {
-    const absoluteImagePath = path.join(overlayManifest.outputDir, entry.relativePath);
-    if (!fs.existsSync(absoluteImagePath)) continue;
-
-    if (entry.start > cursor + 0.001) {
-      pushStill(blankOverlayPath, entry.start - cursor);
-    }
-
-    pushStill(absoluteImagePath, entry.end - entry.start);
-    cursor = Math.max(cursor, entry.end);
-  }
-
-  if (totalDurationSeconds > cursor + 0.001) {
-    pushStill(blankOverlayPath, totalDurationSeconds - cursor);
-  }
-
-  if (lines.length === 0) {
+  if (framePlan.frames.length === 0) {
     throw new Error(buildMessage);
   }
 
-  lines.push(`file '${escapeConcatFilePath(lastPathForConcat)}'`);
-  fs.writeFileSync(concatPath, `${lines.join("\n")}\n`, "utf-8");
+  fs.writeFileSync(frameListPath, `${formatCaptionOverlayFrameAudit(framePlan)}\n`, "utf-8");
+
+  const concatLines = framePlan.frames.flatMap((frame) => [
+    `file '${escapeConcatFilePath(frame.path)}'`,
+    `duration ${(1 / framePlan.fps).toFixed(6)}`,
+  ]);
+  concatLines.push(`file '${escapeConcatFilePath(framePlan.frames[framePlan.frames.length - 1].path)}'`);
+  fs.writeFileSync(concatPath, `${concatLines.join("\n")}\n`, "utf-8");
+
+  fs.rmSync(frameDir, { recursive: true, force: true });
+  ensureDir(frameDir);
+  for (const frame of framePlan.frames) {
+    const framePath = path.join(frameDir, `frame-${String(frame.index).padStart(6, "0")}.png`);
+    try {
+      fs.symlinkSync(frame.path, framePath);
+    } catch {
+      fs.copyFileSync(frame.path, framePath);
+    }
+  }
 
   runCommand("ffmpeg", [
     "-y",
-    "-f",
-    "concat",
-    "-safe",
+    "-framerate",
+    String(framePlan.fps),
+    "-start_number",
     "0",
     "-i",
-    concatPath,
+    path.join(frameDir, "frame-%06d.png"),
+    "-frames:v",
+    String(framePlan.frameCount),
     "-c:v",
     "qtrle",
     "-pix_fmt",
@@ -3462,6 +3509,10 @@ function buildCaptionOverlayTrack({ overlayManifest, totalDurationSeconds, empty
   return {
     blankOverlayPath,
     concatPath,
+    frameDir,
+    frameListPath,
+    frameCount: framePlan.frameCount,
+    frameFps: framePlan.fps,
     overlayTrackPath,
   };
 }
@@ -3470,6 +3521,7 @@ function applyCaptionOverlayBurnIn({ baseVideoPath, finalVideoPath, overlayManif
   const overlayTrack = buildCaptionOverlayTrack({
     overlayManifest,
     totalDurationSeconds: getMediaDurationSeconds(baseVideoPath),
+    fps: getMediaFrameRate(baseVideoPath),
     emptyMessage: "Caption overlay renderer could not run because no overlay entries were generated.",
     buildMessage: "Caption overlay renderer could not build a concat track.",
   });
@@ -3578,6 +3630,10 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
       overlayDir: overlayManifest.outputDir,
       overlayVideoPath: overlayTrack.overlayTrackPath,
       overlayConcatPath: overlayTrack.concatPath,
+      overlayFrameListPath: overlayTrack.frameListPath,
+      overlayFrameDir: overlayTrack.frameDir,
+      overlayFrameCount: overlayTrack.frameCount,
+      overlayFrameFps: overlayTrack.frameFps,
       renderer: "pillow-word-highlight-v1",
       ...suppressionMetadata,
       fallbackReason: usesConfigDrivenPreset
@@ -3612,6 +3668,10 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
         overlayDir: overlayManifest.outputDir,
         overlayVideoPath: overlayTrack.overlayTrackPath,
         overlayConcatPath: overlayTrack.concatPath,
+        overlayFrameListPath: overlayTrack.frameListPath,
+        overlayFrameDir: overlayTrack.frameDir,
+        overlayFrameCount: overlayTrack.frameCount,
+        overlayFrameFps: overlayTrack.frameFps,
         renderer: "pillow-word-highlight-v1",
         assUnavailableReason: assReason,
         ...suppressionMetadata,
@@ -3701,6 +3761,10 @@ function updateVideoManifestCaptionRendering(projectId, config, captionStyleSele
     ...(captionRender.overlayDir ? { overlayDirRelativePath: toProjectRelativePath(projectId, captionRender.overlayDir) } : {}),
     ...(captionRender.overlayVideoPath ? { overlayVideoRelativePath: toProjectRelativePath(projectId, captionRender.overlayVideoPath) } : {}),
     ...(captionRender.overlayConcatPath ? { overlayConcatRelativePath: toProjectRelativePath(projectId, captionRender.overlayConcatPath) } : {}),
+    ...(captionRender.overlayFrameListPath ? { overlayFrameListRelativePath: toProjectRelativePath(projectId, captionRender.overlayFrameListPath) } : {}),
+    ...(captionRender.overlayFrameDir ? { overlayFrameDirRelativePath: toProjectRelativePath(projectId, captionRender.overlayFrameDir) } : {}),
+    ...(Number.isFinite(Number(captionRender.overlayFrameCount)) ? { overlayFrameCount: Number(captionRender.overlayFrameCount) } : {}),
+    ...(Number.isFinite(Number(captionRender.overlayFrameFps)) ? { overlayFrameFps: Number(captionRender.overlayFrameFps) } : {}),
     ...(captionRender.renderer ? { renderer: captionRender.renderer } : {}),
     ...(captionRender.motionGraphicSuppressionRanges ? { motionGraphicSuppressionRanges: captionRender.motionGraphicSuppressionRanges } : {}),
     ...(Number.isFinite(Number(captionRender.originalCaptionCount)) ? { originalCaptionCount: Number(captionRender.originalCaptionCount) } : {}),

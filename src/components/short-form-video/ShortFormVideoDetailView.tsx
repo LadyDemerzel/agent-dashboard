@@ -1433,6 +1433,9 @@ function XMLScriptSection({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [visualsRunIntent, setVisualsRunIntent] = useState<
+    "initial" | "regenerate" | "revise" | null
+  >(null);
   const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([]);
   const [defaultVoiceId, setDefaultVoiceId] = useState<string>("");
   const [defaultCaptionMaxWords, setDefaultCaptionMaxWords] = useState<
@@ -1490,6 +1493,7 @@ function XMLScriptSection({
     data: xmlScriptPayload,
     error: xmlScriptLoadError,
     isLoading,
+    mutate: mutateXmlScript,
   } = useSWR<ApiResponse<XmlScriptDoc>>(
     project.id ? `/api/short-form-videos/${project.id}/xml-script` : null,
     apiEnvelopeFetcher,
@@ -1501,10 +1505,11 @@ function XMLScriptSection({
   const loading = isLoading && !doc;
 
   const applyXmlScriptPayload = useCallback((payload: ApiResponse<XmlScriptDoc>) => {
-    setDoc(payload.data || null);
-    setDraft(payload.data?.content || "");
+    const nextDoc = payload.data || null;
+    setDoc(nextDoc);
+    setDraft((current) => (editing ? current : nextDoc?.content || ""));
     setError(null);
-  }, []);
+  }, [editing]);
 
   useEffect(() => {
     if (!xmlScriptPayload) return;
@@ -1597,7 +1602,9 @@ function XMLScriptSection({
         }),
         "Failed to save XML script",
       );
+      await mutateXmlScript(payload, { revalidate: false });
       setDoc(payload.data || null);
+      setDraft(payload.data?.content || draft);
       setEditing(false);
       setError(null);
       void onProjectRefresh().catch(() => undefined);
@@ -1758,9 +1765,25 @@ function XMLScriptSection({
   const visualsStatus = getXmlPipelineTaskStatus(
     getXmlPipelineSteps(doc, ["xml"]),
   );
+  const visualsRunInProgress = Boolean(
+    doc?.pending || doc?.pipeline?.status === "running",
+  );
+  const visualsLoadingLabel = visualsRunInProgress
+    ? visualsRunIntent === "revise"
+      ? "Revising…"
+      : visualsRunIntent === "regenerate"
+        ? "Regenerating…"
+        : "Working…"
+    : "Starting…";
   const captionsJsonDetail =
     captionsStep?.details?.find((detail) => detail.id === "caption-plan") ||
     null;
+
+  useEffect(() => {
+    if (!visualsRunInProgress) {
+      setVisualsRunIntent(null);
+    }
+  }, [visualsRunInProgress]);
 
   async function triggerTask(
     task: "full" | "narration" | "silence" | "captions" | "visuals",
@@ -1779,6 +1802,7 @@ function XMLScriptSection({
         }),
         "Failed to start XML workflow task",
       );
+      await mutateXmlScript(payload, { revalidate: false });
       setDoc(payload.data || null);
       setDraft(payload.data?.content || "");
       setError(null);
@@ -2306,10 +2330,19 @@ function XMLScriptSection({
             rerunLabel="Re-plan visuals"
             rerunWithNotesLabel="Re-plan visuals with revision notes"
             loading={saving || Boolean(doc?.pending)}
-            loadingLabel="Starting…"
-            onInitialRun={() => triggerTask("visuals")}
-            onCleanRerun={() => triggerTask("visuals")}
-            onRerunWithNotes={(notes) => triggerTask("visuals", { notes })}
+            loadingLabel={visualsLoadingLabel}
+            onInitialRun={() => {
+              setVisualsRunIntent("initial");
+              return triggerTask("visuals");
+            }}
+            onCleanRerun={() => {
+              setVisualsRunIntent("regenerate");
+              return triggerTask("visuals");
+            }}
+            onRerunWithNotes={(notes) => {
+              setVisualsRunIntent("revise");
+              return triggerTask("visuals", { notes });
+            }}
           />
           {doc?.exists ? (
             <Button

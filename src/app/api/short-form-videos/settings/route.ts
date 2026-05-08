@@ -468,7 +468,10 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ success: false, error: `Motion graphics template ${template.displayName} needs when-to-use guidance` }, { status: 400 });
       }
       if (typeof template.durationSeconds !== "number" || Number.isNaN(template.durationSeconds) || template.durationSeconds < 3 || template.durationSeconds > 12) {
-        return NextResponse.json({ success: false, error: `Motion graphics template ${template.displayName} duration must be between 3 and 12 seconds` }, { status: 400 });
+        return NextResponse.json({ success: false, error: `Motion graphics template ${template.displayName} preview duration must be between 3 and 12 seconds` }, { status: 400 });
+      }
+      if ("durationGuidance" in template && typeof template.durationGuidance !== "string") {
+        return NextResponse.json({ success: false, error: `Motion graphics template ${template.displayName} duration guidance must be plain text` }, { status: 400 });
       }
       if (!Array.isArray(template.fields) || template.fields.length === 0) {
         return NextResponse.json({ success: false, error: `Motion graphics template ${template.displayName} needs at least one configurable field` }, { status: 400 });
