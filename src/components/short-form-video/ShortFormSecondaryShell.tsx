@@ -4,22 +4,15 @@ import { useEffect, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import {
-  AudioLines,
   Captions,
   Clapperboard,
   FileText,
-  GalleryVerticalEnd,
   Image,
   Images,
-  Layers,
   Lightbulb,
   ListMusic,
-  MessageSquareText,
   Mic2,
-  Music,
-  Palette,
   Search,
-  Type,
   Volume2,
   WandSparkles,
   type LucideIcon,
@@ -57,13 +50,6 @@ const SHORT_FORM_NAV_ICONS: Record<ShortFormSecondaryNavIcon, LucideIcon> = {
   'plan-sound-design': ListMusic,
   'generate-sound-design': Volume2,
   'final-video': Clapperboard,
-  prompts: MessageSquareText,
-  audio: AudioLines,
-  'sound-library': Layers,
-  images: Palette,
-  'settings-captions': Type,
-  backgrounds: GalleryVerticalEnd,
-  music: Music,
 };
 
 function NavItemCard({ item }: { item: ShortFormSecondaryNavItem }) {

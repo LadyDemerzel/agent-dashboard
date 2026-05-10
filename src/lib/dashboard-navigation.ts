@@ -37,13 +37,17 @@ const SHORT_FORM_DETAIL_LABELS: Record<ShortFormDetailRouteSection, string> = {
 };
 
 const SHORT_FORM_SETTINGS_LABELS: Record<ShortFormSettingsRouteSection, string> = {
-  prompts: 'Prompts',
-  audio: 'Audio',
-  'sound-library': 'Sound Library',
-  images: 'Images',
-  captions: 'Captions',
-  backgrounds: 'Backgrounds',
-  music: 'Music',
+  topic: 'Topic',
+  hook: 'Hook',
+  research: 'Research',
+  'text-script': 'Text Script',
+  'generate-narration-audio': 'Generate Narration Audio',
+  'plan-captions': 'Plan Captions',
+  'plan-visuals': 'Plan Visuals',
+  'generate-visuals': 'Generate Visuals',
+  'plan-sound-design': 'Plan Sound Design',
+  'generate-sound-design': 'Generate Sound Design',
+  'final-video': 'Final Video',
 };
 
 function titleCaseSegment(segment: string) {
@@ -81,7 +85,7 @@ export function buildDashboardBreadcrumbs(
     }
 
     if (segments[1] === 'settings') {
-      crumbs.push({ label: 'Settings', href: '/short-form-video/settings/prompts' });
+      crumbs.push({ label: 'Settings', href: '/short-form-video/settings/topic' });
       const section = segments[2] as ShortFormSettingsRouteSection | undefined;
       if (section && (SHORT_FORM_SETTINGS_SECTIONS as readonly string[]).includes(section)) {
         crumbs.push({ label: SHORT_FORM_SETTINGS_LABELS[section] });

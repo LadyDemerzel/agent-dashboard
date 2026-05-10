@@ -89,7 +89,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       {
         href: '/short-form-video',
         label: 'Short-Form Video',
-        settingsHref: '/short-form-video/settings/prompts',
+        settingsHref: '/short-form-video/settings/topic',
         settingsLabel: 'Open short-form video settings',
         icon: (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={iconClass}>

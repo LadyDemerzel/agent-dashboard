@@ -78,7 +78,11 @@ function buildXmlAuthoringPrompt(project: NonNullable<ReturnType<typeof getShort
       })
     : "";
 
-  return renderShortFormXmlVisualPlanningPrompt(settings.promptTemplate, {
+  const promptTemplate = revisionNotes
+    ? settings.revisePromptTemplate
+    : settings.promptTemplate;
+
+  return renderShortFormXmlVisualPlanningPrompt(promptTemplate, {
     xmlScriptPath,
     topic: project.topic || "Untitled short-form video",
     selectedHook: project.selectedHookText ?? "",

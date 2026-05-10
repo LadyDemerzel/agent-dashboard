@@ -21,20 +21,31 @@ export const LEGACY_SHORT_FORM_DETAIL_SECTION_REDIRECTS: Record<string, ShortFor
 };
 
 export const SHORT_FORM_SETTINGS_SECTIONS = [
-  'prompts',
-  'audio',
-  'sound-library',
-  'images',
-  'captions',
-  'backgrounds',
-  'music',
+  'topic',
+  'hook',
+  'research',
+  'text-script',
+  'generate-narration-audio',
+  'plan-captions',
+  'plan-visuals',
+  'generate-visuals',
+  'plan-sound-design',
+  'generate-sound-design',
+  'final-video',
 ] as const;
 
 export type ShortFormSettingsRouteSection = (typeof SHORT_FORM_SETTINGS_SECTIONS)[number];
 
 export const LEGACY_SHORT_FORM_SETTINGS_SECTION_REDIRECTS: Record<string, { section: ShortFormSettingsRouteSection; hash?: string }> = {
-  'sound-design': { section: 'sound-library' },
-  'visuals-style': { section: 'images', hash: 'image-styles' },
+  prompts: { section: 'hook', hash: 'prompt-hooks' },
+  audio: { section: 'generate-narration-audio' },
+  'sound-library': { section: 'plan-sound-design', hash: 'sound-library' },
+  images: { section: 'generate-visuals', hash: 'image-styles' },
+  captions: { section: 'plan-captions', hash: 'caption-styles' },
+  backgrounds: { section: 'final-video', hash: 'background-videos' },
+  music: { section: 'final-video', hash: 'music-library' },
+  'sound-design': { section: 'plan-sound-design' },
+  'visuals-style': { section: 'generate-visuals', hash: 'image-styles' },
 };
 
 export function isShortFormDetailRouteSection(value: string): value is ShortFormDetailRouteSection {
@@ -62,17 +73,18 @@ export function buildShortFormSettingsHref(
 }
 
 export const SHORT_FORM_SETTINGS_ANCHOR_TO_SECTION: Record<string, ShortFormSettingsRouteSection> = {
-  'prompt-hooks': 'prompts',
-  'prompt-research': 'prompts',
-  'text-script-prompts': 'prompts',
-  'xml-visual-planning': 'prompts',
-  'pause-removal': 'audio',
-  'tts-voice': 'audio',
-  'sound-library': 'sound-library',
-  'motion-graphics': 'images',
-  'image-templates': 'images',
-  'image-styles': 'images',
-  'caption-styles': 'captions',
-  'background-videos': 'backgrounds',
-  'music-library': 'music',
+  'prompt-hooks': 'hook',
+  'prompt-research': 'research',
+  'text-script-prompts': 'text-script',
+  'xml-visual-planning': 'plan-visuals',
+  'pause-removal': 'generate-narration-audio',
+  'tts-voice': 'generate-narration-audio',
+  'sound-library': 'plan-sound-design',
+  'motion-graphics': 'generate-visuals',
+  'image-templates': 'generate-visuals',
+  'image-styles': 'generate-visuals',
+  'caption-styles': 'plan-captions',
+  'background-videos': 'final-video',
+  'music-library': 'final-video',
+  'final-video-render': 'final-video',
 };

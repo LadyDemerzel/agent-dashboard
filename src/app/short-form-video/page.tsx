@@ -212,7 +212,7 @@ export default function ShortFormVideoPage() {
             Create and review hook, research, script, narration audio, captions, visuals, sound design, and final video projects.
           </p>
         </div>
-        <Link href="/short-form-video/settings/prompts" className={buttonVariants({ variant: 'outline' })}>
+        <Link href="/short-form-video/settings/topic" className={buttonVariants({ variant: 'outline' })}>
           Settings
         </Link>
       </div>

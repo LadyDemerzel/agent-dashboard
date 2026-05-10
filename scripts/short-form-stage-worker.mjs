@@ -1243,6 +1243,38 @@ function parseBooleanAttribute(value) {
   return value === true || ["true", "1", "yes", "emphasized", "emphasis"].includes(String(value || "").trim().toLowerCase());
 }
 
+const SUPPORTED_MOTION_GRAPHIC_RENDERERS = new Set([
+  "stat_reveal",
+  "bar_chart",
+  "pie_chart",
+  "line_growth_chart",
+  "comparison_before_after",
+  "timeline",
+  "cause_effect",
+  "caption_word_wall",
+  "ranked_podium",
+  "checklist",
+  "scorecard",
+  "research_paper_card",
+  "good_bad_indicator",
+]);
+
+const LEGACY_MOTION_GRAPHIC_RENDERER_ALIASES = new Map([
+  ["instruction", "good_bad_indicator"],
+  ["warning_card", "good_bad_indicator"],
+  ["good-bad-indicator", "good_bad_indicator"],
+  ["step_checklist", "checklist"],
+  ["process_flow", "timeline"],
+  ["research_finding_card", "stat_reveal"],
+]);
+
+function resolveSupportedMotionGraphicRenderer(value) {
+  const key = collapseWhitespace(value);
+  if (!key) return "";
+  if (SUPPORTED_MOTION_GRAPHIC_RENDERERS.has(key)) return key;
+  return LEGACY_MOTION_GRAPHIC_RENDERER_ALIASES.get(key) || "";
+}
+
 function parseCaptionWordWallLineSize(value, attrs = {}) {
   const raw = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
   if (raw === "regular" || raw === "normal" || raw === "base") return "regular";
@@ -1310,10 +1342,11 @@ function parseMotionGraphicAssets(xml) {
       });
     }
     if (lines.length > 0) args.lines = lines;
+    const rendererId = collapseWhitespace(attributes.rendererId);
     assets.set(id, {
       id,
       templateId,
-      rendererId: collapseWhitespace(attributes.rendererId) || templateId,
+      ...(rendererId ? { rendererId } : {}),
       stylePreset: collapseWhitespace(attributes.stylePreset),
       durationSeconds: Number.isFinite(Number(attributes.durationSeconds)) ? Number(attributes.durationSeconds) : undefined,
       args,
@@ -1402,7 +1435,36 @@ function sanitizeXmlForMotionGraphics(xml, motionVisuals) {
 
 function motionGraphicsTemplateById(settings, templateId) {
   const templates = Array.isArray(settings?.templates) ? settings.templates : [];
-  return templates.find((template) => template?.id === templateId || template?.rendererId === templateId) || null;
+  const alias = templateId === "step_checklist" ? "checklist" : templateId;
+  return templates.find((template) =>
+    template?.id === templateId
+    || template?.rendererId === templateId
+    || template?.id === alias
+    || template?.rendererId === alias
+  ) || null;
+}
+
+function resolveRendererFromKnownTemplate(settings, value) {
+  const key = collapseWhitespace(value);
+  if (!key) return "";
+  const template = motionGraphicsTemplateById(settings, key);
+  return resolveSupportedMotionGraphicRenderer(template?.rendererId);
+}
+
+function resolveMotionGraphicRendererId(settings, visual, template) {
+  const explicitRenderer = resolveSupportedMotionGraphicRenderer(visual?.asset?.rendererId);
+  if (explicitRenderer) return explicitRenderer;
+
+  const templateRenderer = resolveSupportedMotionGraphicRenderer(template?.rendererId);
+  if (templateRenderer) return templateRenderer;
+
+  const templateIdRenderer = resolveSupportedMotionGraphicRenderer(visual?.asset?.templateId);
+  if (templateIdRenderer) return templateIdRenderer;
+
+  const knownTemplateRenderer = resolveRendererFromKnownTemplate(settings, visual?.asset?.rendererId);
+  if (knownTemplateRenderer) return knownTemplateRenderer;
+
+  return "stat_reveal";
 }
 
 function describeMotionGraphicVisual(visual) {
@@ -1413,7 +1475,7 @@ function describeMotionGraphicVisual(visual) {
 
 function mergeMotionGraphicConfig(settings, visual) {
   const template = motionGraphicsTemplateById(settings, visual.asset.templateId);
-  const rendererId = visual.asset.rendererId || template?.rendererId || visual.asset.templateId;
+  const rendererId = resolveMotionGraphicRendererId(settings, visual, template);
   const visualStart = Number(visual.start);
   const visualEnd = Number(visual.end);
   if (!Number.isFinite(visualStart) || !Number.isFinite(visualEnd) || visualEnd <= visualStart) {
@@ -1499,7 +1561,7 @@ function renderMotionGraphicScenes({ outputDir, runDir, xmlPath, settings, scene
       visual_type: "motion_graphic",
       motion_graphic_id: visual.asset.id,
       motion_graphic_template_id: visual.asset.templateId,
-      motion_graphic_renderer_id: visual.asset.rendererId || visual.asset.templateId,
+      motion_graphic_renderer_id: mergedConfig.rendererId,
       image_id: `__motion_graphic_${visual.asset.id}`,
       visual_id: visual.visualId,
       renderer_stdout: result.stdout.trim(),
@@ -1514,7 +1576,7 @@ function renderMotionGraphicScenes({ outputDir, runDir, xmlPath, settings, scene
     visual_id: visual.visualId,
     motion_graphic_id: visual.asset.id,
     template_id: visual.asset.templateId,
-    renderer_id: visual.asset.rendererId || visual.asset.templateId,
+    renderer_id: resolveMotionGraphicRendererId(settings, visual, motionGraphicsTemplateById(settings, visual.asset.templateId)),
   }));
   manifest.stale_motion_graphic_videos_removed = staleMotionGraphicVideosRemoved;
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");

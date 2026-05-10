@@ -1873,7 +1873,7 @@ function XMLScriptSection({
           }}
           links={
             <CompactSettingLink
-              href={buildShortFormSettingsHref("audio", { hash: "tts-voice" })}
+              href={buildShortFormSettingsHref("generate-narration-audio", { hash: "tts-voice" })}
               target="_blank"
               rel="noreferrer"
             >
@@ -1893,7 +1893,7 @@ function XMLScriptSection({
                   />
                 ) : null}
                 <CompactSettingLink
-                  href={buildShortFormSettingsHref("audio", { hash: "tts-voice" })}
+                  href={buildShortFormSettingsHref("generate-narration-audio", { hash: "tts-voice" })}
                   target="_blank"
                   rel="noreferrer"
                 >
@@ -1989,7 +1989,7 @@ function XMLScriptSection({
           }}
           links={
             <CompactSettingLink
-              href={buildShortFormSettingsHref("audio", {
+              href={buildShortFormSettingsHref("generate-narration-audio", {
                 hash: "pause-removal",
               })}
               target="_blank"
@@ -2012,7 +2012,7 @@ function XMLScriptSection({
                   />
                 ) : null}
                 <CompactSettingLink
-                  href={buildShortFormSettingsHref("audio", {
+                  href={buildShortFormSettingsHref("generate-narration-audio", {
                     hash: "pause-removal",
                   })}
                   target="_blank"
@@ -2209,7 +2209,7 @@ function XMLScriptSection({
           }}
           links={
             <CompactSettingLink
-              href={buildShortFormSettingsHref("captions", {
+              href={buildShortFormSettingsHref("plan-captions", {
                 hash: "caption-styles",
               })}
               target="_blank"
@@ -3719,7 +3719,7 @@ function SceneImagesSection({
             }}
             links={
               <CompactSettingLink
-                href={buildShortFormSettingsHref("images", {
+                href={buildShortFormSettingsHref("generate-visuals", {
                   hash: "image-styles",
                 })}
                 target="_blank"
@@ -3742,7 +3742,7 @@ function SceneImagesSection({
                     />
                   ) : null}
                   <CompactSettingLink
-                    href={buildShortFormSettingsHref("images", {
+                    href={buildShortFormSettingsHref("generate-visuals", {
                       hash: "image-styles",
                     })}
                     target="_blank"
@@ -3853,7 +3853,7 @@ function SceneImagesSection({
             }}
             links={
               <CompactSettingLink
-                href={buildShortFormSettingsHref("images", {
+                href={buildShortFormSettingsHref("generate-visuals", {
                   query: `style=${encodeURIComponent(project.selectedImageStyleId || "")}`,
                   hash: "image-styles",
                 })}
@@ -3877,7 +3877,7 @@ function SceneImagesSection({
                     />
                   ) : null}
                   <CompactSettingLink
-                    href={buildShortFormSettingsHref("images", {
+                    href={buildShortFormSettingsHref("generate-visuals", {
                       query: `style=${encodeURIComponent(draftStyleId || activeStyleId)}`,
                       hash: "image-styles",
                     })}
@@ -3959,7 +3959,7 @@ function SceneImagesSection({
             }}
             links={
               <CompactSettingLink
-                href={buildShortFormSettingsHref("backgrounds", {
+                href={buildShortFormSettingsHref("final-video", {
                   hash: "background-videos",
                 })}
                 target="_blank"
@@ -3982,7 +3982,7 @@ function SceneImagesSection({
                     />
                   ) : null}
                   <CompactSettingLink
-                    href={buildShortFormSettingsHref("backgrounds", {
+                    href={buildShortFormSettingsHref("final-video", {
                       hash: "background-videos",
                     })}
                     target="_blank"
@@ -4927,7 +4927,7 @@ function SoundDesignSection({
               onRerunWithNotes={(notes) => runAction("generate", { notes })}
             />
             <Link
-              href={buildShortFormSettingsHref("sound-library", {
+              href={buildShortFormSettingsHref("plan-sound-design", {
                 hash: "sound-library",
               })}
               target="_blank"
@@ -5063,7 +5063,7 @@ function SoundDesignSection({
           </Button>
         ) : null}
         <Link
-          href={buildShortFormSettingsHref("sound-library", {
+          href={buildShortFormSettingsHref("plan-sound-design", {
             hash: "sound-library",
           })}
           target="_blank"
@@ -6006,7 +6006,7 @@ function VideoSection({
             }}
             links={
               <CompactSettingLink
-                href={buildShortFormSettingsHref("music", {
+                href={buildShortFormSettingsHref("final-video", {
                   hash: "music-library",
                 })}
                 target="_blank"
@@ -6028,7 +6028,7 @@ function VideoSection({
                     />
                   ) : null}
                   <CompactSettingLink
-                    href={buildShortFormSettingsHref("music", {
+                    href={buildShortFormSettingsHref("final-video", {
                       hash: "music-library",
                     })}
                     target="_blank"
@@ -6102,7 +6102,7 @@ function VideoSection({
             }}
             links={
               <CompactSettingLink
-                href={buildShortFormSettingsHref("captions", {
+                href={buildShortFormSettingsHref("plan-captions", {
                   hash: "caption-styles",
                 })}
                 target="_blank"
@@ -6125,7 +6125,7 @@ function VideoSection({
                     />
                   ) : null}
                   <CompactSettingLink
-                    href={buildShortFormSettingsHref("captions", {
+                    href={buildShortFormSettingsHref("plan-captions", {
                       hash: "caption-styles",
                     })}
                     target="_blank"
@@ -6249,7 +6249,7 @@ function VideoSection({
                   Edit background in Generate Visuals ↑
                 </CompactSettingLink>
                 <CompactSettingLink
-                  href={buildShortFormSettingsHref("audio", {
+                  href={buildShortFormSettingsHref("generate-narration-audio", {
                     hash: "pause-removal",
                   })}
                   target="_blank"
@@ -6306,7 +6306,7 @@ function VideoSection({
                     </Select>
                   </div>
                   <CompactSettingLink
-                    href={buildShortFormSettingsHref("audio", {
+                    href={buildShortFormSettingsHref("generate-narration-audio", {
                       hash: "pause-removal",
                     })}
                     target="_blank"

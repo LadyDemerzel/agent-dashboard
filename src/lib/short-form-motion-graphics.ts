@@ -5,14 +5,21 @@ import { SHORT_FORM_VIDEOS_DIR } from "@/lib/short-form-videos";
 export const SUPPORTED_MOTION_GRAPHIC_RENDERERS = [
   "stat_reveal",
   "bar_chart",
+  "pie_chart",
+  "line_growth_chart",
   "comparison_before_after",
   "timeline",
   "cause_effect",
   "caption_word_wall",
+  "ranked_podium",
+  "checklist",
+  "scorecard",
+  "research_paper_card",
+  "good_bad_indicator",
 ] as const;
 
 export type MotionGraphicRendererId = (typeof SUPPORTED_MOTION_GRAPHIC_RENDERERS)[number];
-export type MotionGraphicFieldType = "text" | "textarea" | "number" | "stringList" | "timelineSteps" | "dataSeries" | "captionWordWallLines";
+export type MotionGraphicFieldType = "text" | "textarea" | "number" | "stringList" | "timelineSteps" | "dataSeries" | "captionWordWallLines" | "indicatorType";
 
 export interface MotionGraphicTemplateField {
   name: string;
@@ -44,7 +51,13 @@ export interface ShortFormMotionGraphicsSettings {
 
 const SETTINGS_PATH = path.join(SHORT_FORM_VIDEOS_DIR, "_motion-graphics-settings.json");
 const DEFAULT_STYLE_PRESET = "dark-pastel-watercolor";
-const REMOVED_TEMPLATE_IDS = new Set(["research_finding_card", "process_flow"]);
+const GOOD_BAD_INDICATOR_TEMPLATE_ID = "good-bad-indicator";
+const CHECKLIST_TEMPLATE_ID = "checklist";
+const REMOVED_TEMPLATE_IDS = new Set(["research_finding_card", "process_flow", "warning_card", "instruction"]);
+const LEGACY_RENDERER_ALIASES: Record<string, MotionGraphicRendererId> = {
+  instruction: "good_bad_indicator",
+  step_checklist: "checklist",
+};
 
 const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
   {
@@ -76,6 +89,91 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     fields: [
       { name: "title", label: "Title", type: "text", required: true, defaultValue: "What changed most" },
       { name: "data", label: "Data points", type: "dataSeries", required: true, defaultValue: [{ label: "A", value: 35, displayValue: "35" }, { label: "B", value: 68, displayValue: "68" }] },
+    ],
+    enabled: true,
+  },
+  {
+    id: "pie_chart",
+    rendererId: "pie_chart",
+    displayName: "Pie chart",
+    description: "Minimal animated pie chart over the unified dark pastel watercolor background with pastel slices and a compact legend.",
+    whenToUse: "Use when showing a part-to-whole split across 2-5 categories, such as shares, proportions, budget/time allocation, or outcome mix.",
+    durationSeconds: 7,
+    durationGuidance: "Around 2 seconds for setup plus about 0.5 seconds per slice, so 3-5 slices usually lands around 5-7 seconds.",
+    stylePreset: DEFAULT_STYLE_PRESET,
+    defaultArgs: {
+      title: "What changed most",
+      data: [
+        { label: "A", value: 35, displayValue: "35%" },
+        { label: "B", value: 25, displayValue: "25%" },
+        { label: "C", value: 40, displayValue: "40%" },
+      ],
+    },
+    fields: [
+      { name: "title", label: "Title", type: "text", required: true, defaultValue: "What changed most" },
+      {
+        name: "data",
+        label: "Pie slices",
+        type: "dataSeries",
+        required: true,
+        description: "Use <item label=\"Category\" value=\"35\" displayValue=\"35%\" />. Positive values are normalized into the full pie.",
+        defaultValue: [
+          { label: "A", value: 35, displayValue: "35%" },
+          { label: "B", value: 25, displayValue: "25%" },
+          { label: "C", value: 40, displayValue: "40%" },
+        ],
+      },
+    ],
+    enabled: true,
+  },
+  {
+    id: "line_growth_chart",
+    rendererId: "line_growth_chart",
+    displayName: "Line growth chart",
+    description: "Simple Cartesian chart with muted axes and an animated arrow line that grows to the right, either upward for increase or downward for decrease.",
+    whenToUse: "Use when one metric improves, grows, declines, worsens, or shrinks over time and the viewer needs a simple directional trend instead of exact chart detail.",
+    durationSeconds: 6,
+    durationGuidance: "Usually 5-7 seconds: reveal the title and axes first, then let the arrow line grow across the chart for a full 3 seconds and hold the final value.",
+    stylePreset: DEFAULT_STYLE_PRESET,
+    defaultArgs: {
+      title: "Growth trend",
+      direction: "increase",
+      startLabel: "Start",
+      endLabel: "Now",
+      valueLabel: "86",
+      units: "",
+      data: [
+        { label: "Start", value: 22, displayValue: "22" },
+        { label: "Week 2", value: 48, displayValue: "48" },
+        { label: "Now", value: 86, displayValue: "86" },
+      ],
+    },
+    fields: [
+      { name: "title", label: "Title", type: "text", required: true, defaultValue: "Growth trend" },
+      {
+        name: "direction",
+        label: "Direction",
+        type: "text",
+        required: true,
+        description: "Exactly one of: increase, decrease. increase animates up/right; decrease animates down/right.",
+        defaultValue: "increase",
+      },
+      { name: "startLabel", label: "Start label", type: "text", defaultValue: "Start" },
+      { name: "endLabel", label: "End label", type: "text", defaultValue: "Now" },
+      { name: "valueLabel", label: "Final value label", type: "text", required: false, defaultValue: "86", description: "Optional. When present, it counts up from 0 and follows the arrowhead." },
+      { name: "units", label: "Counter units", type: "text", required: false, defaultValue: "", description: "Optional unit text appended to the animated value, such as homes, leads, dollars, or clients. Example: valueLabel 90 with units homes renders as 90 homes while counting up." },
+      {
+        name: "data",
+        label: "Trend points",
+        type: "dataSeries",
+        required: false,
+        description: "Optional <item label=\"Week 1\" value=\"22\" displayValue=\"22\" /> points. Use rising values for increase and falling values for decrease.",
+        defaultValue: [
+          { label: "Start", value: 22, displayValue: "22" },
+          { label: "Week 2", value: 48, displayValue: "48" },
+          { label: "Now", value: 86, displayValue: "86" },
+        ],
+      },
     ],
     enabled: true,
   },
@@ -123,7 +221,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     id: "cause_effect",
     rendererId: "cause_effect",
     displayName: "Cause / effect",
-    description: "Vertically stacked cause-to-effect relationship over the unified dark pastel watercolor background with a deterministic downward arrow reveal.",
+    description: "Center-aligned cause-to-effect relationship with rounded translucent content cards, subtle shadows, and a deterministic downward arrow reveal over the unified dark pastel watercolor background.",
     whenToUse: "Use when explaining mechanisms, causal relationships, inputs that drive outcomes, or why one action creates a visible result.",
     durationSeconds: 6,
     durationGuidance: "Usually 5-7 seconds: give the cause a readable beat, then reveal the arrow and effect with enough time for the effect copy to land.",
@@ -171,6 +269,185 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     ],
     enabled: true,
   },
+  {
+    id: "ranked_podium",
+    rendererId: "ranked_podium",
+    displayName: "Ranked list / podium",
+    description: "Animated ranking with oversized rank numbers and podium-like rows over the unified dark pastel watercolor background.",
+    whenToUse: "Use for top-3/top-5 lists, ranked mistakes, priorities, symptoms, channels, exercises, or results where ranking order matters.",
+    durationSeconds: 7,
+    durationGuidance: "Around 1 second per ranking. For multi-visual sequences, set startIndex to the first rank that should animate in this visual.",
+    stylePreset: DEFAULT_STYLE_PRESET,
+    defaultArgs: {
+      items: [
+        { label: "01", text: "Most visible change" },
+        { label: "02", text: "Faster feedback" },
+        { label: "03", text: "Cleaner routine" },
+      ],
+      startIndex: 1,
+      futureItemsMode: "hidden",
+    },
+    fields: [
+      {
+        name: "items",
+        label: "Ranked items",
+        type: "timelineSteps",
+        required: true,
+        description: "Use ordered <step> entries. Labels are rank markers and auto-label as 01, 02, 03 when omitted.",
+        defaultValue: [
+          { label: "01", text: "Most visible change" },
+          { label: "02", text: "Faster feedback" },
+          { label: "03", text: "Cleaner routine" },
+        ],
+      },
+      {
+        name: "startIndex",
+        label: "Start rank",
+        type: "number",
+        defaultValue: 1,
+        description: "1-based rank to animate first. Earlier ranks render already present at time 0 for split multi-visual sequences.",
+      },
+      {
+        name: "futureItemsMode",
+        label: "Future rank state",
+        type: "text",
+        defaultValue: "hidden",
+        description: "hidden hides unrevealed future ranks; blurred shows muted ghost rows before they animate/unblur.",
+      },
+    ],
+    enabled: true,
+  },
+  {
+    id: CHECKLIST_TEMPLATE_ID,
+    rendererId: "checklist",
+    displayName: "Checklist",
+    description: "Animated checklist with deterministic check marks, concise item copy, and optional future-item ghosting.",
+    whenToUse: "Use for routines, protocols, decision checklists, action lists, and ordered items that should feel complete as they appear.",
+    durationSeconds: 7,
+    durationGuidance: "Around 1 second per checklist item. For multi-visual sequences, set startIndex to the first item that should animate in this visual.",
+    stylePreset: DEFAULT_STYLE_PRESET,
+    defaultArgs: {
+      items: [
+        { text: "Set the baseline" },
+        { text: "Make the small adjustment" },
+        { text: "Repeat it daily" },
+      ],
+      startIndex: 1,
+      futureItemsMode: "hidden",
+    },
+    fields: [
+      {
+        name: "items",
+        label: "Checklist items",
+        type: "timelineSteps",
+        required: true,
+        description: "Use ordered <step>copy</step> entries. Labels are ignored by this template.",
+        defaultValue: [
+          { text: "Set the baseline" },
+          { text: "Make the small adjustment" },
+          { text: "Repeat it daily" },
+        ],
+      },
+      {
+        name: "startIndex",
+        label: "Start item",
+        type: "number",
+        defaultValue: 1,
+        description: "1-based item to animate first. Earlier items render already checked at time 0 for split multi-visual sequences.",
+      },
+      {
+        name: "futureItemsMode",
+        label: "Future item state",
+        type: "text",
+        defaultValue: "hidden",
+        description: "hidden hides unchecked future items; blurred shows muted unchecked rows before they animate/check.",
+      },
+    ],
+    enabled: true,
+  },
+  {
+    id: "scorecard",
+    rendererId: "scorecard",
+    displayName: "Scorecard",
+    description: "Animated metric scorecard with rows, values, and compact progress bars.",
+    whenToUse: "Use for grading a routine, comparing criteria, assessing risk, showing before/after subscores, or summarizing an evaluation.",
+    durationSeconds: 6,
+    durationGuidance: "Usually 5-7 seconds for 3-5 metrics with a short title reveal and one row reveal per beat.",
+    stylePreset: DEFAULT_STYLE_PRESET,
+    defaultArgs: {
+      title: "Scorecard",
+      data: [
+        { label: "Clarity", value: 82, displayValue: "82" },
+        { label: "Consistency", value: 68, displayValue: "68" },
+        { label: "Effort", value: 91, displayValue: "91" },
+      ],
+    },
+    fields: [
+      { name: "title", label: "Title", type: "text", required: true, defaultValue: "Scorecard" },
+      {
+        name: "data",
+        label: "Score rows",
+        type: "dataSeries",
+        required: true,
+        description: "Use <item label=\"Metric\" value=\"82\" displayValue=\"82/100\" />. Values are normalized against the largest row.",
+        defaultValue: [
+          { label: "Clarity", value: 82, displayValue: "82" },
+          { label: "Consistency", value: 68, displayValue: "68" },
+          { label: "Effort", value: 91, displayValue: "91" },
+        ],
+      },
+    ],
+    enabled: true,
+  },
+  {
+    id: "research_paper_card",
+    rendererId: "research_paper_card",
+    displayName: "Research paper card",
+    description: "Animated study-card visual with source, paper title, and one plain-English finding.",
+    whenToUse: "Use when citing a study, paper, review, clinical trial, author group, journal, or named research result.",
+    durationSeconds: 6,
+    durationGuidance: "Usually 5-7 seconds: reveal the paper/source first, then the finding.",
+    stylePreset: DEFAULT_STYLE_PRESET,
+    defaultArgs: {
+      source: "Journal of Applied Research",
+      year: "2024",
+      title: "Daily posture cues changed perceived jawline definition",
+      finding: "The visible difference came from consistency, not intensity.",
+    },
+    fields: [
+      { name: "source", label: "Source / journal", type: "text", defaultValue: "Journal of Applied Research" },
+      { name: "year", label: "Year", type: "text", defaultValue: "2024" },
+      { name: "title", label: "Paper title", type: "textarea", required: true, defaultValue: "Daily posture cues changed perceived jawline definition" },
+      { name: "finding", label: "Finding", type: "textarea", required: true, defaultValue: "The visible difference came from consistency, not intensity." },
+    ],
+    enabled: true,
+  },
+  {
+    id: GOOD_BAD_INDICATOR_TEMPLATE_ID,
+    rendererId: "good_bad_indicator",
+    displayName: "Good/Bad Indicator",
+    description: "Minimal good/bad indicator card with one indicator type and one short supporting line. Good uses a green accent; bad uses a red accent.",
+    whenToUse: "Use to highlight that something is good or bad, such as a helpful habit, risky behavior, recommended choice, mistake, or warning moment.",
+    durationSeconds: 5,
+    durationGuidance: "Usually 4-6 seconds: reveal the good/bad icon quickly, then hold one short readable line.",
+    stylePreset: DEFAULT_STYLE_PRESET,
+    defaultArgs: {
+      indicatorType: "good",
+      text: "Lift from the lower lid",
+    },
+    fields: [
+      {
+        name: "indicatorType",
+        label: "Indicator type",
+        type: "indicatorType",
+        required: true,
+        description: "Exactly one of: good, bad. Use good for positive/recommended items; use bad for negative/risky items.",
+        defaultValue: "good",
+      },
+      { name: "text", label: "Indicator text", type: "textarea", required: true, defaultValue: "Lift from the lower lid" },
+    ],
+    enabled: true,
+  },
 ];
 
 function ensureSettingsDir() {
@@ -179,6 +456,15 @@ function ensureSettingsDir() {
 
 function isRendererId(value: unknown): value is MotionGraphicRendererId {
   return typeof value === "string" && (SUPPORTED_MOTION_GRAPHIC_RENDERERS as readonly string[]).includes(value);
+}
+
+function resolveRendererId(value: unknown, fallback: MotionGraphicRendererId) {
+  if (typeof value === "string" && value in LEGACY_RENDERER_ALIASES) return LEGACY_RENDERER_ALIASES[value];
+  return isRendererId(value) ? value : fallback;
+}
+
+function isLegacyRendererAlias(value: unknown) {
+  return typeof value === "string" && value in LEGACY_RENDERER_ALIASES;
 }
 
 function cleanString(value: unknown, fallback: string) {
@@ -209,6 +495,10 @@ function normalizeTimelineSteps(value: unknown) {
     : [];
 }
 
+function normalizeChecklistItems(value: unknown) {
+  return normalizeTimelineSteps(value).map((item) => ({ text: item.text }));
+}
+
 function normalizeCaptionWordWallLineSize(value: unknown, candidate: { emphasized?: unknown; emphasis?: unknown } = {}) {
   const raw = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
   if (raw === "regular" || raw === "normal" || raw === "base") return "regular" as const;
@@ -236,15 +526,49 @@ function normalizeCaptionWordWallLines(value: unknown) {
     .filter((line) => ("blank" in line && line.blank) || ("text" in line && Boolean(line.text)));
 }
 
+function normalizeIndicatorType(value: unknown) {
+  const raw = String(value || "").trim().toLowerCase().replace(/[’']/g, "").replace(/[\s/-]+/g, "_");
+  if (raw === "bad" || raw === "negative" || raw === "dont" || raw === "dont_stop" || raw === "do_not" || raw === "stop" || raw === "no") return "bad";
+  return "good";
+}
+
+function normalizeChartDirection(value: unknown) {
+  const raw = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (raw === "decrease" || raw === "decreasing" || raw === "down" || raw === "decline" || raw === "worse" || raw === "worsening" || raw === "shrink" || raw === "shrinking") return "decrease";
+  return "increase";
+}
+
 function normalizeTimelineDefaultArgs(args: Record<string, unknown>) {
   const steps = normalizeTimelineSteps(args.steps);
   return steps.length > 0 ? { ...args, steps } : args;
 }
 
+function normalizeChecklistDefaultArgs(args: Record<string, unknown>, fallback: Record<string, unknown>) {
+  const items = normalizeChecklistItems(args.items).length > 0
+    ? normalizeChecklistItems(args.items)
+    : normalizeChecklistItems(args.steps).length > 0
+      ? normalizeChecklistItems(args.steps)
+      : normalizeChecklistItems(fallback.items);
+  const rest = { ...args };
+  delete rest.steps;
+  const startStep = rest.startStep;
+  const animateFromStep = rest.animateFromStep;
+  delete rest.startStep;
+  delete rest.animateFromStep;
+  return {
+    ...rest,
+    items,
+    startIndex: rest.startIndex ?? startStep ?? animateFromStep ?? fallback.startIndex ?? 1,
+    futureItemsMode: cleanString(rest.futureItemsMode, cleanString(fallback.futureItemsMode, "hidden")),
+  };
+}
+
 function normalizeField(value: unknown, fallback: MotionGraphicTemplateField): MotionGraphicTemplateField {
   const candidate = value && typeof value === "object" && !Array.isArray(value) ? value as Partial<MotionGraphicTemplateField> : {};
-  const type = ["text", "textarea", "number", "stringList", "timelineSteps", "dataSeries", "captionWordWallLines"].includes(String(candidate.type))
-    ? candidate.type as MotionGraphicFieldType
+  const rawCandidateType = typeof candidate.type === "string" ? String(candidate.type) : undefined;
+  const candidateType = rawCandidateType === "instructionType" ? "indicatorType" : rawCandidateType;
+  const type = ["text", "textarea", "number", "stringList", "timelineSteps", "dataSeries", "captionWordWallLines", "indicatorType"].includes(String(candidateType))
+    ? candidateType as MotionGraphicFieldType
     : fallback.type;
   return {
     name: cleanString(candidate.name, fallback.name),
@@ -258,8 +582,8 @@ function normalizeField(value: unknown, fallback: MotionGraphicTemplateField): M
 
 function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig, index: number): MotionGraphicTemplateConfig {
   const candidate = value && typeof value === "object" && !Array.isArray(value) ? value as Partial<MotionGraphicTemplateConfig> : {};
-  const hasUnsupportedRenderer = typeof candidate.rendererId === "string" && !isRendererId(candidate.rendererId);
-  const rendererId = isRendererId(candidate.rendererId) ? candidate.rendererId : fallback.rendererId;
+  const hasUnsupportedRenderer = typeof candidate.rendererId === "string" && !isRendererId(candidate.rendererId) && !isLegacyRendererAlias(candidate.rendererId);
+  const rendererId = resolveRendererId(candidate.rendererId, fallback.rendererId);
   const fields = !hasUnsupportedRenderer && Array.isArray(candidate.fields) && candidate.fields.length > 0
     ? candidate.fields.map((field, fieldIndex) => normalizeField(field, fallback.fields[fieldIndex] || fallback.fields[0]))
     : fallback.fields;
@@ -269,16 +593,23 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
   const defaultArgs = Object.fromEntries(
     Object.entries(rawDefaultArgs).filter(([key]) => {
       if (rendererId === "stat_reveal") return key !== "eyebrow" && key !== "note";
-      if (rendererId === "bar_chart") return key !== "subtitle";
+      if (rendererId === "bar_chart" || rendererId === "pie_chart" || rendererId === "line_growth_chart") return key !== "subtitle";
       if (rendererId === "timeline") return key !== "title";
       if (rendererId === "comparison_before_after") return key !== "title";
+      if (rendererId === "good_bad_indicator") return key === "indicatorType" || key === "instructionType" || key === "text";
       return true;
     }),
   );
   const normalizedDefaultArgs = rendererId === "timeline"
     ? normalizeTimelineDefaultArgs(defaultArgs)
+    : rendererId === "checklist"
+      ? normalizeChecklistDefaultArgs(defaultArgs, fallback.defaultArgs)
     : rendererId === "caption_word_wall" && normalizeCaptionWordWallLines(defaultArgs.lines).length > 0
       ? { ...defaultArgs, lines: normalizeCaptionWordWallLines(defaultArgs.lines) }
+      : rendererId === "good_bad_indicator"
+        ? { indicatorType: normalizeIndicatorType(defaultArgs.indicatorType ?? defaultArgs.instructionType), text: cleanString(defaultArgs.text, cleanString((defaultArgs as { title?: unknown; body?: unknown }).title ?? (defaultArgs as { body?: unknown }).body, "Lift from the lower lid")) }
+        : rendererId === "line_growth_chart"
+          ? { ...defaultArgs, direction: normalizeChartDirection(defaultArgs.direction), units: cleanString(defaultArgs.units, cleanString(fallback.defaultArgs.units, "")) }
       : defaultArgs;
   const normalizedFields = (() => {
     if (rendererId === "stat_reveal") {
@@ -286,10 +617,44 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
       const fallbackStatRevealFields = fallback.fields.filter((field) => field.name !== "eyebrow" && field.name !== "note");
       return statRevealFields.length > 0 ? statRevealFields : fallbackStatRevealFields;
     }
-    if (rendererId === "bar_chart") {
+    if (rendererId === "bar_chart" || rendererId === "pie_chart") {
       const barChartFields = fields.filter((field) => field.name !== "subtitle");
       const fallbackBarChartFields = fallback.fields.filter((field) => field.name !== "subtitle");
       return barChartFields.length > 0 ? barChartFields : fallbackBarChartFields;
+    }
+    if (rendererId === "line_growth_chart") {
+      const lineFields = fields.filter((field) => field.name !== "subtitle");
+      const fallbackLineFields = fallback.fields.filter((field) => field.name !== "subtitle");
+      const fallbackFieldNames = new Set(fallbackLineFields.map((field) => field.name));
+      const selectedFields = lineFields.length > 0
+        ? [
+            ...fallbackLineFields.map((fallbackField) =>
+              lineFields.find((field) => field.name === fallbackField.name) || fallbackField,
+            ),
+            ...lineFields.filter((field) => !fallbackFieldNames.has(field.name)),
+          ]
+        : fallbackLineFields;
+      return selectedFields.map((field) => field.name === "direction"
+        ? {
+            ...field,
+            required: true,
+            description: "Exactly one of: increase, decrease. increase animates up/right; decrease animates down/right.",
+            defaultValue: normalizeChartDirection(field.defaultValue),
+          }
+        : field.name === "valueLabel"
+          ? {
+              ...field,
+              description: field.description || "Optional final numeric value. When present, it counts up from 0 and follows the arrowhead.",
+            }
+        : field.name === "units"
+          ? {
+              ...field,
+              type: "text" as const,
+              required: false,
+              description: field.description || "Optional unit text appended to the animated value, such as homes, leads, dollars, or clients. Example: valueLabel 90 with units homes renders as 90 homes while counting up.",
+              defaultValue: cleanString(field.defaultValue, ""),
+            }
+        : field);
     }
     if (rendererId === "timeline") {
       const timelineFields = fields.filter((field) => field.name !== "title");
@@ -305,6 +670,41 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
           defaultValue: defaultValue.length > 0 ? defaultValue : field.defaultValue,
         };
       });
+    }
+    if (rendererId === "checklist") {
+      const fallbackByName = new Map(fallback.fields.map((field) => [field.name, field]));
+      const legacyItemsField = fields.find((field) => field.name === "items" || field.name === "steps");
+      const startIndexField = fields.find((field) => field.name === "startIndex" || field.name === "startStep" || field.name === "animateFromStep");
+      const futureItemsField = fields.find((field) => field.name === "futureItemsMode");
+      return [
+        {
+          ...(legacyItemsField || fallbackByName.get("items")),
+          name: "items",
+          label: "Checklist items",
+          type: "timelineSteps" as const,
+          required: true,
+          description: "Use ordered <step>copy</step> entries. Labels are ignored by this template.",
+          defaultValue: normalizeChecklistItems(legacyItemsField?.defaultValue).length > 0
+            ? normalizeChecklistItems(legacyItemsField?.defaultValue)
+            : fallbackByName.get("items")?.defaultValue,
+        },
+        {
+          ...(startIndexField || fallbackByName.get("startIndex")),
+          name: "startIndex",
+          label: "Start item",
+          type: "number" as const,
+          description: "1-based item to animate first. Earlier items render already checked at time 0 for split multi-visual sequences.",
+          defaultValue: startIndexField?.defaultValue ?? fallbackByName.get("startIndex")?.defaultValue ?? 1,
+        },
+        {
+          ...(futureItemsField || fallbackByName.get("futureItemsMode")),
+          name: "futureItemsMode",
+          label: "Future item state",
+          type: "text" as const,
+          description: "hidden hides unchecked future items; blurred shows muted unchecked rows before they animate/check.",
+          defaultValue: cleanString(futureItemsField?.defaultValue, cleanString(fallbackByName.get("futureItemsMode")?.defaultValue, "hidden")),
+        },
+      ];
     }
     if (rendererId === "comparison_before_after") {
       const comparisonFields = fields.filter((field) => field.name !== "title");
@@ -324,18 +724,45 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
           : field.defaultValue,
       }));
     }
+    if (rendererId === "good_bad_indicator") {
+      const selectedFields = fields.filter((field) => field.name === "indicatorType" || field.name === "instructionType" || field.name === "text");
+      const builtInIndicatorFields = DEFAULT_TEMPLATES.find((template) => template.id === GOOD_BAD_INDICATOR_TEMPLATE_ID)?.fields || [];
+      const fallbackIndicatorFields = fallback.fields.filter((field) => field.name === "indicatorType" || field.name === "instructionType" || field.name === "text");
+      const baseFields = fallbackIndicatorFields.length > 0 ? fallbackIndicatorFields : builtInIndicatorFields;
+      return (selectedFields.length > 0 ? selectedFields : baseFields).map((field) => {
+        if (field.name === "indicatorType" || field.name === "instructionType") {
+          return {
+            ...field,
+            name: "indicatorType",
+            label: field.label === "Instruction type" ? "Indicator type" : field.label,
+            type: "indicatorType" as const,
+            required: true,
+            description: "Exactly one of: good, bad. Use good for positive/recommended items; use bad for negative/risky items.",
+            defaultValue: normalizeIndicatorType(field.defaultValue),
+          };
+        }
+        return {
+          ...field,
+          name: "text",
+          label: field.label === "Instruction text" ? "Indicator text" : field.label || "Indicator text",
+          type: "textarea" as const,
+          required: true,
+        };
+      });
+    }
     return fields;
   })();
+  const isLegacyChecklistTemplate = fallback.id === CHECKLIST_TEMPLATE_ID && candidate.id === "step_checklist";
   return {
-    id: cleanString(candidate.id, fallback.id || `motion-graphic-${index + 1}`),
+    id: isLegacyChecklistTemplate ? fallback.id : cleanString(candidate.id, fallback.id || `motion-graphic-${index + 1}`),
     rendererId,
-    displayName: cleanString(candidate.displayName, fallback.displayName),
-    description: cleanString(candidate.description, fallback.description),
-    whenToUse: cleanString(candidate.whenToUse, fallback.whenToUse),
+    displayName: rendererId === "checklist" ? "Checklist" : cleanString(candidate.displayName, fallback.displayName),
+    description: rendererId === "checklist" ? fallback.description : cleanString(candidate.description, fallback.description),
+    whenToUse: rendererId === "checklist" ? fallback.whenToUse : cleanString(candidate.whenToUse, fallback.whenToUse),
     durationSeconds: typeof candidate.durationSeconds === "number" && Number.isFinite(candidate.durationSeconds)
       ? Math.min(12, Math.max(3, candidate.durationSeconds))
       : fallback.durationSeconds,
-    durationGuidance: cleanString(candidate.durationGuidance, fallback.durationGuidance),
+    durationGuidance: rendererId === "checklist" ? fallback.durationGuidance : cleanString(candidate.durationGuidance, fallback.durationGuidance),
     stylePreset: cleanString(candidate.stylePreset, fallback.stylePreset || DEFAULT_STYLE_PRESET),
     defaultArgs: normalizedDefaultArgs,
     fields: normalizedFields,
@@ -346,11 +773,15 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
 function normalizeSettings(candidate: Partial<ShortFormMotionGraphicsSettings> | null | undefined): ShortFormMotionGraphicsSettings {
   const inputTemplates = Array.isArray(candidate?.templates) ? candidate?.templates || [] : [];
   const byId = new Map(inputTemplates.map((template) => [typeof (template as { id?: unknown }).id === "string" ? (template as { id: string }).id : "", template]));
-  const mergedBuiltIns = DEFAULT_TEMPLATES.map((fallback, index) => normalizeTemplate(byId.get(fallback.id), fallback, index));
+  const mergedBuiltIns = DEFAULT_TEMPLATES.map((fallback, index) => {
+    const legacyInstructionTemplate = fallback.id === GOOD_BAD_INDICATOR_TEMPLATE_ID ? byId.get("instruction") : undefined;
+    const legacyChecklistTemplate = fallback.id === CHECKLIST_TEMPLATE_ID ? byId.get("step_checklist") : undefined;
+    return normalizeTemplate(byId.get(fallback.id) ?? legacyInstructionTemplate ?? legacyChecklistTemplate, fallback, index);
+  });
   const customTemplates = inputTemplates
     .filter((template) => {
       const id = typeof (template as { id?: unknown }).id === "string" ? (template as { id: string }).id : "";
-      return id && !REMOVED_TEMPLATE_IDS.has(id) && !DEFAULT_TEMPLATES.some((fallback) => fallback.id === id);
+      return id && !REMOVED_TEMPLATE_IDS.has(id) && !DEFAULT_TEMPLATES.some((fallback) => fallback.id === id || (fallback.id === CHECKLIST_TEMPLATE_ID && id === "step_checklist"));
     })
     .map((template, index) => normalizeTemplate(template, DEFAULT_TEMPLATES[0], DEFAULT_TEMPLATES.length + index));
 
@@ -413,8 +844,12 @@ export function renderMotionGraphicTemplatePromptInjection(settings = getShortFo
     "- Configure only the listed fields. Do not write arbitrary Remotion, JavaScript, CSS, HTML, or renderer code.",
     "- Use <arg name=\"fieldName\">value</arg> for text/number fields.",
     "- For dataSeries fields, use repeated <item label=\"...\" value=\"...\" displayValue=\"...\" /> inside the motionGraphic.",
+    "- For pie_chart, use the same dataSeries shape as bar_chart; values should be positive parts of a whole and displayValue should usually be a short percent label.",
+    "- For line_growth_chart, set <arg name=\"direction\">increase</arg> for an up/right trend or <arg name=\"direction\">decrease</arg> for a down/right trend. Optional dataSeries points should match that direction. To show units on the moving counter, set <arg name=\"valueLabel\">90</arg> and optional <arg name=\"units\">homes</arg>; the renderer appends the unit text throughout the count-up.",
     "- For stringList fields, use repeated <step>...</step> inside the motionGraphic.",
     "- For timelineSteps fields, use repeated <step label=\"custom left label\">step text</step>. Omit label only when you want the renderer to auto-label steps as 01, 02, 03.",
+    "- For ranked_podium and checklist split sequences, set <arg name=\"startIndex\">2</arg> to render earlier items already present and animate from item 2. Set <arg name=\"futureItemsMode\">hidden</arg> or <arg name=\"futureItemsMode\">blurred</arg> to control unrevealed later items.",
+    "- For indicatorType fields, use exactly <arg name=\"indicatorType\">good</arg> or <arg name=\"indicatorType\">bad</arg>. The good-bad indicator template has only one text field: <arg name=\"text\">...</arg>.",
     "- For captionWordWallLines fields, use ordered <line size=\"regular\">spoken words for this row</line>, <line size=\"large\">intermediate emphasis row</line>, <line size=\"extra_large\">largest emphasis row</line>, and <blankLine /> entries inside the motionGraphic. Size is whole-line only; do not size individual inline words. Legacy <line emphasized=\"true\"> still maps to size=\"extra_large\".",
     "- For caption_word_wall specifically, line text must be exact spoken narration words in order from that visual's time range. The renderer uses forced-alignment word timestamps directly and does not use the deterministic caption JSON max-word chunks.",
     "- Reference it from the timeline as <visual visualType=\"motion_graphic\" motionGraphicId=\"...\" start=\"...\" end=\"...\" label=\"...\" />.",

@@ -19,6 +19,9 @@ const UNIFIED_MOTION_GRAPHICS_BACKGROUND_IMAGE_PATH = path.join(
 const RENDER_SCRIPT_PATH = path.join(process.cwd(), "scripts", "render-motion-graphic.mjs");
 const LEGACY_RENDERER_FALLBACKS: Record<string, string> = {
   process_flow: "timeline",
+  warning_card: "good_bad_indicator",
+  instruction: "good_bad_indicator",
+  step_checklist: "checklist",
 };
 
 interface PreviewRequestBody {

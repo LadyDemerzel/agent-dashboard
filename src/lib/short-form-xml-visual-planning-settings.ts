@@ -5,6 +5,7 @@ import { renderMotionGraphicTemplatePromptInjection } from "@/lib/short-form-mot
 
 export interface ShortFormXmlVisualPlanningSettings {
   promptTemplate: string;
+  revisePromptTemplate: string;
   revisionNotesPromptTemplate: string;
 }
 
@@ -106,6 +107,15 @@ function normalizePromptTemplate(value: unknown) {
 
   normalized = normalized.replace(/^[ \t]*Revision notes:\s*\{\{\s*revisionNotes\s*\}\}[ \t]*$/gm, "{{revisionNotesBlock}}");
 
+  if (!/\{\{\s*motionGraphicTemplates\s*\}\}/.test(normalized)) {
+    normalized = [
+      normalized,
+      "",
+      "Allowed deterministic motion graphic templates:",
+      "{{motionGraphicTemplates}}",
+    ].join("\n");
+  }
+
   return normalized;
 }
 
@@ -120,6 +130,7 @@ function normalizeRevisionNotesPromptTemplate(value: unknown) {
 function normalize(candidate: Partial<ShortFormXmlVisualPlanningSettings> | null | undefined): ShortFormXmlVisualPlanningSettings {
   return {
     promptTemplate: normalizePromptTemplate(candidate?.promptTemplate),
+    revisePromptTemplate: normalizePromptTemplate(candidate?.revisePromptTemplate ?? candidate?.promptTemplate),
     revisionNotesPromptTemplate: normalizeRevisionNotesPromptTemplate(candidate?.revisionNotesPromptTemplate),
   };
 }
@@ -150,10 +161,7 @@ export function renderShortFormXmlVisualPlanningPrompt(template: string, values:
     ...values,
     motionGraphicTemplates: values.motionGraphicTemplates ?? renderMotionGraphicTemplatePromptInjection(),
   };
-  const templateWithMotionGraphicInjection = /\{\{\s*motionGraphicTemplates\s*\}\}/.test(template)
-    ? template
-    : `${template.trim()}\n\n{{motionGraphicTemplates}}`;
-  const withConditionalRevisionNotesBlock = templateWithMotionGraphicInjection.replace(
+  const withConditionalRevisionNotesBlock = template.replace(
 
     /^[ \t]*\{\{\s*revisionNotesBlock\s*\}\}[ \t]*\n?/gm,
     valuesWithMotionGraphics.revisionNotesBlock ? `${valuesWithMotionGraphics.revisionNotesBlock}\n` : ""

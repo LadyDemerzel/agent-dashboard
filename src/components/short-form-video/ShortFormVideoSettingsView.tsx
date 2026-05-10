@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { Badge } from "@/components/ui/badge";
 import { RefreshIconButton } from "@/components/RefreshIconButton";
@@ -52,6 +52,7 @@ type PromptKey =
 type SettingsSectionId =
   | "tts-voice"
   | "pause-removal"
+  | "final-video-render"
   | "music-library"
   | "sound-library"
   | "caption-styles"
@@ -127,6 +128,8 @@ interface ImageStyleSettings {
 
 const VISUAL_GENERATION_MODEL_OPTIONS =
   getShortFormVisualGenerationModelOptions();
+
+const MOTION_TEMPLATE_QUERY_PARAM = "motionTemplate";
 
 const NANO_BANANA_PLACEHOLDER_ROWS = [
   {
@@ -238,6 +241,12 @@ const XML_VISUAL_PLANNING_PLACEHOLDER_ROWS = [
       "Revision notes: Make the asset reuse more explicit and reduce camera motion.",
   },
   {
+    placeholder: "{{revisionNotes}}",
+    explanation:
+      "The raw rerun revision notes text. Prefer {{revisionNotesBlock}} when you want the notes to disappear cleanly on non-revision runs.",
+    example: "Make the asset reuse more explicit and reduce camera motion.",
+  },
+  {
     placeholder: "{{textScriptPath}}",
     explanation:
       "Absolute path to the approved plain narration text script for this project.",
@@ -270,6 +279,13 @@ const XML_VISUAL_PLANNING_PLACEHOLDER_ROWS = [
     explanation: "Absolute project root for the short-form deliverable.",
     example:
       "/Users/ittaisvidler/tenxsolo/business/content/deliverables/short-form-videos/abc123",
+  },
+  {
+    placeholder: "{{motionGraphicTemplates}}",
+    explanation:
+      "The complete allowed deterministic motion-graphic template reference generated from the editable Generate Visuals motion-graphics settings. Keep this placeholder where Scribe should see the available template IDs, fields, defaults, and usage guidance.",
+    example:
+      "Allowed deterministic motion graphic templates: bar_chart, scorecard, timeline...",
   },
 ] as const;
 
@@ -395,10 +411,11 @@ interface TextScriptSettings {
 
 interface XmlVisualPlanningSettings {
   promptTemplate: string;
+  revisePromptTemplate: string;
   revisionNotesPromptTemplate: string;
 }
 
-type MotionGraphicFieldType = "text" | "textarea" | "number" | "stringList" | "timelineSteps" | "dataSeries" | "captionWordWallLines";
+type MotionGraphicFieldType = "text" | "textarea" | "number" | "stringList" | "timelineSteps" | "dataSeries" | "captionWordWallLines" | "indicatorType";
 
 interface MotionGraphicTemplateField {
   name: string;
@@ -426,6 +443,24 @@ interface MotionGraphicTemplateConfig {
 interface MotionGraphicsSettings {
   defaultStylePreset: string;
   templates: MotionGraphicTemplateConfig[];
+}
+
+function resolveMotionTemplateSelection({
+  templates,
+  currentId,
+  requestedId,
+}: {
+  templates: MotionGraphicTemplateConfig[];
+  currentId: string | null;
+  requestedId: string | null;
+}) {
+  if (requestedId && templates.some((template) => template.id === requestedId)) {
+    return requestedId;
+  }
+  if (currentId && templates.some((template) => template.id === currentId)) {
+    return currentId;
+  }
+  return templates[0]?.id || null;
 }
 
 interface SoundLibraryEntry {
@@ -754,70 +789,96 @@ const SETTINGS_PAGE_META: Record<
     pageActionSectionId?: SettingsSectionId;
   }
 > = {
-  prompts: {
+  topic: {
     eyebrow: "Short-form workflow settings",
-    title: "Prompts",
+    title: "Topic",
     description:
-      "Edit the real hook, research, text-script, and XML visual-planning prompts the dashboard sends at runtime.",
-    summaryLabel: "4 editable sections",
-    sectionIds: [
-      "prompt-hooks",
-      "prompt-research",
-      "text-script-prompts",
-      "xml-visual-planning",
-    ],
+      "The Topic workflow step currently has no global prompt or rendering settings.",
+    summaryLabel: "No global settings",
+    sectionIds: [],
   },
-  audio: {
+  hook: {
     eyebrow: "Short-form workflow settings",
-    title: "Audio",
+    title: "Hook",
     description:
-      "Tune narration defaults, pause removal, chroma-key behavior, and the reusable Qwen voice library.",
+      "Edit the hook-generation prompts used when the Hook workflow page asks Scribe for hook options.",
+    summaryLabel: "2 prompt templates",
+    sectionIds: ["prompt-hooks"],
+  },
+  research: {
+    eyebrow: "Short-form workflow settings",
+    title: "Research",
+    description:
+      "Edit the research prompts used when the Research workflow page asks Oracle to generate or revise research.",
+    summaryLabel: "2 prompt templates",
+    sectionIds: ["prompt-research"],
+  },
+  "text-script": {
+    eyebrow: "Short-form workflow settings",
+    title: "Text Script",
+    description:
+      "Edit the full Scribe prompt templates, iteration defaults, and post-processing rules used by the Text Script workflow page.",
+    summaryLabel: "3 full prompts",
+    sectionIds: ["text-script-prompts"],
+  },
+  "generate-narration-audio": {
+    eyebrow: "Short-form workflow settings",
+    title: "Generate Narration Audio",
+    description:
+      "Tune narration voice defaults and silence-trimming behavior used by the Generate Narration Audio workflow page.",
     summaryLabel: "2 editable sections",
     sectionIds: ["pause-removal", "tts-voice"],
   },
-  "sound-library": {
+  "plan-captions": {
     eyebrow: "Short-form workflow settings",
-    title: "Sound Library",
-    description:
-      "Manage the shared Plan Sound Design prompt, Generate Sound Design mix defaults, and reusable SFX library.",
-    summaryLabel: "Shared library + prompt settings",
-    sectionIds: ["sound-library"],
-    pageActionSectionId: "sound-library",
-  },
-  images: {
-    eyebrow: "Short-form workflow settings",
-    title: "Images",
-    description:
-      "Maintain deterministic motion graphics, Nano Banana prompt templates, and the reusable image-style library that feeds scene generation.",
-    summaryLabel: "3 editable sections",
-    sectionIds: ["motion-graphics", "image-templates", "image-styles"],
-  },
-  captions: {
-    eyebrow: "Short-form workflow settings",
-    title: "Captions",
+    title: "Plan Captions",
     description:
       "Edit reusable caption styles, linked animation presets, and the default deterministic caption chunking rules.",
     summaryLabel: "Shared caption style library",
     sectionIds: ["caption-styles"],
     pageActionSectionId: "caption-styles",
   },
-  backgrounds: {
+  "plan-visuals": {
     eyebrow: "Short-form workflow settings",
-    title: "Backgrounds",
+    title: "Plan Visuals",
     description:
-      "Upload and manage the looping background videos reused behind green-screen scene plates in previews and final renders.",
-    summaryLabel: "Shared background library",
-    sectionIds: ["background-videos"],
-    pageActionSectionId: "background-videos",
+      "Edit the complete Scribe prompt surface used when Plan Visuals generates or revises the XML visual plan.",
+    summaryLabel: "Full XML planning prompt",
+    sectionIds: ["xml-visual-planning"],
   },
-  music: {
+  "generate-visuals": {
     eyebrow: "Short-form workflow settings",
-    title: "Music",
+    title: "Generate Visuals",
     description:
-      "Manage saved soundtrack presets, reusable generated files, and the default final-render music mix volume.",
-    summaryLabel: "Shared music library",
-    sectionIds: ["music-library"],
-    pageActionSectionId: "music-library",
+      "Maintain deterministic motion graphics, Nano Banana prompt templates, and the reusable image-style library that feeds scene generation.",
+    summaryLabel: "3 editable sections",
+    sectionIds: ["motion-graphics", "image-templates", "image-styles"],
+  },
+  "plan-sound-design": {
+    eyebrow: "Short-form workflow settings",
+    title: "Plan Sound Design",
+    description:
+      "Manage the Plan Sound Design prompt, Generate Sound Design mix defaults, and reusable SFX library.",
+    summaryLabel: "Shared library + prompt settings",
+    sectionIds: ["sound-library"],
+    pageActionSectionId: "sound-library",
+  },
+  "generate-sound-design": {
+    eyebrow: "Short-form workflow settings",
+    title: "Generate Sound Design",
+    description:
+      "Generate Sound Design uses the same saved SFX library and mix defaults configured on Plan Sound Design.",
+    summaryLabel: "Shared with Plan Sound Design",
+    sectionIds: ["sound-library"],
+    pageActionSectionId: "sound-library",
+  },
+  "final-video": {
+    eyebrow: "Short-form workflow settings",
+    title: "Final Video",
+    description:
+      "Manage background loops, soundtrack presets, and final-render defaults used by the Final Video workflow page.",
+    summaryLabel: "Render settings",
+    sectionIds: ["final-video-render", "background-videos", "music-library"],
   },
 };
 
@@ -847,6 +908,7 @@ function createEmptySectionFeedback(): Record<
   return {
     "tts-voice": { saving: false, error: null, message: null },
     "pause-removal": { saving: false, error: null, message: null },
+    "final-video-render": { saving: false, error: null, message: null },
     "music-library": { saving: false, error: null, message: null },
     "sound-library": { saving: false, error: null, message: null },
     "caption-styles": { saving: false, error: null, message: null },
@@ -2052,8 +2114,15 @@ export function ShortFormVideoSettingsView({
 }: {
   activeSection: ShortFormSettingsRouteSection;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const requestedStyleId = searchParams.get("style");
+  const requestedMotionTemplateId = searchParams.get(
+    MOTION_TEMPLATE_QUERY_PARAM,
+  );
+  const activeSectionRef = useRef(activeSection);
+  const requestedMotionTemplateIdRef = useRef(requestedMotionTemplateId);
 
   const [definitions, setDefinitions] = useState<PromptDefinition[]>([]);
   const [prompts, setPrompts] = useState<Partial<Record<PromptKey, string>>>(
@@ -2094,6 +2163,9 @@ export function ShortFormVideoSettingsView({
     useState<string[]>([]);
   const [selectedMotionTemplateId, setSelectedMotionTemplateId] =
     useState<string | null>(null);
+  const pendingMotionTemplateUrlIdRef = useRef<{
+    templateId: string | null;
+  } | null>(null);
   const [motionDefaultArgsJsonDraft, setMotionDefaultArgsJsonDraft] = useState("");
   const [motionFieldsJsonDraft, setMotionFieldsJsonDraft] = useState("");
   const [soundDesignSettings, setSoundDesignSettings] =
@@ -2159,10 +2231,52 @@ export function ShortFormVideoSettingsView({
     reusedExisting: null,
   });
 
+  const updateSelectedMotionTemplateInUrl = useCallback(
+    (templateId: string | null) => {
+      if (activeSection !== "generate-visuals") return;
+      const params = new URLSearchParams(searchParams.toString());
+      if (templateId) {
+        params.set(MOTION_TEMPLATE_QUERY_PARAM, templateId);
+      } else {
+        params.delete(MOTION_TEMPLATE_QUERY_PARAM);
+      }
+      const query = params.toString();
+      const hash = typeof window === "undefined" ? "" : window.location.hash;
+      const nextUrl = `${pathname}${query ? `?${query}` : ""}${hash}`;
+      const currentUrl =
+        typeof window === "undefined"
+          ? ""
+          : `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (nextUrl !== currentUrl) {
+        pendingMotionTemplateUrlIdRef.current = { templateId };
+        router.replace(nextUrl, { scroll: false });
+      } else {
+        pendingMotionTemplateUrlIdRef.current = null;
+      }
+    },
+    [activeSection, pathname, router, searchParams],
+  );
+
+  const selectMotionTemplate = useCallback(
+    (templateId: string | null) => {
+      setSelectedMotionTemplateId(templateId);
+      updateSelectedMotionTemplateInUrl(templateId);
+    },
+    [updateSelectedMotionTemplateInUrl],
+  );
+
   usePageScrollRestoration(
     `short-form-video-settings:${activeSection}`,
     !loading,
   );
+
+  useEffect(() => {
+    activeSectionRef.current = activeSection;
+  }, [activeSection]);
+
+  useEffect(() => {
+    requestedMotionTemplateIdRef.current = requestedMotionTemplateId;
+  }, [requestedMotionTemplateId]);
 
   useEffect(() => {
     motionTemplatePreviewsRef.current = motionTemplatePreviewsById;
@@ -2227,7 +2341,7 @@ export function ShortFormVideoSettingsView({
   );
 
   useEffect(() => {
-    if (activeSection !== "images" || !motionGraphicsSettings) return;
+    if (activeSection !== "generate-visuals" || !motionGraphicsSettings) return;
 
     const controller = new AbortController();
     let cancelled = false;
@@ -2256,6 +2370,42 @@ export function ShortFormVideoSettingsView({
       controller.abort();
     };
   }, [activeSection, motionGraphicsSettings, requestMotionTemplatePreview]);
+
+  useEffect(() => {
+    if (activeSection !== "generate-visuals" || !motionGraphicsSettings) return;
+
+    const pendingUrlSelection = pendingMotionTemplateUrlIdRef.current;
+    if (
+      pendingUrlSelection &&
+      requestedMotionTemplateId !== pendingUrlSelection.templateId
+    ) {
+      return;
+    }
+    if (pendingUrlSelection) {
+      pendingMotionTemplateUrlIdRef.current = null;
+    }
+
+    const nextSelectedId = resolveMotionTemplateSelection({
+      templates: motionGraphicsSettings.templates,
+      currentId: selectedMotionTemplateId,
+      requestedId: requestedMotionTemplateId,
+    });
+    if (nextSelectedId !== selectedMotionTemplateId) {
+      setSelectedMotionTemplateId(nextSelectedId);
+    }
+    if (
+      requestedMotionTemplateId &&
+      requestedMotionTemplateId !== nextSelectedId
+    ) {
+      updateSelectedMotionTemplateInUrl(nextSelectedId);
+    }
+  }, [
+    activeSection,
+    motionGraphicsSettings,
+    requestedMotionTemplateId,
+    selectedMotionTemplateId,
+    updateSelectedMotionTemplateInUrl,
+  ]);
 
   useEffect(() => {
     if (!imageStyles || imageStyles.styles.length === 0) return;
@@ -2361,7 +2511,15 @@ export function ShortFormVideoSettingsView({
       setInitialMotionGraphicsSettings(data.motionGraphics);
       setSupportedMotionGraphicRenderers(data.supportedMotionGraphicRenderers || []);
       setSelectedMotionTemplateId(
-        (current) => current || data.motionGraphics.templates[0]?.id || null,
+        (current) =>
+          resolveMotionTemplateSelection({
+            templates: data.motionGraphics.templates,
+            currentId: current,
+            requestedId:
+              activeSectionRef.current === "generate-visuals"
+                ? requestedMotionTemplateIdRef.current
+                : null,
+          }),
       );
       setSoundDesignSettings(data.soundDesign);
       setInitialSoundDesignSettings(data.soundDesign);
@@ -2847,10 +3005,17 @@ export function ShortFormVideoSettingsView({
       videoRender && initialVideoRender
         ? serializeForCompare({
             pauseRemoval: videoRender.pauseRemoval,
-            chromaKeyEnabledByDefault: videoRender.chromaKeyEnabledByDefault,
           }) !==
           serializeForCompare({
             pauseRemoval: initialVideoRender.pauseRemoval,
+          })
+        : false;
+    const finalVideoRenderDirty =
+      videoRender && initialVideoRender
+        ? serializeForCompare({
+            chromaKeyEnabledByDefault: videoRender.chromaKeyEnabledByDefault,
+          }) !==
+          serializeForCompare({
             chromaKeyEnabledByDefault:
               initialVideoRender.chromaKeyEnabledByDefault,
           })
@@ -2887,6 +3052,7 @@ export function ShortFormVideoSettingsView({
     return {
       "tts-voice": ttsDirty,
       "pause-removal": pauseRemovalDirty,
+      "final-video-render": finalVideoRenderDirty,
       "music-library": musicDirty,
       "sound-library": soundLibraryDirty,
       "caption-styles": captionStylesDirty,
@@ -3013,14 +3179,15 @@ export function ShortFormVideoSettingsView({
   );
   const pageHasTransientWork =
     pageHasSectionSaving ||
-    (activeSection === "audio" &&
+    (activeSection === "generate-narration-audio" &&
       (ttsPreview.isLoading || Boolean(selectedVoiceUpload?.isUploading))) ||
-    (activeSection === "sound-library" &&
+    ((activeSection === "plan-sound-design" ||
+      activeSection === "generate-sound-design") &&
       Boolean(selectedSoundUpload?.isUploading)) ||
-    (activeSection === "images" &&
+    (activeSection === "generate-visuals" &&
       (anyStyleTesting || Boolean(selectedStyleUpload?.isUploading))) ||
-    (activeSection === "backgrounds" && backgroundVideoUpload.isUploading) ||
-    (activeSection === "music" && musicPreview.isLoading);
+    (activeSection === "final-video" &&
+      (backgroundVideoUpload.isUploading || musicPreview.isLoading));
   const pageStatus =
     error || pageHasSectionError
       ? "failed"
@@ -3357,7 +3524,7 @@ export function ShortFormVideoSettingsView({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <WorkflowSectionHeader
             title="Visual-planning Scribe prompt"
-            description="This is the actual full top-level prompt template the dashboard sends to Scribe when Plan visuals writes the XML script. The only extra layer is an optional revision-notes block that you place explicitly with {{revisionNotesBlock}}."
+            description="These are the actual full top-level prompt templates the dashboard sends to Scribe when Plan Visuals writes or revises the XML script. The only extra layer is an optional revision-notes block that you place explicitly with {{revisionNotesBlock}}."
             status={
               dirtyBySection["xml-visual-planning"]
                 ? "needs review"
@@ -3377,7 +3544,7 @@ export function ShortFormVideoSettingsView({
           <div className="space-y-6">
             <div className="space-y-2">
               <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Full visual-planning prompt template
+                Full generate prompt template
               </label>
               <Textarea
                 value={xmlVisualPlanningSettings.promptTemplate}
@@ -3397,9 +3564,9 @@ export function ShortFormVideoSettingsView({
                 <p>
                   Runtime placeholders stay in this template because the setting
                   is global, but this field is the real prompt surface used at
-                  runtime for Scribe XML visual planning. Keep labels like
-                  “Selected hook:” inline here when you want them always
-                  visible.
+                  runtime for Scribe XML visual planning on initial generation.
+                  Keep labels like “Selected hook:” inline here when you want
+                  them always visible.
                 </p>
                 <p>
                   Place <code>{"{{revisionNotesBlock}}"}</code> wherever the
@@ -3415,9 +3582,42 @@ export function ShortFormVideoSettingsView({
               </div>
             </div>
 
+            <div className="space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Full revise prompt template
+              </label>
+              <Textarea
+                value={xmlVisualPlanningSettings.revisePromptTemplate}
+                onChange={(event) => {
+                  updateSectionFeedbackState("xml-visual-planning", {
+                    error: null,
+                    message: null,
+                  });
+                  setXmlVisualPlanningSettings({
+                    ...xmlVisualPlanningSettings,
+                    revisePromptTemplate: event.target.value,
+                  });
+                }}
+                className="min-h-[560px] font-mono text-xs"
+              />
+              <div className="space-y-1 text-xs text-muted-foreground">
+                <p>
+                  This is the complete top-level prompt used when Plan Visuals
+                  revises an existing XML plan. Place{" "}
+                  <code>{"{{revisionNotesBlock}}"}</code> exactly where the
+                  rendered revision notes should appear.
+                </p>
+                <p>
+                  The dashboard does not append hidden motion-graphic or schema
+                  instructions after this template. Runtime data must appear as
+                  placeholders in this field or the generate field above.
+                </p>
+              </div>
+            </div>
+
             <div className="rounded-lg border border-border/70 bg-background/40 p-3 text-xs text-muted-foreground">
               <p className="font-medium text-foreground">
-                Full prompt placeholders
+                Generate/revise prompt placeholders
               </p>
               <div className="mt-2 overflow-x-auto">
                 <table className="min-w-full border-collapse text-left text-xs text-muted-foreground">
@@ -3533,6 +3733,68 @@ export function ShortFormVideoSettingsView({
 
         <SectionFeedbackNotice
           feedback={sectionFeedback["xml-visual-planning"]}
+        />
+      </Card>
+    </section>
+  );
+
+  const finalVideoRenderSection = (
+    <section id="final-video-render" className="scroll-mt-24">
+      <Card className="space-y-5 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <WorkflowSectionHeader
+            title="Final-render defaults"
+            description="Set global render defaults used by the Final Video workflow page. Individual projects can still override these values from their project page."
+            status={
+              dirtyBySection["final-video-render"]
+                ? "needs review"
+                : "approved"
+            }
+          />
+          <SectionActions
+            dirty={dirtyBySection["final-video-render"]}
+            saving={sectionFeedback["final-video-render"].saving}
+            saveLabel="Save final-render defaults"
+            onSave={() => void saveSection("final-video-render")}
+            onReset={() => resetSection("final-video-render")}
+          />
+        </div>
+
+        {videoRender ? (
+          <div className="space-y-2">
+            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Default chroma key
+            </label>
+            <Select
+              value={
+                videoRender.chromaKeyEnabledByDefault
+                  ? "enabled"
+                  : "disabled"
+              }
+              onChange={(event) => {
+                updateSectionFeedbackState("final-video-render", {
+                  error: null,
+                  message: null,
+                });
+                setVideoRender({
+                  ...videoRender,
+                  chromaKeyEnabledByDefault: event.target.value === "enabled",
+                });
+              }}
+              className="max-w-[220px]"
+            >
+              <option value="disabled">Disabled</option>
+              <option value="enabled">Enabled</option>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              New projects use this for final-video runs unless a project-level
+              override says otherwise.
+            </p>
+          </div>
+        ) : null}
+
+        <SectionFeedbackNotice
+          feedback={sectionFeedback["final-video-render"]}
         />
       </Card>
     </section>
@@ -4679,7 +4941,7 @@ export function ShortFormVideoSettingsView({
       }),
     });
     if (nextSelectedId !== selectedMotionTemplateId) {
-      setSelectedMotionTemplateId(nextSelectedId);
+      selectMotionTemplate(nextSelectedId);
     }
   }
 
@@ -4706,7 +4968,7 @@ export function ShortFormVideoSettingsView({
       ...motionGraphicsSettings,
       templates: [...motionGraphicsSettings.templates, nextTemplate],
     });
-    setSelectedMotionTemplateId(id);
+    selectMotionTemplate(id);
   }
 
   function removeSelectedMotionTemplate() {
@@ -4714,17 +4976,24 @@ export function ShortFormVideoSettingsView({
     const builtInIds = new Set([
       "stat_reveal",
       "bar_chart",
+      "pie_chart",
+      "line_growth_chart",
       "comparison_before_after",
       "timeline",
       "cause_effect",
       "caption_word_wall",
+      "ranked_podium",
+      "checklist",
+      "scorecard",
+      "research_paper_card",
+      "good-bad-indicator",
     ]);
     if (builtInIds.has(selectedMotionTemplate.id)) return;
     const nextTemplates = motionGraphicsSettings.templates.filter(
       (template) => template.id !== selectedMotionTemplate.id,
     );
     setMotionGraphicsSettings({ ...motionGraphicsSettings, templates: nextTemplates });
-    setSelectedMotionTemplateId(nextTemplates[0]?.id || null);
+    selectMotionTemplate(nextTemplates[0]?.id || null);
   }
 
   async function regenerateSelectedMotionPreview() {
@@ -4935,6 +5204,13 @@ export function ShortFormVideoSettingsView({
           ? {
               videoRender: {
                 pauseRemoval: videoRender.pauseRemoval,
+              },
+            }
+          : null;
+      case "final-video-render":
+        return videoRender
+          ? {
+              videoRender: {
                 chromaKeyEnabledByDefault:
                   videoRender.chromaKeyEnabledByDefault,
               },
@@ -5030,6 +5306,8 @@ export function ShortFormVideoSettingsView({
             ? "Saved. New XML narration runs will now reuse this voice library, including any saved voice samples."
             : sectionId === "pause-removal"
               ? "Saved. New narration timing runs now use these global pause-removal defaults unless a project override is set."
+              : sectionId === "final-video-render"
+                ? "Saved. New final-video runs now use these global render defaults unless a project override is set."
               : sectionId === "music-library"
                 ? "Saved. New final-video runs will now reuse this soundtrack library, including any generated soundtrack files."
                 : sectionId === "caption-styles"
@@ -5072,6 +5350,7 @@ export function ShortFormVideoSettingsView({
     if (
       (sectionId === "tts-voice" ||
         sectionId === "music-library" ||
+        sectionId === "final-video-render" ||
         sectionId === "pause-removal" ||
         sectionId === "caption-styles") &&
       initialVideoRender &&
@@ -5095,6 +5374,13 @@ export function ShortFormVideoSettingsView({
         setVideoRender({
           ...videoRender,
           pauseRemoval: initialVideoRender.pauseRemoval,
+        });
+        return;
+      }
+
+      if (sectionId === "final-video-render") {
+        setVideoRender({
+          ...videoRender,
           chromaKeyEnabledByDefault:
             initialVideoRender.chromaKeyEnabledByDefault,
         });
@@ -6238,24 +6524,45 @@ export function ShortFormVideoSettingsView({
         ) : null
       }
     >
-      {activeSection === "prompts" ? (
-        <div className="space-y-6">
-          {promptSections}
-          {textScriptPromptSection}
-          {xmlVisualPlanningPromptSection}
-        </div>
+      {activeSection === "topic" ? (
+        <Card className="space-y-3 p-5">
+          <WorkflowSectionHeader
+            title="No global Topic settings"
+            description="Topic capture is project-specific. The settings sidebar mirrors the workflow exactly, so this page is intentionally present even though there is nothing global to configure here yet."
+            status="approved"
+          />
+        </Card>
       ) : null}
 
-      {activeSection === "sound-library" ? soundLibrarySection : null}
+      {activeSection === "hook" ? (
+        <div className="space-y-6">{promptSections[0]}</div>
+      ) : null}
 
-      {activeSection === "audio" ? (
+      {activeSection === "research" ? (
+        <div className="space-y-6">{promptSections[1]}</div>
+      ) : null}
+
+      {activeSection === "text-script" ? (
+        <div className="space-y-6">{textScriptPromptSection}</div>
+      ) : null}
+
+      {activeSection === "plan-visuals" ? (
+        <div className="space-y-6">{xmlVisualPlanningPromptSection}</div>
+      ) : null}
+
+      {activeSection === "plan-sound-design" ||
+      activeSection === "generate-sound-design"
+        ? soundLibrarySection
+        : null}
+
+      {activeSection === "generate-narration-audio" ? (
         <div className="space-y-6">
           <section id="pause-removal" className="scroll-mt-24">
             <Card className="space-y-5 p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <WorkflowSectionHeader
                   title="Pause-removal defaults"
-                  description="Set the global silence-trimming defaults for the narration pipeline plus the default final-render chroma-key behavior. The silence-trimming ffmpeg pass runs after original narration generation and before forced alignment. Individual projects can override these values from their project page."
+                  description="Set the global silence-trimming defaults for the narration pipeline. The silence-trimming ffmpeg pass runs after original narration generation and before forced alignment. Individual projects can override these values from their project page."
                   status={
                     dirtyBySection["pause-removal"]
                       ? "needs review"
@@ -6273,37 +6580,6 @@ export function ShortFormVideoSettingsView({
 
               {videoRender ? (
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Default final-video chroma key
-                    </label>
-                    <Select
-                      value={
-                        videoRender.chromaKeyEnabledByDefault
-                          ? "enabled"
-                          : "disabled"
-                      }
-                      onChange={(event) => {
-                        updateSectionFeedbackState("pause-removal", {
-                          error: null,
-                          message: null,
-                        });
-                        setVideoRender({
-                          ...videoRender,
-                          chromaKeyEnabledByDefault:
-                            event.target.value === "enabled",
-                        });
-                      }}
-                      className="max-w-[220px]"
-                    >
-                      <option value="disabled">Disabled</option>
-                      <option value="enabled">Enabled</option>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      New projects use this for final-video runs unless a
-                      project-level override says otherwise. Default is now off.
-                    </p>
-                  </div>
                   <div className="space-y-2">
                     <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       Remove pauses longer than (seconds)
@@ -6963,14 +7239,14 @@ export function ShortFormVideoSettingsView({
         </div>
       ) : null}
 
-      {activeSection === "images" ? (
+      {activeSection === "generate-visuals" ? (
         <div className="space-y-6">
           <section id="motion-graphics" className="scroll-mt-24">
             <Card className="space-y-5 p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <WorkflowSectionHeader
                   title="Motion graphics templates"
-                  description="Deterministic animated slides, charts, comparisons, timelines, and cause-effect visuals available to Scribe during Plan Visuals. The UI can add configured template metadata, but renderer ids stay constrained to supported deterministic renderers."
+                  description="Deterministic animated slides, bar/pie/line charts, ranked lists, checklists, scorecards, research cards, and good/bad indicator visuals available to Scribe during Plan Visuals. The UI can add configured template metadata, but renderer ids stay constrained to supported deterministic renderers."
                   status={dirtyBySection["motion-graphics"] ? "needs review" : "approved"}
                 />
                 <SectionActions
@@ -7006,7 +7282,7 @@ export function ShortFormVideoSettingsView({
                       <Select
                         value={selectedMotionTemplateId || ""}
                         onChange={(event) =>
-                          setSelectedMotionTemplateId(event.target.value || null)
+                          selectMotionTemplate(event.target.value || null)
                         }
                       >
                         {motionGraphicsSettings.templates.map((template) => (
@@ -7289,10 +7565,17 @@ export function ShortFormVideoSettingsView({
                             disabled={[
                               "stat_reveal",
                               "bar_chart",
+                              "pie_chart",
+                              "line_growth_chart",
                               "comparison_before_after",
                               "timeline",
                               "cause_effect",
                               "caption_word_wall",
+                              "ranked_podium",
+                              "checklist",
+                              "scorecard",
+                              "research_paper_card",
+                              "good-bad-indicator",
                             ].includes(selectedMotionTemplate.id)}
                           >
                             Remove custom
@@ -8144,7 +8427,7 @@ export function ShortFormVideoSettingsView({
         </div>
       ) : null}
 
-      {activeSection === "captions" ? (
+      {activeSection === "plan-captions" ? (
         <div className="space-y-6">
           <section id="caption-styles" className="scroll-mt-24">
             <Card className="space-y-5 p-5">
@@ -9286,8 +9569,9 @@ export function ShortFormVideoSettingsView({
         </div>
       ) : null}
 
-      {activeSection === "backgrounds" ? (
+      {activeSection === "final-video" ? (
         <div className="space-y-6">
+          {finalVideoRenderSection}
           <section id="background-videos" className="scroll-mt-24">
             <Card className="space-y-5 p-5">
               {backgroundVideos ? (
@@ -9503,7 +9787,7 @@ export function ShortFormVideoSettingsView({
         </div>
       ) : null}
 
-      {activeSection === "music" ? (
+      {activeSection === "final-video" ? (
         <div className="space-y-6">
           <section id="music-library" className="scroll-mt-24">
             <Card className="space-y-5 p-5">

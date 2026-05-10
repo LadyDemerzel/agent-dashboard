@@ -106,10 +106,12 @@ async function main() {
     xmlVisualPlanning: {
       ...initial.xmlVisualPlanning,
       promptTemplate: appendSentinel(initial.xmlVisualPlanning.promptTemplate, xmlSentinel),
+      revisePromptTemplate: appendSentinel(initial.xmlVisualPlanning.revisePromptTemplate, xmlSentinel),
       revisionNotesPromptTemplate: appendSentinel(initial.xmlVisualPlanning.revisionNotesPromptTemplate, xmlSentinel),
     },
   });
   assertContains(data.xmlVisualPlanning.promptTemplate, xmlSentinel, "XML visual-planning prompt");
+  assertContains(data.xmlVisualPlanning.revisePromptTemplate, xmlSentinel, "XML visual-planning revise prompt");
   assertContains(data.xmlVisualPlanning.revisionNotesPromptTemplate, xmlSentinel, "XML visual-planning revision prompt");
 
   const imageSentinel = `${sentinelBase}: image-templates`;

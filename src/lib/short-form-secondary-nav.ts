@@ -4,6 +4,7 @@ import {
   buildShortFormDetailHref,
   buildShortFormSettingsHref,
   type ShortFormDetailRouteSection,
+  type ShortFormSettingsRouteSection,
 } from '@/lib/short-form-video-navigation';
 
 export const APP_SHELL_COMPACT_BREAKPOINT_PX = 1360;
@@ -25,14 +26,7 @@ export type ShortFormSecondaryNavIcon =
   | 'generate-visuals'
   | 'plan-sound-design'
   | 'generate-sound-design'
-  | 'final-video'
-  | 'prompts'
-  | 'audio'
-  | 'sound-library'
-  | 'images'
-  | 'settings-captions'
-  | 'backgrounds'
-  | 'music';
+  | 'final-video';
 
 export interface ShortFormSecondaryNavItem {
   href: string;
@@ -309,72 +303,40 @@ export interface ShortFormSettingsNavSummary {
 
 export function getShortFormSettingsNavItems(summary?: ShortFormSettingsNavSummary): ShortFormSecondaryNavItem[] {
   const dirty = new Set(summary?.dirtySectionIds || []);
-  const promptsDirty = dirty.has('prompt-hooks') || dirty.has('prompt-research') || dirty.has('text-script-prompts') || dirty.has('xml-visual-planning');
-  const audioDirty = dirty.has('pause-removal') || dirty.has('tts-voice');
+  const pageDirty = (ids: string[]) => ids.some((id) => dirty.has(id));
+  const buildItem = (
+    section: ShortFormSettingsRouteSection,
+    label: string,
+    icon: ShortFormSecondaryNavIcon,
+    group: string,
+    caption: string,
+    meta: string,
+    dirtyIds: string[],
+  ): ShortFormSecondaryNavItem => {
+    const isDirty = pageDirty(dirtyIds);
+    return {
+      href: buildShortFormSettingsHref(section),
+      label,
+      icon,
+      group,
+      caption,
+      meta,
+      status: isDirty ? 'needs review' : 'approved',
+      dirty: isDirty,
+    };
+  };
 
   return [
-    {
-      href: buildShortFormSettingsHref('prompts'),
-      label: 'Prompts',
-      icon: 'prompts',
-      caption: 'Hooks, research, narration script, and XML visual-planning prompts.',
-      meta: '4 editable sections',
-      status: promptsDirty ? 'needs review' : 'approved',
-      dirty: promptsDirty,
-    },
-    {
-      href: buildShortFormSettingsHref('audio'),
-      label: 'Audio',
-      icon: 'audio',
-      caption: 'Narration voice library plus pause-removal and chroma-key defaults.',
-      meta: `${summary?.voiceCount || 0} voices`,
-      status: audioDirty ? 'needs review' : 'approved',
-      dirty: audioDirty,
-    },
-    {
-      href: buildShortFormSettingsHref('sound-library'),
-      label: 'Sound Library',
-      icon: 'sound-library',
-      caption: 'Shared prompt, mix defaults, and reusable SFX library.',
-      meta: `${summary?.soundCount || 0} sounds`,
-      status: dirty.has('sound-library') ? 'needs review' : 'approved',
-      dirty: dirty.has('sound-library'),
-    },
-    {
-      href: buildShortFormSettingsHref('images'),
-      label: 'Images',
-      icon: 'images',
-      caption: 'Motion graphics, Nano Banana prompt templates, and the reusable image-style library.',
-      meta: `${summary?.styleCount || 0} styles`,
-      status: dirty.has('motion-graphics') || dirty.has('image-templates') || dirty.has('image-styles') ? 'needs review' : 'approved',
-      dirty: dirty.has('motion-graphics') || dirty.has('image-templates') || dirty.has('image-styles'),
-    },
-    {
-      href: buildShortFormSettingsHref('captions'),
-      label: 'Captions',
-      icon: 'settings-captions',
-      caption: 'Reusable caption-style presets and animation definitions.',
-      meta: `${summary?.captionStyleCount || 0} caption styles`,
-      status: dirty.has('caption-styles') ? 'needs review' : 'approved',
-      dirty: dirty.has('caption-styles'),
-    },
-    {
-      href: buildShortFormSettingsHref('backgrounds'),
-      label: 'Backgrounds',
-      icon: 'backgrounds',
-      caption: 'Looping background videos used behind generated scene images.',
-      meta: `${summary?.backgroundCount || 0} loops`,
-      status: dirty.has('background-videos') ? 'needs review' : 'approved',
-      dirty: dirty.has('background-videos'),
-    },
-    {
-      href: buildShortFormSettingsHref('music'),
-      label: 'Music',
-      icon: 'music',
-      caption: 'Saved soundtrack presets and preview generation settings.',
-      meta: `${summary?.musicTrackCount || 0} tracks`,
-      status: dirty.has('music-library') ? 'needs review' : 'approved',
-      dirty: dirty.has('music-library'),
-    },
+    buildItem('topic', 'Topic', 'topic', 'WRITING', 'No dashboard-wide settings are needed before a project topic exists.', 'No settings', []),
+    buildItem('hook', 'Hook', 'hook', 'WRITING', 'Hook generation and more-hooks prompt templates.', '2 prompts', ['prompt-hooks']),
+    buildItem('research', 'Research', 'research', 'WRITING', 'Research generation and revision prompt templates.', '2 prompts', ['prompt-research']),
+    buildItem('text-script', 'Text Script', 'text-script', 'WRITING', 'Text-script loop prompts, iteration defaults, and post-processing rules.', '3 prompts', ['text-script-prompts']),
+    buildItem('generate-narration-audio', 'Generate Narration Audio', 'narration', 'NARRATION', 'Narration voice library plus silence-trimming defaults.', `${summary?.voiceCount || 0} voices`, ['tts-voice', 'pause-removal']),
+    buildItem('plan-captions', 'Plan Captions', 'captions', 'NARRATION', 'Reusable caption-style presets and animation definitions.', `${summary?.captionStyleCount || 0} caption styles`, ['caption-styles']),
+    buildItem('plan-visuals', 'Plan Visuals', 'plan-visuals', 'VISUALS', 'Full Scribe prompt templates for XML visual planning.', 'Full prompt', ['xml-visual-planning']),
+    buildItem('generate-visuals', 'Generate Visuals', 'generate-visuals', 'VISUALS', 'Motion graphics, Nano Banana templates, and the reusable image-style library.', `${summary?.styleCount || 0} styles`, ['motion-graphics', 'image-templates', 'image-styles']),
+    buildItem('plan-sound-design', 'Plan Sound Design', 'plan-sound-design', 'SOUND DESIGN', 'Sound-design planning prompts, mix defaults, and reusable SFX library.', `${summary?.soundCount || 0} sounds`, ['sound-library']),
+    buildItem('generate-sound-design', 'Generate Sound Design', 'generate-sound-design', 'SOUND DESIGN', 'Uses the same saved SFX library and mix defaults configured in Plan Sound Design.', `${summary?.soundCount || 0} sounds`, ['sound-library']),
+    buildItem('final-video', 'Final Video', 'final-video', 'RENDER', 'Background loops, music presets, and final-render defaults.', `${summary?.backgroundCount || 0} loops · ${summary?.musicTrackCount || 0} tracks`, ['background-videos', 'music-library', 'final-video-render']),
   ];
 }

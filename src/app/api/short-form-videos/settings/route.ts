@@ -45,6 +45,8 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const LEGACY_MOTION_GRAPHIC_RENDERERS = new Set(["instruction", "step_checklist"]);
+
 function buildPayload() {
   return {
     prompts: getShortFormWorkflowPrompts(),
@@ -423,7 +425,10 @@ export async function PATCH(request: NextRequest) {
     } satisfies ShortFormXmlVisualPlanningSettings;
 
     if (typeof candidate.promptTemplate !== "string" || !candidate.promptTemplate.trim()) {
-      return NextResponse.json({ success: false, error: "Visual-planning full prompt template must be a non-empty string" }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Visual-planning full generate prompt template must be a non-empty string" }, { status: 400 });
+    }
+    if (typeof candidate.revisePromptTemplate !== "string" || !candidate.revisePromptTemplate.trim()) {
+      return NextResponse.json({ success: false, error: "Visual-planning full revise prompt template must be a non-empty string" }, { status: 400 });
     }
     if (typeof candidate.revisionNotesPromptTemplate !== "string" || !candidate.revisionNotesPromptTemplate.trim()) {
       return NextResponse.json({ success: false, error: "Visual-planning revision-notes prompt template must be a non-empty string" }, { status: 400 });
@@ -455,7 +460,7 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ success: false, error: `Motion graphics template id ${template.id} is duplicated` }, { status: 400 });
       }
       seenTemplateIds.add(template.id);
-      if (!SUPPORTED_MOTION_GRAPHIC_RENDERERS.includes(template.rendererId)) {
+      if (!SUPPORTED_MOTION_GRAPHIC_RENDERERS.includes(template.rendererId) && !LEGACY_MOTION_GRAPHIC_RENDERERS.has(template.rendererId)) {
         return NextResponse.json({ success: false, error: `Motion graphics template ${template.id} uses an unsupported deterministic renderer` }, { status: 400 });
       }
       if (typeof template.displayName !== "string" || !template.displayName.trim()) {
