@@ -16,39 +16,34 @@ const SETTINGS_PATH = path.join(SHORT_FORM_VIDEOS_DIR, "_sound-design-settings.j
 const SOUND_LIBRARY_DIR = path.join(SHORT_FORM_VIDEOS_DIR, "_sound-library");
 
 const DEFAULT_PLANNING_BRIEF_TEMPLATE = [
-  "Create a tasteful but confidently designed sound-design plan for this short-form video.",
-  "Choose one coherent style palette before individual cues (clean tech, gritty athletic, cinematic trailer, organic/nature, glitch/digital, playful UI, etc.) and keep the palette coherent unless a beat intentionally breaks it.",
-  "Use the saved sound-design library when choosing semantic sound cues, including style palette, frequency band, layer role, and literalness metadata when present.",
-  "Modern short-form design should lean on crisp clicks, ticks, taps, button-like UI accents, and micro-transient details more often than generic whooshes. Use whooshes secondarily, not as the default transition sound.",
-  "Plan meaningful risers and uplifters before anticipation, transitions, and payoff beats. Layer short click/tick accents with risers so the mix has movement instead of a flat bed.",
-  "Target a denser editorial pass: roughly one click/tick/micro-accent every 1.5-3 seconds during active narration or visual changes, plus risers around section turns and reveals. Avoid firing on every word; do hit phrase pivots, UI-like emphasis points, micro beats, and transitions.",
-  "A normal 30-90 second short must have sound cues across the beginning, middle, and end; one opening cue is invalid. Include at least 12 purposeful <effect /> cues unless the source video is unusually short.",
-  "Bias away from under-designing. Plan richer, more frequent sound effects where the edit supports them, especially on transitions, reveals, movement, visual timing changes, and strong narration turns.",
-  "Treat scene cuts, zooms, before/after reveals, whip moves, graphic changes, and image swaps as primary timing beats. Sound should lock to visual rhythm, not just the transcript.",
-  "For major transitions, impacts, risers, whooshes, and useful ambience, plan frequency-layered cue groups: low weight/rumble, mid body/motion, and high air/tick/sparkle/texture. Give related layers the same groupId.",
-  "Distinguish literal, stylized, and emotional-metaphor cues. Use emotional realism when the sound should match the feeling or metaphor rather than the visible object.",
-  "Plan music transitions where useful: reverse-beat/tail risers, reverb tails on final beats, suckbacks under transitions, and impacts/slams on payoff beats.",
-  "Use multiple music segments when the video has distinct beats or mood changes. Choose saved music trackIds from the music library, timestamp each segment, and use fades/gain so the soundtrack changes mood/pacing professionally instead of one static loop.",
-  "Narration owns the mix. Plan music ducking plus midrange EQ carving around speech; do not rely only on lowering gain.",
-  "Audibility target: music and SFX must be clearly audible on phone speakers while staying below narration. Do not bury the bed or one-shots into inaudibility.",
-  "Use practical starting ranges: music segment gainDb about -14 to -10 with musicDuckingDb about -6 to -4; transient clicks/hits/risers about -10 to -4; whooshes/motion about -12 to -6; ambience beds about -22 to -16.",
-  "Avoid extreme attenuation by default. Do not set music segments near -18 dB or musicDuckingDb near -10 unless a specific safety/quiet beat requires it.",
-  "Before writing, sanity-check relative audibility: if the no-SFX/no-music version would sound almost identical to the full mix, raise planned gains or reduce ducking.",
-  "Keep narration clear and well-supported, but do not default to sparse minimal coverage.",
-  "Captions, transcript, forced alignment, and visual timing are input context only. Do not time effects to caption boundaries by default.",
+  "Aim for one signature sonic moment per section, with restraint between signatures. The goal is a few cues a viewer would notice and remember, not a continuous bed of ticks.",
+  "Choose one coherent style palette before individual cues (clean tech, gritty athletic, cinematic trailer, organic/nature, glitch/digital, playful UI, premium editorial, documentary realism). State the chosen palette in the rationale of the first cue and keep it coherent unless a beat intentionally breaks it.",
+  "Use the saved sound-design library when choosing cues. Match style palette, frequency band, layer role, and literalness metadata when present. Do not invent assetIds that are not in the library.",
+  "Per-section cue budget for a normal 30-90 second short. Plan within these caps, not toward them:",
+  "  - Hook (0-4s): 1 impact + 1 riser or whoosh + at most 2 micro-accents (ticks/taps/clicks).",
+  "  - Thesis or reveal beats: a single layered group (low + mid + high) sharing one groupId. No additional ticks inside the reveal window.",
+  "  - Stat or chart sections: at most one tick per discrete data point being revealed, not per word.",
+  "  - Instruction or how-to beats: tactile foley (wood tap, organic tap) only on physical actions or step transitions.",
+  "  - Pass-fail or warning beats: a contrast pair (sharp high tick + low body tick or hit). No more.",
+  "  - Final beat: payoff impact + reverb tail. Leave 0.4-0.8s of decay before the cut. Do not stack ticks on the final word.",
+  "Hard caps for a 60-90 second short: <= 18 ticks/clicks/taps total, <= 30 total <effect/> cues. Exceed only with explicit per-cue justification in rationale.",
+  "Asset rotation rule: no two consecutive cues of the same type may share the same assetId. Spread tick variety across the available library rather than reusing the same 3-4 ticks.",
+  "Leave-silence rule: in any 6-second window of active narration, at least one >= 1.5s gap must have no transient cue (clicks/impacts/whooshes). Beds and music may continue.",
+  "Use whooshes only on actual visual motion (whip, swipe, camera move, large graphic sweep). Do not use a whoosh as a generic transition sound. If the cut has no visual motion, use a tick or a riser-tail instead.",
+  "Risers and uplifters belong before reveals, drops, and section turns. Each riser must resolve into either an impact, a stinger, or a music payoff within 100-300 ms of its end.",
+  "For tentpole beats (hook, thesis/reveal, mid-point pivot, final payoff), plan a frequency-layered group with shared groupId: low weight (rumble/bass/sub), mid body (impact/motion core), high air (tick/sparkle/texture). Every tentpole must have all three layers OR be explicitly marked rationale=\"silence-for-contrast\".",
+  "Distinguish literal, stylized, and emotional-metaphor cues. Use emotional-metaphor when the sound should match the feeling rather than the visible object.",
+  "Music is a co-protagonist, not wallpaper. Pick saved music trackIds by mood/pacing/bpm metadata. Use multiple music segments when the video has distinct emotional beats. Add reverse-beat/tail risers, reverb tails on final beats, suckbacks under transitions, and impacts/slams on payoff beats.",
+  "Music gain ceiling: cap music segment gainDb at -13 dB. Use -14 to -13 for normal sections, -15 to -14 for instruction or quiet beats. Do not go above -13 even at energy peaks.",
+  "Narration owns the mix. Plan musicDuckingDb between -7 and -5 (deeper duck under speech), plus midrange EQ carving around 1.8-2.4 kHz. Do not rely on gain reduction alone.",
+  "Relative-to-music gain rule: transients (impacts, ticks, stingers) must sit at least 6 dB above the loudest music segment they overlap. Risers must sit at least 4 dB above. If music is at -13 dB, plan transients at -7 dB or louder and risers at -9 dB or louder.",
+  "Ambience beds: -22 to -18 dB. Use one bed at a time. Layer a second only on tentpole beats.",
+  "SFX vs music balance check: before writing, sanity-check that the SFX bus would not be inaudible after final mastering. If you cannot point to at least 3 cues in different sections that would clearly bump the loudness meter above the music alone, raise gains or reduce ducking under those cues.",
+  "Captions, transcript, forced alignment, and visual timing are input context only. Do not time effects to caption boundaries by default. Tie cues to visual beats first, narration phrasing second, transcript word-by-word last.",
   "Return compact timestamp-only XML inside <sound_design> with layered <track> tags and self-closing <effect /> tags.",
 ].join("\n");
 
 const DEFAULT_REVISION_PROMPT_TEMPLATE = "Revision notes: {{revisionNotes}}\nKeep the revised sound-design XML timestamp-only: no anchors, sceneId, captionId, scene references, or caption-boundary timing properties.";
-
-const LEGACY_PROMPT_HINTS = [
-  "Create a tasteful sound-design plan for this short-form video.",
-  "Create a tasteful but confidently designed sound-design plan for this short-form video.",
-  "Use the saved sound-design library when choosing semantic sound cues.",
-  "Prefer restraint, clarity, and timing that supports the narration.",
-  "Keep narration clear and well-supported, but do not default to sparse minimal coverage.",
-  "Return compact timestamp-only XML inside <sound_design> with layered <track> tags and self-closing <effect /> tags.",
-];
 
 function buildTopLevelSoundDesignPromptTemplate(planningBriefTemplate: string) {
   return [
@@ -87,17 +82,17 @@ function buildTopLevelSoundDesignPromptTemplate(planningBriefTemplate: string) {
     "- Optional music structure: add <music_segments> before/after the SFX tracks, with self-closing <segment id=\"...\" trackId=\"saved-music-id\" start=\"seconds\" end=\"seconds\" gainDb=\"...\" fadeInMs=\"...\" fadeOutMs=\"...\" mood=\"...\" pacing=\"...\" rationale=\"...\" /> entries. Use absolute timestamps only.",
     "- Every effect must include id, type, and start=\"seconds\". Include end=\"seconds\" or duration=\"seconds\" for beds/risers/tails when useful.",
     "- Optional effect attrs: assetId, description, searchQuery, category, priority, gainDb, fadeInMs, fadeOutMs, groupId, frequencyBand, layerRole, stylePalette, literalness, rationale, overlap, musicDuckingDb, musicEqCutDb, musicEqFrequencyHz, musicEqQ, musicLowCutHz, musicHighCutHz.",
-    "- Use audible default gain ranges unless a beat explicitly needs restraint: music segment gainDb -14 to -10, transient SFX -10 to -4, motion/risers -12 to -6, ambience -22 to -16, musicDuckingDb -6 to -4.",
-    "- Placement must be timestamp-only. Use captions, transcript, word-level forced alignment, and visual timing data to choose sounds and timestamps, but do not emit anchors, sceneId, captionId, caption tags, scene references, or caption-boundary timing properties in the XML.",
-    "- Keep cues tasteful and narration-supportive, but do not under-design the soundtrack.",
-    "- Bias toward purposeful cue density where the edit supports it, especially across hook punctuation, transitions, reveals, motion accents, and strong narration turns.",
-    "- Treat the visual beat map as first-class timing truth. Cover scene cuts, reveals, zooms, camera moves, before/after comparisons, and graphic step-throughs even when the narration is semantically flat.",
-    "- Plan around actual scene boundaries and visual momentum, not just script phrases. A dense short-form edit with ~1-2 second scenes usually needs regular transient punctuation and transition motion support.",
-    "- Make sure major section turns and reveals have both movement support (riser/whoosh) and punch support (click/impact/tick) where appropriate.",
-    "- Prefer click/tick/tap/micro-accent SFX for modern emphasis and timing detail. Use risers/uplifters for anticipation and transitions. Generic whooshes are secondary and should not dominate the plan.",
-    "- Include enough click/riser coverage that the generated mix will not feel flat: micro accents on narration turns and UI-like emphasis points, risers into section turns/payoffs, and layered groups at larger beats.",
-    "- Use the saved library as the allowed source palette when choosing cue types and event intent; metadata can guide palette coherence and low/mid/high layered cue groups.",
-    "- Use saved music trackIds for music segments when multiple moods/pacing sections would make the soundtrack feel more produced than one static bed.",
+    "- Plan gains relative to music: music segment gainDb capped at -13 dB; transients must sit >= 6 dB above overlapping music; risers must sit >= 4 dB above; ambience -22 to -18 dB; musicDuckingDb -7 to -5 dB.",
+    "- Stay within hard caps for a 60-90s short: at most 18 ticks/clicks/taps and at most 30 total <effect/> cues. Each cue must name a specific visual or narration beat in its rationale.",
+    "- Enforce asset rotation: no two consecutive cues of the same type may share the same assetId. Use the breadth of the library before reusing.",
+    "- Enforce leave-silence: in any 6s window of active narration, at least one >= 1.5s gap must have no transient cue.",
+    "- For tentpole beats (hook, thesis/reveal, mid-pivot, final payoff), plan a frequency-layered group with shared groupId covering low + mid + high, or mark the beat rationale=\"silence-for-contrast\".",
+    "- Use whooshes only when the picture moves. If there is no visual motion, choose a tick, riser-tail, or silence instead.",
+    "- Risers must resolve into an impact, stinger, or music payoff within 100-300 ms of their end. A riser with no resolution is invalid.",
+    "- Placement must be timestamp-only. Use captions, transcript, word-level forced alignment, and visual timing as inputs, but do not emit anchors, sceneId, captionId, caption tags, scene references, or caption-boundary timing properties in the XML.",
+    "- Treat the visual beat map as first-class timing truth. Lock to scene cuts, reveals, zooms, camera moves, before/after comparisons, and graphic step-throughs before locking to narration words.",
+    "- Use the saved library as the allowed source palette. Match library metadata (style palette, frequency band, layer role, literalness) when present.",
+    "- Use saved music trackIds for music segments. Pick by mood/pacing/bpm/energy metadata in the music library JSON, not by trackId name guessing.",
     "- Write the updated artifact back to {{soundDesignPath}}, then read it back and verify the file exists and contains a <sound_design> root with <track> and <effect> entries.",
   ].join("\n");
 }
@@ -222,6 +217,7 @@ export interface ShortFormSoundDesignSettings {
   transientBusGainDb: number;
   maxConcurrentOneShots: number;
   musicDuckingDb: number;
+  musicDuckingUnderTransientsDb: number;
   musicEqCutDb: number;
   musicEqFrequencyHz: number;
   musicEqQ: number;
@@ -288,6 +284,7 @@ export interface ShortFormSoundDesignMix {
   transientBusGainDb: number;
   maxConcurrentOneShots: number;
   musicDuckingDb: number;
+  musicDuckingUnderTransientsDb: number;
   musicEqCutDb: number;
   musicEqFrequencyHz: number;
   musicEqQ: number;
@@ -651,163 +648,34 @@ function enrichLibraryEntry(entry: ShortFormSoundLibraryEntry) {
   };
 }
 
+const STALE_BRIEF_MARKERS = [
+  "Target a denser editorial pass",
+  "one click/tick/micro-accent every 1.5-3 seconds",
+  "Include at least 12 purposeful <effect /> cues",
+  "music segment gainDb about -14 to -10",
+  "Bias away from under-designing",
+  "Cue-count coverage rules:",
+  "Modern editorial density rules:",
+  "Audibility and loudness rules:",
+  "Create a tasteful sound-design plan for this short-form video.",
+  "Create a tasteful but confidently designed sound-design plan for this short-form video.",
+];
+
 function normalizePromptTemplate(value: unknown) {
   if (typeof value !== "string" || !value.trim()) {
     return DEFAULT_PROMPT_TEMPLATE;
   }
 
-  let normalized = value.replace(/\r/g, "").trim();
-  normalized = normalized.replaceAll("{{selectedHook}}", "{{selectedHookTextOrFallback}}");
-  normalized = normalized.replace(/^[ \t]*Revision notes:\s*\{\{\s*revisionNotes\s*\}\}[ \t]*$/gm, "{{revisionNotesBlock}}");
-  normalized = normalized.replace(
-    "Create a tasteful sound-design plan for this short-form video.",
-    "Create a tasteful but confidently designed sound-design plan for this short-form video.",
-  );
-  normalized = normalized.replace(
-    "Prefer restraint, clarity, and timing that supports the narration.",
-    "Bias away from under-designing. Plan richer, more frequent sound effects where the edit supports them, especially on transitions, reveals, movement, visual timing changes, and strong narration turns. Keep narration clear and well-supported, but do not default to sparse minimal coverage.",
-  );
-  normalized = normalized.replace(
-    "- Keep cues tasteful, sparse, and narration-supportive. Prefer fewer better events over dense layering.",
-    "- Keep cues tasteful and narration-supportive, but do not under-design the soundtrack.\n- Bias toward purposeful cue density where the edit supports it, especially across hook punctuation, transitions, reveals, motion accents, and major narration/visual turns.",
-  );
-
-  normalized = normalized
-    .replaceAll("<soundDesign>", "<sound_design>")
-    .replaceAll("<soundDesign", "<sound_design")
-    .replaceAll("</soundDesign>", "</sound_design>")
-    .replaceAll("self-closing <event /> tags", "layered <track> tags with self-closing <effect /> tags")
-    .replaceAll("scene changes, and strong caption beats", "visual timing changes, and strong narration turns")
-    .replaceAll("scene changes, and strong caption turns", "visual timing changes, and strong narration turns")
-    .replaceAll("major caption turns", "major narration/visual turns");
-
-  if (!normalized.includes("timestamp-only") && normalized.includes("Artifact requirements:")) {
-    normalized = normalized.replace(
-      /\nArtifact requirements:/,
-      "\nTimestamp-only placement rules:\n- Use captions, transcript, word-level forced alignment, and visual timing as inputs, then place every cue with absolute timestamps only.\n- New XML must use <sound_design version=\"2\"><track><effect start=\"...\" end=\"...\" or duration=\"...\" /></track></sound_design>.\n- Do not emit anchors, sceneId, captionId, scene references, caption tags, or caption-boundary timing properties.\n\nArtifact requirements:",
-    );
+  const normalized = value.replace(/\r/g, "").trim();
+  const hasNewBudgetMarker = normalized.includes("Per-section cue budget")
+    && normalized.includes("no two consecutive cues of the same type may share the same assetId")
+    && normalized.includes("Relative-to-music gain rule:");
+  if (hasNewBudgetMarker) {
+    return normalized;
   }
 
-  if (!normalized.includes("frequency-layered cue groups")) {
-    normalized = normalized.replace(
-      /\nArtifact requirements:/,
-      "\nUpdated sound-design planning rules:\n- Choose one coherent stylePalette first, then keep individual cues in that palette unless a beat intentionally breaks it.\n- For major transitions, impacts, risers, whooshes, and useful ambience, plan frequency-layered cue groups with shared groupId plus frequencyBand=\"low\"/\"mid\"/\"high\" and layerRole values like weight, body, motion, air, tick, sparkle, or texture.\n- Distinguish literalness=\"literal\", literalness=\"stylized\", and literalness=\"emotional-metaphor\"; emotional-metaphor cues can match the feeling/metaphor rather than literal visuals.\n- Plan music edits where useful with type=\"music-riser\", type=\"music-reverb-tail\", type=\"mix-duck\", or type=\"mix-eq\" control events and/or root music mix attrs.\n- Narration owns the mix: use ducking plus midrange EQ carving around speech, not only gain reduction.\n\nArtifact requirements:",
-    );
-  }
-
-  if (!normalized.includes("Prefer click/tick/tap/micro-accent")) {
-    normalized = normalized.replace(
-      /\nArtifact requirements:/,
-      "\nModern editorial density rules:\n- Prefer click/tick/tap/micro-accent SFX for modern emphasis and timing detail; whooshes are secondary and should not dominate.\n- Target roughly one purposeful click/tick/micro-accent every 1.5-3 seconds during active narration or visual changes, plus risers/uplifters into anticipation, transitions, and payoff beats.\n- Layer clicks with risers around section turns so the mix has movement and does not feel flat.\n\nArtifact requirements:",
-    );
-  }
-
-  if (!normalized.includes("one opening cue is invalid")) {
-    normalized = normalized.replace(
-      /\nArtifact requirements:/,
-      "\nCue-count coverage rules:\n- A normal 30-90 second short must have sound cues across the beginning, middle, and end; one opening cue is invalid.\n- Include at least 12 purposeful <effect /> cues unless the source video is unusually short, with coverage across hook punctuation, transitions, reveals, movement accents, and final payoff/reset beats.\n\nArtifact requirements:",
-    );
-  }
-
-  if (!normalized.includes("Audibility target: music and SFX must be clearly audible") && !normalized.includes("Audibility and loudness rules:")) {
-    normalized = normalized.replace(
-      /\nArtifact requirements:/,
-      "\nAudibility and loudness rules:\n- Music and SFX must be clearly audible on phone speakers while staying below narration; do not bury the bed or one-shots into inaudibility.\n- Use practical starting ranges: music segment gainDb about -14 to -10 with musicDuckingDb about -6 to -4; transient clicks/hits/risers about -10 to -4; whooshes/motion about -12 to -6; ambience beds about -22 to -16.\n- Avoid extreme attenuation by default. Do not set music segments near -18 dB or musicDuckingDb near -10 unless a specific safety/quiet beat requires it.\n- Before writing, sanity-check relative audibility: if the no-SFX/no-music version would sound almost identical to the full mix, raise planned gains or reduce ducking.\n\nArtifact requirements:",
-    );
-  }
-
-  if (!normalized.includes("Saved music library JSON:")) {
-    normalized = normalized.replace(
-      "Saved sound library JSON:\n{{soundLibraryJson}}",
-      "Saved sound library JSON:\n{{soundLibraryJson}}\n\nSaved music library JSON:\n{{musicLibraryJson}}",
-    );
-  }
-
-  if (!normalized.includes("Visual beat map summary JSON:")) {
-    normalized = normalized.replace(
-      "- Visual timing manifest JSON: {{sceneManifestPath}}",
-      "- Visual timing/cut manifest JSON: {{sceneManifestPath}}\n- Visual beat map summary JSON: {{visualBeatMapJson}}",
-    );
-  }
-
-  if (!normalized.includes("<music_segments>")) {
-    normalized = normalized.replace(
-      "- Inside it, group layered audio lanes with <track id=\"...\" role=\"...\"> elements containing self-closing <effect /> cues.",
-      "- Inside it, group layered audio lanes with <track id=\"...\" role=\"...\"> elements containing self-closing <effect /> cues.\n- Optional music structure: add <music_segments> with self-closing <segment id=\"...\" trackId=\"saved-music-id\" start=\"seconds\" end=\"seconds\" gainDb=\"...\" fadeInMs=\"...\" fadeOutMs=\"...\" mood=\"...\" pacing=\"...\" rationale=\"...\" /> entries. Use absolute timestamps only.",
-    );
-  }
-
-  const alreadyTopLevel = normalized.includes("{{soundDesignPath}}")
-    || normalized.includes("Saved sound library JSON:")
-    || normalized.includes("Artifact requirements:")
-    || normalized.includes("Write the final sound-design markdown artifact to this exact path:");
-
-  if (!alreadyTopLevel) {
-    const legacyHintMatches = LEGACY_PROMPT_HINTS.filter((hint) => normalized.includes(hint)).length;
-    if (legacyHintMatches >= 2) {
-      normalized = buildTopLevelSoundDesignPromptTemplate(normalized);
-    }
-  }
-
-  normalized = normalized
-    .replaceAll("<soundDesign>", "<sound_design>")
-    .replaceAll("<soundDesign", "<sound_design")
-    .replaceAll("</soundDesign>", "</sound_design>")
-    .replaceAll("self-closing <event /> tags", "layered <track> tags with self-closing <effect /> tags")
-    .replaceAll("scene changes, and strong caption beats", "visual timing changes, and strong narration turns")
-    .replaceAll("scene changes, and strong caption turns", "visual timing changes, and strong narration turns")
-    .replaceAll("major caption turns", "major narration/visual turns");
-
-  if (!normalized.includes("timestamp-only") && normalized.includes("Artifact requirements:")) {
-    normalized = normalized.replace(
-      /\nArtifact requirements:/,
-      "\nTimestamp-only placement rules:\n- Use captions, transcript, word-level forced alignment, and visual timing as inputs, then place every cue with absolute timestamps only.\n- New XML must use <sound_design version=\"2\"><track><effect start=\"...\" end=\"...\" or duration=\"...\" /></track></sound_design>.\n- Do not emit anchors, sceneId, captionId, scene references, caption tags, or caption-boundary timing properties.\n\nArtifact requirements:",
-    );
-  }
-
-  if (!normalized.includes("frequency-layered cue groups")) {
-    normalized = normalized.replace(
-      /\nArtifact requirements:/,
-      "\nUpdated sound-design planning rules:\n- Choose one coherent stylePalette first, then keep individual cues in that palette unless a beat intentionally breaks it.\n- For major transitions, impacts, risers, whooshes, and useful ambience, plan frequency-layered cue groups with shared groupId plus frequencyBand=\"low\"/\"mid\"/\"high\" and layerRole values like weight, body, motion, air, tick, sparkle, or texture.\n- Distinguish literalness=\"literal\", literalness=\"stylized\", and literalness=\"emotional-metaphor\"; emotional-metaphor cues can match the feeling/metaphor rather than literal visuals.\n- Plan music edits where useful with type=\"music-riser\", type=\"music-reverb-tail\", type=\"mix-duck\", or type=\"mix-eq\" control events and/or root music mix attrs.\n- Narration owns the mix: use ducking plus midrange EQ carving around speech, not only gain reduction.\n\nArtifact requirements:",
-    );
-  }
-
-  if (!normalized.includes("Prefer click/tick/tap/micro-accent")) {
-    normalized = normalized.replace(
-      /\nArtifact requirements:/,
-      "\nModern editorial density rules:\n- Prefer click/tick/tap/micro-accent SFX for modern emphasis and timing detail; whooshes are secondary and should not dominate.\n- Target roughly one purposeful click/tick/micro-accent every 1.5-3 seconds during active narration or visual changes, plus risers/uplifters into anticipation, transitions, and payoff beats.\n- Layer clicks with risers around section turns so the mix has movement and does not feel flat.\n\nArtifact requirements:",
-    );
-  }
-
-  if (!normalized.includes("one opening cue is invalid")) {
-    normalized = normalized.replace(
-      /\nArtifact requirements:/,
-      "\nCue-count coverage rules:\n- A normal 30-90 second short must have sound cues across the beginning, middle, and end; one opening cue is invalid.\n- Include at least 12 purposeful <effect /> cues unless the source video is unusually short, with coverage across hook punctuation, transitions, reveals, movement accents, and final payoff/reset beats.\n\nArtifact requirements:",
-    );
-  }
-
-  if (!normalized.includes("Audibility target: music and SFX must be clearly audible") && !normalized.includes("Audibility and loudness rules:")) {
-    normalized = normalized.replace(
-      /\nArtifact requirements:/,
-      "\nAudibility and loudness rules:\n- Music and SFX must be clearly audible on phone speakers while staying below narration; do not bury the bed or one-shots into inaudibility.\n- Use practical starting ranges: music segment gainDb about -14 to -10 with musicDuckingDb about -6 to -4; transient clicks/hits/risers about -10 to -4; whooshes/motion about -12 to -6; ambience beds about -22 to -16.\n- Avoid extreme attenuation by default. Do not set music segments near -18 dB or musicDuckingDb near -10 unless a specific safety/quiet beat requires it.\n- Before writing, sanity-check relative audibility: if the no-SFX/no-music version would sound almost identical to the full mix, raise planned gains or reduce ducking.\n\nArtifact requirements:",
-    );
-  }
-
-  if (!normalized.includes("Saved music library JSON:")) {
-    normalized = normalized.replace(
-      "Saved sound library JSON:\n{{soundLibraryJson}}",
-      "Saved sound library JSON:\n{{soundLibraryJson}}\n\nSaved music library JSON:\n{{musicLibraryJson}}",
-    );
-  }
-
-  if (!normalized.includes("<music_segments>")) {
-    normalized = normalized.replace(
-      "- Inside it, group layered audio lanes with <track id=\"...\" role=\"...\"> elements containing self-closing <effect /> cues.",
-      "- Inside it, group layered audio lanes with <track id=\"...\" role=\"...\"> elements containing self-closing <effect /> cues.\n- Optional music structure: add <music_segments> with self-closing <segment id=\"...\" trackId=\"saved-music-id\" start=\"seconds\" end=\"seconds\" gainDb=\"...\" fadeInMs=\"...\" fadeOutMs=\"...\" mood=\"...\" pacing=\"...\" rationale=\"...\" /> entries. Use absolute timestamps only.",
-    );
-  }
-
-  return normalized;
+  const looksStale = STALE_BRIEF_MARKERS.some((marker) => normalized.includes(marker));
+  return looksStale ? DEFAULT_PROMPT_TEMPLATE : normalized;
 }
 
 function normalizeRevisionPromptTemplate(value: unknown) {
@@ -831,7 +699,8 @@ function normalizeSettings(candidate: Partial<ShortFormSoundDesignSettings> | nu
     transientDuckingDb: normalizeNumber(candidate?.transientDuckingDb, -12, 6, 0, 1),
     transientBusGainDb: normalizeNumber(candidate?.transientBusGainDb, -12, 12, 5, 1),
     maxConcurrentOneShots: normalizeNumber(candidate?.maxConcurrentOneShots, 1, 8, 4, 0),
-    musicDuckingDb: normalizeNumber(candidate?.musicDuckingDb, -24, 0, -5, 1),
+    musicDuckingDb: normalizeNumber(candidate?.musicDuckingDb, -24, 0, -6, 1),
+    musicDuckingUnderTransientsDb: normalizeNumber(candidate?.musicDuckingUnderTransientsDb, -18, 0, -4, 1),
     musicEqCutDb: normalizeNumber(candidate?.musicEqCutDb, -18, 0, -3, 1),
     musicEqFrequencyHz: normalizeNumber(candidate?.musicEqFrequencyHz, 120, 8000, 1800, 0),
     musicEqQ: normalizeNumber(candidate?.musicEqQ, 0.1, 10, 1.1, 2),
@@ -839,7 +708,7 @@ function normalizeSettings(candidate: Partial<ShortFormSoundDesignSettings> | nu
     musicHighCutHz: normalizeNumber(candidate?.musicHighCutHz, 0, 20000, 0, 0),
     outputSampleRate: normalizeNumber(candidate?.outputSampleRate, 22050, 192000, 48000, 0),
     outputChannels: normalizeNumber(candidate?.outputChannels, 1, 8, 2, 0),
-    masterLoudnessTargetLufs: normalizeNumber(candidate?.masterLoudnessTargetLufs, -24, -8, -15, 1),
+    masterLoudnessTargetLufs: normalizeNumber(candidate?.masterLoudnessTargetLufs, -24, -8, -16, 1),
     masterTruePeakDb: normalizeNumber(candidate?.masterTruePeakDb, -6, -0.1, -1.5, 1),
     library: Array.isArray(candidate?.library) && candidate.library.length > 0
       ? candidate.library.map((entry, index) => enrichLibraryEntry(normalizeLibraryEntry(entry, index)))
@@ -1025,6 +894,7 @@ export function resolveSoundDesignArtifact(value: unknown, settings = getShortFo
       transientBusGainDb: normalizeNumber(candidate.mix?.transientBusGainDb, -12, 12, settings.transientBusGainDb, 1),
       maxConcurrentOneShots: normalizeNumber(candidate.mix?.maxConcurrentOneShots, 1, 8, settings.maxConcurrentOneShots, 0),
       musicDuckingDb: normalizeNumber(candidate.mix?.musicDuckingDb, -24, 0, settings.musicDuckingDb, 1),
+      musicDuckingUnderTransientsDb: normalizeNumber(candidate.mix?.musicDuckingUnderTransientsDb, -18, 0, settings.musicDuckingUnderTransientsDb, 1),
       musicEqCutDb: normalizeNumber(candidate.mix?.musicEqCutDb, -18, 0, settings.musicEqCutDb, 1),
       musicEqFrequencyHz: normalizeNumber(candidate.mix?.musicEqFrequencyHz, 120, 8000, settings.musicEqFrequencyHz, 0),
       musicEqQ: normalizeNumber(candidate.mix?.musicEqQ, 0.1, 10, settings.musicEqQ, 2),
@@ -1130,8 +1000,15 @@ function buildPromptMusicLibraryJson() {
   return JSON.stringify(settings.musicTracks.map((track) => ({
     id: track.id,
     name: track.name,
-    notes: track.notes,
-    prompt: track.prompt,
+    mood: track.mood,
+    pacing: track.pacing,
+    bpm: track.bpm,
+    key: track.key,
+    energy: track.energy,
+    tags: track.tags,
+    recommendedSections: track.recommendedSections,
+    notes: compactPromptText(track.notes),
+    prompt: compactPromptText(track.prompt),
     generatedDurationSeconds: track.generatedDurationSeconds,
     hasSavedAudio: Boolean(track.generatedAudioRelativePath),
   })), null, 2);

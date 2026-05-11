@@ -117,6 +117,7 @@ export interface ShortFormSoundDesignMixSettings {
   transientBusGainDb: number;
   maxConcurrentOneShots: number;
   musicDuckingDb: number;
+  musicDuckingUnderTransientsDb: number;
   musicEqCutDb: number;
   musicEqFrequencyHz: number;
   musicEqQ: number;
@@ -156,7 +157,11 @@ export interface ShortFormSoundDesignAudibilitySample {
   noSfxRmsDb?: number;
   sfxOnlyRmsDb?: number;
   diffRmsDb?: number;
+  /** Difference between full-mix RMS and no-SFX RMS in the cue window. >= 1.5 dB means the cue actually lifted the mix after final mastering. */
+  perceptualDeltaDb?: number;
   audible: boolean;
+  /** True when the cue had measurable energy on the SFX bus but did not raise the full mix RMS by >= 1.5 dB after mastering. */
+  buriedAfterMastering?: boolean;
 }
 
 export interface ShortFormSoundDesignQaReport {
@@ -481,6 +486,7 @@ export function resolveShortFormSoundDesignMixSettings(content?: string, events:
     transientBusGainDb: clampNumber(root.transientBusGainDb, -12, 12, settings.transientBusGainDb, 1),
     maxConcurrentOneShots: clampNumber(root.maxConcurrentOneShots, 1, 8, settings.maxConcurrentOneShots, 0),
     musicDuckingDb: clampNumber(root.musicDuckingDb, -24, 0, settings.musicDuckingDb, 1),
+    musicDuckingUnderTransientsDb: clampNumber(root.musicDuckingUnderTransientsDb, -18, 0, settings.musicDuckingUnderTransientsDb, 1),
     musicEqCutDb: clampNumber(root.musicEqCutDb, -18, 0, settings.musicEqCutDb, 1),
     musicEqFrequencyHz: clampNumber(root.musicEqFrequencyHz, 120, 8000, settings.musicEqFrequencyHz, 0),
     musicEqQ: clampNumber(root.musicEqQ, 0.1, 10, settings.musicEqQ, 2),
@@ -1050,6 +1056,7 @@ export function readShortFormSoundDesignResolution(projectId: string): ShortForm
           transientBusGainDb: clampNumber((obj.mixSettings as Record<string, unknown>).transientBusGainDb, -12, 12, 3, 1),
           maxConcurrentOneShots: clampNumber((obj.mixSettings as Record<string, unknown>).maxConcurrentOneShots, 1, 8, 2, 0),
           musicDuckingDb: clampNumber((obj.mixSettings as Record<string, unknown>).musicDuckingDb, -24, 0, -6, 1),
+          musicDuckingUnderTransientsDb: clampNumber((obj.mixSettings as Record<string, unknown>).musicDuckingUnderTransientsDb, -18, 0, -4, 1),
           musicEqCutDb: clampNumber((obj.mixSettings as Record<string, unknown>).musicEqCutDb, -18, 0, -4, 1),
           musicEqFrequencyHz: clampNumber((obj.mixSettings as Record<string, unknown>).musicEqFrequencyHz, 120, 8000, 1800, 0),
           musicEqQ: clampNumber((obj.mixSettings as Record<string, unknown>).musicEqQ, 0.1, 10, 1.1, 2),
@@ -1057,7 +1064,7 @@ export function readShortFormSoundDesignResolution(projectId: string): ShortForm
           musicHighCutHz: clampNumber((obj.mixSettings as Record<string, unknown>).musicHighCutHz, 0, 20000, 0, 0),
           outputSampleRate: clampNumber((obj.mixSettings as Record<string, unknown>).outputSampleRate, 22050, 192000, 48000, 0),
           outputChannels: clampNumber((obj.mixSettings as Record<string, unknown>).outputChannels, 1, 8, 2, 0),
-          masterLoudnessTargetLufs: clampNumber((obj.mixSettings as Record<string, unknown>).masterLoudnessTargetLufs, -24, -8, -15, 1),
+          masterLoudnessTargetLufs: clampNumber((obj.mixSettings as Record<string, unknown>).masterLoudnessTargetLufs, -24, -8, -16, 1),
           masterTruePeakDb: clampNumber((obj.mixSettings as Record<string, unknown>).masterTruePeakDb, -6, -0.1, -1.5, 1),
         }
       : undefined,
@@ -1120,6 +1127,7 @@ const AUDIBILITY_AUTO_FIX_CODES = new Set([
   "audible-event-coverage-low",
   "transient-punch-low",
   "sfx-bus-too-quiet",
+  "events-buried-after-mastering",
 ]);
 
 function clampAutoFixGain(value: number, maxGainDb: number) {
@@ -1884,9 +1892,19 @@ function buildSoundDesignQaReport(options: {
     }
     const diffRmsDb = rmsToDb(Math.sqrt(diffSum / Math.max(1, safeEnd - Math.max(0, startIndex))));
     const diffGapDb = fullRmsDb - diffRmsDb;
-    const audible = bus === "transient"
-      ? diffRmsDb >= -38 && diffGapDb <= 21
-      : diffRmsDb >= -42 && diffGapDb <= 24;
+    const perceptualDeltaDb = typeof fullRmsDb === "number" && typeof noSfxRmsDb === "number"
+      ? Math.round((fullRmsDb - noSfxRmsDb) * 10) / 10
+      : undefined;
+    // Tightened thresholds: a cue is only "audible" if its SFX-bus signal is loud enough
+    // AND it lifted the full mix RMS by at least 1.5 dB in its window after final mastering.
+    const minPerceptualDelta = bus === "transient" ? 1.5 : 1.0;
+    const passesDiffRms = bus === "transient"
+      ? diffRmsDb >= -30 && diffGapDb <= 18
+      : diffRmsDb >= -34 && diffGapDb <= 21;
+    const passesPerceptual = typeof perceptualDeltaDb === "number" && perceptualDeltaDb >= minPerceptualDelta;
+    const audible = passesDiffRms && passesPerceptual;
+    // SFX bus had real energy (diffRms above -36) but the full mix barely moved -- the limiter buried it.
+    const buriedAfterMastering = !passesPerceptual && typeof diffRmsDb === "number" && diffRmsDb >= -36;
     return {
       eventId: event.id,
       type: event.type,
@@ -1898,7 +1916,9 @@ function buildSoundDesignQaReport(options: {
       noSfxRmsDb,
       sfxOnlyRmsDb,
       diffRmsDb,
+      perceptualDeltaDb,
       audible,
+      buriedAfterMastering,
     };
   });
 
@@ -1908,17 +1928,27 @@ function buildSoundDesignQaReport(options: {
   const audibleEventPercent = audibleSamples.length > 0 ? Math.round((audibleEvents / audibleSamples.length) * 1000) / 10 : undefined;
   const transientAudibleEventPercent = transientSamples.length > 0 ? Math.round((transientAudible / transientSamples.length) * 1000) / 10 : undefined;
   const issues: ShortFormSoundDesignQaIssue[] = [];
-  if (typeof fullVsNoSfxCorrelation === "number" && fullVsNoSfxCorrelation >= 0.992) {
-    issues.push({ severity: "fail", code: "sfx-correlation-too-high", message: `Full mix and no-SFX mix are still too similar (${fullVsNoSfxCorrelation.toFixed(4)} correlation).` });
+  if (typeof fullVsNoSfxCorrelation === "number" && fullVsNoSfxCorrelation >= 0.985) {
+    issues.push({ severity: "fail", code: "sfx-correlation-too-high", message: `Full mix and no-SFX mix are still too similar (${fullVsNoSfxCorrelation.toFixed(4)} correlation). After mastering, the SFX bus is effectively inaudible.` });
   }
-  if (typeof fullVsNoSfxDiffRmsDb === "number" && fullVsNoSfxDiffRmsDb <= -30) {
-    issues.push({ severity: "fail", code: "sfx-diff-too-quiet", message: `Overall SFX contribution is too quiet (${fullVsNoSfxDiffRmsDb.toFixed(1)} dB RMS difference).` });
+  if (typeof fullVsNoSfxDiffRmsDb === "number" && fullVsNoSfxDiffRmsDb <= -22) {
+    issues.push({ severity: "fail", code: "sfx-diff-too-quiet", message: `Overall SFX contribution is buried after mastering (${fullVsNoSfxDiffRmsDb.toFixed(1)} dB RMS difference between full and no-SFX mix). Raise SFX gains, reduce music gain, or deepen musicDuckingUnderTransientsDb.` });
   }
   if (typeof audibleEventPercent === "number" && audibleEventPercent < 70) {
     issues.push({ severity: "fail", code: "audible-event-coverage-low", message: `Only ${audibleEventPercent.toFixed(1)}% of measured motion/transient events read audibly in the mix.` });
   }
   if (typeof transientAudibleEventPercent === "number" && transientAudibleEventPercent < 75) {
     issues.push({ severity: "warn", code: "transient-punch-low", message: `Transient punch coverage is only ${transientAudibleEventPercent.toFixed(1)}%.` });
+  }
+  const buriedAfterMasteringCount = audibleSamples.filter((sample) => sample.buriedAfterMastering).length;
+  if (buriedAfterMasteringCount > 0) {
+    const percent = audibleSamples.length > 0 ? (buriedAfterMasteringCount / audibleSamples.length) * 100 : 0;
+    const severity: ShortFormSoundDesignQaIssue["severity"] = percent >= 25 ? "fail" : "warn";
+    issues.push({
+      severity,
+      code: "events-buried-after-mastering",
+      message: `${buriedAfterMasteringCount} cue${buriedAfterMasteringCount === 1 ? "" : "s"} had real SFX-bus energy but failed to lift the full mix by >= 1.5 dB after final limiting. The mastering chain is crushing them.`,
+    });
   }
   if ((sfxOnlyMix.integratedLufs ?? -99) <= -28) {
     issues.push({ severity: "warn", code: "sfx-bus-too-quiet", message: `SFX-only render is still very quiet (${(sfxOnlyMix.integratedLufs ?? -99).toFixed(1)} LUFS).` });
@@ -2016,10 +2046,13 @@ function buildTransientBusFilters(inputLabel: string, outputLabel: string, mixSe
   if (ffmpegSupportsFilter("acompressor")) {
     filters.push("acompressor=threshold=0.18:ratio=2.2:attack=2:release=80:makeup=1");
   }
-  if (ffmpegSupportsFilter("alimiter")) {
-    filters.push(`alimiter=limit=${dbToVolume(mixSettings.masterTruePeakDb).toFixed(5)}:level=disabled`);
-  }
   return `${inputLabel}${filters.join(",")}${outputLabel}`;
+}
+
+function buildMusicUnderTransientsDuck(musicLabel: string, transientKeyLabel: string, outputLabel: string, duckingDb: number) {
+  if (!ffmpegSupportsFilter("sidechaincompress") || duckingDb >= 0) return null;
+  const ratio = Math.max(2, Math.min(20, Math.abs(duckingDb) * 1.4));
+  return `${musicLabel}${transientKeyLabel}sidechaincompress=threshold=0.06:ratio=${ratio.toFixed(1)}:attack=4:release=180:makeup=1${outputLabel}`;
 }
 
 function buildMasteredOutputFilters(inputLabel: string, outputLabel: string, mixSettings: ShortFormSoundDesignMixSettings) {
@@ -2154,6 +2187,8 @@ function renderShortFormSoundDesignPreviewVariant(options: {
 
   const hasNarration = includeNarration;
   const backgroundLabels: string[] = [];
+
+  let pendingMusicLabel: string | null = null;
   if (musicLabels.length > 0) {
     const musicLabel = musicLabels.length > 1 ? "[musicraw]" : musicLabels[0]!;
     if (musicLabels.length > 1) {
@@ -2161,9 +2196,9 @@ function renderShortFormSoundDesignPreviewVariant(options: {
     }
     if (hasNarration) {
       filterLines.push(buildDuckedBackgroundFilters(musicLabel, "[narr]", "[duckedmusic]", mixSettings.musicDuckingDb));
-      backgroundLabels.push("[duckedmusic]");
+      pendingMusicLabel = "[duckedmusic]";
     } else {
-      backgroundLabels.push(musicLabel);
+      pendingMusicLabel = musicLabel;
     }
   }
 
@@ -2193,18 +2228,32 @@ function renderShortFormSoundDesignPreviewVariant(options: {
     }
   }
 
+  let transientKeyLabel: string | null = null;
   if (transientLabels.length > 0) {
     const transientLabel = transientLabels.length > 1 ? "[transientraw]" : transientLabels[0]!;
     if (transientLabels.length > 1) {
       filterLines.push(`${transientLabels.join("")}amix=inputs=${transientLabels.length}:normalize=0:dropout_transition=0${transientLabel}`);
     }
     filterLines.push(buildTransientBusFilters(transientLabel, "[transientbus]", mixSettings));
+    transientKeyLabel = "[transientbus]";
     if (hasNarration && mixSettings.transientDuckingDb < 0) {
       filterLines.push(buildDuckedBackgroundFilters("[transientbus]", "[narr]", "[duckedtransients]", mixSettings.transientDuckingDb, { attackMs: 3, releaseMs: 70, threshold: 0.08 }));
       backgroundLabels.push("[duckedtransients]");
     } else {
       backgroundLabels.push("[transientbus]");
     }
+  }
+
+  if (pendingMusicLabel) {
+    let finalMusicLabel = pendingMusicLabel;
+    if (transientKeyLabel && mixSettings.musicDuckingUnderTransientsDb < 0) {
+      const filter = buildMusicUnderTransientsDuck(pendingMusicLabel, transientKeyLabel, "[musicfinal]", mixSettings.musicDuckingUnderTransientsDb);
+      if (filter) {
+        filterLines.push(filter);
+        finalMusicLabel = "[musicfinal]";
+      }
+    }
+    backgroundLabels.unshift(finalMusicLabel);
   }
 
   if (!hasNarration && backgroundLabels.length === 0) {

@@ -44,6 +44,8 @@ export interface ShortFormVoiceLibraryEntry {
   updatedAt?: string;
 }
 
+export type ShortFormMusicEnergy = "low" | "medium-low" | "medium" | "medium-high" | "high";
+
 export interface ShortFormMusicLibraryEntry {
   id: string;
   name: string;
@@ -54,6 +56,18 @@ export interface ShortFormMusicLibraryEntry {
   generatedDurationSeconds?: number;
   generatedPrompt?: string;
   generatedAt?: string;
+  /** Short mood label ("curiosity", "clean tech build", "warm instruction", "decisive lift"). Surfaced to the sound-design agent for music-segment picking. */
+  mood?: string;
+  /** Pacing descriptor ("pulsing", "rhythmic four-on-the-floor", "relaxed groove", "swelling build"). */
+  pacing?: string;
+  bpm?: number;
+  /** Musical key when known ("C minor", "A minor"). Helps stinger/key matching. */
+  key?: string;
+  energy?: ShortFormMusicEnergy;
+  /** Free-form tags (e.g. ["hook","setup","lo-fi","instruction"]). */
+  tags?: string[];
+  /** Sections this track fits best ("hook", "proof", "instruction", "payoff", "warning", "cinematic"). */
+  recommendedSections?: string[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -705,18 +719,60 @@ function normalizeVoiceEntry(value: unknown, fallback: ShortFormVoiceLibraryEntr
   return normalized;
 }
 
+const MUSIC_ENERGY_VALUES: ReadonlySet<ShortFormMusicEnergy> = new Set([
+  "low",
+  "medium-low",
+  "medium",
+  "medium-high",
+  "high",
+]);
+
+function normalizeMusicMetaTags(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const tags = value
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    .filter((entry) => entry.length > 0);
+  return tags.length > 0 ? tags : undefined;
+}
+
+function normalizeMusicEnergy(value: unknown): ShortFormMusicEnergy | undefined {
+  return typeof value === "string" && MUSIC_ENERGY_VALUES.has(value as ShortFormMusicEnergy)
+    ? (value as ShortFormMusicEnergy)
+    : undefined;
+}
+
+function normalizeMusicBpm(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.max(30, Math.min(220, Math.round(parsed)));
+}
+
 function normalizeMusicEntry(value: unknown, fallback: ShortFormMusicLibraryEntry, index: number): ShortFormMusicLibraryEntry | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
 
   const obj = value as Record<string, unknown>;
+  const mood = normalizeString(obj.mood);
+  const pacing = normalizeString(obj.pacing);
+  const key = normalizeString(obj.key);
+  const bpm = normalizeMusicBpm(obj.bpm);
+  const energy = normalizeMusicEnergy(obj.energy);
+  const tags = normalizeMusicMetaTags(obj.tags);
+  const recommendedSections = normalizeMusicMetaTags(obj.recommendedSections);
   const normalized: ShortFormMusicLibraryEntry = {
     id: normalizeString(obj.id, fallback.id || `music-${index + 1}`),
     name: normalizeString(obj.name, fallback.name || `Music ${index + 1}`),
     prompt: normalizeString(obj.prompt, fallback.prompt),
     notes: normalizeString(obj.notes, fallback.notes),
     previewDurationSeconds: normalizePreviewDurationSeconds(obj.previewDurationSeconds, fallback.previewDurationSeconds),
+    ...(mood ? { mood } : {}),
+    ...(pacing ? { pacing } : {}),
+    ...(key ? { key } : {}),
+    ...(typeof bpm === "number" ? { bpm } : {}),
+    ...(energy ? { energy } : {}),
+    ...(tags ? { tags } : {}),
+    ...(recommendedSections ? { recommendedSections } : {}),
     ...(normalizeString(obj.createdAt) ? { createdAt: normalizeString(obj.createdAt) } : {}),
     ...(normalizeString(obj.updatedAt) ? { updatedAt: normalizeString(obj.updatedAt) } : {}),
   };
