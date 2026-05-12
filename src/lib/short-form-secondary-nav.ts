@@ -335,8 +335,8 @@ export function getShortFormSettingsNavItems(summary?: ShortFormSettingsNavSumma
     buildItem('plan-captions', 'Plan Captions', 'captions', 'NARRATION', 'Reusable caption-style presets and animation definitions.', `${summary?.captionStyleCount || 0} caption styles`, ['caption-styles']),
     buildItem('plan-visuals', 'Plan Visuals', 'plan-visuals', 'VISUALS', 'Full Scribe prompt templates for XML visual planning.', 'Full prompt', ['xml-visual-planning']),
     buildItem('generate-visuals', 'Generate Visuals', 'generate-visuals', 'VISUALS', 'Motion graphics, Nano Banana templates, and the reusable image-style library.', `${summary?.styleCount || 0} styles`, ['motion-graphics', 'image-templates', 'image-styles']),
-    buildItem('plan-sound-design', 'Plan Sound Design', 'plan-sound-design', 'SOUND DESIGN', 'Sound-design planning prompts, mix defaults, and reusable SFX library.', `${summary?.soundCount || 0} sounds`, ['sound-library']),
-    buildItem('generate-sound-design', 'Generate Sound Design', 'generate-sound-design', 'SOUND DESIGN', 'Uses the same saved SFX library and mix defaults configured in Plan Sound Design.', `${summary?.soundCount || 0} sounds`, ['sound-library']),
+    buildItem('plan-sound-design', 'Plan Sound Design', 'plan-sound-design', 'SOUND DESIGN', 'Full sound-design planning prompt templates and revision-note instructions.', '2 prompts', ['sound-library']),
+    buildItem('generate-sound-design', 'Generate Sound Design', 'generate-sound-design', 'SOUND DESIGN', 'Saved SFX and music library plus mix defaults for sound-design generation.', `${summary?.soundCount || 0} sounds · ${summary?.musicTrackCount || 0} tracks`, ['sound-library']),
     buildItem('final-video', 'Final Video', 'final-video', 'RENDER', 'Background loops, music presets, and final-render defaults.', `${summary?.backgroundCount || 0} loops · ${summary?.musicTrackCount || 0} tracks`, ['background-videos', 'music-library', 'final-video-render']),
   ];
 }

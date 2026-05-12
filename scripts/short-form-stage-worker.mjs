@@ -43,14 +43,13 @@ const DEFAULT_VOICE_MODE = "voice-design";
 const DEFAULT_VOICE_ID = "voice-calm-authority";
 const DEFAULT_MUSIC_PROMPT = "instrumental cinematic curiosity underscore, mysterious but pleasant, warm synth pulse, light percussion, airy textures, subtle piano and marimba accents, sense of discovery, modern and polished, no horror, no dread, no dark drones, no jump scares, no vocals, no singing, no choir, no spoken voice";
 const DEFAULT_MUSIC_VOLUME = "0.38";
-const DEFAULT_MUSIC_ID = "music-curiosity-underscore";
+const DEFAULT_MUSIC_ID = "music-ambient-piano-loop-120";
 const DEFAULT_MUSIC_PREVIEW_DURATION_SECONDS = 12;
 const DEFAULT_CAPTION_STYLE_ID = "caption-classic-highlight";
 const DEFAULT_CAPTION_HORIZONTAL_PADDING = 80;
 const DEFAULT_CAPTION_BOTTOM_MARGIN = 220;
 const DEFAULT_CAPTION_FONT_WEIGHT = 700;
 const CAPTION_FONT_WEIGHT_SUFFIX_RE = /\s+(thin|hairline|extra\s*light|ultra\s*light|light|book|regular|normal|medium|semi\s*bold|semibold|demi\s*bold|bold|extra\s*bold|ultra\s*bold|black|heavy)\s*$/i;
-const DEFAULT_ACE_STEP_URL = "http://127.0.0.1:8011";
 const STYLE_REFERENCE_IMAGES_DIR = path.join(
   HOME_DIR,
   "tenxsolo",
@@ -232,10 +231,11 @@ function ensureUniqueVoiceIds(voices) {
 function createDefaultMusic() {
   return {
     id: DEFAULT_MUSIC_ID,
-    name: "Curiosity underscore",
+    name: "Ambient piano loop 120 BPM",
     prompt: DEFAULT_MUSIC_PROMPT,
-    notes: "Starter instrumental ACE-Step preset for short-form videos.",
+    notes: "Default fallback bed used only when no other music tracks are registered.",
     previewDurationSeconds: DEFAULT_MUSIC_PREVIEW_DURATION_SECONDS,
+    loopFriendly: true,
   };
 }
 
@@ -776,6 +776,32 @@ function ensureUniqueCaptionStyleIds(styles) {
   });
 }
 
+const MUSIC_METADATA_PASSTHROUGH_KEYS = [
+  "mood",
+  "pacing",
+  "bpm",
+  "key",
+  "energy",
+  "tags",
+  "recommendedSections",
+  "emotionalArc",
+  "intensityCurve",
+  "bestSceneTypes",
+  "comparableTo",
+  "transitionInPattern",
+  "transitionOutPattern",
+  "loopFriendly",
+  "source",
+  "license",
+  "creator",
+  "originalFileName",
+  "durationSeconds",
+  "sampleRate",
+  "channels",
+  "createdAt",
+  "updatedAt",
+];
+
 function normalizeMusicEntry(value, fallback, index) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const prompt = normalizeString(value.prompt, fallback.prompt);
@@ -789,6 +815,19 @@ function normalizeMusicEntry(value, fallback, index) {
       ? Math.min(30, Math.max(6, Math.round(parsedDuration)))
       : fallback.previewDurationSeconds,
   };
+  for (const key of MUSIC_METADATA_PASSTHROUGH_KEYS) {
+    const candidate = value[key];
+    if (candidate === undefined || candidate === null) continue;
+    if (Array.isArray(candidate)) {
+      const tags = candidate.filter((entry) => typeof entry === "string" && entry.trim().length > 0).map((entry) => entry.trim());
+      if (tags.length > 0) normalized[key] = tags;
+    } else if (typeof candidate === "boolean" || typeof candidate === "number") {
+      normalized[key] = candidate;
+    } else if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (trimmed.length > 0) normalized[key] = trimmed;
+    }
+  }
   const artifact = readReusableMusicArtifact(normalized, value);
   if (artifact) {
     normalized.generatedAudioRelativePath = artifact.generatedAudioRelativePath;
@@ -3322,7 +3361,10 @@ function renderProjectSoundDesignMix({ projectId, narrationPath, musicPath, musi
       const sourceDuration = getMediaDurationSeconds(segment.absolutePath);
       if (desiredDuration > sourceDuration + 0.02) inputArgs.push("-stream_loop", "-1");
       inputArgs.push("-i", segment.absolutePath);
-      const segmentVolume = (Number.isFinite(Number(musicVolume)) ? Number(musicVolume) : 0.16) * dbToVolume(Number.isFinite(Number(segment.resolvedGainDb)) ? Number(segment.resolvedGainDb) : 0);
+      // Music segment gainDb is the literal relative gain. The legacy musicVolume
+      // multiplier only applies when there are no segments (single static music
+      // bed); multiplying both would double-attenuate music.
+      const segmentVolume = dbToVolume(Number.isFinite(Number(segment.resolvedGainDb)) ? Number(segment.resolvedGainDb) : 0);
       const fadeInSeconds = Math.max(0, (Number(segment.resolvedFadeInMs) || 0) / 1000);
       const fadeOutSeconds = Math.max(0, (Number(segment.resolvedFadeOutMs) || 0) / 1000);
       const delayMs = Math.max(0, Math.round(startSeconds * 1000));
@@ -4209,8 +4251,6 @@ function runDirectVideo(job) {
     xmlSelectedVoice.mode === "custom-voice"
       ? (xmlSelectedVoice.legacyInstruct || xmlSelectedVoice.voiceDesignPrompt || DEFAULT_VOICE_INSTRUCT)
       : xmlSelectedVoice.voiceDesignPrompt,
-    "--ace-step-url",
-    DEFAULT_ACE_STEP_URL,
     "--existing-voice",
     existingVoicePath,
     "--existing-alignment",

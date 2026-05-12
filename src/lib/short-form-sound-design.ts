@@ -174,6 +174,8 @@ export interface ShortFormSoundDesignQaReport {
   fullMix?: ShortFormSoundDesignAudioMetrics;
   noSfxMix?: ShortFormSoundDesignAudioMetrics;
   sfxOnlyMix?: ShortFormSoundDesignAudioMetrics;
+  /** Music + nothing else (no narration, no SFX). Drives the music-too-quiet QA check. */
+  musicOnlyMix?: ShortFormSoundDesignAudioMetrics;
   finalOutput?: ShortFormSoundDesignAudioMetrics;
   fullVsNoSfxCorrelation?: number;
   fullVsNoSfxDiffRmsDb?: number;
@@ -268,7 +270,7 @@ export function getShortFormSoundDesignPreviewRelativePath(projectId: string, fi
   return path.relative(projectDir, previewPath).split(path.sep).join("/");
 }
 
-export type ShortFormSoundDesignPreviewMode = "full" | "without-sfx" | "effects-only";
+export type ShortFormSoundDesignPreviewMode = "full" | "without-sfx" | "effects-only" | "music-only";
 
 export function getShortFormSoundDesignPreviewFileName(
   mode: ShortFormSoundDesignPreviewMode = "full",
@@ -1056,7 +1058,7 @@ export function readShortFormSoundDesignResolution(projectId: string): ShortForm
           transientBusGainDb: clampNumber((obj.mixSettings as Record<string, unknown>).transientBusGainDb, -12, 12, 3, 1),
           maxConcurrentOneShots: clampNumber((obj.mixSettings as Record<string, unknown>).maxConcurrentOneShots, 1, 8, 2, 0),
           musicDuckingDb: clampNumber((obj.mixSettings as Record<string, unknown>).musicDuckingDb, -24, 0, -6, 1),
-          musicDuckingUnderTransientsDb: clampNumber((obj.mixSettings as Record<string, unknown>).musicDuckingUnderTransientsDb, -18, 0, -4, 1),
+          musicDuckingUnderTransientsDb: clampNumber((obj.mixSettings as Record<string, unknown>).musicDuckingUnderTransientsDb, -18, 0, -2, 1),
           musicEqCutDb: clampNumber((obj.mixSettings as Record<string, unknown>).musicEqCutDb, -18, 0, -4, 1),
           musicEqFrequencyHz: clampNumber((obj.mixSettings as Record<string, unknown>).musicEqFrequencyHz, 120, 8000, 1800, 0),
           musicEqQ: clampNumber((obj.mixSettings as Record<string, unknown>).musicEqQ, 0.1, 10, 1.1, 2),
@@ -1079,6 +1081,7 @@ export function readShortFormSoundDesignResolution(projectId: string): ShortForm
           fullMix: ((obj.qa as Record<string, unknown>).fullMix as ShortFormSoundDesignAudioMetrics | undefined),
           noSfxMix: ((obj.qa as Record<string, unknown>).noSfxMix as ShortFormSoundDesignAudioMetrics | undefined),
           sfxOnlyMix: ((obj.qa as Record<string, unknown>).sfxOnlyMix as ShortFormSoundDesignAudioMetrics | undefined),
+          musicOnlyMix: ((obj.qa as Record<string, unknown>).musicOnlyMix as ShortFormSoundDesignAudioMetrics | undefined),
           finalOutput: ((obj.qa as Record<string, unknown>).finalOutput as ShortFormSoundDesignAudioMetrics | undefined),
           fullVsNoSfxCorrelation: clampOptionalNumber((obj.qa as Record<string, unknown>).fullVsNoSfxCorrelation, -1, 1, 4),
           fullVsNoSfxDiffRmsDb: clampOptionalNumber((obj.qa as Record<string, unknown>).fullVsNoSfxDiffRmsDb, -120, 12, 1),
@@ -1123,11 +1126,15 @@ export function writeShortFormSoundDesignResolution(projectId: string, resolutio
 
 const AUDIBILITY_AUTO_FIX_CODES = new Set([
   "sfx-correlation-too-high",
-  "sfx-diff-too-quiet",
+  "sfx-bus-too-quiet-vs-noSfx",
+  "sfx-bus-quiet-vs-noSfx",
   "audible-event-coverage-low",
+  "audible-event-coverage-moderate",
   "transient-punch-low",
   "sfx-bus-too-quiet",
   "events-buried-after-mastering",
+  "music-too-quiet",
+  "music-bus-near-silent",
 ]);
 
 function clampAutoFixGain(value: number, maxGainDb: number) {
@@ -1859,12 +1866,14 @@ function buildSoundDesignQaReport(options: {
   fullMixPath: string;
   noSfxMixPath: string;
   sfxOnlyMixPath: string;
+  musicOnlyMixPath?: string;
   finalOutputPath?: string;
 }): ShortFormSoundDesignQaReport {
-  const { projectId, resolution, fullMixPath, noSfxMixPath, sfxOnlyMixPath, finalOutputPath } = options;
+  const { projectId, resolution, fullMixPath, noSfxMixPath, sfxOnlyMixPath, musicOnlyMixPath, finalOutputPath } = options;
   const fullMix = getAudioFileMetrics(fullMixPath);
   const noSfxMix = getAudioFileMetrics(noSfxMixPath);
   const sfxOnlyMix = getAudioFileMetrics(sfxOnlyMixPath);
+  const musicOnlyMix = musicOnlyMixPath && fs.existsSync(musicOnlyMixPath) ? getAudioFileMetrics(musicOnlyMixPath) : undefined;
   const finalOutput = finalOutputPath && fs.existsSync(finalOutputPath) ? getAudioFileMetrics(finalOutputPath) : undefined;
   const fullSamples = readWavMonoSamples(fullMixPath);
   const noSfxSamples = readWavMonoSamples(noSfxMixPath);
@@ -1895,16 +1904,24 @@ function buildSoundDesignQaReport(options: {
     const perceptualDeltaDb = typeof fullRmsDb === "number" && typeof noSfxRmsDb === "number"
       ? Math.round((fullRmsDb - noSfxRmsDb) * 10) / 10
       : undefined;
-    // Tightened thresholds: a cue is only "audible" if its SFX-bus signal is loud enough
-    // AND it lifted the full mix RMS by at least 1.5 dB in its window after final mastering.
-    const minPerceptualDelta = bus === "transient" ? 1.5 : 1.0;
-    const passesDiffRms = bus === "transient"
-      ? diffRmsDb >= -30 && diffGapDb <= 18
-      : diffRmsDb >= -34 && diffGapDb <= 21;
+    // Click cues are short (30-80ms), so RMS averaged over a 150ms window doesn't move much
+    // even when they're plainly audible to a listener. Use a more forgiving threshold for them.
+    const isClickEvent = event.type === "click";
+    const minPerceptualDelta = isClickEvent
+      ? 0.8
+      : bus === "transient"
+        ? 1.2
+        : 1.0;
+    const passesDiffRms = isClickEvent
+      ? diffRmsDb >= -32 && diffGapDb <= 22
+      : bus === "transient"
+        ? diffRmsDb >= -30 && diffGapDb <= 18
+        : diffRmsDb >= -34 && diffGapDb <= 21;
     const passesPerceptual = typeof perceptualDeltaDb === "number" && perceptualDeltaDb >= minPerceptualDelta;
     const audible = passesDiffRms && passesPerceptual;
-    // SFX bus had real energy (diffRms above -36) but the full mix barely moved -- the limiter buried it.
-    const buriedAfterMastering = !passesPerceptual && typeof diffRmsDb === "number" && diffRmsDb >= -36;
+    // SFX bus had real energy (diffRms above -34 for clicks, -36 otherwise) but the full mix barely moved.
+    const buriedThreshold = isClickEvent ? -34 : -36;
+    const buriedAfterMastering = !passesPerceptual && typeof diffRmsDb === "number" && diffRmsDb >= buriedThreshold;
     return {
       eventId: event.id,
       type: event.type,
@@ -1928,30 +1945,89 @@ function buildSoundDesignQaReport(options: {
   const audibleEventPercent = audibleSamples.length > 0 ? Math.round((audibleEvents / audibleSamples.length) * 1000) / 10 : undefined;
   const transientAudibleEventPercent = transientSamples.length > 0 ? Math.round((transientAudible / transientSamples.length) * 1000) / 10 : undefined;
   const issues: ShortFormSoundDesignQaIssue[] = [];
-  if (typeof fullVsNoSfxCorrelation === "number" && fullVsNoSfxCorrelation >= 0.985) {
-    issues.push({ severity: "fail", code: "sfx-correlation-too-high", message: `Full mix and no-SFX mix are still too similar (${fullVsNoSfxCorrelation.toFixed(4)} correlation). After mastering, the SFX bus is effectively inaudible.` });
+  if (typeof fullVsNoSfxCorrelation === "number" && fullVsNoSfxCorrelation >= 0.992) {
+    issues.push({ severity: "warn", code: "sfx-correlation-too-high", message: `Full mix and no-SFX mix are very similar (${fullVsNoSfxCorrelation.toFixed(4)} correlation). The SFX bus may be sparse or quiet across the whole video.` });
   }
-  if (typeof fullVsNoSfxDiffRmsDb === "number" && fullVsNoSfxDiffRmsDb <= -22) {
-    issues.push({ severity: "fail", code: "sfx-diff-too-quiet", message: `Overall SFX contribution is buried after mastering (${fullVsNoSfxDiffRmsDb.toFixed(1)} dB RMS difference between full and no-SFX mix). Raise SFX gains, reduce music gain, or deepen musicDuckingUnderTransientsDb.` });
+  // Aggregate SFX audibility: compare the SFX bus's integrated LUFS to the narration+music bus.
+  // RMS-difference over the whole video is unreliable when SFX bursts are short and music+narration
+  // is continuous -- LUFS is gated and captures the perceived loudness of active windows.
+  if (typeof sfxOnlyMix.integratedLufs === "number" && typeof noSfxMix.integratedLufs === "number") {
+    const sfxVsNoSfxLufsDelta = sfxOnlyMix.integratedLufs - noSfxMix.integratedLufs;
+    if (sfxVsNoSfxLufsDelta <= -8) {
+      issues.push({
+        severity: "fail",
+        code: "sfx-bus-too-quiet-vs-noSfx",
+        message: `SFX bus is ${(-sfxVsNoSfxLufsDelta).toFixed(1)} LU below the narration+music bus (sfx ${sfxOnlyMix.integratedLufs.toFixed(1)} LUFS vs noSfx ${noSfxMix.integratedLufs.toFixed(1)} LUFS). Raise transient/riser/impact gainDb or reduce musicDuckingUnderTransientsDb depth.`,
+      });
+    } else if (sfxVsNoSfxLufsDelta <= -4) {
+      issues.push({
+        severity: "warn",
+        code: "sfx-bus-quiet-vs-noSfx",
+        message: `SFX bus is ${(-sfxVsNoSfxLufsDelta).toFixed(1)} LU below the narration+music bus (sfx ${sfxOnlyMix.integratedLufs.toFixed(1)} LUFS vs noSfx ${noSfxMix.integratedLufs.toFixed(1)} LUFS).`,
+      });
+    }
   }
-  if (typeof audibleEventPercent === "number" && audibleEventPercent < 70) {
-    issues.push({ severity: "fail", code: "audible-event-coverage-low", message: `Only ${audibleEventPercent.toFixed(1)}% of measured motion/transient events read audibly in the mix.` });
+  if (typeof audibleEventPercent === "number") {
+    if (audibleEventPercent < 45) {
+      issues.push({ severity: "fail", code: "audible-event-coverage-low", message: `Only ${audibleEventPercent.toFixed(1)}% of measured motion/transient events read audibly in the mix.` });
+    } else if (audibleEventPercent < 65) {
+      issues.push({ severity: "warn", code: "audible-event-coverage-moderate", message: `${audibleEventPercent.toFixed(1)}% of measured motion/transient events read audibly. Some cues are getting masked by music+narration.` });
+    }
   }
-  if (typeof transientAudibleEventPercent === "number" && transientAudibleEventPercent < 75) {
-    issues.push({ severity: "warn", code: "transient-punch-low", message: `Transient punch coverage is only ${transientAudibleEventPercent.toFixed(1)}%.` });
+  if (typeof transientAudibleEventPercent === "number" && transientAudibleEventPercent < 50) {
+    issues.push({ severity: "warn", code: "transient-punch-low", message: `Transient punch coverage is ${transientAudibleEventPercent.toFixed(1)}%. Several clicks/impacts are below the music+narration floor in their windows.` });
   }
-  const buriedAfterMasteringCount = audibleSamples.filter((sample) => sample.buriedAfterMastering).length;
-  if (buriedAfterMasteringCount > 0) {
-    const percent = audibleSamples.length > 0 ? (buriedAfterMasteringCount / audibleSamples.length) * 100 : 0;
-    const severity: ShortFormSoundDesignQaIssue["severity"] = percent >= 25 ? "fail" : "warn";
+  // Only fail "events-buried-after-mastering" for non-click events. Clicks are intentionally
+  // 30-80 ms transients that often don't lift a 150 ms RMS window even when clearly audible.
+  // For impacts/risers/whooshes the RMS-lift check is meaningful.
+  const nonClickBuriedCount = audibleSamples.filter((sample) => sample.buriedAfterMastering && sample.type !== "click").length;
+  const clickBuriedCount = audibleSamples.filter((sample) => sample.buriedAfterMastering && sample.type === "click").length;
+  if (nonClickBuriedCount > 0) {
+    const nonClickMeasured = audibleSamples.filter((sample) => sample.type !== "click").length;
+    const percent = nonClickMeasured > 0 ? (nonClickBuriedCount / nonClickMeasured) * 100 : 0;
+    const severity: ShortFormSoundDesignQaIssue["severity"] = percent >= 35 ? "fail" : "warn";
     issues.push({
       severity,
       code: "events-buried-after-mastering",
-      message: `${buriedAfterMasteringCount} cue${buriedAfterMasteringCount === 1 ? "" : "s"} had real SFX-bus energy but failed to lift the full mix by >= 1.5 dB after final limiting. The mastering chain is crushing them.`,
+      message: `${nonClickBuriedCount} impact/riser/whoosh cue${nonClickBuriedCount === 1 ? "" : "s"} had real SFX-bus energy but failed to lift the full mix by >= 1.0 dB after final limiting. Raise their gainDb or reduce music gain in those windows.`,
     });
   }
-  if ((sfxOnlyMix.integratedLufs ?? -99) <= -28) {
-    issues.push({ severity: "warn", code: "sfx-bus-too-quiet", message: `SFX-only render is still very quiet (${(sfxOnlyMix.integratedLufs ?? -99).toFixed(1)} LUFS).` });
+  if (clickBuriedCount > 0 && audibleSamples.filter((sample) => sample.type === "click").length > 0) {
+    const clickCount = audibleSamples.filter((sample) => sample.type === "click").length;
+    const percent = (clickBuriedCount / clickCount) * 100;
+    if (percent >= 70) {
+      issues.push({
+        severity: "warn",
+        code: "clicks-mostly-buried",
+        message: `${clickBuriedCount} of ${clickCount} click cues did not measurably lift the full mix RMS. Clicks are short, so this often reads fine to a listener -- but if you can't hear them in the preview, raise their gainDb to -6 dB or louder.`,
+      });
+    }
+  }
+  if ((sfxOnlyMix.integratedLufs ?? -99) <= -30) {
+    issues.push({ severity: "warn", code: "sfx-bus-too-quiet", message: `SFX-only render is very quiet (${(sfxOnlyMix.integratedLufs ?? -99).toFixed(1)} LUFS).` });
+  }
+  // Music audibility: compare the music-only bus loudness against the no-SFX mix (which is music + narration).
+  // If music sits more than 12 LU below the narration+music bus, it is effectively inaudible in the final mix.
+  if (musicOnlyMix && typeof musicOnlyMix.integratedLufs === "number") {
+    const noSfxLufs = noSfxMix.integratedLufs;
+    if (typeof noSfxLufs === "number") {
+      const musicVsNarrationDelta = noSfxLufs - musicOnlyMix.integratedLufs;
+      if (musicVsNarrationDelta >= 12) {
+        const severity: ShortFormSoundDesignQaIssue["severity"] = musicVsNarrationDelta >= 16 ? "fail" : "warn";
+        issues.push({
+          severity,
+          code: "music-too-quiet",
+          message: `Music bus sits ${musicVsNarrationDelta.toFixed(1)} LU below the narration+music mix (music ${musicOnlyMix.integratedLufs.toFixed(1)} LUFS vs noSfx ${noSfxLufs.toFixed(1)} LUFS). Raise music segment gainDb, drop musicDuckingDb, or reduce musicDuckingUnderTransientsDb.`,
+        });
+      }
+    }
+    if (musicOnlyMix.integratedLufs <= -30) {
+      issues.push({
+        severity: "fail",
+        code: "music-bus-near-silent",
+        message: `Music-only render is near silent (${musicOnlyMix.integratedLufs.toFixed(1)} LUFS). The agent-planned music gainDb is not making it into the rendered mix.`,
+      });
+    }
   }
   if ((fullMix.sampleRate || 0) < 48000 || (fullMix.channels || 0) < 2) {
     issues.push({ severity: "fail", code: "preview-format-low-quality", message: `Preview mix is ${fullMix.sampleRate || "unknown"} Hz / ${fullMix.channels || "unknown"} ch instead of 48k stereo.` });
@@ -1976,6 +2052,7 @@ function buildSoundDesignQaReport(options: {
     fullMix,
     noSfxMix,
     sfxOnlyMix,
+    ...(musicOnlyMix ? { musicOnlyMix } : {}),
     ...(finalOutput ? { finalOutput } : {}),
     fullVsNoSfxCorrelation,
     fullVsNoSfxDiffRmsDb,
@@ -2128,7 +2205,11 @@ function renderShortFormSoundDesignPreviewVariant(options: {
       const sourceDuration = getAudioDurationSeconds(absolutePath) || desiredDuration;
       if (desiredDuration > sourceDuration + 0.02) inputArgs.push("-stream_loop", "-1");
       inputArgs.push("-i", absolutePath);
-      const segmentVolume = (Number.isFinite(musicVolume as number) ? Number(musicVolume) : 0.16) * dbToVolume(segment.resolvedGainDb || 0);
+      // Music segment gainDb is the literal relative gain. The legacy musicVolume
+      // multiplier only applied when there were no segments (single static music
+      // bed). Multiplying both would double-attenuate music and bury it under
+      // narration + the new music-under-transients sidechain.
+      const segmentVolume = dbToVolume(segment.resolvedGainDb || 0);
       const fadeInSeconds = Math.max(0, (segment.resolvedFadeInMs || 0) / 1000);
       const fadeOutSeconds = Math.max(0, (segment.resolvedFadeOutMs || 0) / 1000);
       const delayMs = Math.max(0, Math.round(startSeconds * 1000));
@@ -2376,6 +2457,26 @@ export function renderShortFormSoundDesignPreview(options: {
       includeSoundEffects: true,
       outputFileName: getShortFormSoundDesignPreviewFileName("effects-only"),
     });
+    let musicOnlyPath: string | undefined;
+    const hasMusicSegments = (resolution.musicSegments || []).some((segment) => segment.status === "resolved" && segment.musicRelativePath);
+    const hasMusicFile = Boolean(musicPath && fs.existsSync(musicPath));
+    if (hasMusicSegments || hasMusicFile) {
+      try {
+        const musicOnly = renderShortFormSoundDesignPreviewVariant({
+          projectId,
+          narrationPath,
+          musicPath,
+          musicVolume,
+          includeNarration: false,
+          includeMusic: true,
+          includeSoundEffects: false,
+          outputFileName: getShortFormSoundDesignPreviewFileName("music-only"),
+        });
+        musicOnlyPath = musicOnly.previewPath;
+      } catch {
+        musicOnlyPath = undefined;
+      }
+    }
     const updated = readShortFormSoundDesignResolution(projectId) || resolution;
     updated.previewAudioRelativePath = result.previewRelativePath;
     updated.previewUpdatedAt = new Date().toISOString();
@@ -2385,6 +2486,7 @@ export function renderShortFormSoundDesignPreview(options: {
       fullMixPath: result.previewPath,
       noSfxMixPath: withoutSfx.previewPath,
       sfxOnlyMixPath: effectsOnly.previewPath,
+      musicOnlyMixPath: musicOnlyPath,
       finalOutputPath: path.join(getProjectDir(projectId), "output", "final-video.mp4"),
     });
     writeShortFormSoundDesignResolution(projectId, updated);

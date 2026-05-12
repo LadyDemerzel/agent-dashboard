@@ -45,6 +45,33 @@ export interface ShortFormVoiceLibraryEntry {
 }
 
 export type ShortFormMusicEnergy = "low" | "medium-low" | "medium" | "medium-high" | "high";
+export type ShortFormMusicEmotionalArc =
+  | "rising"
+  | "falling"
+  | "steady"
+  | "swelling"
+  | "swelling-then-resolve"
+  | "valley"
+  | "bouncing"
+  | "peak-and-tail";
+export type ShortFormMusicIntensityCurve =
+  | "low"
+  | "low-rising"
+  | "steady"
+  | "steady-rising"
+  | "rising"
+  | "peak"
+  | "falling"
+  | "bouncing"
+  | "swelling";
+export type ShortFormMusicTransitionPattern =
+  | "crossfade"
+  | "suckback-reverse-riser"
+  | "reverb-tail-gap-drop"
+  | "stinger-landing"
+  | "fade-in"
+  | "fade-out"
+  | "hard-cut";
 
 export interface ShortFormMusicLibraryEntry {
   id: string;
@@ -68,6 +95,32 @@ export interface ShortFormMusicLibraryEntry {
   tags?: string[];
   /** Sections this track fits best ("hook", "proof", "instruction", "payoff", "warning", "cinematic"). */
   recommendedSections?: string[];
+  /** Shape of the track's emotional arc end-to-end. */
+  emotionalArc?: ShortFormMusicEmotionalArc;
+  /** Loudness/intensity profile over the track length. Drives section matching for scoring. */
+  intensityCurve?: ShortFormMusicIntensityCurve;
+  /** Free-form scene-type hints surfaced to the agent ("tense reveal", "warm step-through", "victorious close"). */
+  bestSceneTypes?: string[];
+  /** Free-form "sounds like" references the agent can match ("Inception build", "Stranger Things tease", "lo-fi study mix"). */
+  comparableTo?: string[];
+  /** Suggested connector into the segment. */
+  transitionInPattern?: ShortFormMusicTransitionPattern;
+  /** Suggested connector out of the segment. */
+  transitionOutPattern?: ShortFormMusicTransitionPattern;
+  /** True when the track can be safely stream-looped to cover a longer section. */
+  loopFriendly?: boolean;
+  /** Source URL when imported (freesound page, etc.). */
+  source?: string;
+  /** License string. */
+  license?: string;
+  /** Creator credit when known. */
+  creator?: string;
+  /** Original asset filename downloaded from source. */
+  originalFileName?: string;
+  /** Duration of the rendered soundtrack.wav on disk. */
+  durationSeconds?: number;
+  sampleRate?: number;
+  channels?: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -159,7 +212,7 @@ const DEFAULT_PREVIEW_TEXT =
 const DEFAULT_LEGACY_SPEAKER = "Aiden";
 const DEFAULT_LEGACY_INSTRUCT = DEFAULT_VOICE_DESIGN_PROMPT;
 const DEFAULT_VOICE_ID = "voice-calm-authority";
-const DEFAULT_MUSIC_ID = "music-curiosity-underscore";
+const DEFAULT_MUSIC_ID = "music-ambient-piano-loop-120";
 const DEFAULT_MUSIC_PROMPT =
   "instrumental cinematic curiosity underscore, mysterious but pleasant, warm synth pulse, light percussion, airy textures, subtle piano and marimba accents, sense of discovery, modern and polished, no horror, no dread, no dark drones, no jump scares, no vocals, no singing, no choir, no spoken voice";
 const DEFAULT_MUSIC_VOLUME = 0.38;
@@ -193,10 +246,11 @@ export const DEFAULT_SHORT_FORM_VOICE: ShortFormVoiceLibraryEntry = {
 
 export const DEFAULT_SHORT_FORM_MUSIC: ShortFormMusicLibraryEntry = {
   id: DEFAULT_MUSIC_ID,
-  name: "Curiosity underscore",
+  name: "Ambient piano loop 120 BPM",
   prompt: DEFAULT_MUSIC_PROMPT,
-  notes: "Starter instrumental ACE-Step preset for short-form videos.",
+  notes: "Default fallback bed used only when no other music tracks are registered. Replace by importing CC0 tracks from freesound or generating one in Settings.",
   previewDurationSeconds: DEFAULT_MUSIC_PREVIEW_DURATION_SECONDS,
+  loopFriendly: true,
   createdAt: "2026-04-06T00:00:00.000Z",
   updatedAt: "2026-04-06T00:00:00.000Z",
 };
@@ -727,6 +781,39 @@ const MUSIC_ENERGY_VALUES: ReadonlySet<ShortFormMusicEnergy> = new Set([
   "high",
 ]);
 
+const MUSIC_EMOTIONAL_ARCS: ReadonlySet<ShortFormMusicEmotionalArc> = new Set([
+  "rising",
+  "falling",
+  "steady",
+  "swelling",
+  "swelling-then-resolve",
+  "valley",
+  "bouncing",
+  "peak-and-tail",
+]);
+
+const MUSIC_INTENSITY_CURVES: ReadonlySet<ShortFormMusicIntensityCurve> = new Set([
+  "low",
+  "low-rising",
+  "steady",
+  "steady-rising",
+  "rising",
+  "peak",
+  "falling",
+  "bouncing",
+  "swelling",
+]);
+
+const MUSIC_TRANSITION_PATTERNS: ReadonlySet<ShortFormMusicTransitionPattern> = new Set([
+  "crossfade",
+  "suckback-reverse-riser",
+  "reverb-tail-gap-drop",
+  "stinger-landing",
+  "fade-in",
+  "fade-out",
+  "hard-cut",
+]);
+
 function normalizeMusicMetaTags(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const tags = value
@@ -741,10 +828,35 @@ function normalizeMusicEnergy(value: unknown): ShortFormMusicEnergy | undefined 
     : undefined;
 }
 
+function normalizeMusicEmotionalArc(value: unknown): ShortFormMusicEmotionalArc | undefined {
+  return typeof value === "string" && MUSIC_EMOTIONAL_ARCS.has(value as ShortFormMusicEmotionalArc)
+    ? (value as ShortFormMusicEmotionalArc)
+    : undefined;
+}
+
+function normalizeMusicIntensityCurve(value: unknown): ShortFormMusicIntensityCurve | undefined {
+  return typeof value === "string" && MUSIC_INTENSITY_CURVES.has(value as ShortFormMusicIntensityCurve)
+    ? (value as ShortFormMusicIntensityCurve)
+    : undefined;
+}
+
+function normalizeMusicTransitionPattern(value: unknown): ShortFormMusicTransitionPattern | undefined {
+  return typeof value === "string" && MUSIC_TRANSITION_PATTERNS.has(value as ShortFormMusicTransitionPattern)
+    ? (value as ShortFormMusicTransitionPattern)
+    : undefined;
+}
+
 function normalizeMusicBpm(value: unknown): number | undefined {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
   if (!Number.isFinite(parsed)) return undefined;
   return Math.max(30, Math.min(220, Math.round(parsed)));
+}
+
+function normalizeMusicNumber(value: unknown, min: number, max: number, decimals = 0): number | undefined {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  if (!Number.isFinite(parsed)) return undefined;
+  const factor = 10 ** decimals;
+  return Math.round(Math.max(min, Math.min(max, parsed)) * factor) / factor;
 }
 
 function normalizeMusicEntry(value: unknown, fallback: ShortFormMusicLibraryEntry, index: number): ShortFormMusicLibraryEntry | null {
@@ -760,6 +872,20 @@ function normalizeMusicEntry(value: unknown, fallback: ShortFormMusicLibraryEntr
   const energy = normalizeMusicEnergy(obj.energy);
   const tags = normalizeMusicMetaTags(obj.tags);
   const recommendedSections = normalizeMusicMetaTags(obj.recommendedSections);
+  const emotionalArc = normalizeMusicEmotionalArc(obj.emotionalArc);
+  const intensityCurve = normalizeMusicIntensityCurve(obj.intensityCurve);
+  const bestSceneTypes = normalizeMusicMetaTags(obj.bestSceneTypes);
+  const comparableTo = normalizeMusicMetaTags(obj.comparableTo);
+  const transitionInPattern = normalizeMusicTransitionPattern(obj.transitionInPattern);
+  const transitionOutPattern = normalizeMusicTransitionPattern(obj.transitionOutPattern);
+  const loopFriendly = typeof obj.loopFriendly === "boolean" ? obj.loopFriendly : undefined;
+  const source = normalizeString(obj.source);
+  const license = normalizeString(obj.license);
+  const creator = normalizeString(obj.creator);
+  const originalFileName = normalizeString(obj.originalFileName);
+  const durationSeconds = normalizeMusicNumber(obj.durationSeconds, 0, 1800, 3);
+  const sampleRate = normalizeMusicNumber(obj.sampleRate, 1, 384000);
+  const channels = normalizeMusicNumber(obj.channels, 1, 16);
   const normalized: ShortFormMusicLibraryEntry = {
     id: normalizeString(obj.id, fallback.id || `music-${index + 1}`),
     name: normalizeString(obj.name, fallback.name || `Music ${index + 1}`),
@@ -773,6 +899,20 @@ function normalizeMusicEntry(value: unknown, fallback: ShortFormMusicLibraryEntr
     ...(energy ? { energy } : {}),
     ...(tags ? { tags } : {}),
     ...(recommendedSections ? { recommendedSections } : {}),
+    ...(emotionalArc ? { emotionalArc } : {}),
+    ...(intensityCurve ? { intensityCurve } : {}),
+    ...(bestSceneTypes ? { bestSceneTypes } : {}),
+    ...(comparableTo ? { comparableTo } : {}),
+    ...(transitionInPattern ? { transitionInPattern } : {}),
+    ...(transitionOutPattern ? { transitionOutPattern } : {}),
+    ...(typeof loopFriendly === "boolean" ? { loopFriendly } : {}),
+    ...(source ? { source } : {}),
+    ...(license ? { license } : {}),
+    ...(creator ? { creator } : {}),
+    ...(originalFileName ? { originalFileName } : {}),
+    ...(typeof durationSeconds === "number" ? { durationSeconds } : {}),
+    ...(typeof sampleRate === "number" ? { sampleRate } : {}),
+    ...(typeof channels === "number" ? { channels } : {}),
     ...(normalizeString(obj.createdAt) ? { createdAt: normalizeString(obj.createdAt) } : {}),
     ...(normalizeString(obj.updatedAt) ? { updatedAt: normalizeString(obj.updatedAt) } : {}),
   };

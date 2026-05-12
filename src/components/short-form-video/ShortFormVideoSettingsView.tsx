@@ -336,6 +336,31 @@ interface MusicLibraryEntry {
   generatedDurationSeconds?: number;
   generatedPrompt?: string;
   generatedAt?: string;
+  mood?: string;
+  pacing?: string;
+  bpm?: number;
+  key?: string;
+  energy?: string;
+  tags?: string[];
+  recommendedSections?: string[];
+  emotionalArc?: string;
+  intensityCurve?: string;
+  bestSceneTypes?: string[];
+  comparableTo?: string[];
+  transitionInPattern?: string;
+  transitionOutPattern?: string;
+  loopFriendly?: boolean;
+  source?: string;
+  license?: string;
+  creator?: string;
+  originalFileName?: string;
+  durationSeconds?: number;
+  sampleRate?: number;
+  channels?: number;
+  integratedLufs?: number;
+  originalIntegratedLufs?: number;
+  normalizationTargetLufs?: number;
+  normalizedAt?: string;
 }
 
 interface CaptionStyleEntry {
@@ -858,8 +883,8 @@ const SETTINGS_PAGE_META: Record<
     eyebrow: "Short-form workflow settings",
     title: "Plan Sound Design",
     description:
-      "Manage the Plan Sound Design prompt, Generate Sound Design mix defaults, and reusable SFX library.",
-    summaryLabel: "Shared library + prompt settings",
+      "Manage the full Plan Sound Design prompt and conditional revision-notes prompt.",
+    summaryLabel: "2 prompt templates",
     sectionIds: ["sound-library"],
     pageActionSectionId: "sound-library",
   },
@@ -867,8 +892,8 @@ const SETTINGS_PAGE_META: Record<
     eyebrow: "Short-form workflow settings",
     title: "Generate Sound Design",
     description:
-      "Generate Sound Design uses the same saved SFX library and mix defaults configured on Plan Sound Design.",
-    summaryLabel: "Shared with Plan Sound Design",
+      "Manage Generate Sound Design mix defaults and the saved sound library used by project sound-design resolution.",
+    summaryLabel: "Saved sound library",
     sectionIds: ["sound-library"],
     pageActionSectionId: "sound-library",
   },
@@ -1162,6 +1187,15 @@ function getSoundLibraryCategoryKey(category: string) {
   return trimmed || "__uncategorized__";
 }
 
+function matchesMusicLibraryFileFilter(
+  track: MusicLibraryEntry,
+  filter: SoundLibraryFileFilter,
+) {
+  if (filter === "with-audio") return Boolean(track.generatedAudioRelativePath);
+  if (filter === "missing-audio") return !track.generatedAudioRelativePath;
+  return true;
+}
+
 function matchesSoundLibraryFileFilter(
   sound: SoundLibraryEntry,
   filter: SoundLibraryFileFilter,
@@ -1180,6 +1214,47 @@ function matchesSoundLibraryCategoryFilter(
   if (filter === "__uncategorized__")
     return categoryKey === "__uncategorized__";
   return categoryKey === filter.trim().toLowerCase();
+}
+
+function matchesMusicLibraryCategoryFilter(filter: SoundLibraryCategoryFilter) {
+  if (filter === "all") return true;
+  return filter.trim().toLowerCase() === "music";
+}
+
+function buildMusicLibrarySearchHaystack(track: MusicLibraryEntry) {
+  return [
+    "music",
+    "soundtrack",
+    track.id,
+    track.name,
+    track.prompt,
+    track.notes,
+    track.mood || "",
+    track.pacing || "",
+    track.key || "",
+    track.energy || "",
+    track.emotionalArc || "",
+    track.intensityCurve || "",
+    (track.tags || []).join(" "),
+    (track.recommendedSections || []).join(" "),
+    (track.bestSceneTypes || []).join(" "),
+    (track.comparableTo || []).join(" "),
+    track.transitionInPattern || "",
+    track.transitionOutPattern || "",
+    track.source || "",
+    track.license || "",
+    track.creator || "",
+    track.originalFileName || "",
+    track.generatedAudioRelativePath || "",
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+function matchesMusicLibrarySearch(track: MusicLibraryEntry, tokens: string[]) {
+  if (tokens.length === 0) return true;
+  const haystack = buildMusicLibrarySearchHaystack(track);
+  return tokens.every((token) => haystack.includes(token));
 }
 
 function buildSoundLibrarySearchHaystack(sound: SoundLibraryEntry) {
@@ -2688,6 +2763,18 @@ export function ShortFormVideoSettingsView({
     soundDesignSettings,
     soundLibraryFileFilter,
   ]);
+  const musicLibraryBaseMatches = useMemo(() => {
+    if (!videoRender) return [];
+    return videoRender.musicTracks.filter(
+      (track) =>
+        matchesMusicLibraryFileFilter(track, soundLibraryFileFilter) &&
+        matchesMusicLibrarySearch(track, normalizedSoundLibrarySearchTokens),
+    );
+  }, [
+    normalizedSoundLibrarySearchTokens,
+    soundLibraryFileFilter,
+    videoRender,
+  ]);
   const soundLibraryCategorySummaries = useMemo<
     SoundLibraryCategorySummary[]
   >(() => {
@@ -2723,6 +2810,31 @@ export function ShortFormVideoSettingsView({
       });
     });
 
+    if (videoRender?.musicTracks.length) {
+      const musicMatchingCount = musicLibraryBaseMatches.length;
+      const existingMusicSummary = summaries.get("music");
+      summaries.set("music", {
+        key: "music",
+        value: "Music",
+        label: "Music",
+        totalCount:
+          (existingMusicSummary?.totalCount || 0) +
+          videoRender.musicTracks.length,
+        matchingCount:
+          (existingMusicSummary?.matchingCount || 0) + musicMatchingCount,
+        withAudioCount:
+          (existingMusicSummary?.withAudioCount || 0) +
+          videoRender.musicTracks.filter((track) =>
+            Boolean(track.generatedAudioRelativePath),
+          ).length,
+        missingAudioCount:
+          (existingMusicSummary?.missingAudioCount || 0) +
+          videoRender.musicTracks.filter(
+            (track) => !track.generatedAudioRelativePath,
+          ).length,
+      });
+    }
+
     return Array.from(summaries.values()).sort((left, right) => {
       const leftHasMatches = left.matchingCount > 0 ? 0 : 1;
       const rightHasMatches = right.matchingCount > 0 ? 0 : 1;
@@ -2739,9 +2851,11 @@ export function ShortFormVideoSettingsView({
       return left.label.localeCompare(right.label);
     });
   }, [
+    musicLibraryBaseMatches,
     normalizedSoundLibrarySearchTokens,
     soundDesignSettings,
     soundLibraryFileFilter,
+    videoRender,
   ]);
   const soundLibraryCategorySuggestions = useMemo(
     () =>
@@ -2757,6 +2871,18 @@ export function ShortFormVideoSettingsView({
       ),
     [soundLibraryBaseMatches, soundLibraryCategoryFilter],
   );
+  const filteredMusicLibrary = useMemo(
+    () =>
+      matchesMusicLibraryCategoryFilter(soundLibraryCategoryFilter)
+        ? musicLibraryBaseMatches
+        : [],
+    [musicLibraryBaseMatches, soundLibraryCategoryFilter],
+  );
+  const filteredSoundLibraryItemCount =
+    filteredSoundLibrary.length + filteredMusicLibrary.length;
+  const soundLibraryItemCount =
+    (soundDesignSettings?.library.length || 0) +
+    (videoRender?.musicTracks.length || 0);
   const filteredSoundLibraryGroups = useMemo<SoundLibraryListGroup[]>(() => {
     const grouped = new Map<string, SoundLibraryListGroup>();
     filteredSoundLibrary.forEach((sound) => {
@@ -2805,14 +2931,20 @@ export function ShortFormVideoSettingsView({
     () =>
       (soundDesignSettings?.library || []).filter((sound) =>
         Boolean(sound.audioRelativePath),
+      ).length +
+      (videoRender?.musicTracks || []).filter((track) =>
+        Boolean(track.generatedAudioRelativePath),
       ).length,
-    [soundDesignSettings],
+    [soundDesignSettings, videoRender],
   );
   const filteredSoundLibraryWithAudioCount = useMemo(
     () =>
       filteredSoundLibrary.filter((sound) => Boolean(sound.audioRelativePath))
-        .length,
-    [filteredSoundLibrary],
+        .length +
+      filteredMusicLibrary.filter((track) =>
+        Boolean(track.generatedAudioRelativePath),
+      ).length,
+    [filteredMusicLibrary, filteredSoundLibrary],
   );
   const selectedSoundCategorySummary = useMemo(() => {
     if (!selectedSound) return null;
@@ -3802,11 +3934,12 @@ export function ShortFormVideoSettingsView({
 
   const soundLibrarySection = (
     <section id="sound-library" className="scroll-mt-24">
-      <Card className="space-y-5 p-5">
+      <div className="space-y-6">
         {soundDesignSettings ? (
-          <div className="space-y-5">
+          <div className="space-y-6">
+            {activeSection === "plan-sound-design" ? (
             <div className="grid gap-4 lg:grid-cols-2">
-              <div className="space-y-2 rounded-lg border border-border bg-background/50 p-4">
+              <Card className="space-y-2 p-4">
                 <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Full Plan Sound Design prompt template
                 </label>
@@ -3844,8 +3977,8 @@ export function ShortFormVideoSettingsView({
                     <code>{"{{projectDir}}"}</code>.
                   </p>
                 </div>
-              </div>
-              <div className="space-y-4 rounded-lg border border-border bg-background/50 p-4">
+              </Card>
+              <Card className="space-y-4 p-4">
                 <div className="space-y-2">
                   <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Conditional revision-notes prompt template
@@ -3872,6 +4005,21 @@ export function ShortFormVideoSettingsView({
                     <code>{"{{revisionNotes}}"}</code> plus{" "}
                     <code>{"{{soundDesignPath}}"}</code>.
                   </p>
+                </div>
+              </Card>
+            </div>
+            ) : (
+              <Card className="space-y-4 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground">
+                      Generate Sound Design mix defaults
+                    </h3>
+                    <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
+                      Tune the global mix rules used when Generate Sound Design
+                      resolves planned XML cues to saved sounds and music.
+                    </p>
+                  </div>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
@@ -3979,7 +4127,7 @@ export function ShortFormVideoSettingsView({
                     What counts as the current global rule set
                   </p>
                   <ul className="mt-2 list-disc space-y-1 pl-4">
-                    <li>The planning prompt and revision prompt above.</li>
+                    <li>The saved planning prompt and revision prompt templates.</li>
                     <li>The ducking, music EQ carve, and concurrency limits above.</li>
                     <li>
                       Each library entry’s semantic types, palette metadata, low/mid/high layer metadata, source sync points, gain, fades,
@@ -3987,10 +4135,11 @@ export function ShortFormVideoSettingsView({
                     </li>
                   </ul>
                 </div>
-              </div>
-            </div>
+              </Card>
+            )}
 
-            <div className="rounded-lg border border-border bg-background/60 p-4">
+            {activeSection === "generate-sound-design" ? (
+            <Card className="space-y-5 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-medium text-foreground">
@@ -3998,8 +4147,8 @@ export function ShortFormVideoSettingsView({
                   </h3>
                   <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
                     Upload reusable WAV or MP3 effects, then tag them by
-                    semantics so the project Plan Sound Design stage can resolve
-                    timed XML events to real assets.
+                    semantics so planned SFX and music cues can resolve to real
+                    assets.
                   </p>
                 </div>
                 <Button
@@ -4019,7 +4168,7 @@ export function ShortFormVideoSettingsView({
                         Search library
                       </label>
                       <span className="text-[11px] text-muted-foreground">
-                        {filteredSoundLibrary.length} shown
+                        {filteredSoundLibraryItemCount} shown
                       </span>
                     </div>
                     <Input
@@ -4069,7 +4218,7 @@ export function ShortFormVideoSettingsView({
                         }
                         onClick={() => setSoundLibraryFileFilter("all")}
                       >
-                        All files ({soundDesignSettings.library.length})
+                        All files ({soundLibraryItemCount})
                       </Button>
                       <Button
                         type="button"
@@ -4096,8 +4245,7 @@ export function ShortFormVideoSettingsView({
                         }
                       >
                         Needs audio (
-                        {soundDesignSettings.library.length -
-                          soundLibraryTotalWithAudioCount}
+                        {soundLibraryItemCount - soundLibraryTotalWithAudioCount}
                         )
                       </Button>
                     </div>
@@ -4106,15 +4254,15 @@ export function ShortFormVideoSettingsView({
                         <span className="font-medium text-foreground">
                           Matches
                         </span>{" "}
-                        {filteredSoundLibrary.length} /{" "}
-                        {soundDesignSettings.library.length}
+                        {filteredSoundLibraryItemCount} /{" "}
+                        {soundLibraryItemCount}
                       </div>
                       <div className="rounded-md border border-border/70 bg-background/70 px-3 py-2 text-[11px] text-muted-foreground">
                         <span className="font-medium text-foreground">
                           Audio in view
                         </span>{" "}
                         {filteredSoundLibraryWithAudioCount} /{" "}
-                        {filteredSoundLibrary.length || 0}
+                        {filteredSoundLibraryItemCount || 0}
                       </div>
                     </div>
                   </div>
@@ -4136,7 +4284,8 @@ export function ShortFormVideoSettingsView({
                       >
                         <span className="font-medium">All categories</span>
                         <span className="ml-2 text-[11px] text-muted-foreground">
-                          {soundLibraryBaseMatches.length}
+                          {soundLibraryBaseMatches.length +
+                            musicLibraryBaseMatches.length}
                         </span>
                       </button>
                       {soundLibraryCategorySummaries.map((summary) => {
@@ -4270,7 +4419,86 @@ export function ShortFormVideoSettingsView({
                           })}
                         </div>
                       ))}
-                      {filteredSoundLibrary.length === 0 ? (
+                      {filteredMusicLibrary.length > 0 ? (
+                        <div className="space-y-2">
+                          {soundLibraryCategoryFilter === "all" ? (
+                            <div className="flex items-center justify-between gap-2 px-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                              <span>Music</span>
+                              <span className="normal-case tracking-normal">
+                                {filteredMusicLibrary.length} match
+                                {filteredMusicLibrary.length === 1 ? "" : "es"}
+                              </span>
+                            </div>
+                          ) : null}
+                          {filteredMusicLibrary.map((track) => {
+                            const audioUrl = buildSavedMusicAudioUrl(
+                              track,
+                              track.generatedAt
+                                ? new Date(track.generatedAt).getTime()
+                                : undefined,
+                            );
+                            const selected = selectedMusicId === track.id;
+                            const lufs =
+                              typeof track.integratedLufs === "number"
+                                ? `${track.integratedLufs.toFixed(1)} LUFS`
+                                : null;
+                            return (
+                              <button
+                                key={track.id}
+                                type="button"
+                                onClick={() => setSelectedMusicId(track.id)}
+                                className={`w-full rounded-lg border px-3 py-3 text-left transition ${selected ? "border-primary/50 bg-primary/10" : "border-border/70 bg-background/70 hover:border-primary/30 hover:bg-background"}`}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="truncate text-sm font-medium text-foreground">
+                                      {track.name}
+                                    </div>
+                                    <div className="mt-1 text-[11px] text-muted-foreground">
+                                      Music
+                                      {track.mood ? ` · ${track.mood}` : ""}
+                                      {track.pacing
+                                        ? ` · ${track.pacing}`
+                                        : ""}
+                                      {typeof track.bpm === "number"
+                                        ? ` · ${track.bpm} BPM`
+                                        : ""}
+                                    </div>
+                                  </div>
+                                  <Badge
+                                    variant={
+                                      track.generatedAudioRelativePath
+                                        ? "secondary"
+                                        : "outline"
+                                    }
+                                  >
+                                    {track.generatedAudioRelativePath
+                                      ? "Audio ready"
+                                      : "Needs audio"}
+                                  </Badge>
+                                </div>
+                                {audioUrl ? (
+                                  <audio
+                                    controls
+                                    preload="none"
+                                    className="mt-2 w-full"
+                                    src={audioUrl}
+                                    onClick={(event) =>
+                                      event.stopPropagation()
+                                    }
+                                  />
+                                ) : null}
+                                <div className="mt-2 line-clamp-2 text-[11px] text-muted-foreground">
+                                  {[track.energy, track.emotionalArc, lufs]
+                                    .filter(Boolean)
+                                    .join(" · ") || "Saved music track"}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                      {filteredSoundLibraryItemCount === 0 ? (
                         <div className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
                           No library entries match the current search/filter
                           yet.
@@ -4893,12 +5121,13 @@ export function ShortFormVideoSettingsView({
                   </div>
                 ) : null}
               </div>
-            </div>
+            </Card>
+            ) : null}
           </div>
         ) : null}
 
         <SectionFeedbackNotice feedback={sectionFeedback["sound-library"]} />
-      </Card>
+      </div>
     </section>
   );
 
@@ -9797,14 +10026,16 @@ export function ShortFormVideoSettingsView({
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <h3 className="text-sm font-medium text-foreground">
-                          Saved soundtrack presets
+                          Music library
                         </h3>
                         <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
-                          Each preset stores the ACE-Step prompt that describes
-                          the instrumental vibe. Generate the soundtrack once
-                          here, and final-video renders reuse that saved file
-                          instead of asking ACE-Step for a fresh song every
-                          time.
+                          Every saved music track is shown below with its audio,
+                          mood/pacing/BPM, and the integrated LUFS the renderer
+                          sees. Tracks imported from freesound.org are auto-
+                          normalized to a common loudness so the agent&apos;s
+                          planned music gainDb is reliable across the library.
+                          Click a card to select it for editing in the panel
+                          below.
                         </p>
                       </div>
                       <Button
@@ -9816,10 +10047,180 @@ export function ShortFormVideoSettingsView({
                       </Button>
                     </div>
 
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      {videoRender.musicTracks.map((track) => {
+                        const audioUrl = buildSavedMusicAudioUrl(
+                          track,
+                          track.generatedAt
+                            ? new Date(track.generatedAt).getTime()
+                            : undefined,
+                        );
+                        const isSelected = track.id === selectedMusicId;
+                        const isDefault =
+                          track.id === videoRender.defaultMusicTrackId;
+                        const lufs =
+                          typeof track.integratedLufs === "number"
+                            ? `${track.integratedLufs.toFixed(1)} LUFS`
+                            : null;
+                        const originalLufs =
+                          typeof track.originalIntegratedLufs === "number"
+                            ? `${track.originalIntegratedLufs.toFixed(1)} LUFS`
+                            : null;
+                        const normalized = Boolean(track.normalizedAt);
+                        const sourceHost = track.source
+                          ? track.source
+                              .replace(/^https?:\/\//, "")
+                              .replace(/\/.*$/, "")
+                          : null;
+                        return (
+                          <button
+                            key={track.id}
+                            type="button"
+                            onClick={() => setSelectedMusicId(track.id)}
+                            className={`flex flex-col gap-2 rounded-lg border p-3 text-left transition ${
+                              isSelected
+                                ? "border-primary bg-primary/5 ring-1 ring-primary/40"
+                                : "border-border bg-background/50 hover:border-primary/60"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-foreground">
+                                  {track.name}
+                                </p>
+                                <p className="truncate text-[10px] uppercase tracking-wide text-muted-foreground">
+                                  {track.id}
+                                </p>
+                              </div>
+                              {isDefault ? (
+                                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
+                                  Default
+                                </span>
+                              ) : null}
+                            </div>
+                            {audioUrl ? (
+                              <audio
+                                controls
+                                preload="none"
+                                className="w-full"
+                                src={audioUrl}
+                                onClick={(event) => event.stopPropagation()}
+                              />
+                            ) : (
+                              <div className="rounded border border-dashed border-border px-2 py-2 text-[11px] text-muted-foreground">
+                                No saved audio file yet. Generate or import one.
+                              </div>
+                            )}
+                            <div className="flex flex-wrap gap-1.5 text-[11px]">
+                              {track.mood ? (
+                                <span className="rounded bg-muted/60 px-2 py-0.5 text-muted-foreground">
+                                  {track.mood}
+                                </span>
+                              ) : null}
+                              {track.pacing ? (
+                                <span className="rounded bg-muted/60 px-2 py-0.5 text-muted-foreground">
+                                  {track.pacing}
+                                </span>
+                              ) : null}
+                              {typeof track.bpm === "number" ? (
+                                <span className="rounded bg-muted/60 px-2 py-0.5 text-muted-foreground">
+                                  {track.bpm} BPM
+                                </span>
+                              ) : null}
+                              {track.key ? (
+                                <span className="rounded bg-muted/60 px-2 py-0.5 text-muted-foreground">
+                                  {track.key}
+                                </span>
+                              ) : null}
+                              {track.energy ? (
+                                <span className="rounded bg-muted/60 px-2 py-0.5 text-muted-foreground">
+                                  energy: {track.energy}
+                                </span>
+                              ) : null}
+                              {track.emotionalArc ? (
+                                <span className="rounded bg-muted/60 px-2 py-0.5 text-muted-foreground">
+                                  arc: {track.emotionalArc}
+                                </span>
+                              ) : null}
+                              {track.loopFriendly === false ? (
+                                <span className="rounded bg-amber-500/10 px-2 py-0.5 text-amber-600 dark:text-amber-400">
+                                  no loop
+                                </span>
+                              ) : null}
+                            </div>
+                            {lufs || originalLufs ? (
+                              <div className="text-[11px] text-muted-foreground">
+                                <span className="font-medium text-foreground">
+                                  Loudness:
+                                </span>{" "}
+                                {lufs || "?"}
+                                {originalLufs && originalLufs !== lufs ? (
+                                  <>
+                                    {" "}
+                                    (was {originalLufs}, normalized to{" "}
+                                    {typeof track.normalizationTargetLufs ===
+                                    "number"
+                                      ? `${track.normalizationTargetLufs} LUFS`
+                                      : "library target"}
+                                    )
+                                  </>
+                                ) : normalized && lufs ? (
+                                  <> (normalized)</>
+                                ) : null}
+                              </div>
+                            ) : null}
+                            {typeof track.durationSeconds === "number" ||
+                            typeof track.generatedDurationSeconds === "number" ? (
+                              <div className="text-[11px] text-muted-foreground">
+                                <span className="font-medium text-foreground">
+                                  Duration:
+                                </span>{" "}
+                                {(
+                                  track.durationSeconds ||
+                                  track.generatedDurationSeconds ||
+                                  0
+                                ).toFixed(1)}
+                                s
+                              </div>
+                            ) : null}
+                            {sourceHost ? (
+                              <div className="truncate text-[11px] text-muted-foreground">
+                                <span className="font-medium text-foreground">
+                                  Source:
+                                </span>{" "}
+                                {sourceHost}
+                                {track.creator ? ` · ${track.creator}` : ""}
+                              </div>
+                            ) : track.notes &&
+                              track.notes
+                                .toLowerCase()
+                                .includes("ace-step") ? (
+                              <div className="text-[11px] text-amber-600 dark:text-amber-400">
+                                ACE-Step generated
+                              </div>
+                            ) : null}
+                            {track.license ? (
+                              <div className="truncate text-[11px] text-muted-foreground">
+                                {track.license}
+                              </div>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                      {videoRender.musicTracks.length === 0 ? (
+                        <div className="col-span-full rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+                          No music tracks yet. Import CC0 tracks from
+                          freesound.org via the music importer, or click
+                          &quot;Add soundtrack&quot; to create a new ACE-Step
+                          prompt preset and generate one here.
+                        </div>
+                      ) : null}
+                    </div>
+
                     <div className="mt-4 grid gap-4 lg:grid-cols-[280px,1fr]">
                       <div className="space-y-2">
                         <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Music library
+                          Quick switch
                         </label>
                         <Select
                           value={selectedMusicId || ""}
@@ -9956,10 +10357,13 @@ export function ShortFormVideoSettingsView({
                               className="min-h-[150px] font-mono text-xs"
                             />
                             <p className="text-xs text-muted-foreground">
-                              This prompt is passed to ACE-Step only when you
-                              generate or regenerate the saved soundtrack file
-                              here. After that, final-video renders reuse the
-                              saved WAV directly.
+                              ACE-Step only runs when you click &quot;Generate
+                              saved soundtrack&quot; below. The default
+                              workflow never reaches for ACE-Step on its own --
+                              prefer importing CC0 tracks from freesound.org
+                              for the music library, and only use ACE-Step if
+                              you want to author a specific prompt-driven
+                              track here.
                             </p>
                           </div>
 
