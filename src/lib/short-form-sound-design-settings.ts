@@ -14,6 +14,7 @@ const SHORT_FORM_VIDEOS_DIR = path.join(
 
 const SETTINGS_PATH = path.join(SHORT_FORM_VIDEOS_DIR, "_sound-design-settings.json");
 const SOUND_LIBRARY_DIR = path.join(SHORT_FORM_VIDEOS_DIR, "_sound-library");
+const QUIETER_SFX_GAIN_DB_SHIFT = -3;
 
 const DEFAULT_PLANNING_BRIEF_TEMPLATE = [
   "Aim for one signature sonic moment per section, with restraint between signatures. The goal is a few cues a viewer would notice and remember, not a continuous bed of ticks.",
@@ -38,7 +39,7 @@ const DEFAULT_PLANNING_BRIEF_TEMPLATE = [
   "Default to multiple music segments. Required minimums: videos > 20s need >= 2 segments; videos > 50s need >= 3 segments; videos > 75s need >= 4. Each segment owns one emotional beat. A single static segment across a 60-90s video is invalid.",
   "Pick saved music trackIds by metadata in the music library JSON: mood, pacing, bpm, key, energy, emotionalArc, intensityCurve, bestSceneTypes, comparableTo. Do not pick by trackId name guessing. If two tracks fit, prefer the one whose intensityCurve and emotionalArc match the section.",
   "Segment-to-section mapping (use as defaults, override with explicit rationale):",
-  "  - Hook / curiosity / tease: tracks with mood=curiosity/magnetic, energy=medium-high, pacing=pulsing, intensityCurve=rising.",
+  "  - Hook / curiosity / tease: strongly prefer dramatic, high-tension, cinematic, or magnetic tracks/stingers with energy=medium-high/high, pacing=held/pulsing/driving, intensityCurve=rising/swelling. The hook should feel like it pulls the viewer in, then it may transition into cleaner proof or instruction music after the opening beat.",
   "  - Proof / data / build: tracks with mood=clean-tech/confident, pacing=rhythmic, bpm 100-128, intensityCurve=steady-or-rising.",
   "  - Instruction / how-to / tactile: tracks with mood=warm/lo-fi, pacing=relaxed groove, bpm 80-100, intensityCurve=steady, energy=medium-low.",
   "  - Tension / warning / contrast: tracks with mood=tense/suspense, pacing=held or pulsing, intensityCurve=swelling, energy=medium.",
@@ -48,13 +49,13 @@ const DEFAULT_PLANNING_BRIEF_TEMPLATE = [
   "Music-only scoring beats are valid effects. When the picture wants emotional weight but no SFX, write rationale=\"music-carry\" or rationale=\"silence-for-contrast\" on the empty window. Tasteful silence between music beats is part of the score.",
   "Plan a music-driven climax. Identify the single biggest emotional beat (the reveal, the thesis, the final lift) and design the surrounding music for it: music drop or impact on the downbeat, lower gainDb on the prior segment to make the climax segment 2-3 dB louder, and a clear musical resolution after.",
   "Music gainDb is the literal relative gain. The renderer no longer multiplies it by any hidden musicVolume factor: a segment with gainDb=\"-10\" lands at -10 dB relative to narration. Plan accordingly.",
-  "Music gain shaping (target range -16 to -8 dB): hook segment -11 to -9 dB; proof/build -12 to -10 dB; instruction sections -14 to -12 dB to let the voice breathe; climax/payoff segment -10 to -8 dB (the loudest segment of the score); resolution -13 to -11 dB. Do not run music flat across all segments. Aim for the music bus integrated LUFS to land within 6-10 LU below narration LUFS.",
+  "Music gain shaping (target range -13.5 to -5.5 dB): hook segment -8.5 to -6.5 dB; proof/build -9.5 to -7.5 dB; instruction sections -11.5 to -9.5 dB to let the voice breathe; climax/payoff segment -7.5 to -5.5 dB (the loudest segment of the score); resolution -10.5 to -8.5 dB. These targets are about 2.5 dB louder than the prior baseline while keeping narration primary. Do not run music flat across all segments. Aim for the music bus integrated LUFS to land within 4-8 LU below narration LUFS.",
   "Loop-friendly tracks (loopFriendly=true in library JSON) can extend beyond their generated duration via stream loop. Tracks marked loopFriendly=false should not be looped; if the section is longer than the track, split it into two segments or pick a different track.",
   "Narration owns the mix, but music must remain clearly audible. Plan musicDuckingDb between -6 and -4 (tasteful duck under speech). Plan musicDuckingUnderTransientsDb between -3 and -1 (light duck under transient SFX hits) -- it stacks per-cue, so a heavy SFX coverage with -4 dB duck will bury the music. Pair ducking with midrange EQ carving around 1.8-2.4 kHz so music sits beside the voice rather than under it.",
   "Music audibility QA target: the rendered music-only bus integrated LUFS should land within 12 LU of the narration+music (no-SFX) mix LUFS. If the bus is more than 12 LU below, the QA flags music-too-quiet and the design will need a higher gainDb or shallower duck.",
-  "Absolute minimum SFX gain floors (apply regardless of the music gain in that window): impacts >= -6 dB, clicks/ticks/taps >= -7 dB, risers >= -8 dB, whooshes >= -8 dB. The music is loudness-normalized to a known target, so these floors keep cues consistently audible across the entire video. Cues below these floors will fail QA and read as buried in the rendered mix.",
-  "Relative-to-music gain rule (applied on top of the absolute floors above): transients must sit at least 4 dB above the loudest music segment they overlap, risers at least 3 dB above. If music is at -10 dB, plan transients at -6 dB or louder and risers at -7 dB or louder. Do NOT push transients far above music -- the music-under-transients sidechain already gives them headroom.",
-  "Ambience beds: -22 to -18 dB. Use one bed at a time. Layer a second only on tentpole beats.",
+  "Absolute minimum SFX gain floors (apply regardless of the music gain in that window): impacts >= -9 dB, clicks/ticks/taps >= -10 dB, risers >= -11 dB, whooshes >= -11 dB. These are about 3 dB quieter than the prior baseline (roughly 30% less amplitude) while still preserving audibility after mastering.",
+  "Relative-to-music gain rule (applied on top of the absolute floors above): transients should sit about 1 dB above the loudest music segment they overlap, while risers/whooshes may sit roughly even with the music when the music-under-transients sidechain is active. If music is at -10 dB, plan transients around -9 dB and risers/whooshes around -10 to -11 dB. Do NOT push transients far above music -- the music-under-transients sidechain already gives them headroom.",
+  "Ambience beds: -25 to -21 dB. Use one bed at a time. Layer a second only on tentpole beats.",
   "SFX vs music balance check: before writing, sanity-check that the SFX bus would not be inaudible after final mastering. If you cannot point to at least 3 cues in different sections that would clearly bump the loudness meter above the music alone, raise gains or reduce ducking under those cues.",
   "Captions, transcript, forced alignment, and visual timing are input context only. Do not time effects to caption boundaries by default. Tie cues to visual beats first, narration phrasing second, transcript word-by-word last.",
   "Return compact timestamp-only XML inside <sound_design> with layered <track> tags and self-closing <effect /> tags.",
@@ -99,7 +100,8 @@ function buildTopLevelSoundDesignPromptTemplate(planningBriefTemplate: string) {
     "- Optional music structure: add <music_segments> before/after the SFX tracks, with self-closing <segment id=\"...\" trackId=\"saved-music-id\" start=\"seconds\" end=\"seconds\" gainDb=\"...\" fadeInMs=\"...\" fadeOutMs=\"...\" mood=\"...\" pacing=\"...\" rationale=\"...\" /> entries. Use absolute timestamps only.",
     "- Every effect must include id, type, and start=\"seconds\". Include end=\"seconds\" or duration=\"seconds\" for beds/risers/tails when useful.",
     "- Optional effect attrs: assetId, description, searchQuery, category, priority, gainDb, fadeInMs, fadeOutMs, groupId, frequencyBand, layerRole, stylePalette, literalness, rationale, overlap, musicDuckingDb, musicEqCutDb, musicEqFrequencyHz, musicEqQ, musicLowCutHz, musicHighCutHz.",
-    "- Plan music gains in the -16 to -8 dB target range (gainDb is literal, no hidden multiplier): -11 to -9 dB at the climax, -14 to -12 dB under instruction, -13 to -10 dB everywhere else. Transients sit >= 4 dB above overlapping music; risers >= 3 dB. Ambience -22 to -18 dB. musicDuckingDb -6 to -4. musicDuckingUnderTransientsDb -3 to -1 (it stacks per-cue).",
+    "- The first hook music segment should strongly prefer a dramatic, high-tension, cinematic, or magnetic saved track/stinger/score bed that grabs attention. It can transition into calmer proof or instruction music after the hook.",
+    "- Plan music gains in the -13.5 to -5.5 dB target range (gainDb is literal, no hidden multiplier): hook -8.5 to -6.5 dB; proof/build -9.5 to -7.5 dB; instruction -11.5 to -9.5 dB; climax/payoff -7.5 to -5.5 dB; resolution -10.5 to -8.5 dB. These values are about 2.5 dB louder than the prior baseline while keeping narration primary. Plan non-music SFX about 3 dB quieter than the prior baseline: impacts >= -9 dB, clicks/ticks/taps >= -10 dB, risers/whooshes >= -11 dB, ambience -25 to -21 dB; transients only need to sit about 1 dB above overlapping music and risers/whooshes may sit roughly even with it. musicDuckingDb -6 to -4. musicDuckingUnderTransientsDb -3 to -1 (it stacks per-cue).",
     "- Stay within hard caps for a 60-90s short: at most 18 ticks/clicks/taps and at most 30 total <effect/> cues. Each cue must name a specific visual or narration beat in its rationale.",
     "- Enforce asset rotation: no two consecutive cues of the same type may share the same assetId. Use the breadth of the library before reusing.",
     "- Enforce leave-silence: in any 6s window of active narration, at least one >= 1.5s gap must have no transient cue.",
@@ -132,7 +134,7 @@ const DEFAULT_SOUND_LIBRARY: ShortFormSoundLibraryEntry[] = [
     literalness: "stylized",
     timingType: "point",
     defaultAnchor: "scene-start",
-    defaultGainDb: -5,
+    defaultGainDb: -8,
     defaultFadeInMs: 0,
     defaultFadeOutMs: 180,
     recommendedUses: "Opening punctuation, reveal beats, subtle emphasis.",
@@ -154,7 +156,7 @@ const DEFAULT_SOUND_LIBRARY: ShortFormSoundLibraryEntry[] = [
     literalness: "stylized",
     timingType: "point",
     defaultAnchor: "scene-start",
-    defaultGainDb: -7,
+    defaultGainDb: -10,
     defaultFadeInMs: 0,
     defaultFadeOutMs: 240,
     recommendedUses: "Visual transitions and motion accents.",
@@ -176,7 +178,7 @@ const DEFAULT_SOUND_LIBRARY: ShortFormSoundLibraryEntry[] = [
     literalness: "emotional-metaphor",
     timingType: "bed",
     defaultAnchor: "scene-start",
-    defaultGainDb: -18,
+    defaultGainDb: -21,
     defaultFadeInMs: 220,
     defaultFadeOutMs: 320,
     recommendedUses: "Quiet atmospheric support under sparse sections.",
@@ -223,6 +225,14 @@ export interface ShortFormSoundLibraryEntry {
   anchorRatio?: number;
   waveformPeaks?: number[];
   uploadedAt?: string;
+  /** Include this asset in Plan Sound Design metadata. Defaults to true for existing entries. */
+  availableForPlanning?: boolean;
+  /** Prefer this asset when matching planned SFX metadata. */
+  preferredForPlanning?: boolean;
+  /** Include this asset in Generate Sound Design resolution metadata. Defaults to true for existing entries. */
+  availableForGeneration?: boolean;
+  /** Prefer this asset when generation resolves matching SFX cues. */
+  preferredForGeneration?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -580,6 +590,10 @@ function normalizeLibraryEntry(candidate: Partial<ShortFormSoundLibraryEntry> | 
     anchorRatio: normalizeOptionalNumber(candidate?.anchorRatio, 0, 1, 3) ?? 0,
     waveformPeaks: normalizeWaveformPeaks(candidate?.waveformPeaks),
     uploadedAt,
+    ...(typeof candidate?.availableForPlanning === "boolean" ? { availableForPlanning: candidate.availableForPlanning } : {}),
+    ...(typeof candidate?.preferredForPlanning === "boolean" ? { preferredForPlanning: candidate.preferredForPlanning } : {}),
+    ...(typeof candidate?.availableForGeneration === "boolean" ? { availableForGeneration: candidate.availableForGeneration } : {}),
+    ...(typeof candidate?.preferredForGeneration === "boolean" ? { preferredForGeneration: candidate.preferredForGeneration } : {}),
     createdAt: normalizeOptionalString(candidate?.createdAt) || now,
     updatedAt: updatedAt || now,
   };
@@ -624,7 +638,7 @@ function inferSoundLibraryLiteralness(entry: ShortFormSoundLibraryEntry) {
 }
 
 function curateDefaultGainDb(entry: ShortFormSoundLibraryEntry) {
-  const curatedOverrides: Record<string, number> = {
+  const priorBaselineOverrides: Record<string, number> = {
     "click-ui-soft": -6.5,
     "click-ui-button-tight": -4.5,
     "click-glitch-tick": -5.5,
@@ -652,7 +666,10 @@ function curateDefaultGainDb(entry: ShortFormSoundLibraryEntry) {
     "ambience-soft-tonal-air-1": -18.5,
     "ambience-soft-tonal-air-2": -18.5,
   };
-  return curatedOverrides[entry.id] ?? entry.defaultGainDb;
+  const priorBaseline = priorBaselineOverrides[entry.id];
+  return typeof priorBaseline === "number"
+    ? Math.round((priorBaseline + QUIETER_SFX_GAIN_DB_SHIFT) * 10) / 10
+    : entry.defaultGainDb;
 }
 
 function enrichLibraryEntry(entry: ShortFormSoundLibraryEntry) {
@@ -677,6 +694,11 @@ const STALE_BRIEF_MARKERS = [
   "Cue-count coverage rules:",
   "Modern editorial density rules:",
   "Audibility and loudness rules:",
+  "Music gain shaping (target range -16 to -8 dB)",
+  "Plan music gains in the -16 to -8 dB target range",
+  "hook segment -11 to -9 dB",
+  "impacts >= -6 dB, clicks/ticks/taps >= -7 dB, risers >= -8 dB, whooshes >= -8 dB",
+  "transients must sit at least 4 dB above the loudest music segment",
   "Create a tasteful sound-design plan for this short-form video.",
   "Create a tasteful but confidently designed sound-design plan for this short-form video.",
   "Music gain ceiling: cap music segment gainDb at -13 dB.",
@@ -698,7 +720,11 @@ function normalizePromptTemplate(value: unknown) {
   const hasMusicGainLiteralMarker = normalized.includes("Music gainDb is the literal relative gain")
     && normalized.includes("Music audibility QA target");
   const hasGainFloorsMarker = normalized.includes("Absolute minimum SFX gain floors");
-  if (hasNewBudgetMarker && hasCinematicMusicMarker && hasMusicGainLiteralMarker && hasGainFloorsMarker) {
+  const hasLouderMusicGainMarker = normalized.includes("Music gain shaping (target range -13.5 to -5.5 dB)")
+    && normalized.includes("hook segment -8.5 to -6.5 dB");
+  const hasQuieterSfxMarker = normalized.includes("impacts >= -9 dB")
+    && normalized.includes("transients should sit about 1 dB above");
+  if (hasNewBudgetMarker && hasCinematicMusicMarker && hasMusicGainLiteralMarker && hasGainFloorsMarker && hasLouderMusicGainMarker && hasQuieterSfxMarker) {
     return normalized;
   }
 
@@ -1018,6 +1044,10 @@ function buildPromptSoundLibraryJson(library: ShortFormSoundLibraryEntry[]) {
     durationSeconds: entry.durationSeconds,
     sourceSyncPointRatio: entry.anchorRatio,
     hasSavedAudio: Boolean(entry.audioRelativePath),
+    availableForPlanning: entry.availableForPlanning,
+    preferredForPlanning: entry.preferredForPlanning,
+    availableForGeneration: entry.availableForGeneration,
+    preferredForGeneration: entry.preferredForGeneration,
     recommendedUses: compactPromptText(entry.recommendedUses),
     avoidUses: compactPromptText(entry.avoidUses),
     notes: compactPromptText(entry.notes),
@@ -1043,6 +1073,10 @@ function buildPromptMusicLibraryJson() {
     transitionInPattern: track.transitionInPattern,
     transitionOutPattern: track.transitionOutPattern,
     loopFriendly: track.loopFriendly,
+    availableForPlanning: track.availableForPlanning,
+    preferredForPlanning: track.preferredForPlanning,
+    availableForGeneration: track.availableForGeneration,
+    preferredForBackground: track.preferredForBackground,
     durationSeconds: track.durationSeconds ?? track.generatedDurationSeconds,
     notes: compactPromptText(track.notes),
     hasSavedAudio: Boolean(track.generatedAudioRelativePath),

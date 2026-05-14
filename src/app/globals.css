@@ -71,6 +71,22 @@ body {
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
+.audio-library-card {
+  container-type: inline-size;
+}
+
+.audio-library-layout {
+  display: grid;
+  gap: 1rem;
+}
+
+@container (min-width: 820px) {
+  .audio-library-layout {
+    grid-template-columns: minmax(18rem, 20rem) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
 /* Typography styles for rendered markdown. Tailwind Preflight resets
    headings/lists/spacing, so keep common markdown semantics visible here. */
 .prose {

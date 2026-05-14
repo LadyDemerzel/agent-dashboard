@@ -350,6 +350,10 @@ interface MusicLibraryEntry {
   transitionInPattern?: string;
   transitionOutPattern?: string;
   loopFriendly?: boolean;
+  availableForPlanning?: boolean;
+  preferredForPlanning?: boolean;
+  availableForGeneration?: boolean;
+  preferredForBackground?: boolean;
   source?: string;
   license?: string;
   creator?: string;
@@ -522,6 +526,10 @@ interface SoundLibraryEntry {
   anchorRatio?: number;
   waveformPeaks?: number[];
   uploadedAt?: string;
+  availableForPlanning?: boolean;
+  preferredForPlanning?: boolean;
+  availableForGeneration?: boolean;
+  preferredForGeneration?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -543,6 +551,8 @@ interface SoundDesignSettings {
 type SoundLibraryCategoryFilter = "all" | "__uncategorized__" | string;
 
 type SoundLibraryFileFilter = "all" | "with-audio" | "missing-audio";
+type AudioLibraryTypeFilter = "all" | "music" | "sfx";
+type AudioLibrarySelectionKind = "music" | "sfx";
 
 interface SoundLibraryCategorySummary {
   key: string;
@@ -892,10 +902,9 @@ const SETTINGS_PAGE_META: Record<
     eyebrow: "Short-form workflow settings",
     title: "Generate Sound Design",
     description:
-      "Manage Generate Sound Design mix defaults and the saved sound library used by project sound-design resolution.",
-    summaryLabel: "Saved sound library",
+      "Manage Generate Sound Design mix defaults and the audio library used by project sound-design resolution.",
+    summaryLabel: "Audio Library",
     sectionIds: ["sound-library"],
-    pageActionSectionId: "sound-library",
   },
   "final-video": {
     eyebrow: "Short-form workflow settings",
@@ -1405,6 +1414,38 @@ function hasGeneratedSoundtrack(track: MusicLibraryEntry | null | undefined) {
     track.generatedPrompt === track.prompt &&
     track.generatedDurationSeconds === expectedDuration
   );
+}
+
+function getMusicTrackReadiness(track: MusicLibraryEntry) {
+  if (!track.generatedAudioRelativePath) return "missing audio";
+  if (
+    !track.mood &&
+    !track.energy &&
+    !track.pacing &&
+    !track.tags?.length &&
+    !track.recommendedSections?.length &&
+    !track.bestSceneTypes?.length
+  ) {
+    return "needs metadata";
+  }
+  return "ready";
+}
+
+function getSoundReadiness(sound: SoundLibraryEntry) {
+  if (!sound.audioRelativePath) return "missing audio";
+  if (
+    !sound.tags.length &&
+    !sound.stylePalettes?.length &&
+    !sound.layerRoles?.length &&
+    !sound.recommendedUses.trim()
+  ) {
+    return "needs metadata";
+  }
+  return "ready";
+}
+
+function isReadyAudioAsset(readiness: string) {
+  return readiness === "ready";
 }
 
 function buildSavedMusicAudioUrl(
@@ -2251,6 +2292,10 @@ export function ShortFormVideoSettingsView({
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | null>(null);
   const [selectedMusicId, setSelectedMusicId] = useState<string | null>(null);
   const [selectedSoundId, setSelectedSoundId] = useState<string | null>(null);
+  const [selectedAudioLibraryKind, setSelectedAudioLibraryKind] =
+    useState<AudioLibrarySelectionKind>("sfx");
+  const [audioLibraryTypeFilter, setAudioLibraryTypeFilter] =
+    useState<AudioLibraryTypeFilter>("all");
   const [soundLibrarySearchQuery, setSoundLibrarySearchQuery] = useState("");
   const [soundLibraryCategoryFilter, setSoundLibraryCategoryFilter] = useState<
     "all" | "__uncategorized__" | string
@@ -2258,6 +2303,8 @@ export function ShortFormVideoSettingsView({
   const [soundLibraryFileFilter, setSoundLibraryFileFilter] = useState<
     "all" | "with-audio" | "missing-audio"
   >("all");
+  const [musicMoodFilter, setMusicMoodFilter] = useState("all");
+  const [musicEnergyFilter, setMusicEnergyFilter] = useState("all");
   const [selectedCaptionStyleId, setSelectedCaptionStyleId] = useState<
     string | null
   >(null);
@@ -2768,13 +2815,39 @@ export function ShortFormVideoSettingsView({
     return videoRender.musicTracks.filter(
       (track) =>
         matchesMusicLibraryFileFilter(track, soundLibraryFileFilter) &&
+        (musicMoodFilter === "all" || track.mood === musicMoodFilter) &&
+        (musicEnergyFilter === "all" || track.energy === musicEnergyFilter) &&
         matchesMusicLibrarySearch(track, normalizedSoundLibrarySearchTokens),
     );
   }, [
+    musicEnergyFilter,
+    musicMoodFilter,
     normalizedSoundLibrarySearchTokens,
     soundLibraryFileFilter,
     videoRender,
   ]);
+  const musicMoodOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (videoRender?.musicTracks || [])
+            .map((track) => track.mood)
+            .filter((value): value is string => Boolean(value)),
+        ),
+      ).sort((left, right) => left.localeCompare(right)),
+    [videoRender],
+  );
+  const musicEnergyOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (videoRender?.musicTracks || [])
+            .map((track) => track.energy)
+            .filter((value): value is string => Boolean(value)),
+        ),
+      ).sort((left, right) => left.localeCompare(right)),
+    [videoRender],
+  );
   const soundLibraryCategorySummaries = useMemo<
     SoundLibraryCategorySummary[]
   >(() => {
@@ -2866,23 +2939,49 @@ export function ShortFormVideoSettingsView({
   );
   const filteredSoundLibrary = useMemo(
     () =>
-      soundLibraryBaseMatches.filter((sound) =>
-        matchesSoundLibraryCategoryFilter(sound, soundLibraryCategoryFilter),
-      ),
-    [soundLibraryBaseMatches, soundLibraryCategoryFilter],
+      audioLibraryTypeFilter === "music"
+        ? []
+        : soundLibraryBaseMatches.filter((sound) =>
+            matchesSoundLibraryCategoryFilter(sound, soundLibraryCategoryFilter),
+          ),
+    [audioLibraryTypeFilter, soundLibraryBaseMatches, soundLibraryCategoryFilter],
   );
   const filteredMusicLibrary = useMemo(
     () =>
+      audioLibraryTypeFilter !== "sfx" &&
       matchesMusicLibraryCategoryFilter(soundLibraryCategoryFilter)
         ? musicLibraryBaseMatches
         : [],
-    [musicLibraryBaseMatches, soundLibraryCategoryFilter],
+    [audioLibraryTypeFilter, musicLibraryBaseMatches, soundLibraryCategoryFilter],
   );
   const filteredSoundLibraryItemCount =
     filteredSoundLibrary.length + filteredMusicLibrary.length;
   const soundLibraryItemCount =
     (soundDesignSettings?.library.length || 0) +
     (videoRender?.musicTracks.length || 0);
+  const audioLibraryHealth = useMemo(() => {
+    const musicTracks = videoRender?.musicTracks || [];
+    const sounds = soundDesignSettings?.library || [];
+    const musicMissingAudio = musicTracks.filter(
+      (track) => !track.generatedAudioRelativePath,
+    ).length;
+    const sfxMissingAudio = sounds.filter((sound) => !sound.audioRelativePath).length;
+    const musicMissingMetadata = musicTracks.filter(
+      (track) => getMusicTrackReadiness(track) === "needs metadata",
+    ).length;
+    const sfxMissingMetadata = sounds.filter(
+      (sound) => getSoundReadiness(sound) === "needs metadata",
+    ).length;
+    return {
+      musicCount: musicTracks.length,
+      sfxCount: sounds.length,
+      missingAudioCount: musicMissingAudio + sfxMissingAudio,
+      missingMetadataCount: musicMissingMetadata + sfxMissingMetadata,
+      readyCount:
+        musicTracks.filter((track) => isReadyAudioAsset(getMusicTrackReadiness(track))).length +
+        sounds.filter((sound) => isReadyAudioAsset(getSoundReadiness(sound))).length,
+    };
+  }, [soundDesignSettings, videoRender]);
   const filteredSoundLibraryGroups = useMemo<SoundLibraryListGroup[]>(() => {
     const grouped = new Map<string, SoundLibraryListGroup>();
     filteredSoundLibrary.forEach((sound) => {
@@ -4139,29 +4238,66 @@ export function ShortFormVideoSettingsView({
             )}
 
             {activeSection === "generate-sound-design" ? (
-            <Card className="space-y-5 p-5">
+            <Card className="audio-library-card space-y-5 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-medium text-foreground">
-                    Saved sound library
+                    Audio Library
                   </h3>
                   <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
-                    Upload reusable WAV or MP3 effects, then tag them by
-                    semantics so planned SFX and music cues can resolve to real
-                    assets.
+                    Manage reusable music and SFX assets in one place. Select a
+                    row to edit metadata, readiness, planning hints, and audio
+                    previews in the detail panel.
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  onClick={addSound}
-                  disabled={sectionFeedback["sound-library"].saving}
-                >
-                  Add sound
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={addMusic}
+                    disabled={sectionFeedback["music-library"].saving}
+                  >
+                    Add music
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={addSound}
+                    disabled={sectionFeedback["sound-library"].saving}
+                  >
+                    Add SFX
+                  </Button>
+                </div>
               </div>
 
-              <div className="mt-4 grid gap-4 lg:grid-cols-[320px,1fr]">
-                <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                {[
+                  { label: "Music", value: audioLibraryHealth.musicCount },
+                  { label: "SFX", value: audioLibraryHealth.sfxCount },
+                  { label: "Ready", value: audioLibraryHealth.readyCount },
+                  {
+                    label: "Missing audio",
+                    value: audioLibraryHealth.missingAudioCount,
+                  },
+                  {
+                    label: "Missing metadata",
+                    value: audioLibraryHealth.missingMetadataCount,
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.label}
+                    className="rounded-lg border border-border bg-background/50 px-3 py-2"
+                  >
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      {item.label}
+                    </div>
+                    <div className="mt-1 text-lg font-semibold text-foreground">
+                      {item.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="audio-library-layout mt-4">
+                <div className="min-w-0 space-y-3" data-audio-library-pane="browser">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -4176,11 +4312,12 @@ export function ShortFormVideoSettingsView({
                       onChange={(event) =>
                         setSoundLibrarySearchQuery(event.target.value)
                       }
-                      placeholder="Search sounds, tags, types, notes..."
+                      placeholder="Search names, tags, metadata, source..."
                     />
                     <p className="text-[11px] text-muted-foreground">
                       Search matches every typed keyword across names,
-                      categories, tags, usage notes, source, and file path.
+                      categories, tags, music metadata, usage notes, source,
+                      and file path.
                     </p>
                   </div>
 
@@ -4195,17 +4332,48 @@ export function ShortFormVideoSettingsView({
                         size="sm"
                         onClick={() => {
                           setSoundLibrarySearchQuery("");
+                          setAudioLibraryTypeFilter("all");
                           setSoundLibraryCategoryFilter("all");
                           setSoundLibraryFileFilter("all");
+                          setMusicMoodFilter("all");
+                          setMusicEnergyFilter("all");
                         }}
                         disabled={
                           !soundLibrarySearchQuery &&
+                          audioLibraryTypeFilter === "all" &&
                           soundLibraryCategoryFilter === "all" &&
-                          soundLibraryFileFilter === "all"
+                          soundLibraryFileFilter === "all" &&
+                          musicMoodFilter === "all" &&
+                          musicEnergyFilter === "all"
                         }
                       >
                         Clear filters
                       </Button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { value: "all", label: "All" },
+                        { value: "music", label: "Music" },
+                        { value: "sfx", label: "SFX" },
+                      ].map((filter) => (
+                        <Button
+                          key={filter.value}
+                          type="button"
+                          size="sm"
+                          variant={
+                            audioLibraryTypeFilter === filter.value
+                              ? "default"
+                              : "outline"
+                          }
+                          onClick={() =>
+                            setAudioLibraryTypeFilter(
+                              filter.value as AudioLibraryTypeFilter,
+                            )
+                          }
+                        >
+                          {filter.label}
+                        </Button>
+                      ))}
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Button
@@ -4248,6 +4416,44 @@ export function ShortFormVideoSettingsView({
                         {soundLibraryItemCount - soundLibraryTotalWithAudioCount}
                         )
                       </Button>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                          Mood
+                        </label>
+                        <Select
+                          value={musicMoodFilter}
+                          onChange={(event) =>
+                            setMusicMoodFilter(event.target.value)
+                          }
+                        >
+                          <option value="all">All music moods</option>
+                          {musicMoodOptions.map((mood) => (
+                            <option key={mood} value={mood}>
+                              {mood}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                          Energy
+                        </label>
+                        <Select
+                          value={musicEnergyFilter}
+                          onChange={(event) =>
+                            setMusicEnergyFilter(event.target.value)
+                          }
+                        >
+                          <option value="all">All energy levels</option>
+                          {musicEnergyOptions.map((energy) => (
+                            <option key={energy} value={energy}>
+                              {energy}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       <div className="rounded-md border border-border/70 bg-background/70 px-3 py-2 text-[11px] text-muted-foreground">
@@ -4321,10 +4527,10 @@ export function ShortFormVideoSettingsView({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Sound library
+                        Asset browser
                       </label>
                       <span className="text-[11px] text-muted-foreground">
-                        Grouped for faster scanning
+                        Music and SFX stay separately scannable
                       </span>
                     </div>
                     <div className="max-h-[560px] space-y-3 overflow-y-auto rounded-lg border border-border bg-background/40 p-2">
@@ -4335,7 +4541,10 @@ export function ShortFormVideoSettingsView({
                           </div>
                           <button
                             type="button"
-                            onClick={() => setSelectedSoundId(selectedSound.id)}
+                            onClick={() => {
+                              setSelectedSoundId(selectedSound.id);
+                              setSelectedAudioLibraryKind("sfx");
+                            }}
                             className="w-full rounded-lg border border-amber-400/40 bg-background/70 px-3 py-3 text-left transition hover:border-amber-300/60"
                           >
                             <div className="flex items-start justify-between gap-3">
@@ -4377,12 +4586,18 @@ export function ShortFormVideoSettingsView({
                             </div>
                           ) : null}
                           {group.sounds.map((sound) => {
-                            const selected = selectedSoundId === sound.id;
+                            const selected =
+                              selectedAudioLibraryKind === "sfx" &&
+                              selectedSoundId === sound.id;
+                            const readiness = getSoundReadiness(sound);
                             return (
                               <button
                                 key={sound.id}
                                 type="button"
-                                onClick={() => setSelectedSoundId(sound.id)}
+                                onClick={() => {
+                                  setSelectedSoundId(sound.id);
+                                  setSelectedAudioLibraryKind("sfx");
+                                }}
                                 className={`w-full rounded-lg border px-3 py-3 text-left transition ${selected ? "border-primary/50 bg-primary/10" : "border-border/70 bg-background/70 hover:border-primary/30 hover:bg-background"}`}
                               >
                                 <div className="flex items-start justify-between gap-3">
@@ -4399,14 +4614,12 @@ export function ShortFormVideoSettingsView({
                                   </div>
                                   <Badge
                                     variant={
-                                      sound.audioRelativePath
+                                      readiness === "ready"
                                         ? "secondary"
                                         : "outline"
                                     }
                                   >
-                                    {sound.audioRelativePath
-                                      ? "Audio ready"
-                                      : "Needs audio"}
+                                    {readiness}
                                   </Badge>
                                 </div>
                                 {sound.tags.length > 0 ? (
@@ -4437,16 +4650,26 @@ export function ShortFormVideoSettingsView({
                                 ? new Date(track.generatedAt).getTime()
                                 : undefined,
                             );
-                            const selected = selectedMusicId === track.id;
+                            const selected =
+                              selectedAudioLibraryKind === "music" &&
+                              selectedMusicId === track.id;
                             const lufs =
                               typeof track.integratedLufs === "number"
                                 ? `${track.integratedLufs.toFixed(1)} LUFS`
                                 : null;
+                            const readiness = getMusicTrackReadiness(track);
+                            const durationSeconds =
+                              track.durationSeconds ||
+                              track.generatedDurationSeconds ||
+                              undefined;
                             return (
                               <button
                                 key={track.id}
                                 type="button"
-                                onClick={() => setSelectedMusicId(track.id)}
+                                onClick={() => {
+                                  setSelectedMusicId(track.id);
+                                  setSelectedAudioLibraryKind("music");
+                                }}
                                 className={`w-full rounded-lg border px-3 py-3 text-left transition ${selected ? "border-primary/50 bg-primary/10" : "border-border/70 bg-background/70 hover:border-primary/30 hover:bg-background"}`}
                               >
                                 <div className="flex items-start justify-between gap-3">
@@ -4467,14 +4690,12 @@ export function ShortFormVideoSettingsView({
                                   </div>
                                   <Badge
                                     variant={
-                                      track.generatedAudioRelativePath
+                                      readiness === "ready"
                                         ? "secondary"
                                         : "outline"
                                     }
                                   >
-                                    {track.generatedAudioRelativePath
-                                      ? "Audio ready"
-                                      : "Needs audio"}
+                                    {readiness}
                                   </Badge>
                                 </div>
                                 {audioUrl ? (
@@ -4488,8 +4709,45 @@ export function ShortFormVideoSettingsView({
                                     }
                                   />
                                 ) : null}
+                                <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+                                  {durationSeconds ? (
+                                    <span className="rounded bg-muted/60 px-2 py-0.5 text-muted-foreground">
+                                      {formatSecondsLabel(durationSeconds)}
+                                    </span>
+                                  ) : null}
+                                  {track.energy ? (
+                                    <span className="rounded bg-muted/60 px-2 py-0.5 text-muted-foreground">
+                                      {track.energy}
+                                    </span>
+                                  ) : null}
+                                  {track.key ? (
+                                    <span className="rounded bg-muted/60 px-2 py-0.5 text-muted-foreground">
+                                      {track.key}
+                                    </span>
+                                  ) : null}
+                                  {track.loopFriendly === true ? (
+                                    <span className="rounded bg-muted/60 px-2 py-0.5 text-muted-foreground">
+                                      loop-friendly
+                                    </span>
+                                  ) : null}
+                                  {(track.tags || []).slice(0, 3).map((tag) => (
+                                    <span
+                                      key={tag}
+                                      className="rounded bg-muted/60 px-2 py-0.5 text-muted-foreground"
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
                                 <div className="mt-2 line-clamp-2 text-[11px] text-muted-foreground">
-                                  {[track.energy, track.emotionalArc, lufs]
+                                  {[
+                                    track.emotionalArc,
+                                    track.intensityCurve,
+                                    lufs,
+                                    (track.recommendedSections || [])
+                                      .slice(0, 3)
+                                      .join(", "),
+                                  ]
                                     .filter(Boolean)
                                     .join(" · ") || "Saved music track"}
                                 </div>
@@ -4515,8 +4773,8 @@ export function ShortFormVideoSettingsView({
                   </div>
                 </div>
 
-                {selectedSound ? (
-                  <div className="space-y-4 rounded-lg border border-border bg-background/50 p-4">
+                {selectedAudioLibraryKind === "sfx" && selectedSound ? (
+                  <div className="min-w-0 space-y-4 rounded-lg border border-border bg-background/50 p-4" data-audio-library-pane="detail">
                     <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/70 bg-background/60 p-3">
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -4871,6 +5129,53 @@ export function ShortFormVideoSettingsView({
                       />
                     </div>
 
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Availability
+                      </label>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {[
+                          {
+                            key: "availableForPlanning",
+                            label: "Available for planning",
+                          },
+                          {
+                            key: "preferredForPlanning",
+                            label: "Preferred for planning",
+                          },
+                          {
+                            key: "availableForGeneration",
+                            label: "Available for generation",
+                          },
+                          {
+                            key: "preferredForGeneration",
+                            label: "Preferred for generation",
+                          },
+                        ].map((toggle) => (
+                          <label
+                            key={toggle.key}
+                            className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-xs text-foreground"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={Boolean(
+                                selectedSound[
+                                  toggle.key as keyof SoundLibraryEntry
+                                ],
+                              )}
+                              onChange={(event) =>
+                                updateSelectedSound((sound) => ({
+                                  ...sound,
+                                  [toggle.key]: event.target.checked,
+                                }))
+                              }
+                            />
+                            {toggle.label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
                     <div className="grid gap-4 md:grid-cols-3">
                       <div className="space-y-2">
                         <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -5115,6 +5420,547 @@ export function ShortFormVideoSettingsView({
                           No audio file saved yet. Upload one to make this
                           library entry usable in project Generate Sound Design
                           resolution.
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
+                {selectedAudioLibraryKind === "music" && selectedMusic && videoRender ? (
+                  <div className="min-w-0 space-y-4 rounded-lg border border-border bg-background/50 p-4" data-audio-library-pane="detail">
+                    <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/70 bg-background/60 p-3">
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <Badge
+                            variant={
+                              getMusicTrackReadiness(selectedMusic) === "ready"
+                                ? "secondary"
+                                : "outline"
+                            }
+                          >
+                            {getMusicTrackReadiness(selectedMusic)}
+                          </Badge>
+                          <Badge variant="outline">Music</Badge>
+                          {selectedMusic.id === videoRender.defaultMusicTrackId ? (
+                            <Badge variant="secondary">Default</Badge>
+                          ) : null}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Edit the selected music asset. These fields are saved
+                          to videoRender.musicTracks and are visible to planning
+                          and generation prompts as library metadata.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          variant={
+                            selectedMusic.id === videoRender.defaultMusicTrackId
+                              ? "default"
+                              : "outline"
+                          }
+                          size="sm"
+                          onClick={() => {
+                            updateSectionFeedbackState("music-library", {
+                              error: null,
+                              message: null,
+                            });
+                            setVideoRender({
+                              ...videoRender,
+                              defaultMusicTrackId: selectedMusic.id,
+                            });
+                          }}
+                        >
+                          {selectedMusic.id === videoRender.defaultMusicTrackId
+                            ? "Default music"
+                            : "Set default"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => deleteMusic(selectedMusic.id)}
+                          disabled={videoRender.musicTracks.length <= 1}
+                        >
+                          Delete music
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+                      <h4 className="text-sm font-medium text-foreground">Basic</h4>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Name
+                          </label>
+                          <Input
+                            value={selectedMusic.name}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                name: event.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Tags
+                          </label>
+                          <Input
+                            value={(selectedMusic.tags || []).join(", ")}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                tags: event.target.value
+                                  .split(",")
+                                  .map((item) => item.trim())
+                                  .filter(Boolean),
+                              }))
+                            }
+                            placeholder="hook, proof, warm, payoff"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Description and notes
+                        </label>
+                        <Textarea
+                          value={selectedMusic.notes}
+                          onChange={(event) =>
+                            updateSelectedMusic((track) => ({
+                              ...track,
+                              notes: event.target.value,
+                            }))
+                          }
+                          className="min-h-[90px] text-xs"
+                        />
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-3">
+                        <div className="space-y-2 md:col-span-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Source
+                          </label>
+                          <Input
+                            value={selectedMusic.source || ""}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                source: event.target.value,
+                              }))
+                            }
+                            placeholder="freesound URL, internal, generated"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            License
+                          </label>
+                          <Input
+                            value={selectedMusic.license || ""}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                license: event.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h4 className="text-sm font-medium text-foreground">
+                            Audio
+                          </h4>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Preview uses the stored generated audio path when a
+                            reusable soundtrack file exists.
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          onClick={() => void generateMusicPreview()}
+                          disabled={
+                            musicPreview.isLoading ||
+                            sectionFeedback["music-library"].saving
+                          }
+                        >
+                          {musicPreview.isLoading
+                            ? "Generating..."
+                            : hasGeneratedSoundtrack(selectedMusic)
+                              ? "Regenerate soundtrack"
+                              : "Generate soundtrack"}
+                        </Button>
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-[1fr,160px]">
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Audio file path
+                          </label>
+                          <Input
+                            value={selectedMusic.generatedAudioRelativePath || ""}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                generatedAudioRelativePath:
+                                  event.target.value || undefined,
+                              }))
+                            }
+                            placeholder="relative path under _music-library"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Duration
+                          </label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={1800}
+                            step={0.1}
+                            value={
+                              selectedMusic.durationSeconds ||
+                              selectedMusic.generatedDurationSeconds ||
+                              ""
+                            }
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                durationSeconds:
+                                  event.target.value === ""
+                                    ? undefined
+                                    : Math.max(0, Number(event.target.value) || 0),
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+                      {musicPreview.error ? (
+                        <ValidationNotice
+                          title="Saved soundtrack failed"
+                          message={musicPreview.error}
+                        />
+                      ) : null}
+                      {savedMusicAudioUrl ? (
+                        <audio controls preload="none" className="w-full" src={savedMusicAudioUrl} />
+                      ) : (
+                        <div className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
+                          No previewable audio file exists for this music asset
+                          yet. Generate a soundtrack or provide a valid stored
+                          relative path.
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+                      <h4 className="text-sm font-medium text-foreground">
+                        Planning hints
+                      </h4>
+                      <div className="grid gap-4 md:grid-cols-4">
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Mood
+                          </label>
+                          <Input
+                            value={selectedMusic.mood || ""}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                mood: event.target.value || undefined,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Energy
+                          </label>
+                          <Input
+                            value={selectedMusic.energy || ""}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                energy: event.target.value || undefined,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            BPM
+                          </label>
+                          <Input
+                            type="number"
+                            min={30}
+                            max={220}
+                            value={selectedMusic.bpm || ""}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                bpm:
+                                  event.target.value === ""
+                                    ? undefined
+                                    : Math.max(30, Math.min(220, Number(event.target.value) || 0)),
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Key
+                          </label>
+                          <Input
+                            value={selectedMusic.key || ""}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                key: event.target.value || undefined,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Pacing
+                          </label>
+                          <Input
+                            value={selectedMusic.pacing || ""}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                pacing: event.target.value || undefined,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Best used for sections
+                          </label>
+                          <Input
+                            value={(selectedMusic.recommendedSections || []).join(", ")}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                recommendedSections: event.target.value
+                                  .split(",")
+                                  .map((item) => item.trim())
+                                  .filter(Boolean),
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Emotional arc
+                          </label>
+                          <Input
+                            value={selectedMusic.emotionalArc || ""}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                emotionalArc: event.target.value || undefined,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Intensity curve
+                          </label>
+                          <Input
+                            value={selectedMusic.intensityCurve || ""}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                intensityCurve: event.target.value || undefined,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Best scene types
+                          </label>
+                          <Textarea
+                            value={(selectedMusic.bestSceneTypes || []).join(", ")}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                bestSceneTypes: event.target.value
+                                  .split(",")
+                                  .map((item) => item.trim())
+                                  .filter(Boolean),
+                              }))
+                            }
+                            className="min-h-[80px] text-xs"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Comparable references
+                          </label>
+                          <Textarea
+                            value={(selectedMusic.comparableTo || []).join(", ")}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                comparableTo: event.target.value
+                                  .split(",")
+                                  .map((item) => item.trim())
+                                  .filter(Boolean),
+                              }))
+                            }
+                            className="min-h-[80px] text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+                      <h4 className="text-sm font-medium text-foreground">
+                        Generation and mixing defaults
+                      </h4>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {[
+                          {
+                            key: "availableForPlanning",
+                            label: "Available for planning",
+                          },
+                          {
+                            key: "preferredForPlanning",
+                            label: "Preferred for planning",
+                          },
+                          {
+                            key: "availableForGeneration",
+                            label: "Available for generation",
+                          },
+                          {
+                            key: "preferredForBackground",
+                            label: "Preferred background music",
+                          },
+                          { key: "loopFriendly", label: "Loop-friendly" },
+                        ].map((toggle) => (
+                          <label
+                            key={toggle.key}
+                            className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-xs text-foreground"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={Boolean(
+                                selectedMusic[
+                                  toggle.key as keyof MusicLibraryEntry
+                                ],
+                              )}
+                              onChange={(event) =>
+                                updateSelectedMusic((track) => ({
+                                  ...track,
+                                  [toggle.key]: event.target.checked,
+                                }))
+                              }
+                            />
+                            {toggle.label}
+                          </label>
+                        ))}
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-3">
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Transition in
+                          </label>
+                          <Input
+                            value={selectedMusic.transitionInPattern || ""}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                transitionInPattern: event.target.value || undefined,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Transition out
+                          </label>
+                          <Input
+                            value={selectedMusic.transitionOutPattern || ""}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                transitionOutPattern: event.target.value || undefined,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Global mix volume
+                          </label>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="range"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={videoRender.musicVolume}
+                              onChange={(event) => {
+                                updateSectionFeedbackState("music-library", {
+                                  error: null,
+                                  message: null,
+                                });
+                                setVideoRender({
+                                  ...videoRender,
+                                  musicVolume: Number(event.target.value),
+                                });
+                              }}
+                              className="w-full"
+                            />
+                            <span className="w-12 text-right text-xs text-foreground">
+                              {Math.round(videoRender.musicVolume * 100)}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+                      <h4 className="text-sm font-medium text-foreground">
+                        Prompt metadata
+                      </h4>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Generation prompt
+                        </label>
+                        <Textarea
+                          value={selectedMusic.prompt}
+                          onChange={(event) =>
+                            updateSelectedMusic((track) => ({
+                              ...track,
+                              prompt: event.target.value,
+                            }))
+                          }
+                          className="min-h-[120px] font-mono text-xs"
+                        />
+                      </div>
+                      {selectedMusic.generatedPrompt ? (
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Last generated prompt snapshot
+                          </label>
+                          <div className="whitespace-pre-wrap rounded-md border border-border bg-background/70 p-3 text-xs text-muted-foreground">
+                            {selectedMusic.generatedPrompt}
+                          </div>
                         </div>
                       ) : null}
                     </div>
@@ -6242,10 +7088,18 @@ export function ShortFormVideoSettingsView({
       musicTracks: [...videoRender.musicTracks, nextTrack],
     });
     setSelectedMusicId(dedupedId);
+    setSelectedAudioLibraryKind("music");
   }
 
   function deleteMusic(trackId: string) {
     if (!videoRender || videoRender.musicTracks.length <= 1) return;
+    const trackName =
+      videoRender.musicTracks.find((track) => track.id === trackId)?.name ||
+      "this soundtrack";
+    const confirmed = window.confirm(
+      `Delete "${trackName}" from the music library? This removes the saved track metadata from video render settings.`,
+    );
+    if (!confirmed) return;
     updateSectionFeedbackState("music-library", { error: null, message: null });
     const remaining = videoRender.musicTracks.filter(
       (track) => track.id !== trackId,
@@ -6260,6 +7114,7 @@ export function ShortFormVideoSettingsView({
       musicTracks: remaining,
     });
     setSelectedMusicId(remaining[0]?.id || null);
+    setSelectedAudioLibraryKind("music");
   }
 
   function addSound() {
@@ -6295,6 +7150,7 @@ export function ShortFormVideoSettingsView({
     setSoundLibrarySearchQuery("");
     setSoundLibraryFileFilter("all");
     setSelectedSoundId(nextSound.id);
+    setSelectedAudioLibraryKind("sfx");
   }
 
   function duplicateSound(soundId: string) {
@@ -6331,6 +7187,7 @@ export function ShortFormVideoSettingsView({
     setSoundLibrarySearchQuery("");
     setSoundLibraryFileFilter("all");
     setSelectedSoundId(duplicate.id);
+    setSelectedAudioLibraryKind("sfx");
   }
 
   function selectAdjacentSound(direction: -1 | 1) {
@@ -6348,11 +7205,19 @@ export function ShortFormVideoSettingsView({
     const nextSound = filteredSoundLibrary[nextIndex];
     if (nextSound) {
       setSelectedSoundId(nextSound.id);
+      setSelectedAudioLibraryKind("sfx");
     }
   }
 
   function deleteSound(soundId: string) {
     if (!soundDesignSettings || soundDesignSettings.library.length <= 1) return;
+    const soundName =
+      soundDesignSettings.library.find((sound) => sound.id === soundId)?.name ||
+      "this sound";
+    const confirmed = window.confirm(
+      `Delete "${soundName}" from the SFX library? This removes the saved sound metadata from sound-design settings.`,
+    );
+    if (!confirmed) return;
     updateSectionFeedbackState("sound-library", { error: null, message: null });
     const remaining = soundDesignSettings.library.filter(
       (sound) => sound.id !== soundId,
@@ -6362,6 +7227,7 @@ export function ShortFormVideoSettingsView({
       library: remaining,
     });
     setSelectedSoundId(remaining[0]?.id || null);
+    setSelectedAudioLibraryKind("sfx");
   }
 
   async function uploadSoundFile(file: File) {
@@ -6700,6 +7566,50 @@ export function ShortFormVideoSettingsView({
     }
   }
 
+  async function saveGenerateSoundDesignSettings() {
+    if (dirtyBySection["sound-library"]) {
+      await saveSection("sound-library");
+    }
+    if (dirtyBySection["music-library"]) {
+      await saveSection("music-library");
+    }
+  }
+
+  function resetGenerateSoundDesignSettings() {
+    if (!dirtyBySection["sound-library"] && !dirtyBySection["music-library"]) return;
+    const confirmed = window.confirm(
+      "Discard unsaved Audio Library and mix default changes?",
+    );
+    if (!confirmed) return;
+    updateSectionFeedbackState("sound-library", { error: null, message: null });
+    updateSectionFeedbackState("music-library", { error: null, message: null });
+    if (dirtyBySection["sound-library"] && initialSoundDesignSettings) {
+      setSoundDesignSettings(initialSoundDesignSettings);
+      setSelectedSoundId((current) => {
+        if (
+          current &&
+          initialSoundDesignSettings.library.some((sound) => sound.id === current)
+        ) {
+          return current;
+        }
+        return initialSoundDesignSettings.library[0]?.id || null;
+      });
+    }
+    if (dirtyBySection["music-library"] && initialVideoRender && videoRender) {
+      setVideoRender({
+        ...videoRender,
+        musicTracks: initialVideoRender.musicTracks,
+        defaultMusicTrackId: initialVideoRender.defaultMusicTrackId,
+        musicVolume: initialVideoRender.musicVolume,
+      });
+      setSelectedMusicId(
+        initialVideoRender.defaultMusicTrackId ||
+          initialVideoRender.musicTracks[0]?.id ||
+          null,
+      );
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-6 p-4 sm:p-6 lg:p-8">
@@ -6728,6 +7638,21 @@ export function ShortFormVideoSettingsView({
             label="Reload page state"
           />
           <Badge variant="outline">{pageMeta.summaryLabel}</Badge>
+          {activeSection === "generate-sound-design" ? (
+            <SectionActions
+              dirty={
+                dirtyBySection["sound-library"] ||
+                dirtyBySection["music-library"]
+              }
+              saving={
+                sectionFeedback["sound-library"].saving ||
+                sectionFeedback["music-library"].saving
+              }
+              saveLabel="Save Audio Library"
+              onSave={() => void saveGenerateSoundDesignSettings()}
+              onReset={resetGenerateSoundDesignSettings}
+            />
+          ) : null}
           {pageActionSectionId ? (
             <SectionActions
               dirty={dirtyBySection[pageActionSectionId]}
