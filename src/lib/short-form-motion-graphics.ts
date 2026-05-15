@@ -1,6 +1,15 @@
 import fs from "fs";
 import path from "path";
-import { SHORT_FORM_VIDEOS_DIR } from "@/lib/short-form-videos";
+
+const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
+const SHORT_FORM_VIDEOS_DIR = path.join(
+  HOME_DIR,
+  "tenxsolo",
+  "business",
+  "content",
+  "deliverables",
+  "short-form-videos"
+);
 
 export const SUPPORTED_MOTION_GRAPHIC_RENDERERS = [
   "stat_reveal",
@@ -30,6 +39,30 @@ export interface MotionGraphicTemplateField {
   defaultValue?: string | number | string[] | Array<{ label: string; text: string }> | Array<{ label: string; value: number | string; displayValue?: string }> | Array<{ text?: string; size?: "regular" | "large" | "extra_large"; emphasized?: boolean; blank?: boolean }>;
 }
 
+export interface MotionGraphicDeterministicSoundCue {
+  id: string;
+  type: "impact" | "riser" | "click" | "whoosh";
+  track?: string;
+  offsetSeconds?: number;
+  offsetRatio?: number;
+  repeat?: {
+    source: "data" | "steps" | "items" | "lines";
+    firstOffsetSeconds: number;
+    stepSeconds: number;
+    maxCount: number;
+  };
+  durationSeconds?: number;
+  gainDb?: number;
+  fadeInMs?: number;
+  fadeOutMs?: number;
+  description: string;
+  searchQuery: string;
+  frequencyBand?: "low" | "mid" | "high" | "full-range";
+  layerRole?: string;
+  literalness?: "literal" | "stylized" | "emotional-metaphor";
+  priority?: "must-have" | "nice-to-have" | "optional";
+}
+
 export interface MotionGraphicTemplateConfig {
   id: string;
   rendererId: MotionGraphicRendererId;
@@ -41,6 +74,7 @@ export interface MotionGraphicTemplateConfig {
   stylePreset: string;
   defaultArgs: Record<string, unknown>;
   fields: MotionGraphicTemplateField[];
+  deterministicSoundEffects?: MotionGraphicDeterministicSoundCue[];
   enabled: boolean;
 }
 
@@ -74,6 +108,10 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
       { name: "value", label: "Main value", type: "text", required: true, defaultValue: "73%" },
       { name: "title", label: "Title", type: "text", required: true, defaultValue: "people notice the change" },
     ],
+    deterministicSoundEffects: [
+      { id: "value-pop", type: "impact", offsetSeconds: 0.72, durationSeconds: 0.32, gainDb: -10, fadeOutMs: 120, description: "Soft accent as the main stat resolves", searchQuery: "premium soft reveal pop impact", frequencyBand: "mid", layerRole: "body", literalness: "stylized", priority: "nice-to-have" },
+      { id: "title-tick", type: "click", offsetSeconds: 1.12, durationSeconds: 0.16, gainDb: -12, fadeOutMs: 80, description: "Subtle tick as supporting title text appears", searchQuery: "subtle clean text tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "optional" },
+    ],
     enabled: true,
   },
   {
@@ -89,6 +127,9 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     fields: [
       { name: "title", label: "Title", type: "text", required: true, defaultValue: "What changed most" },
       { name: "data", label: "Data points", type: "dataSeries", required: true, defaultValue: [{ label: "A", value: 35, displayValue: "35" }, { label: "B", value: 68, displayValue: "68" }] },
+    ],
+    deterministicSoundEffects: [
+      { id: "bar-reveal", type: "click", repeat: { source: "data", firstOffsetSeconds: 0.36, stepSeconds: 0.7, maxCount: 5 }, durationSeconds: 0.16, gainDb: -11, fadeOutMs: 90, description: "Sparse tick as each bar animates in", searchQuery: "clean data bar tick pop", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "nice-to-have" },
     ],
     enabled: true,
   },
@@ -123,6 +164,9 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
           { label: "C", value: 40, displayValue: "40%" },
         ],
       },
+    ],
+    deterministicSoundEffects: [
+      { id: "slice-reveal", type: "click", repeat: { source: "data", firstOffsetSeconds: 0.58, stepSeconds: 0.5, maxCount: 5 }, durationSeconds: 0.16, gainDb: -11, fadeOutMs: 90, description: "Light tick as each pie slice appears", searchQuery: "soft chart slice tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "nice-to-have" },
     ],
     enabled: true,
   },
@@ -175,6 +219,10 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         ],
       },
     ],
+    deterministicSoundEffects: [
+      { id: "axes-start", type: "click", offsetSeconds: 0.88, durationSeconds: 0.16, gainDb: -12, fadeOutMs: 80, description: "Quiet tick as the chart frame starts drawing", searchQuery: "subtle graph axis tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "optional" },
+      { id: "line-finish", type: "impact", offsetSeconds: 3.88, durationSeconds: 0.28, gainDb: -10, fadeOutMs: 130, description: "Soft payoff accent when the trend line reaches its final value", searchQuery: "soft data reveal impact pop", frequencyBand: "mid", layerRole: "punctuation", literalness: "stylized", priority: "nice-to-have" },
+    ],
     enabled: true,
   },
   {
@@ -192,6 +240,10 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
       { name: "afterLabel", label: "After label", type: "text", defaultValue: "After" },
       { name: "before", label: "Before copy", type: "textarea", required: true, defaultValue: "Problem state" },
       { name: "after", label: "After copy", type: "textarea", required: true, defaultValue: "Improved state" },
+    ],
+    deterministicSoundEffects: [
+      { id: "before-reveal", type: "click", offsetSeconds: 1.08, durationSeconds: 0.16, gainDb: -12, fadeOutMs: 80, description: "Subtle tick as the before side appears", searchQuery: "soft comparison tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "optional" },
+      { id: "after-reveal", type: "impact", offsetSeconds: 2.9, durationSeconds: 0.28, gainDb: -10, fadeOutMs: 130, description: "Soft accent as the after side lands", searchQuery: "premium before after reveal pop", frequencyBand: "mid", layerRole: "punctuation", literalness: "stylized", priority: "nice-to-have" },
     ],
     enabled: true,
   },
@@ -215,6 +267,9 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         defaultValue: [{ label: "DAY 1", text: "Setup" }, { label: "DAY 7", text: "Signal" }, { label: "DAY 30", text: "Visible change" }],
       },
     ],
+    deterministicSoundEffects: [
+      { id: "step-activate", type: "click", repeat: { source: "steps", firstOffsetSeconds: 0.64, stepSeconds: 0.66, maxCount: 5 }, durationSeconds: 0.16, gainDb: -11, fadeOutMs: 90, description: "Tick as each timeline step activates", searchQuery: "clean timeline step tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "nice-to-have" },
+    ],
     enabled: true,
   },
   {
@@ -230,6 +285,11 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     fields: [
       { name: "cause", label: "Cause", type: "textarea", required: true, defaultValue: "Small daily tension" },
       { name: "effect", label: "Effect", type: "textarea", required: true, defaultValue: "Jaw and neck read tighter" },
+    ],
+    deterministicSoundEffects: [
+      { id: "cause-card", type: "click", offsetSeconds: 0.5, durationSeconds: 0.16, gainDb: -12, fadeOutMs: 80, description: "Light tick as the cause card enters", searchQuery: "soft card enter tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "optional" },
+      { id: "arrow-whoosh", type: "whoosh", offsetSeconds: 1.12, durationSeconds: 0.5, gainDb: -12, fadeInMs: 20, fadeOutMs: 180, description: "Soft downward motion accent as the arrow grows", searchQuery: "soft short arrow whoosh", frequencyBand: "mid", layerRole: "motion", literalness: "stylized", priority: "nice-to-have" },
+      { id: "effect-card", type: "impact", offsetSeconds: 1.86, durationSeconds: 0.26, gainDb: -10, fadeOutMs: 120, description: "Soft impact as the effect card lands", searchQuery: "soft card landing impact", frequencyBand: "mid", layerRole: "punctuation", literalness: "stylized", priority: "nice-to-have" },
     ],
     enabled: true,
   },
@@ -266,6 +326,9 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
           { text: "and every highlight follows the voice" },
         ],
       },
+    ],
+    deterministicSoundEffects: [
+      { id: "line-appear", type: "click", repeat: { source: "lines", firstOffsetSeconds: 0.35, stepSeconds: 0.5, maxCount: 4 }, durationSeconds: 0.12, gainDb: -13, fadeOutMs: 70, description: "Very subtle tick as caption-wall lines become visible", searchQuery: "minimal kinetic typography tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "optional" },
     ],
     enabled: true,
   },
@@ -315,6 +378,9 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         description: "hidden hides unrevealed future ranks; blurred shows muted ghost rows before they animate/unblur.",
       },
     ],
+    deterministicSoundEffects: [
+      { id: "rank-reveal", type: "click", repeat: { source: "items", firstOffsetSeconds: 0.42, stepSeconds: 0.78, maxCount: 5 }, durationSeconds: 0.16, gainDb: -11, fadeOutMs: 90, description: "Tick as each ranked row animates in", searchQuery: "clean ranked list tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "nice-to-have" },
+    ],
     enabled: true,
   },
   {
@@ -363,6 +429,9 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         description: "hidden hides unchecked future items; blurred shows muted unchecked rows before they animate/check.",
       },
     ],
+    deterministicSoundEffects: [
+      { id: "check-activate", type: "click", repeat: { source: "items", firstOffsetSeconds: 0.44, stepSeconds: 0.78, maxCount: 6 }, durationSeconds: 0.16, gainDb: -11, fadeOutMs: 90, description: "Tick as each checklist item checks in", searchQuery: "soft checklist tick check", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "nice-to-have" },
+    ],
     enabled: true,
   },
   {
@@ -397,6 +466,9 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         ],
       },
     ],
+    deterministicSoundEffects: [
+      { id: "row-reveal", type: "click", repeat: { source: "data", firstOffsetSeconds: 0.82, stepSeconds: 0.7, maxCount: 5 }, durationSeconds: 0.16, gainDb: -11, fadeOutMs: 90, description: "Tick as each scorecard row and bar appears", searchQuery: "clean scorecard row tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "nice-to-have" },
+    ],
     enabled: true,
   },
   {
@@ -419,6 +491,10 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
       { name: "year", label: "Year", type: "text", defaultValue: "2024" },
       { name: "title", label: "Paper title", type: "textarea", required: true, defaultValue: "Daily posture cues changed perceived jawline definition" },
       { name: "finding", label: "Finding", type: "textarea", required: true, defaultValue: "The visible difference came from consistency, not intensity." },
+    ],
+    deterministicSoundEffects: [
+      { id: "paper-enter", type: "whoosh", offsetSeconds: 0.28, durationSeconds: 0.38, gainDb: -12, fadeInMs: 20, fadeOutMs: 140, description: "Soft paper-card entrance motion accent", searchQuery: "soft paper card whoosh", frequencyBand: "mid", layerRole: "motion", literalness: "stylized", priority: "nice-to-have" },
+      { id: "finding-highlight", type: "impact", offsetSeconds: 1.5, durationSeconds: 0.26, gainDb: -10, fadeOutMs: 130, description: "Subtle accent as the key finding block appears", searchQuery: "premium paper finding reveal pop", frequencyBand: "mid", layerRole: "punctuation", literalness: "stylized", priority: "nice-to-have" },
     ],
     enabled: true,
   },
@@ -445,6 +521,10 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         defaultValue: "good",
       },
       { name: "text", label: "Indicator text", type: "textarea", required: true, defaultValue: "Lift from the lower lid" },
+    ],
+    deterministicSoundEffects: [
+      { id: "icon-enter", type: "click", offsetSeconds: 0.3, durationSeconds: 0.16, gainDb: -11, fadeOutMs: 90, description: "Tick as the good/bad icon appears", searchQuery: "soft icon tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "nice-to-have" },
+      { id: "rule-confirm", type: "impact", offsetSeconds: 1.18, durationSeconds: 0.24, gainDb: -11, fadeOutMs: 120, description: "Soft confirmation accent as the rule underline resolves", searchQuery: "soft confirmation impact", frequencyBand: "mid", layerRole: "punctuation", literalness: "stylized", priority: "optional" },
     ],
     enabled: true,
   },
@@ -578,6 +658,80 @@ function normalizeField(value: unknown, fallback: MotionGraphicTemplateField): M
     description: cleanString(candidate.description, fallback.description || ""),
     defaultValue: candidate.defaultValue ?? fallback.defaultValue,
   };
+}
+
+function normalizeDeterministicSoundCue(value: unknown, fallback?: MotionGraphicDeterministicSoundCue): MotionGraphicDeterministicSoundCue | null {
+  const candidate = value && typeof value === "object" && !Array.isArray(value) ? value as Partial<MotionGraphicDeterministicSoundCue> : {};
+  const id = cleanString(candidate.id, fallback?.id || "");
+  const type = candidate.type === "impact" || candidate.type === "riser" || candidate.type === "click" || candidate.type === "whoosh"
+    ? candidate.type
+    : fallback?.type;
+  if (!id || !type) return null;
+  const repeatCandidate = candidate.repeat && typeof candidate.repeat === "object" && !Array.isArray(candidate.repeat)
+    ? candidate.repeat as Partial<NonNullable<MotionGraphicDeterministicSoundCue["repeat"]>>
+    : undefined;
+  const repeatFallback = fallback?.repeat;
+  const repeatSource = repeatCandidate?.source === "data" || repeatCandidate?.source === "steps" || repeatCandidate?.source === "items" || repeatCandidate?.source === "lines"
+    ? repeatCandidate.source
+    : repeatFallback?.source;
+  const repeat = repeatSource
+    ? {
+        source: repeatSource,
+        firstOffsetSeconds: typeof repeatCandidate?.firstOffsetSeconds === "number" && Number.isFinite(repeatCandidate.firstOffsetSeconds)
+          ? Math.max(0, Math.min(10, repeatCandidate.firstOffsetSeconds))
+          : repeatFallback?.firstOffsetSeconds ?? 0,
+        stepSeconds: typeof repeatCandidate?.stepSeconds === "number" && Number.isFinite(repeatCandidate.stepSeconds)
+          ? Math.max(0.05, Math.min(5, repeatCandidate.stepSeconds))
+          : repeatFallback?.stepSeconds ?? 0.5,
+        maxCount: typeof repeatCandidate?.maxCount === "number" && Number.isFinite(repeatCandidate.maxCount)
+          ? Math.max(1, Math.min(12, Math.round(repeatCandidate.maxCount)))
+          : repeatFallback?.maxCount ?? 4,
+      }
+    : undefined;
+  return {
+    id,
+    type,
+    track: cleanString(candidate.track, fallback?.track || "motion-graphics"),
+    offsetSeconds: typeof candidate.offsetSeconds === "number" && Number.isFinite(candidate.offsetSeconds)
+      ? Math.max(0, Math.min(10, candidate.offsetSeconds))
+      : fallback?.offsetSeconds,
+    offsetRatio: typeof candidate.offsetRatio === "number" && Number.isFinite(candidate.offsetRatio)
+      ? Math.max(0, Math.min(1, candidate.offsetRatio))
+      : fallback?.offsetRatio,
+    ...(repeat ? { repeat } : {}),
+    durationSeconds: typeof candidate.durationSeconds === "number" && Number.isFinite(candidate.durationSeconds)
+      ? Math.max(0.04, Math.min(3, candidate.durationSeconds))
+      : fallback?.durationSeconds,
+    gainDb: typeof candidate.gainDb === "number" && Number.isFinite(candidate.gainDb)
+      ? Math.max(-36, Math.min(12, candidate.gainDb))
+      : fallback?.gainDb,
+    fadeInMs: typeof candidate.fadeInMs === "number" && Number.isFinite(candidate.fadeInMs)
+      ? Math.max(0, Math.min(10_000, Math.round(candidate.fadeInMs)))
+      : fallback?.fadeInMs,
+    fadeOutMs: typeof candidate.fadeOutMs === "number" && Number.isFinite(candidate.fadeOutMs)
+      ? Math.max(0, Math.min(10_000, Math.round(candidate.fadeOutMs)))
+      : fallback?.fadeOutMs,
+    description: cleanString(candidate.description, fallback?.description || "Deterministic motion graphic sound cue"),
+    searchQuery: cleanString(candidate.searchQuery, fallback?.searchQuery || "subtle motion graphic tick"),
+    frequencyBand: candidate.frequencyBand === "low" || candidate.frequencyBand === "mid" || candidate.frequencyBand === "high" || candidate.frequencyBand === "full-range"
+      ? candidate.frequencyBand
+      : fallback?.frequencyBand,
+    layerRole: cleanString(candidate.layerRole, fallback?.layerRole || ""),
+    literalness: candidate.literalness === "literal" || candidate.literalness === "stylized" || candidate.literalness === "emotional-metaphor"
+      ? candidate.literalness
+      : fallback?.literalness,
+    priority: candidate.priority === "must-have" || candidate.priority === "nice-to-have" || candidate.priority === "optional"
+      ? candidate.priority
+      : fallback?.priority,
+  };
+}
+
+function normalizeDeterministicSoundCues(value: unknown, fallback: MotionGraphicDeterministicSoundCue[] = []) {
+  const candidate = Array.isArray(value) ? value : [];
+  const source = candidate.length > 0 ? candidate : fallback;
+  return source
+    .map((cue, index) => normalizeDeterministicSoundCue(cue, fallback[index]))
+    .filter((cue): cue is MotionGraphicDeterministicSoundCue => Boolean(cue));
 }
 
 function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig, index: number): MotionGraphicTemplateConfig {
@@ -766,6 +920,7 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
     stylePreset: cleanString(candidate.stylePreset, fallback.stylePreset || DEFAULT_STYLE_PRESET),
     defaultArgs: normalizedDefaultArgs,
     fields: normalizedFields,
+    deterministicSoundEffects: normalizeDeterministicSoundCues(candidate.deterministicSoundEffects, fallback.deterministicSoundEffects || []),
     enabled: candidate.enabled !== false,
   };
 }
@@ -830,6 +985,9 @@ export function renderMotionGraphicTemplatePromptInjection(settings = getShortFo
       `  stylePreset default: ${template.stylePreset}`,
       `  Description: ${template.description}`,
       `  When to use: ${template.whenToUse}`,
+      template.deterministicSoundEffects?.length
+        ? `  Built-in internal SFX: ${template.deterministicSoundEffects.map((cue) => cue.description).join("; ")}. These are generated deterministically by the renderer/resolver, not by Scribe.`
+        : "  Built-in internal SFX: none.",
       `  Configurable fields:`,
       fields,
     ].join("\n");

@@ -407,11 +407,36 @@ const goodIndicatorFilters = await goodBadIndicator(
   "dark-pastel-watercolor",
   overlayInputs,
 );
+const finalGoodIndicatorRuleY = Number(goodIndicatorFilters
+  .find((filter) => filter.includes("w=720:h=4") && filter.includes("enable='gte"))
+  ?.match(/:y=([0-9.]+):w=720:h=4/)?.[1]);
 assert.ok(!goodIndicatorFilters.some((filter) => filter.includes("text='GOOD'")), "good/bad indicator should not render a Good label");
 assert.ok(!goodIndicatorFilters.some((filter) => filter.includes("drawbox=x=124:y=360")), "good/bad indicator should not render an icon background panel");
 assert.ok(goodIndicatorFilters.some((filter) => filter.includes("text='Lift from the'")), "good/bad indicator should render its single text field");
+assert.equal(finalGoodIndicatorRuleY, 1040, "good/bad indicator short text should keep the established divider position");
 assert.ok(overlayInputs.some((overlay) => overlay.filePath.includes("circleCheck")), "Good indicator should use the lucide circle-check SVG overlay");
 assert.equal(overlayInputs.find((overlay) => overlay.filePath.includes("circleCheck"))?.height, Math.round(144 * 1.3), "Good indicator icon should be 30% larger than the previous 144px size");
+
+const longGoodOverlayInputs = [];
+longGoodOverlayInputs.tempDir = process.cwd();
+longGoodOverlayInputs.duration = 5;
+const longGoodIndicatorFilters = await goodBadIndicator(
+  { indicatorType: "good", text: "Lower lid rises, eye narrows, brow stays still" },
+  "dark-pastel-watercolor",
+  longGoodOverlayInputs,
+);
+const finalLongGoodIndicatorRuleY = Number(longGoodIndicatorFilters
+  .find((filter) => filter.includes("w=720:h=4") && filter.includes("enable='gte"))
+  ?.match(/:y=([0-9.]+):w=720:h=4/)?.[1]);
+const longGoodTextYs = longGoodIndicatorFilters
+  .filter((filter) => filter.includes("drawtext=text="))
+  .map((filter) => Number(filter.match(/:y=([0-9.]+):expansion=none/)?.[1]))
+  .filter(Number.isFinite);
+assert.ok(finalLongGoodIndicatorRuleY > finalGoodIndicatorRuleY, "good/bad indicator divider should move down for wrapped long text");
+assert.ok(
+  Math.max(...longGoodTextYs) + 82 + 44 <= finalLongGoodIndicatorRuleY,
+  "good/bad indicator divider should leave a safe gap below the wrapped text block",
+);
 
 const stopOverlayInputs = [];
 stopOverlayInputs.tempDir = process.cwd();
@@ -437,12 +462,14 @@ await instruction(
 assert.ok(legacyOverlayInputs.some((overlay) => overlay.filePath.includes("octagonX")), "Legacy instruction renderer id and instructionType args should still render the bad indicator");
 
 const doIconPath = overlayInputs.find((overlay) => overlay.filePath.includes("circleCheck"))?.filePath;
+const longDoIconPath = longGoodOverlayInputs.find((overlay) => overlay.filePath.includes("circleCheck"))?.filePath;
 const stopIconPath = stopOverlayInputs.find((overlay) => overlay.filePath.includes("octagonX"))?.filePath;
 for (const overlay of [...pieOverlayInputs, ...growthOverlayInputs, ...growthValueOverlayInputs, ...declineOverlayInputs]) {
   if (overlay.filePath) fs.rmSync(overlay.filePath, { force: true });
   if (overlay.framesDir) fs.rmSync(overlay.framesDir, { recursive: true, force: true });
 }
 if (doIconPath) fs.rmSync(doIconPath, { force: true });
+if (longDoIconPath) fs.rmSync(longDoIconPath, { force: true });
 if (stopIconPath) fs.rmSync(stopIconPath, { force: true });
 for (const overlay of legacyOverlayInputs) {
   if (overlay.filePath) fs.rmSync(overlay.filePath, { force: true });

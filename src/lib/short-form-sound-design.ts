@@ -12,6 +12,11 @@ import {
   type ShortFormSoundSemanticType,
   type ShortFormSoundTimingType,
 } from "@/lib/short-form-sound-design-settings";
+import {
+  getShortFormMotionGraphicsSettings,
+  type MotionGraphicDeterministicSoundCue,
+  type MotionGraphicTemplateConfig,
+} from "@/lib/short-form-motion-graphics";
 import { getShortFormMusicLibraryDir, getShortFormVideoRenderSettings } from "@/lib/short-form-video-render-settings";
 
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
@@ -223,6 +228,10 @@ interface TimelineScene {
   caption: string;
   startTime?: number;
   endTime?: number;
+  visualType?: "image" | "motion_graphic";
+  motionGraphicId?: string;
+  motionGraphicTemplateId?: string;
+  motionGraphicRendererId?: string;
 }
 
 interface TimelineCaption {
@@ -238,6 +247,20 @@ interface TimelineVisual {
   label: string;
   start: number;
   end?: number;
+  visualType?: "image" | "motion_graphic";
+  motionGraphicId?: string;
+}
+
+interface MotionGraphicTimelineSegment {
+  id: string;
+  number: number;
+  label: string;
+  start: number;
+  end: number;
+  motionGraphicId?: string;
+  templateId: string;
+  rendererId?: string;
+  args: Record<string, unknown>;
 }
 
 function ensureDir(dirPath: string) {
@@ -386,11 +409,20 @@ function safeReadJson(filePath: string) {
   }
 }
 
+function decodeXmlText(value: string) {
+  return value
+    .replace(/&quot;/g, "\"")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
 function getTimelineScenes(projectId: string): TimelineScene[] {
   const projectDir = getProjectDir(projectId);
   const scenePath = path.join(projectDir, "scene-images.json");
   const raw = safeReadJson(scenePath);
-  const scenes = Array.isArray(raw?.scenes) ? raw.scenes : [];
+  const scenes: unknown[] = Array.isArray(raw?.scenes) ? raw.scenes : [];
   return scenes
     .map((scene: unknown, index: number): TimelineScene | null => {
       const obj = scene && typeof scene === "object" && !Array.isArray(scene) ? scene as Record<string, unknown> : null;
@@ -401,6 +433,10 @@ function getTimelineScenes(projectId: string): TimelineScene[] {
         caption: normalizeString(obj.caption, ""),
         startTime: typeof obj.startTime === "number" && Number.isFinite(obj.startTime) ? obj.startTime : undefined,
         endTime: typeof obj.endTime === "number" && Number.isFinite(obj.endTime) ? obj.endTime : undefined,
+        visualType: obj.visualType === "motion_graphic" ? "motion_graphic" : "image",
+        motionGraphicId: normalizeOptionalString(obj.motionGraphicId),
+        motionGraphicTemplateId: normalizeOptionalString(obj.motionGraphicTemplateId),
+        motionGraphicRendererId: normalizeOptionalString(obj.motionGraphicRendererId),
       };
     })
     .filter((scene: TimelineScene | null): scene is TimelineScene => Boolean(scene));
@@ -446,6 +482,8 @@ function getTimelineVisuals(projectId: string): TimelineVisual[] {
         label: normalizeString(attributes.label, `Visual ${index + 1}`),
         start,
         ...(typeof end === "number" ? { end } : {}),
+        visualType: attributes.visualType === "motion_graphic" || attributes.type === "motion_graphic" || Boolean(attributes.motionGraphicId || attributes.motionId || attributes.motionGraphic) ? "motion_graphic" : "image",
+        motionGraphicId: normalizeOptionalString(attributes.motionGraphicId || attributes.motionId || attributes.motionGraphic),
       };
     })
     .filter((visual): visual is TimelineVisual => Boolean(visual));
@@ -465,6 +503,138 @@ function parseAttributes(nodeSource: string) {
 function parseOpeningTagAttributes(nodeSource: string, tagName: string) {
   const openingTag = nodeSource.match(new RegExp(`<${tagName}\\b[^>]*>`))?.[0] || nodeSource;
   return parseAttributes(openingTag);
+}
+
+function parseMotionGraphicAssetsFromXml(projectId: string) {
+  const xmlScriptPath = path.join(getProjectDir(projectId), "xml-script.md");
+  if (!fs.existsSync(xmlScriptPath)) return new Map<string, { id: string; templateId: string; rendererId?: string; args: Record<string, unknown> }>();
+  const xml = extractBody(fs.readFileSync(xmlScriptPath, "utf-8"));
+  const assetsBody = xml.match(/<assets\b[^>]*>([\s\S]*?)<\/assets>/i)?.[1] || "";
+  const assets = new Map<string, { id: string; templateId: string; rendererId?: string; args: Record<string, unknown> }>();
+  for (const match of assetsBody.matchAll(/<motionGraphic\b([^>]*)>([\s\S]*?)<\/motionGraphic>/gi)) {
+    const attributes = parseAttributes(match[1] || "");
+    const id = normalizeOptionalString(attributes.id);
+    const templateId = normalizeOptionalString(attributes.templateId || attributes.template || attributes.motionGraphicType);
+    if (!id || !templateId) continue;
+    const body = match[2] || "";
+    const args: Record<string, unknown> = {};
+    for (const argMatch of body.matchAll(/<arg\b([^>]*)>([\s\S]*?)<\/arg>/gi)) {
+      const argAttrs = parseAttributes(argMatch[1] || "");
+      const name = normalizeOptionalString(argAttrs.name);
+      if (!name) continue;
+      const text = decodeXmlText((argMatch[2] || "").replace(/\s+/g, " ").trim());
+      const numeric = Number(text);
+      args[name] = text && Number.isFinite(numeric) && /^[-+]?\d+(?:\.\d+)?$/.test(text) ? numeric : text;
+    }
+    const data = Array.from(body.matchAll(/<item\b([^>]*?)\/?\s*>/gi))
+      .map((itemMatch) => {
+        const itemAttrs = parseAttributes(itemMatch[1] || "");
+        const label = normalizeOptionalString(itemAttrs.label);
+        const value = normalizeOptionalString(itemAttrs.value);
+        if (!label || !value) return null;
+        const numericValue = Number(value);
+        return {
+          label: decodeXmlText(label),
+          value: Number.isFinite(numericValue) ? numericValue : decodeXmlText(value),
+          ...(itemAttrs.displayValue ? { displayValue: decodeXmlText(itemAttrs.displayValue) } : {}),
+        };
+      })
+      .filter((item): item is { label: string; value: number | string; displayValue?: string } => Boolean(item));
+    if (data.length > 0) args.data = data;
+    const steps = Array.from(body.matchAll(/<step\b([^>]*)>([\s\S]*?)<\/step>/gi))
+      .map((stepMatch) => {
+        const stepAttrs = parseAttributes(stepMatch[1] || "");
+        const text = decodeXmlText((stepMatch[2] || "").replace(/\s+/g, " ").trim());
+        if (!text) return null;
+        const label = normalizeOptionalString(stepAttrs.label || stepAttrs.leftLabel || stepAttrs.marker);
+        return label ? { label: decodeXmlText(label), text } : { text };
+      })
+      .filter((step): step is { label?: string; text: string } => Boolean(step));
+    if (steps.length > 0) {
+      args.steps = steps;
+      args.items = steps;
+    }
+    const lines = Array.from(body.matchAll(/<(line|blankLine)\b([^>]*)\/?\s*>(?:([\s\S]*?)<\/\1>)?/gi))
+      .map((lineMatch) => {
+        const tagName = String(lineMatch[1] || "").toLowerCase();
+        if (tagName === "blankline") return { blank: true };
+        const text = decodeXmlText((lineMatch[3] || "").replace(/\s+/g, " ").trim());
+        return text ? { text } : { blank: true };
+      });
+    if (lines.length > 0) args.lines = lines;
+    assets.set(id, {
+      id,
+      templateId,
+      rendererId: normalizeOptionalString(attributes.rendererId),
+      args,
+    });
+  }
+  return assets;
+}
+
+function readGeneratedMotionGraphicScenes(projectId: string): TimelineScene[] {
+  const manifestPath = path.join(getProjectDir(projectId), "scenes", "manifest.json");
+  const raw = safeReadJson(manifestPath);
+  const scenes: unknown[] = Array.isArray(raw?.scenes) ? raw.scenes : [];
+  return scenes
+    .map((scene: unknown, index: number): TimelineScene | null => {
+      const obj = scene && typeof scene === "object" && !Array.isArray(scene) ? scene as Record<string, unknown> : null;
+      if (!obj || obj.visual_type !== "motion_graphic") return null;
+      const start = typeof obj.start === "number" && Number.isFinite(obj.start) ? obj.start : undefined;
+      const end = typeof obj.end === "number" && Number.isFinite(obj.end) ? obj.end : undefined;
+      return {
+        id: normalizeString(obj.visual_id, `scene-${index + 1}`),
+        number: typeof obj.index === "number" && Number.isFinite(obj.index) ? obj.index : index + 1,
+        caption: normalizeString(obj.text, `Motion graphic ${index + 1}`),
+        startTime: start,
+        endTime: end,
+        visualType: "motion_graphic",
+        motionGraphicId: normalizeOptionalString(obj.motion_graphic_id),
+        motionGraphicTemplateId: normalizeOptionalString(obj.motion_graphic_template_id),
+        motionGraphicRendererId: normalizeOptionalString(obj.motion_graphic_renderer_id),
+      };
+    })
+    .filter((scene): scene is TimelineScene => Boolean(scene));
+}
+
+function motionGraphicsTemplateMatches(template: MotionGraphicTemplateConfig, templateId?: string, rendererId?: string) {
+  const normalizedTemplateId = normalizeKey(templateId);
+  const normalizedRendererId = normalizeKey(rendererId);
+  return Boolean(
+    (normalizedTemplateId && (normalizeKey(template.id) === normalizedTemplateId || normalizeKey(template.rendererId) === normalizedTemplateId))
+    || (normalizedRendererId && (normalizeKey(template.rendererId) === normalizedRendererId || normalizeKey(template.id) === normalizedRendererId))
+  );
+}
+
+function getMotionGraphicTimelineSegments(projectId: string): MotionGraphicTimelineSegment[] {
+  const xmlAssets = parseMotionGraphicAssetsFromXml(projectId);
+  const xmlVisuals = getTimelineVisuals(projectId).filter((visual) => visual.visualType === "motion_graphic");
+  const visualAssetById = new Map(xmlVisuals.map((visual) => [visual.id, visual.motionGraphicId]));
+  const scenes = getTimelineScenes(projectId);
+  const sourceScenes = scenes.some((scene) => scene.visualType === "motion_graphic")
+    ? scenes.filter((scene) => scene.visualType === "motion_graphic")
+    : readGeneratedMotionGraphicScenes(projectId);
+  return sourceScenes
+    .map((scene): MotionGraphicTimelineSegment | null => {
+      const motionGraphicId = scene.motionGraphicId || visualAssetById.get(scene.id);
+      const asset = motionGraphicId ? xmlAssets.get(motionGraphicId) : undefined;
+      const templateId = scene.motionGraphicTemplateId || asset?.templateId;
+      const start = typeof scene.startTime === "number" ? scene.startTime : undefined;
+      const end = typeof scene.endTime === "number" ? scene.endTime : undefined;
+      if (!templateId || typeof start !== "number" || typeof end !== "number" || end <= start) return null;
+      return {
+        id: scene.id,
+        number: scene.number,
+        label: scene.caption,
+        start,
+        end,
+        motionGraphicId,
+        templateId,
+        rendererId: scene.motionGraphicRendererId || asset?.rendererId,
+        args: asset?.args || {},
+      };
+    })
+    .filter((segment): segment is MotionGraphicTimelineSegment => Boolean(segment));
 }
 
 function normalizeOverlap(value: unknown): "allow" | "avoid" | "layered" | undefined {
@@ -1408,6 +1578,158 @@ function selectCompatibleAsset(
   return pool[stableHash(`${event.type}:${event.id}:${event.startSeconds}:${event.frequencyBand || ""}:${event.layerRole || ""}`) % pool.length]?.asset;
 }
 
+function slugifySoundCueId(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "cue";
+}
+
+function deterministicCueRepeatCount(cue: MotionGraphicDeterministicSoundCue, args: Record<string, unknown>) {
+  if (!cue.repeat) return 1;
+  const value = args[cue.repeat.source];
+  const count = Array.isArray(value) ? value.filter((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return true;
+    return (item as { blank?: unknown }).blank !== true;
+  }).length : 0;
+  return Math.max(1, Math.min(cue.repeat.maxCount, count || 1));
+}
+
+function deterministicCueOffset(cue: MotionGraphicDeterministicSoundCue, index: number, duration: number) {
+  if (cue.repeat) return cue.repeat.firstOffsetSeconds + index * cue.repeat.stepSeconds;
+  if (typeof cue.offsetSeconds === "number") return cue.offsetSeconds;
+  if (typeof cue.offsetRatio === "number") return duration * cue.offsetRatio;
+  return Math.min(0.5, duration * 0.25);
+}
+
+function defaultDeterministicCueGain(type: ShortFormSoundSemanticType) {
+  if (type === "impact") return -10;
+  if (type === "whoosh" || type === "riser") return -12;
+  return -11;
+}
+
+function buildDeterministicMotionGraphicSoundEvents(projectId: string): ShortFormSoundDesignEvent[] {
+  const settings = getShortFormMotionGraphicsSettings();
+  const segments = getMotionGraphicTimelineSegments(projectId);
+  if (segments.length === 0) return [];
+  const events: ShortFormSoundDesignEvent[] = [];
+  for (const segment of segments) {
+    const template = settings.templates.find((candidate) =>
+      motionGraphicsTemplateMatches(candidate, segment.templateId, segment.rendererId)
+    );
+    const cues = template?.deterministicSoundEffects || [];
+    if (!template || cues.length === 0) continue;
+    const duration = Math.max(0, segment.end - segment.start);
+    if (duration < 0.5) continue;
+    const safeStart = segment.start + Math.min(0.18, duration * 0.25);
+    const safeEnd = segment.end - Math.min(0.18, duration * 0.25);
+    for (const cue of cues) {
+      const repeatCount = deterministicCueRepeatCount(cue, segment.args);
+      for (let index = 0; index < repeatCount; index += 1) {
+        const offset = deterministicCueOffset(cue, index, duration);
+        const startSeconds = segment.start + offset;
+        if (startSeconds < safeStart || startSeconds > safeEnd) continue;
+        const idParts = [
+          "det-mg",
+          String(segment.number).padStart(2, "0"),
+          slugifySoundCueId(segment.motionGraphicId || segment.id),
+          slugifySoundCueId(template.id),
+          slugifySoundCueId(cue.id),
+          repeatCount > 1 ? String(index + 1) : "",
+        ].filter(Boolean);
+        events.push({
+          id: idParts.join("-"),
+          type: cue.type,
+          track: cue.track || "motion-graphics",
+          startSeconds: Math.round(startSeconds * 1000) / 1000,
+          durationSeconds: cue.durationSeconds || (cue.type === "whoosh" || cue.type === "riser" ? 0.42 : 0.16),
+          gainDb: typeof cue.gainDb === "number" ? cue.gainDb : defaultDeterministicCueGain(cue.type),
+          fadeInMs: typeof cue.fadeInMs === "number" ? cue.fadeInMs : cue.type === "whoosh" || cue.type === "riser" ? 20 : 0,
+          fadeOutMs: typeof cue.fadeOutMs === "number" ? cue.fadeOutMs : cue.type === "whoosh" || cue.type === "riser" ? 180 : 90,
+          description: cue.description,
+          searchQuery: cue.searchQuery,
+          category: "Motion Graphic",
+          priority: cue.priority || "nice-to-have",
+          rationale: `Deterministic internal motion-graphic cue for ${template.displayName}: ${cue.description}. Generated from known template timing, not Scribe planning.`,
+          notes: "deterministic-motion-graphic-internal-sfx",
+          overlap: "avoid",
+          groupId: `motion-graphic-${segment.number}-${template.id}`,
+          frequencyBand: cue.frequencyBand,
+          layerRole: cue.layerRole || (cue.type === "whoosh" || cue.type === "riser" ? "motion" : "tick"),
+          stylePalette: "premium editorial",
+          literalness: cue.literalness || "stylized",
+        });
+      }
+    }
+  }
+  return events;
+}
+
+function buildDeterministicMotionGraphicPreviewSoundEvents(options: {
+  template: Pick<MotionGraphicTemplateConfig, "id" | "displayName" | "defaultArgs" | "deterministicSoundEffects">;
+  durationSeconds: number;
+  args?: Record<string, unknown>;
+}): ShortFormSoundDesignEvent[] {
+  const { template } = options;
+  const cues = template.deterministicSoundEffects || [];
+  const duration = Math.max(0, options.durationSeconds);
+  if (cues.length === 0 || duration < 0.5) return [];
+
+  const args = options.args || template.defaultArgs || {};
+  const events: ShortFormSoundDesignEvent[] = [];
+  const safeStart = Math.min(0.18, duration * 0.25);
+  const safeEnd = duration - Math.min(0.18, duration * 0.25);
+  for (const cue of cues) {
+    const repeatCount = deterministicCueRepeatCount(cue, args);
+    for (let index = 0; index < repeatCount; index += 1) {
+      const startSeconds = deterministicCueOffset(cue, index, duration);
+      if (startSeconds < safeStart || startSeconds > safeEnd) continue;
+      const idParts = [
+        "det-mg-preview",
+        slugifySoundCueId(template.id),
+        slugifySoundCueId(cue.id),
+        repeatCount > 1 ? String(index + 1) : "",
+      ].filter(Boolean);
+      events.push({
+        id: idParts.join("-"),
+        type: cue.type,
+        track: cue.track || "motion-graphics",
+        startSeconds: Math.round(startSeconds * 1000) / 1000,
+        durationSeconds: cue.durationSeconds || (cue.type === "whoosh" || cue.type === "riser" ? 0.42 : 0.16),
+        gainDb: typeof cue.gainDb === "number" ? cue.gainDb : defaultDeterministicCueGain(cue.type),
+        fadeInMs: typeof cue.fadeInMs === "number" ? cue.fadeInMs : cue.type === "whoosh" || cue.type === "riser" ? 20 : 0,
+        fadeOutMs: typeof cue.fadeOutMs === "number" ? cue.fadeOutMs : cue.type === "whoosh" || cue.type === "riser" ? 180 : 90,
+        description: cue.description,
+        searchQuery: cue.searchQuery,
+        category: "Motion Graphic",
+        priority: cue.priority || "nice-to-have",
+        rationale: `Deterministic internal motion-graphic preview cue for ${template.displayName}: ${cue.description}. Generated from known template timing, not Scribe planning.`,
+        notes: "deterministic-motion-graphic-preview-internal-sfx",
+        overlap: "avoid",
+        groupId: `motion-graphic-preview-${template.id}`,
+        frequencyBand: cue.frequencyBand,
+        layerRole: cue.layerRole || (cue.type === "whoosh" || cue.type === "riser" ? "motion" : "tick"),
+        stylePalette: "premium editorial",
+        literalness: cue.literalness || "stylized",
+      });
+    }
+  }
+  return events;
+}
+
+function mergePlannedAndDeterministicSoundEvents(
+  plannedEvents: ShortFormSoundDesignEvent[],
+  deterministicEvents: ShortFormSoundDesignEvent[],
+) {
+  if (deterministicEvents.length === 0) return plannedEvents;
+  const plannedIds = new Set(plannedEvents.map((event) => event.id));
+  return [
+    ...plannedEvents,
+    ...deterministicEvents.filter((event) => !plannedIds.has(event.id)),
+  ];
+}
+
 function resolveShortFormSoundDesignMusicSegments(content: string): ShortFormResolvedSoundDesignMusicSegment[] {
   const plannedSegments = parseShortFormSoundDesignMusicSegments(content);
   if (plannedSegments.length === 0) return [];
@@ -1453,13 +1775,15 @@ export function resolveShortFormSoundDesign(projectId: string, overrides?: Short
   const scenes = getTimelineScenes(projectId);
   const captions = getTimelineCaptions(projectId);
   const duration = getNarrationDuration(projectId);
-  const mixSettings = resolveShortFormSoundDesignMixSettings(doc.content, doc.events);
+  const deterministicEvents = buildDeterministicMotionGraphicSoundEvents(projectId);
+  const events = mergePlannedAndDeterministicSoundEvents(doc.events, deterministicEvents);
+  const mixSettings = resolveShortFormSoundDesignMixSettings(doc.content, events);
   const existingById = new Map<string, ShortFormResolvedSoundDesignEvent>();
   (overrides || doc.resolution?.events || []).forEach((event) => {
     existingById.set(event.id, event);
   });
 
-  let resolvedEvents: ShortFormResolvedSoundDesignEvent[] = doc.events.map((event) => {
+  let resolvedEvents: ShortFormResolvedSoundDesignEvent[] = events.map((event) => {
     const prior = existingById.get(event.id);
     if (!isAssetBackedEventType(event.type)) {
       const start = resolveEventTime(projectId, event, scenes, captions);
@@ -2142,6 +2466,243 @@ function buildMasteredOutputFilters(inputLabel: string, outputLabel: string, mix
   }
   if (filters.length === 0) return null;
   return `${inputLabel}${filters.join(",")}${outputLabel}`;
+}
+
+export interface MotionGraphicPreviewSoundEffectResolution {
+  events: ShortFormResolvedSoundDesignEvent[];
+  mixSettings: ShortFormSoundDesignMixSettings;
+}
+
+export interface MotionGraphicPreviewSoundEffectRenderResult extends MotionGraphicPreviewSoundEffectResolution {
+  audioPath?: string;
+  rendered: boolean;
+  stats: {
+    total: number;
+    resolved: number;
+    unresolved: number;
+  };
+  skippedReason?: string;
+}
+
+export function resolveMotionGraphicPreviewSoundEffects(options: {
+  template: Pick<MotionGraphicTemplateConfig, "id" | "displayName" | "defaultArgs" | "deterministicSoundEffects">;
+  durationSeconds: number;
+  args?: Record<string, unknown>;
+}): MotionGraphicPreviewSoundEffectResolution {
+  const settings = getShortFormSoundDesignSettings();
+  const events = buildDeterministicMotionGraphicPreviewSoundEvents(options);
+  const mixSettings = resolveShortFormSoundDesignMixSettings(undefined, events);
+  const resolvedEvents = events.map((event) => {
+    if (!isAssetBackedEventType(event.type)) {
+      return {
+        ...event,
+        resolvedStartSeconds: event.startSeconds,
+        resolvedGainDb: typeof event.gainDb === "number" ? event.gainDb : 0,
+        resolvedFadeInMs: typeof event.fadeInMs === "number" ? event.fadeInMs : 0,
+        resolvedFadeOutMs: typeof event.fadeOutMs === "number" ? event.fadeOutMs : 0,
+        duckingDb: mixSettings.musicDuckingDb,
+        compatibleAssetIds: [],
+        status: "resolved",
+        resolutionReason: "music-or-mix-control-event",
+      } satisfies ShortFormResolvedSoundDesignEvent;
+    }
+
+    const compatibleAssets = settings.library
+      .filter((asset) => asset.audioRelativePath)
+      .map((asset) => ({ asset, score: getAssetCompatibility(event, asset) }))
+      .sort((left, right) => right.score - left.score);
+    const requestedAsset = event.assetId
+      ? settings.library.find((asset) => asset.id === event.assetId)
+      : undefined;
+    const asset = requestedAsset || selectCompatibleAsset(event, compatibleAssets);
+    const assetDuration = asset ? getAssetDurationSeconds(asset) : undefined;
+    const assetAnchorOffsetSeconds = assetDuration ? assetDuration * (asset?.anchorRatio || 0) : 0;
+    const start = Math.max(0, event.startSeconds - assetAnchorOffsetSeconds);
+    const fadeInMs = typeof event.fadeInMs === "number" ? event.fadeInMs : asset?.defaultFadeInMs || 0;
+    const fadeOutMs = typeof event.fadeOutMs === "number" ? event.fadeOutMs : asset?.defaultFadeOutMs || 0;
+    const gainDb = typeof event.gainDb === "number" ? event.gainDb : asset?.defaultGainDb || 0;
+    const explicitEnd = typeof event.endSeconds === "number"
+      ? Math.max(start, event.endSeconds)
+      : typeof event.durationSeconds === "number"
+        ? start + event.durationSeconds
+        : undefined;
+    const end = typeof explicitEnd === "number"
+      ? explicitEnd
+      : assetDuration
+        ? start + assetDuration
+        : undefined;
+    const bus = classifySoundDesignBus({ ...event, timingType: asset?.timingType });
+    return {
+      ...event,
+      assetId: asset?.id,
+      assetName: asset?.name,
+      assetRelativePath: asset?.audioRelativePath,
+      timingType: asset?.timingType,
+      resolvedStartSeconds: start,
+      ...(typeof end === "number" ? { resolvedEndSeconds: Math.max(start, end) } : {}),
+      ...(typeof event.durationSeconds === "number" ? { durationSeconds: event.durationSeconds } : typeof assetDuration === "number" ? { durationSeconds: assetDuration } : {}),
+      resolvedGainDb: gainDb,
+      resolvedFadeInMs: fadeInMs,
+      resolvedFadeOutMs: fadeOutMs,
+      duckingDb: bus === "ambience"
+        ? mixSettings.ambienceDuckingDb
+        : bus === "motion"
+          ? mixSettings.motionDuckingDb
+          : mixSettings.transientDuckingDb,
+      compatibleAssetIds: compatibleAssets.filter((item) => item.score > -4).map((item) => item.asset.id),
+      status: asset?.audioRelativePath ? "resolved" : "unresolved",
+      resolutionReason: asset?.audioRelativePath
+        ? (requestedAsset ? "requested-asset-match" : compatibleAssets[0] ? "semantic-library-match" : "fallback")
+        : requestedAsset
+          ? `Requested sound asset ${requestedAsset.id} has no uploaded audio file.`
+          : "No uploaded sound asset matched this semantic event.",
+    } satisfies ShortFormResolvedSoundDesignEvent;
+  });
+
+  return {
+    events: enforceMaxConcurrentOneShots(resolvedEvents, mixSettings.maxConcurrentOneShots),
+    mixSettings,
+  };
+}
+
+export function renderMotionGraphicPreviewSoundEffects(options: {
+  template: Pick<MotionGraphicTemplateConfig, "id" | "displayName" | "defaultArgs" | "deterministicSoundEffects">;
+  durationSeconds: number;
+  outputPath: string;
+  args?: Record<string, unknown>;
+}): MotionGraphicPreviewSoundEffectRenderResult {
+  const { events, mixSettings } = resolveMotionGraphicPreviewSoundEffects(options);
+  const activeEvents = events.filter((event) => event.status === "resolved" && !event.muted && event.assetRelativePath);
+  const stats = {
+    total: events.length,
+    resolved: events.filter((event) => event.status === "resolved").length,
+    unresolved: events.filter((event) => event.status !== "resolved").length,
+  };
+
+  if (events.length === 0) {
+    return { events, mixSettings, rendered: false, stats, skippedReason: "template-has-no-deterministic-sfx" };
+  }
+  if (activeEvents.length === 0) {
+    return { events, mixSettings, rendered: false, stats, skippedReason: "no-matching-sfx-assets" };
+  }
+
+  ensureDir(path.dirname(options.outputPath));
+  const inputArgs = ["-y"];
+  const filterLines: string[] = [];
+  const ambienceLabels: string[] = [];
+  const motionLabels: string[] = [];
+  const transientLabels: string[] = [];
+  let inputIndex = 0;
+
+  for (const event of activeEvents) {
+    const relativePath = event.assetRelativePath;
+    if (!relativePath) continue;
+    const absolutePath = path.join(getShortFormSoundLibraryDir(), relativePath);
+    if (!fs.existsSync(absolutePath)) continue;
+    const desiredDuration = typeof event.resolvedEndSeconds === "number"
+      ? Math.max(0.05, event.resolvedEndSeconds - event.resolvedStartSeconds)
+      : event.durationSeconds || getAudioDurationSeconds(absolutePath) || 0.6;
+    const sourceDuration = getAudioDurationSeconds(absolutePath) || desiredDuration;
+    const streamLoop = event.timingType === "bed" && desiredDuration > sourceDuration + 0.02;
+    if (streamLoop) inputArgs.push("-stream_loop", "-1");
+    inputArgs.push("-i", absolutePath);
+    const gainScale = Math.pow(10, event.resolvedGainDb / 20);
+    const fadeInSeconds = Math.max(0, (event.resolvedFadeInMs || 0) / 1000);
+    const fadeOutSeconds = Math.max(0, (event.resolvedFadeOutMs || 0) / 1000);
+    const delayMs = Math.max(0, Math.round(event.resolvedStartSeconds * 1000));
+    const filters = [
+      `atrim=0:${desiredDuration.toFixed(3)}`,
+      `volume=${gainScale.toFixed(5)}`,
+      ...(fadeInSeconds > 0 ? [`afade=t=in:st=0:d=${fadeInSeconds.toFixed(3)}`] : []),
+      ...(fadeOutSeconds > 0 && desiredDuration > 0.05 ? [`afade=t=out:st=${Math.max(0, desiredDuration - fadeOutSeconds).toFixed(3)}:d=${Math.min(fadeOutSeconds, desiredDuration).toFixed(3)}`] : []),
+      `adelay=${delayMs}|${delayMs}`,
+    ];
+    const label = `evt${inputIndex}`;
+    filterLines.push(`[${inputIndex}:a]${filters.join(",")}[${label}]`);
+    const bus = classifySoundDesignBus(event);
+    if (bus === "ambience") ambienceLabels.push(`[${label}]`);
+    else if (bus === "motion") motionLabels.push(`[${label}]`);
+    else transientLabels.push(`[${label}]`);
+    inputIndex += 1;
+  }
+
+  const backgroundLabels: string[] = [];
+  if (ambienceLabels.length > 0) {
+    const ambienceLabel = ambienceLabels.length > 1 ? "[ambienceraw]" : ambienceLabels[0]!;
+    if (ambienceLabels.length > 1) {
+      filterLines.push(`${ambienceLabels.join("")}amix=inputs=${ambienceLabels.length}:normalize=0:dropout_transition=0${ambienceLabel}`);
+    }
+    backgroundLabels.push(ambienceLabel);
+  }
+
+  if (motionLabels.length > 0) {
+    const motionLabel = motionLabels.length > 1 ? "[motionraw]" : motionLabels[0]!;
+    if (motionLabels.length > 1) {
+      filterLines.push(`${motionLabels.join("")}amix=inputs=${motionLabels.length}:normalize=0:dropout_transition=0${motionLabel}`);
+    }
+    backgroundLabels.push(motionLabel);
+  }
+
+  if (transientLabels.length > 0) {
+    const transientLabel = transientLabels.length > 1 ? "[transientraw]" : transientLabels[0]!;
+    if (transientLabels.length > 1) {
+      filterLines.push(`${transientLabels.join("")}amix=inputs=${transientLabels.length}:normalize=0:dropout_transition=0${transientLabel}`);
+    }
+    filterLines.push(buildTransientBusFilters(transientLabel, "[transientbus]", mixSettings));
+    backgroundLabels.push("[transientbus]");
+  }
+
+  if (backgroundLabels.length === 0) {
+    return { events, mixSettings, rendered: false, stats, skippedReason: "resolved-sfx-assets-missing-from-disk" };
+  }
+
+  let outputLabel = backgroundLabels[0]!;
+  if (backgroundLabels.length > 1) {
+    filterLines.push(`${backgroundLabels.join("")}amix=inputs=${backgroundLabels.length}:normalize=0:dropout_transition=0[bgraw]`);
+    const mastered = buildMasteredOutputFilters("[bgraw]", "[bgmix]", mixSettings);
+    if (mastered) {
+      filterLines.push(mastered);
+      outputLabel = "[bgmix]";
+    } else {
+      outputLabel = "[bgraw]";
+    }
+  } else {
+    const mastered = buildMasteredOutputFilters(backgroundLabels[0]!, "[bgmix]", mixSettings);
+    if (mastered) {
+      filterLines.push(mastered);
+      outputLabel = "[bgmix]";
+    }
+  }
+
+  const ffmpegArgs = [
+    ...inputArgs,
+    "-filter_complex",
+    filterLines.join(";"),
+    "-map",
+    outputLabel,
+    "-t",
+    String(Math.max(0.5, options.durationSeconds)),
+    "-ac",
+    String(Math.max(1, Math.round(mixSettings.outputChannels))),
+    "-ar",
+    String(Math.max(22050, Math.round(mixSettings.outputSampleRate))),
+    "-c:a",
+    "pcm_s16le",
+    options.outputPath,
+  ];
+
+  const result = spawnSync("ffmpeg", ffmpegArgs, { encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 });
+  if (result.status !== 0) {
+    throw new Error(result.stderr || result.stdout || "Failed to render motion-graphic preview sound effects.");
+  }
+
+  return {
+    events,
+    mixSettings,
+    audioPath: options.outputPath,
+    rendered: true,
+    stats,
+  };
 }
 
 function renderShortFormSoundDesignPreviewVariant(options: {

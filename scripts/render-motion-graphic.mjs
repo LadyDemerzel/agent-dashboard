@@ -2551,6 +2551,14 @@ async function goodBadIndicator(args, stylePreset, overlayInputs) {
   const iconCenterX = contentX + 72;
   const iconTopY = 360;
   const iconSize = Math.round(144 * 1.3);
+  const textTopY = 690;
+  const textSize = 82;
+  const textMaxChars = 15;
+  const textLineGap = 22;
+  const textLines = wrap(copy, textMaxChars).split("\n").filter(Boolean);
+  const textBlockHeight = textSize + Math.max(0, textLines.length - 1) * (textSize + textLineGap);
+  const ruleMarginTop = 56;
+  const ruleY = Math.max(1040, textTopY + textBlockHeight + ruleMarginTop);
   overlayInputs.push(await createLucideIconOverlay({
     tempDir: overlayInputs.tempDir,
     icon: isGood ? "circleCheck" : "octagonX",
@@ -2565,8 +2573,8 @@ async function goodBadIndicator(args, stylePreset, overlayInputs) {
   }));
 
   const filters = [...baseFilters(stylePreset)];
-  filters.push(...animatedUnifiedTextLines(copy, contentX, 690, 82, UNIFIED_PALETTE.offWhite, 0.78, 15, 22, 50, textShadow(0.78, 5), 0.58, 0.035, 0.38));
-  filters.push(...animatedHorizontalRule(contentX, 1040, 720, 4, accent, 1.18, 0.5));
+  filters.push(...animatedUnifiedTextLines(copy, contentX, textTopY, textSize, UNIFIED_PALETTE.offWhite, 0.78, textMaxChars, textLineGap, 50, textShadow(0.78, 5), 0.58, 0.035, 0.38));
+  filters.push(...animatedHorizontalRule(contentX, ruleY, 720, 4, accent, 1.18, 0.5));
   return filters;
 }
 

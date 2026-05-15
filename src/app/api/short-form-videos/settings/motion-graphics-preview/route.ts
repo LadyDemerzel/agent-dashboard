@@ -8,6 +8,11 @@ import {
   SUPPORTED_MOTION_GRAPHIC_RENDERERS,
   type MotionGraphicTemplateConfig,
 } from "@/lib/short-form-motion-graphics";
+import { renderMotionGraphicPreviewSoundEffects } from "@/lib/short-form-sound-design";
+import {
+  getShortFormSoundDesignSettings,
+  getShortFormSoundLibraryDir,
+} from "@/lib/short-form-sound-design-settings";
 export const dynamic = "force-dynamic";
 
 const PREVIEW_DIR = path.join(SHORT_FORM_VIDEOS_DIR, "_motion-graphic-previews");
@@ -69,8 +74,10 @@ function normalizeTemplate(value: unknown) {
     : 6;
   const previewBackgroundImage = resolvePreviewBackgroundImage(rendererId);
 
+  const templateId = typeof template.id === "string" && template.id.trim() ? template.id.trim() : rendererId;
   return {
-    templateId: typeof template.id === "string" && template.id.trim() ? template.id.trim() : rendererId,
+    id: templateId,
+    templateId,
     rendererId,
     durationSeconds,
     ...(rendererId === "caption_word_wall" ? { allowSyntheticTiming: true } : {}),
@@ -79,6 +86,13 @@ function normalizeTemplate(value: unknown) {
         ? template.stylePreset.trim()
         : "watercolor-editorial",
     defaultArgs: asRecord(template.defaultArgs),
+    displayName:
+      typeof template.displayName === "string" && template.displayName.trim()
+        ? template.displayName.trim()
+        : rendererId,
+    deterministicSoundEffects: Array.isArray(template.deterministicSoundEffects)
+      ? (template.deterministicSoundEffects as MotionGraphicTemplateConfig["deterministicSoundEffects"])
+      : [],
     ...(previewBackgroundImage || {}),
   };
 }
@@ -95,10 +109,64 @@ function rendererSourceHash() {
   }
 }
 
+function sourceFileHash(relativePath: string) {
+  try {
+    return crypto
+      .createHash("sha256")
+      .update(fs.readFileSync(path.join(process.cwd(), relativePath)))
+      .digest("hex")
+      .slice(0, 16);
+  } catch {
+    return "source-unavailable";
+  }
+}
+
+function soundEffectsPreviewSourceHash() {
+  const soundLibraryDir = getShortFormSoundLibraryDir();
+  const settings = getShortFormSoundDesignSettings();
+  const librarySignature = settings.library.map((asset) => {
+    const absolutePath = asset.audioRelativePath
+      ? path.join(soundLibraryDir, asset.audioRelativePath)
+      : "";
+    const stat = absolutePath && fs.existsSync(absolutePath)
+      ? fs.statSync(absolutePath)
+      : null;
+    return {
+      id: asset.id,
+      semanticTypes: asset.semanticTypes,
+      category: asset.category,
+      frequencyBand: asset.frequencyBand,
+      layerRoles: asset.layerRoles,
+      literalness: asset.literalness,
+      timingType: asset.timingType,
+      defaultGainDb: asset.defaultGainDb,
+      defaultFadeInMs: asset.defaultFadeInMs,
+      defaultFadeOutMs: asset.defaultFadeOutMs,
+      audioRelativePath: asset.audioRelativePath,
+      audioMtimeMs: stat ? Math.round(stat.mtimeMs) : null,
+      audioSize: stat ? stat.size : null,
+    };
+  });
+
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify({
+      library: librarySignature,
+      soundDesignSourceHash: sourceFileHash("src/lib/short-form-sound-design.ts"),
+      soundDesignSettingsSourceHash: sourceFileHash("src/lib/short-form-sound-design-settings.ts"),
+    }))
+    .digest("hex")
+    .slice(0, 16);
+}
+
 function previewHash(config: ReturnType<typeof normalizeTemplate>) {
   return crypto
     .createHash("sha256")
-    .update(JSON.stringify({ config, rendererSourceHash: rendererSourceHash() }))
+    .update(JSON.stringify({
+      config,
+      rendererSourceHash: rendererSourceHash(),
+      soundEffectsPreviewSourceHash: soundEffectsPreviewSourceHash(),
+    }))
     .digest("hex")
     .slice(0, 16);
 }
@@ -130,6 +198,52 @@ function runRenderScript(configPath: string, outputPath: string, posterPath: str
   });
 }
 
+function runMuxVideoWithAudio(videoPath: string, audioPath: string, outputPath: string) {
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn(
+      "ffmpeg",
+      [
+        "-y",
+        "-i",
+        videoPath,
+        "-i",
+        audioPath,
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
+        outputPath,
+      ],
+      { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"] },
+    );
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += String(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(stderr.trim() || stdout.trim() || `ffmpeg exited with status ${code}`));
+    });
+  });
+}
+
 function buildAssetUrl(relativePath: string, version: string) {
   return `/api/short-form-videos/settings/motion-graphics-previews/${relativePath
     .split(path.sep)
@@ -146,19 +260,61 @@ export async function POST(request: Request) {
     const outputDir = path.join(PREVIEW_DIR, slug);
     const configPath = path.join(outputDir, `${hash}.json`);
     const videoPath = path.join(outputDir, `${hash}.mp4`);
+    const silentVideoPath = path.join(outputDir, `${hash}.silent.mp4`);
+    const audioPath = path.join(outputDir, `${hash}.wav`);
     const posterPath = path.join(outputDir, `${hash}.png`);
+    const soundMetaPath = path.join(outputDir, `${hash}.sound-effects.json`);
     const relativeVideoPath = path.relative(PREVIEW_DIR, videoPath).split(path.sep).join("/");
     const relativePosterPath = path.relative(PREVIEW_DIR, posterPath).split(path.sep).join("/");
 
     fs.mkdirSync(outputDir, { recursive: true });
 
-    const hasCachedPreview = fs.existsSync(videoPath) && fs.existsSync(posterPath);
+    const hasCachedPreview = fs.existsSync(videoPath) && fs.existsSync(posterPath) && fs.existsSync(soundMetaPath);
+    let soundEffectsPreview: unknown = null;
     if (!hasCachedPreview || body.force) {
       fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf-8");
-      await runRenderScript(configPath, videoPath, posterPath);
+      await runRenderScript(configPath, silentVideoPath, posterPath);
+
+      try {
+        const soundResult = renderMotionGraphicPreviewSoundEffects({
+          template: config,
+          durationSeconds: config.durationSeconds,
+          outputPath: audioPath,
+          args: config.defaultArgs,
+        });
+        soundEffectsPreview = {
+          rendered: soundResult.rendered,
+          skippedReason: soundResult.skippedReason,
+          stats: soundResult.stats,
+          eventIds: soundResult.events.map((event) => event.id),
+          unresolvedEventIds: soundResult.events
+            .filter((event) => event.status !== "resolved")
+            .map((event) => event.id),
+        };
+
+        if (soundResult.rendered && soundResult.audioPath) {
+          await runMuxVideoWithAudio(silentVideoPath, soundResult.audioPath, videoPath);
+        } else {
+          fs.copyFileSync(silentVideoPath, videoPath);
+        }
+      } catch (error) {
+        soundEffectsPreview = {
+          rendered: false,
+          error: error instanceof Error ? error.message : "Failed to render preview sound effects",
+        };
+        fs.copyFileSync(silentVideoPath, videoPath);
+      }
+      fs.writeFileSync(soundMetaPath, `${JSON.stringify(soundEffectsPreview, null, 2)}\n`, "utf-8");
+    } else {
+      try {
+        soundEffectsPreview = JSON.parse(fs.readFileSync(soundMetaPath, "utf-8"));
+      } catch {
+        soundEffectsPreview = null;
+      }
     }
 
-    const version = String(Math.max(fs.statSync(videoPath).mtimeMs, fs.statSync(posterPath).mtimeMs));
+    const versionInputs = [videoPath, posterPath, soundMetaPath, audioPath].filter((filePath) => fs.existsSync(filePath));
+    const version = String(Math.max(...versionInputs.map((filePath) => fs.statSync(filePath).mtimeMs)));
 
     return NextResponse.json({
       success: true,
@@ -172,6 +328,7 @@ export async function POST(request: Request) {
         posterUrl: buildAssetUrl(relativePosterPath, version),
         reusedExisting: hasCachedPreview && !body.force,
         durationSeconds: config.durationSeconds,
+        soundEffectsPreview,
         ...(config.backgroundImagePath
           ? {
               backgroundImageName: config.backgroundImageName,

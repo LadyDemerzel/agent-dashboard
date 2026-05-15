@@ -466,6 +466,7 @@ interface MotionGraphicTemplateConfig {
   stylePreset: string;
   defaultArgs: Record<string, unknown>;
   fields: MotionGraphicTemplateField[];
+  deterministicSoundEffects?: unknown[];
   enabled: boolean;
 }
 
@@ -968,6 +969,7 @@ function buildMotionTemplatePreviewKey(template: MotionGraphicTemplateConfig) {
     durationSeconds: template.durationSeconds,
     stylePreset: template.stylePreset,
     defaultArgs: template.defaultArgs,
+    deterministicSoundEffects: template.deterministicSoundEffects || [],
   });
 }
 
@@ -8467,7 +8469,6 @@ export function ShortFormVideoSettingsView({
                                 src={selectedMotionTemplatePreview.videoUrl}
                                 poster={selectedMotionTemplatePreview.posterUrl || undefined}
                                 controls
-                                muted
                                 playsInline
                                 loop
                               />

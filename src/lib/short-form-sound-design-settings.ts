@@ -31,6 +31,9 @@ const DEFAULT_PLANNING_BRIEF_TEMPLATE = [
   "Asset rotation rule: no two consecutive cues of the same type may share the same assetId. Spread tick variety across the available library rather than reusing the same 3-4 ticks.",
   "Leave-silence rule: in any 6-second window of active narration, at least one >= 1.5s gap must have no transient cue (clicks/impacts/whooshes). Beds and music may continue.",
   "Use whooshes only on actual visual motion (whip, swipe, camera move, large graphic sweep). Do not use a whoosh as a generic transition sound. If the cut has no visual motion, use a tick or a riser-tail instead.",
+  "Motion-graphic boundary rule: always add a tasteful transition SFX when the picture moves from a nano-banana/generated image/static visual into a motion_graphic visual, and when it moves from a motion_graphic visual back to a generated/static image. Motion_graphic-to-motion_graphic transition SFX are optional and should be used only when the cut needs help.",
+  "Motion-graphic interior rule: do not add Scribe-planned non-music/non-ambience SFX inside the interior of motion_graphic scenes. The dashboard renderer/resolver owns deterministic internal motion-graphic cues because it knows the template animation timings. Music, ambience beds, and transition SFX around motion-graphic boundaries are allowed.",
+  "Rationale for the motion-graphic interior rule: do not guess sounds for bars, text, cards, arrows, charts, or other template internals. Those cues are baked deterministically by the motion-graphic template when appropriate.",
   "Risers and uplifters belong before reveals, drops, and section turns. Each riser must resolve into either an impact, a stinger, or a music payoff within 100-300 ms of its end.",
   "For tentpole beats (hook, thesis/reveal, mid-point pivot, final payoff), plan a frequency-layered group with shared groupId: low weight (rumble/bass/sub), mid body (impact/motion core), high air (tick/sparkle/texture). Every tentpole must have all three layers OR be explicitly marked rationale=\"silence-for-contrast\".",
   "Distinguish literal, stylized, and emotional-metaphor cues. Use emotional-metaphor when the sound should match the feeling rather than the visible object.",
@@ -107,6 +110,9 @@ function buildTopLevelSoundDesignPromptTemplate(planningBriefTemplate: string) {
     "- Enforce leave-silence: in any 6s window of active narration, at least one >= 1.5s gap must have no transient cue.",
     "- For tentpole beats (hook, thesis/reveal, mid-pivot, final payoff), plan a frequency-layered group with shared groupId covering low + mid + high, or mark the beat rationale=\"silence-for-contrast\".",
     "- Use whooshes only when the picture moves. If there is no visual motion, choose a tick, riser-tail, or silence instead.",
+    "- Motion-graphic boundary rule: always add tasteful transition SFX when visuals transition from a nano-banana/generated image/static visual into a motion_graphic visual, and when transitioning from a motion_graphic visual back to a generated/static image. For motion_graphic-to-motion_graphic visual changes, transition SFX are optional and left to your editorial discretion.",
+    "- Motion-graphic interior rule: never add your own non-music/non-ambience SFX inside the interior of motion_graphic scenes/segments. Music and ambience beds are fine. Boundary transition SFX around motion-graphic scene edges are explicitly allowed and should not be excluded.",
+    "- Do not guess bars, text, cards, arrows, charts, or other motion-graphic internals. The dashboard renderer/resolver owns deterministic internal motion-graphic SFX because it knows template animation timings.",
     "- Risers must resolve into an impact, stinger, or music payoff within 100-300 ms of their end. A riser with no resolution is invalid.",
     "- Placement must be timestamp-only. Use captions, transcript, word-level forced alignment, and visual timing as inputs, but do not emit anchors, sceneId, captionId, caption tags, scene references, or caption-boundary timing properties in the XML.",
     "- Treat the visual beat map as first-class timing truth. Lock to scene cuts, reveals, zooms, camera moves, before/after comparisons, and graphic step-throughs before locking to narration words.",
@@ -724,7 +730,10 @@ function normalizePromptTemplate(value: unknown) {
     && normalized.includes("hook segment -8.5 to -6.5 dB");
   const hasQuieterSfxMarker = normalized.includes("impacts >= -9 dB")
     && normalized.includes("transients should sit about 1 dB above");
-  if (hasNewBudgetMarker && hasCinematicMusicMarker && hasMusicGainLiteralMarker && hasGainFloorsMarker && hasLouderMusicGainMarker && hasQuieterSfxMarker) {
+  const hasMotionGraphicBoundaryMarker = normalized.includes("Motion-graphic boundary rule")
+    && normalized.includes("Motion-graphic interior rule")
+    && normalized.includes("dashboard renderer/resolver owns deterministic internal motion-graphic SFX");
+  if (hasNewBudgetMarker && hasCinematicMusicMarker && hasMusicGainLiteralMarker && hasGainFloorsMarker && hasLouderMusicGainMarker && hasQuieterSfxMarker && hasMotionGraphicBoundaryMarker) {
     return normalized;
   }
 
