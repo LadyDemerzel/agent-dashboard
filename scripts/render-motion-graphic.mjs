@@ -198,6 +198,11 @@ function asTimelineSteps(value, fallback = []) {
   return steps.length > 0 ? steps : fallback.map(normalizeItem).filter(Boolean);
 }
 
+function hasTimelineSource(value) {
+  if (Array.isArray(value)) return value.length > 0;
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 function asData(value) {
   if (Array.isArray(value)) {
     return value.map((item, index) => {
@@ -1164,6 +1169,27 @@ function resolveRendererKey(config) {
   return normalizeRendererKey(config?.rendererId)
     || normalizeRendererKey(config?.templateId)
     || asText(config?.rendererId || config?.templateId, "stat_reveal");
+}
+
+function resolveRendererArgs(config) {
+  const defaultArgs = config?.defaultArgs && typeof config.defaultArgs === "object" && !Array.isArray(config.defaultArgs)
+    ? config.defaultArgs
+    : {};
+  const providedArgs = config?.args && typeof config.args === "object" && !Array.isArray(config.args)
+    ? config.args
+    : {};
+  const args = { ...defaultArgs, ...providedArgs };
+  const rendererKey = resolveRendererKey(config);
+
+  if (
+    (rendererKey === "checklist" || rendererKey === "ranked_podium")
+    && hasTimelineSource(providedArgs.steps)
+    && !hasTimelineSource(providedArgs.items)
+  ) {
+    args.items = providedArgs.steps;
+  }
+
+  return args;
 }
 
 function sequentialStartIndex(value, itemCount) {
@@ -2311,7 +2337,7 @@ function timeline(args, stylePreset, overlayInputs) {
 
 function rankedPodium(args, stylePreset, overlayInputs) {
   void overlayInputs;
-  const items = asTimelineSteps(args.items || args.steps, [
+  const items = asTimelineSteps(args.steps || args.items, [
     { label: "01", text: "Most visible change" },
     { label: "02", text: "Faster feedback" },
     { label: "03", text: "Cleaner routine" },
@@ -2362,7 +2388,7 @@ function rankedPodium(args, stylePreset, overlayInputs) {
 }
 
 async function stepChecklist(args, stylePreset, overlayInputs) {
-  const items = asTimelineSteps(args.items || args.steps, [
+  const items = asTimelineSteps(args.steps || args.items, [
     { text: "Set the baseline" },
     { text: "Make the small adjustment" },
     { text: "Repeat it daily" },
@@ -2733,7 +2759,7 @@ async function processFlow(args, _stylePreset, overlayInputs) {
 }
 
 async function filtersFor(config, overlayInputs) {
-  const args = { ...(config.defaultArgs || {}), ...(config.args || {}) };
+  const args = resolveRendererArgs(config);
   const rawRendererKey = asText(config.rendererId || config.templateId);
   const rendererKey = resolveRendererKey(config);
   if (rawRendererKey === "research_finding_card") {
@@ -3088,6 +3114,10 @@ async function main() {
     };
   } else {
     const filters = await filtersFor(config, overlayInputs);
+    rendererMetadata = {
+      renderer: rendererKey,
+      resolvedArgs: resolveRendererArgs(config),
+    };
     for (const overlay of overlayInputs) {
       if (overlay.framePattern) {
         inputArgs.push("-framerate", String(FPS), "-i", overlay.framePattern);
@@ -3140,6 +3170,7 @@ export {
   instruction,
   causeEffect,
   resolveRendererKey,
+  resolveRendererArgs,
 };
 
 const isCli = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;

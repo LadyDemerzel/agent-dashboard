@@ -16,6 +16,7 @@ import {
   instruction,
   causeEffect,
   resolveRendererKey,
+  resolveRendererArgs,
 } from "./render-motion-graphic.mjs";
 
 async function measureVisibleRoundedTextCardPadding(overlay) {
@@ -115,6 +116,48 @@ const wrappedChecklistYs = wrappedChecklistTextFilters
 const futureItemY = Number(hiddenChecklistFilters.find((filter) => filter.includes("text='Hidden future item'"))?.match(/:y='?([0-9.]+)/)?.[1]);
 assert.ok(wrappedChecklistYs.length >= 3 && Number.isFinite(futureItemY), "checklist test should capture wrapped and following item positions");
 assert.ok(Math.max(...wrappedChecklistYs) + 48 < futureItemY, "following checklist item should start below the wrapped item block");
+
+const checklistDefaultArgs = {
+  items: [
+    { text: "Set the baseline" },
+    { text: "Make the small adjustment" },
+    { text: "Repeat it daily" },
+  ],
+  futureItemsMode: "hidden",
+};
+const checklistConfigA = {
+  templateId: "checklist",
+  rendererId: "checklist",
+  defaultArgs: checklistDefaultArgs,
+  args: {
+    steps: [
+      "Move both corners together",
+      "Hold for three seconds",
+      "Release both sides together",
+    ],
+    futureItemsMode: "blurred",
+  },
+};
+const checklistConfigB = {
+  templateId: "checklist",
+  rendererId: "checklist",
+  defaultArgs: checklistDefaultArgs,
+  args: {
+    steps: [
+      "Repeat ten slow reps",
+      "Stop when one side steals it",
+      "Reset before adding force",
+    ],
+    futureItemsMode: "blurred",
+  },
+};
+const resolvedChecklistA = resolveRendererArgs(checklistConfigA);
+const resolvedChecklistB = resolveRendererArgs(checklistConfigB);
+assert.deepEqual(resolvedChecklistA.items, checklistConfigA.args.steps, "XML <step> values must override checklist defaultArgs.items");
+assert.deepEqual(resolvedChecklistB.items, checklistConfigB.args.steps, "second checklist XML <step> values must override checklist defaultArgs.items");
+assert.notDeepEqual(resolvedChecklistA.items, resolvedChecklistB.items, "different checklist XML steps must produce different renderer inputs");
+assert.ok(!JSON.stringify(resolvedChecklistA.items).includes("Set the baseline"), "checklist A must not fall back to default preview sample items");
+assert.ok(!JSON.stringify(resolvedChecklistB.items).includes("Set the baseline"), "checklist B must not fall back to default preview sample items");
 
 const scorecardFilters = scorecard(
   { title: "Fit score", data: [{ label: "Clarity", value: 80, displayValue: "80" }] },

@@ -10,6 +10,9 @@ import {
   suppressCaptionTimelineForRanges,
 } from "./short-form-caption-suppression.mjs";
 import {
+  hydrateRuntimeXmlMotionGraphicsFromManifest,
+} from "./short-form-motion-graphics-runtime.mjs";
+import {
   buildCaptionOverlayFramePlan,
   formatCaptionOverlayFrameAudit,
 } from "./short-form-caption-overlay-track.mjs";
@@ -1234,6 +1237,55 @@ function resolveXmlRuntimePath(scriptPath, runDir, name) {
   const runtimePath = path.join(runDir, name);
   fs.writeFileSync(runtimePath, `${xml.trim()}\n`, "utf-8");
   return runtimePath;
+}
+
+function getLatestSceneImagesRuntimeXmlPath(projectId) {
+  const projectMeta = readProjectMeta(projectId);
+  const sceneImagesRunId = projectMeta?.latestStageRequests?.["scene-images"]?.runId;
+  if (typeof sceneImagesRunId !== "string" || !sceneImagesRunId.trim()) return undefined;
+
+  const candidate = path.join(
+    getProjectDir(projectId),
+    ".workflow-runs",
+    sceneImagesRunId.trim(),
+    "scene-images-runtime.xml",
+  );
+  return fs.existsSync(candidate) ? candidate : undefined;
+}
+
+function restoreMissingMotionGraphicVideosFromSceneImageRun(projectId, sceneImagesDir) {
+  const projectMeta = readProjectMeta(projectId);
+  const sceneImagesRunId = projectMeta?.latestStageRequests?.["scene-images"]?.runId;
+  if (typeof sceneImagesRunId !== "string" || !sceneImagesRunId.trim()) return [];
+
+  const manifestPath = getSceneGeneratorManifestPath(projectId);
+  const manifest = readManifestIfExists(manifestPath);
+  const restored = [];
+  for (const scene of manifest.scenes || []) {
+    if (scene?.visual_type !== "motion_graphic") continue;
+    const index = Number(scene.index);
+    if (!Number.isInteger(index) || index <= 0) continue;
+
+    const padded = String(index).padStart(2, "0");
+    const videoPath = typeof scene.motion_graphic_video === "string" && scene.motion_graphic_video.trim()
+      ? scene.motion_graphic_video.trim()
+      : path.join(sceneImagesDir, `scene-${padded}-motion-graphic.mp4`);
+    if (fs.existsSync(videoPath)) continue;
+
+    const configPath = path.join(getProjectDir(projectId), ".workflow-runs", sceneImagesRunId.trim(), `scene-${padded}-motion-graphic.json`);
+    if (!fs.existsSync(configPath)) continue;
+
+    const posterPath = typeof scene.uncaptioned === "string" && scene.uncaptioned.trim()
+      ? scene.uncaptioned.trim()
+      : path.join(sceneImagesDir, `scene-${padded}-uncaptioned-1080x1920.png`);
+    ensureDir(path.dirname(videoPath));
+    runCommand(process.execPath, [MOTION_GRAPHIC_RENDERER_SCRIPT, "--config", configPath, "--output", videoPath, "--poster", posterPath]);
+    if (typeof scene.captioned === "string" && scene.captioned.trim() && fs.existsSync(posterPath)) {
+      fs.copyFileSync(posterPath, scene.captioned.trim());
+    }
+    restored.push(videoPath);
+  }
+  return restored;
 }
 
 function parseSceneIdToIndex(sceneId) {
@@ -4206,7 +4258,18 @@ function runDirectVideo(job) {
   ensureDir(path.dirname(config.finalVideoPath));
   ensureDir(config.videoWorkDir);
 
-  const runtimeXmlPath = resolveXmlRuntimePath(config.scriptPath, runDir, "video-runtime.xml");
+  const sceneImagesRuntimeXmlPath = getLatestSceneImagesRuntimeXmlPath(job.projectId);
+  const runtimeXmlPath = resolveXmlRuntimePath(
+    sceneImagesRuntimeXmlPath || config.scriptPath,
+    runDir,
+    "video-runtime.xml",
+  );
+  if (sceneImagesRuntimeXmlPath) {
+    restoreMissingMotionGraphicVideosFromSceneImageRun(job.projectId, config.sceneImagesDir);
+    hydrateRuntimeXmlMotionGraphicsFromManifest(runtimeXmlPath, getSceneGeneratorManifestPath(job.projectId), {
+      sourceXmlPath: config.scriptPath,
+    });
+  }
   const xmlWorkDir = path.join(getProjectDir(job.projectId), "output", "xml-script-work");
   const captionsJsonPath = path.join(xmlWorkDir, "captions", "caption-sections.json");
   const existingVoicePath = path.join(xmlWorkDir, "voice", "narration-full.wav");
