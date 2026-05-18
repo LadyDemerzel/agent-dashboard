@@ -32,6 +32,7 @@ import {
   CompactSettingCard,
   CompactSettingLink,
 } from "@/components/short-form-video/CompactSettingCard";
+import { AutoGenerateRestButton } from "@/components/short-form-video/AutoGenerateRestButton";
 import { SyntaxHighlightedCode } from "@/components/short-form-video/SyntaxHighlightedCode";
 import {
   PendingNotice,
@@ -6415,6 +6416,7 @@ export function ShortFormVideoDetailView({
       project?.soundDesign.pending ||
       project?.video.pending ||
       project?.video.pipeline?.status === "running" ||
+      project?.autoRun?.status === "active" ||
       savingTopic),
   );
   const projectKey = projectId ? `/api/short-form-videos/${projectId}` : null;
@@ -6760,14 +6762,21 @@ export function ShortFormVideoDetailView({
       description={pageMeta.description}
       status={currentItem.status}
       actions={
-        <RefreshIconButton
-          onClick={() => void refreshActivePage()}
-          disabled={refreshing || manualRefreshing}
-          refreshing={refreshing || manualRefreshing}
-          tooltip="Refresh workflow page"
-          refreshingTooltip="Refreshing workflow page…"
-          label="Refresh workflow page"
-        />
+        <>
+          <AutoGenerateRestButton
+            project={currentProject}
+            activeSection={activeSection}
+            onProjectRefresh={refreshProject}
+          />
+          <RefreshIconButton
+            onClick={() => void refreshActivePage()}
+            disabled={refreshing || manualRefreshing}
+            refreshing={refreshing || manualRefreshing}
+            tooltip="Refresh workflow page"
+            refreshingTooltip="Refreshing workflow page…"
+            label="Refresh workflow page"
+          />
+        </>
       }
       preContent={
         <>

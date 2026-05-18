@@ -35,6 +35,9 @@ export interface XmlCaptionSection {
 
 export interface XmlScriptPipelineSummary {
   status: "running" | "completed" | "failed" | "idle";
+  runId?: string;
+  task?: "full" | "narration" | "silence" | "captions" | "visuals";
+  startedAt?: string;
   workDir?: string;
   audioPath?: string;
   originalAudioPath?: string;
@@ -645,6 +648,9 @@ export function getXmlScriptDocument(
     captions,
     pipeline: {
       status: runFailed ? "failed" : xmlDone ? "completed" : runActive ? "running" : "idle",
+      runId: latestRun?.runId,
+      task: latestRun?.task,
+      startedAt: latestRun?.startedAt,
       workDir,
       audioPath: processedAudioFreshAt ? audioPath : undefined,
       originalAudioPath: originalAudioFreshAt ? originalAudioPath : undefined,

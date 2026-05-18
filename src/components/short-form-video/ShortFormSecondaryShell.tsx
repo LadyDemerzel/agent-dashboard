@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import {
@@ -11,6 +11,7 @@ import {
   Images,
   Lightbulb,
   ListMusic,
+  Loader2,
   Mic2,
   Search,
   Volume2,
@@ -18,6 +19,14 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
+import {
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogOverlay,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useAppShellChrome, type AppShellSecondarySidebarConfig } from '@/components/app-shell-chrome';
 import {
   Sidebar,
@@ -34,6 +43,12 @@ import type {
   ShortFormSecondaryNavIcon,
   ShortFormSecondaryNavItem,
 } from '@/lib/short-form-secondary-nav';
+import {
+  getShortFormAutoRunStartedFromLabel,
+  SHORT_FORM_AUTO_RUN_STEPS,
+  type ShortFormAutoRunState,
+  type ShortFormAutoRunStepId,
+} from '@/lib/short-form-auto-run';
 import { cn } from '@/lib/utils';
 
 const NAV_ICON_CLASS = 'mt-0.5 h-4 w-4 shrink-0';
@@ -86,13 +101,114 @@ function groupNavItems(items: ShortFormSecondaryNavItem[], fallbackLabel: string
   }, []);
 }
 
+function autoRunStatusForStep(autoRun: ShortFormAutoRunState, stepId: ShortFormAutoRunStepId) {
+  if (autoRun.failedStep === stepId) return 'failed';
+  if (autoRun.currentStep === stepId && autoRun.status === 'active') return 'working';
+  if (autoRun.completedSteps.includes(stepId)) return 'completed';
+  if (autoRun.skippedSteps.includes(stepId)) return 'skipped';
+  if (autoRun.waitingSteps.includes(stepId)) return 'queued by auto-run';
+  return 'draft';
+}
+
+function AutoRunSidebarCallout({ autoRun }: { autoRun?: ShortFormAutoRunState }) {
+  const [open, setOpen] = useState(false);
+
+  if (!autoRun) return null;
+
+  const calloutStatus = autoRun.status === 'active' ? 'working' : autoRun.status;
+  const calloutTitle =
+    autoRun.status === 'active'
+      ? 'Auto-generation running'
+      : autoRun.status === 'completed'
+        ? 'Auto-generation completed'
+        : autoRun.status === 'failed'
+          ? 'Auto-generation failed'
+          : 'Auto-generation stopped';
+
+  return (
+    <>
+      <div className="px-2 pb-2">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex w-full cursor-pointer items-center gap-2 rounded-lg border border-blue-500/25 bg-blue-500/10 px-3 py-2 text-left text-sm text-sidebar-foreground transition hover:bg-blue-500/15"
+        >
+          {autoRun.status === 'active' ? (
+            <Loader2 aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin text-blue-500" />
+          ) : null}
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-medium">{calloutTitle}</span>
+            <span className="block truncate text-xs text-muted-foreground">
+              {autoRun.currentStep
+                ? SHORT_FORM_AUTO_RUN_STEPS.find((step) => step.id === autoRun.currentStep)?.label
+                : autoRun.status === 'completed'
+                  ? `${autoRun.completedSteps.length} steps ran`
+                  : autoRun.status === 'failed'
+                    ? autoRun.error || 'Stopped before completion'
+                    : 'Waiting for the next step'}
+            </span>
+          </span>
+          <StatusBadge status={calloutStatus} compact />
+        </button>
+      </div>
+      <DialogOverlay open={open} onClick={() => setOpen(false)}>
+        <DialogContent size="lg" className="max-h-[85vh] overflow-y-auto" onClick={(event) => event.stopPropagation()}>
+          <DialogHeader>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <DialogTitle>Auto-generation</DialogTitle>
+                <DialogDescription>
+                  Started from {getShortFormAutoRunStartedFromLabel(autoRun.startedFrom)}
+                </DialogDescription>
+              </div>
+              <StatusBadge status={calloutStatus} />
+            </div>
+          </DialogHeader>
+          <div className="space-y-2">
+            {SHORT_FORM_AUTO_RUN_STEPS.map((step) => {
+              const status = autoRunStatusForStep(autoRun, step.id);
+              return (
+                <div
+                  key={step.id}
+                  className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/60 px-3 py-2"
+                >
+                  <span className={cn('text-sm', status === 'skipped' && 'text-muted-foreground line-through')}>
+                    {step.label}
+                  </span>
+                  <StatusBadge status={status} compact />
+                </div>
+              );
+            })}
+          </div>
+          {autoRun.error ? (
+            <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {autoRun.error}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="cursor-pointer rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
+            >
+              Close
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </DialogOverlay>
+    </>
+  );
+}
+
 function SecondarySidebarBody({
   title,
   items,
+  autoRun,
   onNavigate,
 }: {
   title: string;
   items: ShortFormSecondaryNavItem[];
+  autoRun?: ShortFormAutoRunState;
   onNavigate: () => void;
 }) {
   const pathname = usePathname() || '/';
@@ -108,6 +224,7 @@ function SecondarySidebarBody({
         </div>
       </SidebarHeader>
       <SidebarContent>
+        <AutoRunSidebarCallout autoRun={autoRun} />
         {groups.map((group, groupIndex) => (
           <SidebarGroup key={`${group.label}-${groupIndex}`}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
@@ -161,7 +278,7 @@ export function ShortFormSecondarySidebar({
           shortFormMobileOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        <SecondarySidebarBody title={sidebar.title} items={sidebar.items} onNavigate={closeShortFormSidebar} />
+        <SecondarySidebarBody title={sidebar.title} items={sidebar.items} autoRun={sidebar.autoRun} onNavigate={closeShortFormSidebar} />
       </div>
 
       <aside
@@ -172,7 +289,7 @@ export function ShortFormSecondarySidebar({
         style={{ width: 'var(--short-form-secondary-nav-width)' }}
       >
         <div className={cn('sticky top-0 h-screen overflow-hidden transition-opacity duration-200', !shortFormDesktopOpen && 'opacity-0')}>
-          <SecondarySidebarBody title={sidebar.title} items={sidebar.items} onNavigate={() => undefined} />
+          <SecondarySidebarBody title={sidebar.title} items={sidebar.items} autoRun={sidebar.autoRun} onNavigate={() => undefined} />
         </div>
       </aside>
     </>
@@ -183,18 +300,20 @@ export function ShortFormSecondaryShell({
   title,
   items,
   breadcrumbLabel,
+  autoRun,
   children,
 }: {
   title: string;
   items: ShortFormSecondaryNavItem[];
   breadcrumbLabel?: string;
+  autoRun?: ShortFormAutoRunState;
   children: ReactNode;
 }) {
   const { setSecondarySidebar, clearSecondarySidebar } = useAppShellChrome();
 
   const sidebarConfig = useMemo<AppShellSecondarySidebarConfig>(
-    () => ({ title, items, breadcrumbLabel }),
-    [breadcrumbLabel, items, title]
+    () => ({ title, items, breadcrumbLabel, autoRun }),
+    [autoRun, breadcrumbLabel, items, title]
   );
 
   useEffect(() => {

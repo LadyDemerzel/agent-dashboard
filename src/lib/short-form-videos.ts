@@ -29,6 +29,7 @@ import {
 } from "@/lib/short-form-sound-design";
 import { getSoundDesignHandoffState } from "@/lib/short-form-sound-design-handoff";
 import type { ShortFormVisualGenerationModelId } from "@/lib/short-form-visual-generation";
+import type { ShortFormAutoRunState } from "@/lib/short-form-auto-run";
 
 export type ShortFormStageKey = "research" | "script" | "scene-images" | "sound-design" | "video";
 export type PendingStageKey = "hooks" | ShortFormStageKey;
@@ -201,6 +202,7 @@ export interface ShortFormProjectMeta {
   pauseRemovalSilenceThresholdDbOverride?: number;
   latestHookRequest?: HookRequestContext;
   latestStageRequests?: Partial<Record<ShortFormStageKey, StageRequestContext>>;
+  autoRun?: ShortFormAutoRunState;
 }
 
 export interface StageAgentRunSummary {
@@ -342,6 +344,7 @@ export interface ShortFormProject {
   captionMaxWordsOverride?: number;
   pauseRemovalMinSilenceDurationSecondsOverride?: number;
   pauseRemovalSilenceThresholdDbOverride?: number;
+  autoRun?: ShortFormAutoRunState;
   currentStage: string;
   pendingStages: PendingStageKey[];
   hooks: {
@@ -1070,6 +1073,7 @@ export function duplicateShortFormProject(
     pendingSceneImages: false,
     pendingSoundDesign: false,
     pendingVideo: false,
+    autoRun: undefined,
   };
 
   saveProjectMeta(id, meta);
@@ -3103,6 +3107,7 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
     captionMaxWordsOverride: nextMeta.captionMaxWordsOverride,
     pauseRemovalMinSilenceDurationSecondsOverride: nextMeta.pauseRemovalMinSilenceDurationSecondsOverride,
     pauseRemovalSilenceThresholdDbOverride: nextMeta.pauseRemovalSilenceThresholdDbOverride,
+    autoRun: nextMeta.autoRun,
     currentStage: "topic",
     pendingStages: getPendingStages(nextMeta, {
       research: resolvedResearch,

@@ -6,6 +6,10 @@ import {
   type ShortFormDetailRouteSection,
   type ShortFormSettingsRouteSection,
 } from '@/lib/short-form-video-navigation';
+import {
+  SHORT_FORM_AUTO_RUN_SECTION_TO_STEP_ID,
+  type ShortFormAutoRunStepId,
+} from '@/lib/short-form-auto-run';
 
 export const APP_SHELL_COMPACT_BREAKPOINT_PX = 1360;
 export const SHORT_FORM_SECONDARY_NAV_WIDTH = '15rem';
@@ -61,8 +65,28 @@ function soundDesignStageStatus(project: Project) {
   return approved(project.sceneImages.status) ? 'ready' : (project.soundDesign.status || 'draft');
 }
 
+function autoRunStepForSection(sectionId: DetailSectionId): ShortFormAutoRunStepId | undefined {
+  if (sectionId === 'script') return 'text-script';
+  if (sectionId === 'scene-images') return 'generate-visuals';
+  if (sectionId === 'video') return 'final-video';
+  return SHORT_FORM_AUTO_RUN_SECTION_TO_STEP_ID[sectionId as ShortFormDetailRouteSection];
+}
+
+function getAutoRunSectionStatus(project: Project, sectionId: DetailSectionId) {
+  const autoRun = project.autoRun;
+  const stepId = autoRunStepForSection(sectionId);
+  if (!autoRun || autoRun.status !== 'active' || !stepId) return undefined;
+  if (autoRun.failedStep === stepId) return 'failed';
+  if (autoRun.currentStep === stepId) return 'working';
+  if (autoRun.waitingSteps.includes(stepId)) return 'queued by auto-run';
+  return undefined;
+}
+
 function getDetailSectionStatus(project: Project | null, sectionId: DetailSectionId): string {
   if (!project) return 'draft';
+
+  const autoRunStatus = getAutoRunSectionStatus(project, sectionId);
+  if (autoRunStatus) return autoRunStatus;
 
   switch (sectionId) {
     case 'topic':

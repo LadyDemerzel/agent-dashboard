@@ -5,6 +5,8 @@ import { getShortFormVideoRenderSettings } from "@/lib/short-form-video-render-s
 import { getShortFormBackgroundVideoSettings } from "@/lib/short-form-background-videos";
 import { getSoundDesignHandoffState } from "@/lib/short-form-sound-design-handoff";
 import { isShortFormVisualGenerationModelId } from "@/lib/short-form-visual-generation";
+import { normalizeShortFormAutoRunState } from "@/lib/short-form-auto-run";
+import { reconcileStaleShortFormAutoRun } from "@/lib/short-form-auto-run-orchestrator";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +15,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const project = getShortFormProject(id);
+  const project = reconcileStaleShortFormAutoRun(id) || getShortFormProject(id);
   if (!project) {
     return NextResponse.json({ success: false, error: "Project not found" }, { status: 404 });
   }
@@ -78,6 +80,11 @@ export async function PATCH(
     ? null
     : typeof body.pauseRemovalSilenceThresholdDbOverride === "number" && Number.isFinite(body.pauseRemovalSilenceThresholdDbOverride)
       ? Math.min(-5, Math.max(-80, Math.round(body.pauseRemovalSilenceThresholdDbOverride * 10) / 10))
+      : undefined;
+  const autoRun = body.autoRun === null
+    ? null
+    : body.autoRun && typeof body.autoRun === "object" && !Array.isArray(body.autoRun)
+      ? normalizeShortFormAutoRunState(body.autoRun)
       : undefined;
 
   if (selectedImageStyleId !== undefined) {
@@ -200,6 +207,9 @@ export async function PATCH(
               ? undefined
               : pauseRemovalSilenceThresholdDbOverride,
         }
+      : {}),
+    ...(autoRun !== undefined
+      ? { autoRun: autoRun === null ? undefined : autoRun }
       : {}),
   });
 

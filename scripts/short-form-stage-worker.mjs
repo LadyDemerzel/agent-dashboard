@@ -3297,6 +3297,20 @@ function getSoundDesignInputFileSignature(role, relativePath, absolutePath) {
   return { role, relativePath, exists: true, size: stat.size, mtimeMs: Math.round(stat.mtimeMs) };
 }
 
+function getSoundDesignDocumentSignature(relativePath, absolutePath) {
+  if (!absolutePath || !fs.existsSync(absolutePath)) {
+    return { role: "sound-design-doc", relativePath, exists: false };
+  }
+  const body = stripFrontMatter(fs.readFileSync(absolutePath, "utf-8"));
+  return {
+    role: "sound-design-doc",
+    relativePath,
+    exists: true,
+    bodyBytes: Buffer.byteLength(body, "utf-8"),
+    bodyHash: crypto.createHash("sha256").update(body).digest("hex"),
+  };
+}
+
 function getSoundDesignFinalInputSnapshot(projectId, resolution) {
   const resolvedEvents = Array.isArray(resolution?.events) ? resolution.events : [];
   const activeEventsBase = resolvedEvents.filter((event) => event && event.status === "resolved" && !event.muted && event.assetRelativePath);
@@ -3306,7 +3320,7 @@ function getSoundDesignFinalInputSnapshot(projectId, resolution) {
     ? resolution.musicSegments.filter((segment) => segment && segment.status === "resolved" && segment.musicRelativePath)
     : [];
   const fileSignatures = [
-    getSoundDesignInputFileSignature("sound-design-doc", "sound-design.md", path.join(getProjectDir(projectId), "sound-design.md")),
+    getSoundDesignDocumentSignature("sound-design.md", path.join(getProjectDir(projectId), "sound-design.md")),
     ...activeEvents.map((event) => getSoundDesignInputFileSignature("sound-asset", event.assetRelativePath || "", resolveSoundLibraryAbsolutePath(event.assetRelativePath || ""))),
     ...activeMusicSegments.map((segment) => getSoundDesignInputFileSignature("music-asset", segment.musicRelativePath || "", resolveMusicLibraryAbsolutePath(segment.musicRelativePath || ""))),
   ];

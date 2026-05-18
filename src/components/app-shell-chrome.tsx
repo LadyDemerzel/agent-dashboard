@@ -2,11 +2,13 @@
 
 import { createContext, useContext } from 'react';
 import type { ShortFormSecondaryNavItem } from '@/lib/short-form-secondary-nav';
+import type { ShortFormAutoRunState } from '@/lib/short-form-auto-run';
 
 export interface AppShellSecondarySidebarConfig {
   title: string;
   items: ShortFormSecondaryNavItem[];
   breadcrumbLabel?: string;
+  autoRun?: ShortFormAutoRunState;
 }
 
 export interface AppShellChromeContextValue {

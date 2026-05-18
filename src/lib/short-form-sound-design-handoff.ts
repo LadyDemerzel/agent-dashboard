@@ -61,7 +61,9 @@ export function getSoundDesignHandoffState(input: SoundDesignHandoffInput): Soun
     : null;
   const qaStatus = soundDesign?.resolution?.qa?.status;
   const previewFresh = soundDesign?.resolution?.qa?.previewFresh;
+  const finalFresh = soundDesign?.resolution?.qa?.finalFresh;
   const hasResolvedEvents = totalEvents !== null && totalEvents > 0 && unresolvedEvents === 0;
+  const hasFreshApprovedMix = previewFresh !== false || finalFresh === true;
   const approvalWarnings = [
     ...(qaStatus === "fail"
       ? ["Sound-design QA is failing. Approval will override the QA failure and hand off the current preview mix with warnings."]
@@ -69,7 +71,7 @@ export function getSoundDesignHandoffState(input: SoundDesignHandoffInput): Soun
         ? ["Sound-design QA has warnings. Approval will hand off the current preview mix with warnings."]
         : []),
   ];
-  const canApprove = Boolean(soundDesign?.exists && planApproved && hasPreview && hasResolvedEvents && previewFresh !== false);
+  const canApprove = Boolean(soundDesign?.exists && planApproved && hasPreview && hasResolvedEvents && hasFreshApprovedMix);
   const canSkip = Boolean(skipReason);
   const canProceedToFinalVideo = (decision === "approved" && canApprove) || (decision === "skipped" && canSkip);
 
@@ -90,7 +92,7 @@ export function getSoundDesignHandoffState(input: SoundDesignHandoffInput): Soun
     gateReason = "Resolve at least one sound-design event before approving this handoff for Final Video.";
   } else if (unresolvedEvents > 0) {
     gateReason = `Resolve ${unresolvedEvents} remaining ${pluralize(unresolvedEvents, "sound-design event")} before approving this handoff for Final Video.`;
-  } else if (previewFresh === false) {
+  } else if (previewFresh === false && finalFresh !== true) {
     gateReason = "Render a fresh preview mix before approving this handoff for Final Video.";
   } else if (decision !== "approved" && decision !== "skipped") {
     gateReason = qaStatus === "fail"

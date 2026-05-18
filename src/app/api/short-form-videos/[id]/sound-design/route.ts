@@ -25,6 +25,15 @@ const DEFAULT_RELIABLE_MODEL = process.env.SHORT_FORM_RELIABLE_MODEL || "openai-
 const DEFAULT_RETRY_MODEL = process.env.SHORT_FORM_RETRY_MODEL || "openai/gpt-5.5";
 const MIN_GENERATED_SOUND_DESIGN_EFFECTS = 12;
 
+function isApprovedStatus(status?: string) {
+  return status === "approved" || status === "published";
+}
+
+function isNeedsReviewStatus(status?: string) {
+  const normalized = status?.trim().toLowerCase().replace(/[-_]+/g, " ");
+  return normalized === "needs review" || normalized === "review";
+}
+
 function ensureDir(dirPath: string) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -68,7 +77,7 @@ function launchSoundDesignWorker(projectId: string, jobPath: string) {
     if (code === 0) {
       try {
         const doc = readShortFormSoundDesignDocument(projectId);
-        if (doc.status !== "needs review") {
+        if (!isNeedsReviewStatus(doc.status) && !isApprovedStatus(doc.status)) {
           updateStageFrontMatterStatus(projectId, "sound-design", "needs review");
           appendStatusLog(
             getShortFormSoundDesignPath(projectId),
@@ -79,11 +88,14 @@ function launchSoundDesignWorker(projectId: string, jobPath: string) {
           );
         }
         resolveShortFormSoundDesign(projectId);
-        updateProjectMeta(projectId, {
-          soundDesignDecision: undefined,
-          soundDesignSkipReason: undefined,
-          soundDesignApprovalWarning: undefined,
-        });
+        const latestDoc = readShortFormSoundDesignDocument(projectId);
+        if (!isApprovedStatus(latestDoc.status)) {
+          updateProjectMeta(projectId, {
+            soundDesignDecision: undefined,
+            soundDesignSkipReason: undefined,
+            soundDesignApprovalWarning: undefined,
+          });
+        }
       } catch (error) {
         writeRunFailureStatus(jobPath, {
           projectId,
@@ -152,7 +164,6 @@ export async function POST(
       return NextResponse.json({ success: false, error: "Plan Sound Design XML is missing. Generate the plan before resolving sound-design assets." }, { status: 400 });
     }
     const resolution = resolveShortFormSoundDesign(id);
-    updateProjectMeta(id, { soundDesignDecision: undefined, soundDesignSkipReason: undefined, soundDesignApprovalWarning: undefined });
     return NextResponse.json({
       success: true,
       data: {
@@ -203,6 +214,7 @@ export async function POST(
 
   return NextResponse.json({
     success: true,
+    runId,
     data: {
       ...readShortFormSoundDesignDocument(id),
       runId,

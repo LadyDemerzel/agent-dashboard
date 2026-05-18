@@ -2124,6 +2124,20 @@ function getSoundDesignInputFileSignature(role: string, relativePath: string, ab
   };
 }
 
+function getSoundDesignDocumentSignature(relativePath: string, absolutePath: string) {
+  if (!fs.existsSync(absolutePath)) {
+    return { role: "sound-design-doc", relativePath, exists: false };
+  }
+  const body = extractBody(fs.readFileSync(absolutePath, "utf-8")).trim();
+  return {
+    role: "sound-design-doc",
+    relativePath,
+    exists: true,
+    bodyBytes: Buffer.byteLength(body, "utf-8"),
+    bodyHash: crypto.createHash("sha256").update(body).digest("hex"),
+  };
+}
+
 function getSoundDesignFinalInputSnapshot(projectId: string, resolution?: ShortFormSoundDesignResolution) {
   const projectDir = getProjectDir(projectId);
   const docPath = getShortFormSoundDesignPath(projectId);
@@ -2133,7 +2147,7 @@ function getSoundDesignFinalInputSnapshot(projectId: string, resolution?: ShortF
   const activeEvents = anySolo ? activeEventsBase.filter((event) => event.solo === true) : activeEventsBase;
   const activeMusicSegments = (resolution?.musicSegments || []).filter((segment) => segment.status === "resolved" && segment.musicRelativePath);
   const fileSignatures = [
-    getSoundDesignInputFileSignature("sound-design-doc", "sound-design.md", docPath),
+    getSoundDesignDocumentSignature("sound-design.md", docPath),
     ...activeEvents.map((event) => getSoundDesignInputFileSignature(
       "sound-asset",
       event.assetRelativePath || "",
@@ -2146,7 +2160,7 @@ function getSoundDesignFinalInputSnapshot(projectId: string, resolution?: ShortF
     )),
   ];
   const existingMtimes = fileSignatures
-    .map((signature) => typeof signature.mtimeMs === "number" ? signature.mtimeMs : 0)
+    .map((signature) => "mtimeMs" in signature && typeof signature.mtimeMs === "number" ? signature.mtimeMs : 0)
     .filter((mtimeMs) => mtimeMs > 0);
   const lastChangedAtMs = existingMtimes.length > 0 ? Math.max(...existingMtimes) : 0;
   const input = {
@@ -2166,11 +2180,9 @@ function getSoundDesignFinalInputSnapshot(projectId: string, resolution?: ShortF
 
 function getProjectSoundDesignFreshness(projectId: string, previewRelativePath?: string, resolution?: ShortFormSoundDesignResolution) {
   const projectDir = getProjectDir(projectId);
-  const docPath = getShortFormSoundDesignPath(projectId);
   const previewPath = previewRelativePath ? path.join(projectDir, previewRelativePath) : undefined;
   const finalVideoPath = path.join(projectDir, "output", "final-video.mp4");
   const baselineMtime = Math.max(
-    fs.existsSync(docPath) ? fs.statSync(docPath).mtimeMs : 0,
     Date.parse(resolution?.generatedAt || "") || 0,
   );
   const finalInputSnapshot = getSoundDesignFinalInputSnapshot(projectId, resolution);

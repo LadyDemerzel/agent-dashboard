@@ -102,7 +102,12 @@ export function ShortFormVideoDetailShell({
   }, [project]);
 
   return (
-    <ShortFormSecondaryShell title={breadcrumbLabel} items={detailItems} breadcrumbLabel={breadcrumbLabel}>
+    <ShortFormSecondaryShell
+      title={breadcrumbLabel}
+      items={detailItems}
+      breadcrumbLabel={breadcrumbLabel}
+      autoRun={project?.autoRun}
+    >
       {children}
     </ShortFormSecondaryShell>
   );

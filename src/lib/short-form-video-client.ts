@@ -1,3 +1,8 @@
+import {
+  normalizeShortFormAutoRunState,
+  type ShortFormAutoRunState,
+} from "@/lib/short-form-auto-run";
+
 export interface HookOption {
   id: string;
   text: string;
@@ -12,6 +17,9 @@ export interface HookGeneration {
 }
 
 export interface StageAgentRunClient {
+  runId?: string;
+  source?: 'workflow-run' | 'agent-session';
+  status?: 'running' | 'verified' | 'failed';
   sessionId?: string;
   startedAt?: string;
   failedAt?: string;
@@ -109,6 +117,9 @@ export interface XmlPipelineStepClient {
 
 export interface XmlPipelineClient {
   status: 'running' | 'completed' | 'failed' | 'idle';
+  runId?: string;
+  task?: 'full' | 'narration' | 'silence' | 'captions' | 'visuals';
+  startedAt?: string;
   workDir?: string;
   audioPath?: string;
   originalAudioPath?: string;
@@ -324,6 +335,7 @@ export interface ShortFormProjectClient {
   captionMaxWordsOverride?: number;
   pauseRemovalMinSilenceDurationSecondsOverride?: number;
   pauseRemovalSilenceThresholdDbOverride?: number;
+  autoRun?: ShortFormAutoRunState;
   hooks: {
     pending: boolean;
     generations: HookGeneration[];
@@ -477,6 +489,16 @@ function normalizeXmlPipeline(value: unknown): XmlPipelineClient | undefined {
 
   return {
     status: obj.status === 'completed' ? 'completed' : obj.status === 'failed' ? 'failed' : obj.status === 'running' ? 'running' : 'idle',
+    runId: asOptionalString(obj.runId),
+    task:
+      obj.task === 'full' ||
+      obj.task === 'narration' ||
+      obj.task === 'silence' ||
+      obj.task === 'captions' ||
+      obj.task === 'visuals'
+        ? obj.task
+        : undefined,
+    startedAt: asOptionalString(obj.startedAt),
     workDir: asOptionalString(obj.workDir),
     audioPath: asOptionalString(obj.audioPath),
     originalAudioPath: asOptionalString(obj.originalAudioPath),
@@ -642,6 +664,17 @@ function normalizeStageDoc(value: unknown): StageDoc {
         warning: asOptionalString(revisionObj.warning),
         agentRun: Object.keys(agentRunObj).length > 0
           ? {
+              runId: asOptionalString(agentRunObj.runId),
+              source:
+                agentRunObj.source === 'workflow-run' || agentRunObj.source === 'agent-session'
+                  ? agentRunObj.source
+                  : undefined,
+              status:
+                agentRunObj.status === 'running' ||
+                agentRunObj.status === 'verified' ||
+                agentRunObj.status === 'failed'
+                  ? agentRunObj.status
+                  : undefined,
               sessionId: asOptionalString(agentRunObj.sessionId),
               startedAt: asOptionalString(agentRunObj.startedAt),
               failedAt: asOptionalString(agentRunObj.failedAt),
@@ -794,6 +827,7 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
     pauseRemovalSilenceThresholdDbOverride: typeof obj.pauseRemovalSilenceThresholdDbOverride === 'number'
       ? obj.pauseRemovalSilenceThresholdDbOverride
       : undefined,
+    autoRun: normalizeShortFormAutoRunState(obj.autoRun),
     hooks: {
       pending: asBoolean(hooks.pending),
       generations,
