@@ -39,10 +39,10 @@ const DEFAULT_PROMPT_TEMPLATE = [
   `  <topic>...</topic>`,
   `  <script>...</script>`,
   `  <assets>`,
-  `    <image id=\"asset-id\">`,
+  `    <image id=\"asset-id\" characterDriven=\"false\">`,
   `      <prompt>Describe one reusable image asset.</prompt>`,
   `    </image>`,
-  `    <image id=\"asset-id-2\" basedOn=\"asset-id\">`,
+  `    <image id=\"asset-id-2\" basedOn=\"asset-id\" characterDriven=\"true\">`,
   `      <prompt>Describe a NEW image to generate using the prior asset as a reference.</prompt>`,
   `    </image>`,
   `    <motionGraphic id=\"motion-id\" templateId=\"bar_chart\">`,
@@ -63,6 +63,10 @@ const DEFAULT_PROMPT_TEMPLATE = [
   "- The caption JSON is a separate deterministic artifact used by the final renderer and review timeline.",
   "- <timeline><visual> entries should only describe visuals: label, start/end timing, imageId or motionGraphicId, visualType, and optional camera motion.",
   "- <assets>/<image id> defines reusable underlying image assets.",
+  "- Every <assets><image> may include characterDriven=\"true\" or characterDriven=\"false\".",
+  "- Set characterDriven=\"true\" only when a single recurring/person character is intentionally the focal point of that generated image asset.",
+  "- Set characterDriven=\"false\" for environments, products, props, UI/diagrams, facility shots, abstract/process imagery, and any asset where no character/person should appear. If unsure, use false.",
+  "- Examples: an empty modern operating room, modular stainless-steel wall panels, surgical lights, product close-ups, dashboard UI, and process diagrams are characterDriven=\"false\"; a recurring presenter demonstrating a face exercise is characterDriven=\"true\".",
   "- <assets>/<motionGraphic id templateId> defines deterministic animated visuals rendered from approved templates.",
   "- Use visualType=\"motion_graphic\" with motionGraphicId for animated slides/charts/motion graphics. Use imageId for normal generated image visuals.",
   "- Do not invent renderer code. Configure only the allowed motion graphic template fields listed below.",
@@ -116,7 +120,23 @@ function normalizePromptTemplate(value: unknown) {
     ].join("\n");
   }
 
-  return normalized;
+  return ensureCharacterDrivenGuidance(normalized);
+}
+
+function ensureCharacterDrivenGuidance(template: string) {
+  if (/characterDriven\s*=/.test(template)) {
+    return template;
+  }
+
+  const guidance = [
+    "Image character routing:",
+    "- Every <assets><image> may include characterDriven=\"true\" or characterDriven=\"false\".",
+    "- Set characterDriven=\"true\" only when a single recurring/person character is intentionally the focal point of that generated image asset.",
+    "- Set characterDriven=\"false\" for environments, products, props, UI/diagrams, facility shots, abstract/process imagery, and any asset where no character/person should appear. If unsure, use false.",
+    "- Examples: an empty modern operating room, modular stainless-steel wall panels, surgical lights, product close-ups, dashboard UI, and process diagrams are characterDriven=\"false\"; a recurring presenter demonstrating a face exercise is characterDriven=\"true\".",
+  ].join("\n");
+
+  return [template, "", guidance].join("\n");
 }
 
 function normalizeRevisionNotesPromptTemplate(value: unknown) {

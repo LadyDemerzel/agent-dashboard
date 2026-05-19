@@ -1794,11 +1794,23 @@ function runCommand(command, args, options = {}) {
     env: { ...process.env, ...(options.env || {}) },
     encoding: "utf-8",
     maxBuffer: 10 * 1024 * 1024,
+    ...(Number.isFinite(options.timeout) ? { timeout: options.timeout } : {}),
   });
+
+  if (result.error) {
+    const timeoutDetail = result.error.code === "ETIMEDOUT"
+      ? ` after ${Math.round((options.timeout || 0) / 60_000)} minutes`
+      : "";
+    throw new Error([
+      `${command} failed${timeoutDetail}: ${result.error.message}`,
+      result.stdout?.trim() ? `stdout:\n${result.stdout.trim()}` : "",
+      result.stderr?.trim() ? `stderr:\n${result.stderr.trim()}` : "",
+    ].filter(Boolean).join("\n\n"));
+  }
 
   if (result.status !== 0) {
     throw new Error([
-      `${command} exited with status ${result.status ?? "unknown"}`,
+      `${command} exited with status ${result.status ?? "unknown"}${result.signal ? ` (signal ${result.signal})` : ""}`,
       result.stdout?.trim() ? `stdout:\n${result.stdout.trim()}` : "",
       result.stderr?.trim() ? `stderr:\n${result.stderr.trim()}` : "",
     ].filter(Boolean).join("\n\n"));
@@ -2547,7 +2559,7 @@ function buildSceneImagesReviewDoc(projectId, scenes, options = {}) {
     "",
     `${scopeLabel} The direct dashboard workflow now calls the xml-scene-images generator deterministically instead of routing this execution step through Scribe. Each scene should now output a raw green-screen foreground plate for assembly, while dashboard preview videos composite that plate over the project's selected looping background video.`,
     "",
-    `This run ${modeLabel} **${scenes.length} visuals** using **${visualGenerationLabel}** with the selected style **${options.imageStyleName || "Default charcoal"}**: one consistent character reference, the saved editable style-instructions template plus per-style art direction, natural top caption-safe headroom, and a hard greenscreen requirement so the final video can chroma-key the subject over a persistent looping background video. The generated artwork still contains no baked-in text. Reused XML imageIds stay deterministic, and any XML asset declared with basedOn keeps reference-derived variants explicit in the XML and manifest for debugging.${styleReferenceLine}`,
+    `This run ${modeLabel} **${scenes.length} visuals** using **${visualGenerationLabel}** with the selected style **${options.imageStyleName || "Default charcoal"}**: the saved editable style-instructions template plus per-style art direction, XML characterDriven routing for character references, natural top caption-safe headroom, and a hard greenscreen requirement so the final video can chroma-key eligible foreground plates over a persistent looping background video. The generated artwork still contains no baked-in text. Reused XML imageIds stay deterministic, and any XML asset declared with basedOn keeps reference-derived variants explicit in the XML and manifest for debugging.${styleReferenceLine}`,
     ...(options.notes ? ["", "## Request notes", "", options.notes] : []),
     "",
     "## Scene Breakdown",
@@ -4194,8 +4206,12 @@ function runDirectSceneImages(job) {
   }
 
   const shouldRunImageGenerator = motionGraphics.motionVisuals.length === 0 || imageSceneIndexes.length > 0;
+  const sceneImagesTimeoutMs = Number.parseInt(
+    process.env.SHORT_FORM_SCENE_IMAGES_COMMAND_TIMEOUT_MS || "3900000",
+    10,
+  );
   const result = shouldRunImageGenerator
-    ? runCommand("uv", args)
+    ? runCommand("uv", args, { timeout: sceneImagesTimeoutMs })
     : { stdout: "Skipped image generator; requested visuals are deterministic motion graphics only.", stderr: "" };
   syncSceneImageArtifacts(job);
   return {
@@ -4408,6 +4424,11 @@ async function main() {
       startedAt: new Date().toISOString(),
     };
     attempts.push(attempt);
+    finalizeRun({
+      status: "running",
+      activeStep: "direct-workflow",
+      activeStatusText: `Running direct ${job.stage} workflow`,
+    });
 
     try {
       const directResult = job.directConfig.kind === "text-script"
@@ -4536,6 +4557,20 @@ process.on("unhandledRejection", (reason) => {
   });
   process.exit(1);
 });
+
+function handleTerminationSignal(signal) {
+  if (activeRunContext?.job?.directConfig?.kind === "text-script") {
+    failTextScriptRun(activeRunContext.job.directConfig.config, `Worker terminated by ${signal}`);
+  }
+  finalizeRun({
+    status: "failed",
+    errorMessage: `Worker terminated by ${signal}`,
+  });
+  process.exit(1);
+}
+
+process.on("SIGTERM", () => handleTerminationSignal("SIGTERM"));
+process.on("SIGINT", () => handleTerminationSignal("SIGINT"));
 
 if (process.env.SHORT_FORM_STAGE_WORKER_PARSE_MOTION_GRAPHICS_TEST === "1") {
   const xml = fs.readFileSync(jobPath, "utf-8");

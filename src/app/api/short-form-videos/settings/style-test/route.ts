@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
         `  <topic>${escapeXml(topic)}</topic>`,
         `  <script>${escapeXml(caption)}</script>`,
         "  <assets>",
-        '    <image id="style-test-image">',
+        `    <image id="style-test-image" characterDriven="${style.references.some((reference) => reference.usageType === "character") ? "true" : "false"}">`,
         `      <prompt>${escapeXml(imagePrompt)}</prompt>`,
         "    </image>",
         "  </assets>",

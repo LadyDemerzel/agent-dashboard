@@ -94,6 +94,15 @@ function hasFreshArtifact(filePath, requestedAt) {
   }
 }
 
+function getFileSignature(filePath) {
+  if (!fs.existsSync(filePath)) return null;
+  const stat = fs.statSync(filePath);
+  return {
+    size: stat.size,
+    mtimeMs: Math.round(stat.mtimeMs),
+  };
+}
+
 function countSoundDesignEffects(filePath) {
   if (!fs.existsSync(filePath)) return 0;
   const content = fs.readFileSync(filePath, "utf-8");
@@ -114,11 +123,31 @@ function setMarkdownStatus(filePath, status) {
 
 async function waitForFile(filePath, requestedAt, timeoutMs = 10 * 60_000, pollMs = 5000) {
   const startedAt = Date.now();
+  let stableSince = 0;
+  let lastSignature = null;
+  const stableMs = 45_000;
+
   while (Date.now() - startedAt < timeoutMs) {
-    if (hasFreshArtifact(filePath, requestedAt)) return true;
+    if (hasFreshArtifact(filePath, requestedAt)) {
+      const signature = getFileSignature(filePath);
+      const changed =
+        !signature ||
+        !lastSignature ||
+        signature.size !== lastSignature.size ||
+        signature.mtimeMs !== lastSignature.mtimeMs;
+      if (changed) {
+        lastSignature = signature;
+        stableSince = Date.now();
+      } else if (stableSince && Date.now() - stableSince >= stableMs) {
+        return true;
+      }
+    } else {
+      stableSince = 0;
+      lastSignature = null;
+    }
     await new Promise((resolve) => setTimeout(resolve, pollMs));
   }
-  return hasFreshArtifact(filePath, requestedAt);
+  return Boolean(hasFreshArtifact(filePath, requestedAt) && lastSignature && Date.now() - stableSince >= stableMs);
 }
 
 async function main() {

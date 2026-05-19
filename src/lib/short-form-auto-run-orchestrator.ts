@@ -12,13 +12,20 @@ import {
 } from "@/lib/short-form-auto-run";
 import { getSoundDesignHandoffState } from "@/lib/short-form-sound-design-handoff";
 import {
+  appendStatusLog,
+  type DeliverableStatus,
+} from "@/lib/status";
+import {
+  getStageFilePath,
   getProjectDir,
   getProjectMetaPath,
   getShortFormProject,
   getTextScriptRunManifestPath,
   readSceneManifest,
   updateProjectMeta,
+  updateStageFrontMatterStatus,
   type ShortFormProject,
+  type ShortFormStageKey,
   type StageDocumentSummary,
 } from "@/lib/short-form-videos";
 import type { ShortFormDetailRouteSection } from "@/lib/short-form-video-navigation";
@@ -288,6 +295,41 @@ function describeWorkflowProgress(progress: WorkflowRunProgress) {
     progress.activeIterationNumber ? `iteration: ${progress.activeIterationNumber}` : undefined,
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(", ") : "no detailed progress status";
+}
+
+function workflowProgressInactiveMs(progress: WorkflowRunProgress) {
+  const lastProgressMs = progress.lastProgressAt ? Date.parse(progress.lastProgressAt) : Number.NaN;
+  return Number.isFinite(lastProgressMs) ? Date.now() - lastProgressMs : undefined;
+}
+
+function workflowProgressStaleForStep(
+  progress: WorkflowRunProgress,
+  stepId: ShortFormAutoRunStepId,
+) {
+  if (progress.status !== "running") return false;
+  const step = getStepDefinition(stepId);
+  const staleProgressMs = step?.staleProgressTimeoutMs ?? step?.timeoutMs;
+  const inactiveMs = workflowProgressInactiveMs(progress);
+  return typeof staleProgressMs === "number" && typeof inactiveMs === "number" && inactiveMs >= staleProgressMs;
+}
+
+function workflowProgressFailureMessage(
+  progress: WorkflowRunProgress,
+  stepId: ShortFormAutoRunStepId,
+) {
+  const label = getShortFormAutoRunStepLabel(stepId);
+  if (progress.status === "failed") {
+    return (
+      progress.errorMessage ||
+      `${label} workflow run ${progress.runId.slice(0, 8)} failed. Open that page for details.`
+    );
+  }
+  if (workflowProgressStaleForStep(progress, stepId)) {
+    const step = getStepDefinition(stepId);
+    const staleProgressMs = step?.staleProgressTimeoutMs ?? step?.timeoutMs ?? 0;
+    return `${label} workflow run ${progress.runId.slice(0, 8)} stopped making progress for more than ${formatMinutes(staleProgressMs)}. Last status: ${describeWorkflowProgress(progress)}.`;
+  }
+  return undefined;
 }
 
 async function parseEnvelope<T>(response: Response, fallback: string) {
@@ -601,15 +643,223 @@ function finalVideoReadyForAutoApproval(project: ShortFormProject) {
   );
 }
 
-function autoRunStepActuallyCompleted(
-  project: ShortFormProject,
+function workflowStageForAutoRunStep(
   stepId: ShortFormAutoRunStepId,
-) {
+): ShortFormStageKey | undefined {
   switch (stepId) {
     case "research":
-      return stageDocumentReady(project.research) && approved(project.research.status);
+      return "research";
     case "text-script":
-      return stageDocumentReady(project.script) && approved(project.script.status);
+      return "script";
+    case "generate-visuals":
+      return "scene-images";
+    case "plan-sound-design":
+      return "sound-design";
+    case "final-video":
+      return "video";
+    default:
+      return undefined;
+  }
+}
+
+type AutoRunStageRequest = { requestedAt: string; runId?: string };
+
+function latestStageRequest(projectId: string, stage: ShortFormStageKey) {
+  const meta = parseAutoRunProjectMeta(projectId);
+  const latestStageRequests = asRecord(meta.latestStageRequests);
+  const requestRecord = asRecord(latestStageRequests[stage]);
+  const requestedAt = asString(requestRecord.requestedAt);
+  if (!requestedAt) return undefined;
+  return {
+    requestedAt,
+    runId: asString(requestRecord.runId),
+  } satisfies AutoRunStageRequest;
+}
+
+function requestTimeInAutoRunWindow(
+  request: AutoRunStageRequest | undefined,
+  autoRun: ShortFormAutoRunState | undefined,
+) {
+  if (!request || !autoRun) return false;
+  const requestedAt = Date.parse(request.requestedAt);
+  const startedAt = Date.parse(autoRun.startedAt);
+  const finishedAt = autoRun.finishedAt ? Date.parse(autoRun.finishedAt) : Number.NaN;
+  if (!Number.isFinite(requestedAt) || !Number.isFinite(startedAt)) return false;
+  if (requestedAt + 1000 < startedAt) return false;
+  return !Number.isFinite(finishedAt) || requestedAt <= finishedAt + 1000;
+}
+
+function latestRequestForAutoRunStep(
+  projectId: string,
+  autoRun: ShortFormAutoRunState | undefined,
+  stepId: ShortFormAutoRunStepId,
+) {
+  const stage = workflowStageForAutoRunStep(stepId);
+  if (!stage) return undefined;
+
+  const request = latestStageRequest(projectId, stage);
+  if (!request || !requestTimeInAutoRunWindow(request, autoRun)) return undefined;
+  return { stage, request };
+}
+
+function latestWorkflowProgressForAutoRunStep(
+  projectId: string,
+  _project: ShortFormProject,
+  autoRun: ShortFormAutoRunState | undefined,
+  stepId: ShortFormAutoRunStepId,
+) {
+  const latestRequest = latestRequestForAutoRunStep(projectId, autoRun, stepId);
+  if (!latestRequest?.request.runId) return undefined;
+  return readWorkflowRunProgress(projectId, latestRequest.stage, latestRequest.request.runId);
+}
+
+function autoRunFailedStepFromWorkflowRequests(
+  projectId: string,
+  project: ShortFormProject,
+  autoRun: ShortFormAutoRunState,
+) {
+  for (const stepId of autoRun.selectedSteps) {
+    const progress = latestWorkflowProgressForAutoRunStep(projectId, project, autoRun, stepId);
+    if (!progress) continue;
+    const error = workflowProgressFailureMessage(progress, stepId);
+    if (error) return { stepId, error };
+  }
+  return undefined;
+}
+
+function workflowRequestVerifiedForAutoRunStep(
+  projectId: string,
+  project: ShortFormProject,
+  autoRun: ShortFormAutoRunState | undefined,
+  stepId: ShortFormAutoRunStepId,
+) {
+  const latestRequest = latestRequestForAutoRunStep(projectId, autoRun, stepId);
+  if (!latestRequest) return true;
+  if (!latestRequest.request.runId) return false;
+  const progress = readWorkflowRunProgress(
+    projectId,
+    latestRequest.stage,
+    latestRequest.request.runId,
+  );
+  return progress?.status === "verified" && !workflowProgressStaleForStep(progress, stepId);
+}
+
+function requestAfterUpdatedAt(request: AutoRunStageRequest | undefined, updatedAt: string | undefined) {
+  if (!request || !updatedAt) return false;
+  const requestedAtMs = Date.parse(request.requestedAt);
+  const updatedAtMs = Date.parse(updatedAt);
+  if (!Number.isFinite(requestedAtMs) || !Number.isFinite(updatedAtMs)) return false;
+  return requestedAtMs > updatedAtMs + 1000;
+}
+
+function autoRunProducedSoundDesignPlan(
+  projectId: string,
+  project: ShortFormProject,
+  autoRun: ShortFormAutoRunState,
+) {
+  const updatedAtMs = Date.parse(project.soundDesign.updatedAt || "");
+  const startedAtMs = Date.parse(autoRun.startedAt);
+  if (!Number.isFinite(updatedAtMs) || !Number.isFinite(startedAtMs)) return false;
+  if (updatedAtMs + 1000 < startedAtMs) return false;
+
+  const soundDesignRequest = latestRequestForAutoRunStep(projectId, autoRun, "plan-sound-design");
+  if (
+    soundDesignRequest &&
+    !freshAtOrAfter(project.soundDesign.updatedAt, soundDesignRequest.request.requestedAt)
+  ) {
+    return false;
+  }
+
+  const latestSceneImagesRequest = latestStageRequest(projectId, "scene-images");
+  if (requestAfterUpdatedAt(latestSceneImagesRequest, project.soundDesign.updatedAt)) return false;
+
+  return (
+    stageDocumentReady(project.soundDesign) &&
+    /<sound_design\b/i.test(project.soundDesign.content)
+  );
+}
+
+function approveStageFromCompletedAutoRun(
+  projectId: string,
+  stage: "sound-design",
+  currentStatus: string | undefined,
+  title: string,
+) {
+  const from = currentStatus || "draft";
+  updateStageFrontMatterStatus(projectId, stage, "approved");
+  appendStatusLog(
+    getStageFilePath(projectId, stage),
+    from,
+    "approved" as DeliverableStatus,
+    "ralph",
+    `Repair after completed auto-run left ${title} in review`,
+  );
+}
+
+function repairCompletedSoundDesignApprovals(projectId: string, project: ShortFormProject) {
+  const autoRun = project.autoRun;
+  if (!autoRun || autoRun.status !== "completed") return project;
+
+  const completed = completedStepSet(autoRun);
+  let current = project;
+  let repaired = false;
+
+  if (
+    completed.has("plan-sound-design") &&
+    !approved(current.soundDesign.status) &&
+    docCanApprove(current.soundDesign) &&
+    autoRunProducedSoundDesignPlan(projectId, current, autoRun)
+  ) {
+    approveStageFromCompletedAutoRun(
+      projectId,
+      "sound-design",
+      current.soundDesign.status,
+      "Plan Sound Design",
+    );
+    current = getShortFormProject(projectId) || current;
+    repaired = true;
+  }
+
+  if (completed.has("generate-sound-design")) {
+    const handoff = getSoundDesignHandoffState(current);
+    if (!handoff.canProceedToFinalVideo && handoff.canApprove) {
+      updateProjectMeta(projectId, {
+        soundDesignDecision: "approved",
+        soundDesignSkipReason: undefined,
+        soundDesignApprovalWarning: handoff.approvalWarnings.join(" ") || undefined,
+      });
+      current = getShortFormProject(projectId) || current;
+      repaired = true;
+    }
+  }
+
+  return repaired ? current : project;
+}
+
+function autoRunStepActuallyCompleted(
+  projectId: string,
+  project: ShortFormProject,
+  stepId: ShortFormAutoRunStepId,
+  autoRun?: ShortFormAutoRunState,
+) {
+  const latestRequest = latestRequestForAutoRunStep(projectId, autoRun, stepId);
+  if (latestRequest && !workflowRequestVerifiedForAutoRunStep(projectId, project, autoRun, stepId)) {
+    return false;
+  }
+
+  switch (stepId) {
+    case "research":
+      return (
+        stageDocumentReady(project.research) &&
+        approved(project.research.status) &&
+        (!latestRequest || freshAtOrAfter(project.research.updatedAt, latestRequest.request.requestedAt))
+      );
+    case "text-script":
+      return (
+        stageDocumentReady(project.script) &&
+        approved(project.script.status) &&
+        (!latestRequest || freshAtOrAfter(project.script.updatedAt, latestRequest.request.requestedAt))
+      );
     case "generate-narration-audio":
       return Boolean(project.xmlScript.audioUrl);
     case "plan-captions":
@@ -625,28 +875,59 @@ function autoRunStepActuallyCompleted(
       return (
         stageDocumentReady(project.sceneImages) &&
         project.sceneImages.scenes.length > 0 &&
-        approved(project.sceneImages.status)
+        approved(project.sceneImages.status) &&
+        (!latestRequest || freshAtOrAfter(project.sceneImages.updatedAt, latestRequest.request.requestedAt))
       );
     case "plan-sound-design":
-      return stageDocumentReady(project.soundDesign) && approved(project.soundDesign.status);
+      return (
+        stageDocumentReady(project.soundDesign) &&
+        approved(project.soundDesign.status) &&
+        (!latestRequest || freshAtOrAfter(project.soundDesign.updatedAt, latestRequest.request.requestedAt))
+      );
     case "generate-sound-design":
       return getSoundDesignHandoffState(project).canProceedToFinalVideo;
     case "final-video":
       return (
         stageDocumentReady(project.video) &&
         (project.video.pipeline?.status === "completed" || Boolean(project.video.videoUrl)) &&
-        approved(project.video.status)
+        approved(project.video.status) &&
+        (!latestRequest || freshAtOrAfter(project.video.updatedAt, latestRequest.request.requestedAt))
       );
   }
 }
 
 function reconcileFinishedAutoRunWithProjectState(projectId: string, project: ShortFormProject) {
   const autoRun = project.autoRun;
-  if (!autoRun || autoRun.status === "active" || autoRun.status === "completed") return project;
+  if (!autoRun || autoRun.status === "active") return project;
   if (autoRun.selectedSteps.length === 0) return project;
 
+  const failedStep = autoRunFailedStepFromWorkflowRequests(projectId, project, autoRun);
+  if (failedStep) {
+    const failedStepIndex = autoRun.selectedSteps.indexOf(failedStep.stepId);
+    const completedBeforeFailedStep = autoRun.selectedSteps.filter((stepId, index) =>
+      index >= 0 &&
+      (failedStepIndex < 0 || index < failedStepIndex) &&
+      autoRun.completedSteps.includes(stepId) &&
+      autoRunStepActuallyCompleted(projectId, project, stepId, autoRun),
+    );
+    updateAutoRun(projectId, autoRun, {
+      status: "failed",
+      completedSteps: completedBeforeFailedStep,
+      waitingSteps: [],
+      currentStep: undefined,
+      failedStep: failedStep.stepId,
+      error: failedStep.error,
+      finishedAt: autoRun.finishedAt || nowIso(),
+    });
+    return getShortFormProject(projectId) || project;
+  }
+
+  if (autoRun.status === "completed") {
+    return repairCompletedSoundDesignApprovals(projectId, project);
+  }
+
   const actuallyCompleted = autoRun.selectedSteps.filter((stepId) =>
-    autoRunStepActuallyCompleted(project, stepId),
+    autoRunStepActuallyCompleted(projectId, project, stepId, autoRun),
   );
   if (actuallyCompleted.length !== autoRun.selectedSteps.length) return project;
 
