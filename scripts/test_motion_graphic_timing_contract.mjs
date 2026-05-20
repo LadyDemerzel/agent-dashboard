@@ -16,18 +16,21 @@ try {
   const xmlPath = path.join(tempDir, "timed-motion-graphics.xml");
   fs.writeFileSync(xmlPath, `
 <video>
-  <assets>
-    <motionGraphic id="timed" templateId="bar_chart">
-      <arg name="title" animateIn="0.20">Timed chart</arg>
-      <timing item="cause" at="0.35" />
-      <timing item="effect" time="1.70" />
-      <item label="A" value="35" displayValue="35%" animateIn="0.62" />
-      <item label="B" value="68" displayValue="68%" revealAt="1.24" />
-      <step label="01" startAt="0.50">First step</step>
-      <line size="large" at="0.70">First line</line>
-      <blankLine time="1.10" />
-    </motionGraphic>
-  </assets>
+  <assets></assets>
+  <timeline>
+    <visual id="visual-1" label="Timed chart" start="10.00" end="12.00" visualType="motion_graphic">
+      <motionGraphic templateId="bar_chart">
+        <arg name="title" animateIn="10.20">Timed chart</arg>
+        <timing item="cause" at="10.35" />
+        <timing item="effect" time="11.70" />
+        <item label="A" value="35" displayValue="35%" animateIn="10.62" />
+        <item label="B" value="68" displayValue="68%" revealAt="11.24" />
+        <step label="01" startAt="10.50">First step</step>
+        <line size="large" at="10.70">First line</line>
+        <blankLine time="11.10" />
+      </motionGraphic>
+    </visual>
+  </timeline>
 </video>
 `, "utf-8");
 
@@ -51,10 +54,10 @@ try {
   assert.equal(parsedMotionGraphics[0].args.lines[0].animateIn, 0.7);
 
   assert.match(motionGraphicsSource, /Controllable animation-in timing items:/, "Scribe motion graphic prompt injection must list controllable timing items per template.");
-  assert.match(motionGraphicsSource, /<timing item=\\"title\\" at=\\"0\.20\\"/, "Scribe prompt injection must document named timing controls.");
+  assert.match(motionGraphicsSource, /<timing item=\\"title\\" at=\\"12\.20\\"/, "Scribe prompt injection must document named absolute timing controls.");
   assert.match(motionGraphicsSource, /Items that visually belong together[\s\S]*animate together/, "Scribe prompt injection must explain grouped item timing.");
-  assert.match(visualPlanningSource, /animateIn=\\"seconds\\" on <item>, <step>, or <line>/, "XML visual planning prompt must document local item timing attributes.");
-  assert.match(visualPlanningSource, /relative to the start of that motion_graphic visual/, "XML visual planning prompt must distinguish local timing from absolute timestamps.");
+  assert.match(visualPlanningSource, /absolute video timestamps/, "XML visual planning prompt must document absolute item timing attributes.");
+  assert.match(visualPlanningSource, /not seconds relative to the visual start/, "XML visual planning prompt must reject local timing for new motion graphics.");
 
   assert.match(soundDesignSource, /const repeatItem = visibleRepeatItems\(args, cue\.repeat\.source\)\[index\]/, "Deterministic repeated SFX must align to visible timed data/step/line items.");
   assert.match(soundDesignSource, /cue\.id === "line-finish" && key === "chart"[\s\S]*return cueTiming \+ 3/, "Line-growth finish SFX must remain aligned to explicit chart animation timing.");

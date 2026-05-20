@@ -289,6 +289,70 @@ function readWorkflowRunProgress(
   };
 }
 
+function readXmlScriptRunProgress(
+  projectId: string,
+  runId: string,
+): WorkflowRunProgress | undefined {
+  if (!runId) return undefined;
+
+  const statusPath = path.join(getProjectDir(projectId), ".xml-script-runs", `${runId}.status.json`);
+  let raw = "";
+  let statusMtime: string | undefined;
+  try {
+    const stat = fs.statSync(statusPath);
+    statusMtime = new Date(stat.mtimeMs).toISOString();
+    raw = fs.readFileSync(statusPath, "utf-8");
+  } catch {
+    return undefined;
+  }
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = asRecord(JSON.parse(raw));
+  } catch {
+    return undefined;
+  }
+
+  if (
+    asString(parsed.runId) !== runId ||
+    asString(parsed.projectId) !== projectId
+  ) {
+    return undefined;
+  }
+
+  const attempts = Array.isArray(parsed.attempts) ? parsed.attempts.map(asRecord) : [];
+  const latestAttempt = attempts[attempts.length - 1];
+  const errorAttempt = [...attempts]
+    .reverse()
+    .find((attempt) => asString(attempt.error));
+  const attemptTimes = attempts.flatMap((attempt) => [
+    asString(attempt.startedAt),
+    asString(attempt.finishedAt),
+  ]);
+  const status = workflowRunStatus(parsed.status);
+  const progress = asRecord(parsed.progress);
+
+  return {
+    runId,
+    status,
+    statusPath,
+    lastProgressAt: latestIso(
+      statusMtime,
+      asString(parsed.startedAt),
+      asString(parsed.verifiedAt),
+      asString(parsed.failedAt),
+      asString(latestAttempt?.startedAt),
+      asString(latestAttempt?.finishedAt),
+      ...attemptTimes,
+    ),
+    activeStep: asString(latestAttempt?.step) || asString(progress.step),
+    activeStatusText: asString(latestAttempt?.error)
+      || asString(parsed.errorMessage)
+      || (status ? `XML script run ${status}` : undefined),
+    errorMessage: asString(parsed.errorMessage) || asString(errorAttempt?.error),
+  };
+}
+
 function formatMinutes(ms: number) {
   return `${Math.round(ms / 60_000)} minutes`;
 }
@@ -559,6 +623,57 @@ async function waitForWorkflowRunVerified(
 
   throw new Error(
     `${step.label} workflow run ${runId.slice(0, 8)} exceeded the ${formatMinutes(hardTimeoutMs)} hard auto-run limit before verification.`,
+  );
+}
+
+async function waitForXmlScriptRunVerified(
+  projectId: string,
+  signal: AbortSignal,
+  step: ShortFormAutoRunStepDefinition,
+  runId?: string,
+) {
+  if (!runId) return;
+
+  const startedAtMs = Date.now();
+  const noProgressDeadline = startedAtMs + step.timeoutMs;
+  const hardTimeoutMs = step.hardTimeoutMs ?? Math.max(step.timeoutMs, 60 * 60_000);
+  const hardDeadline = startedAtMs + hardTimeoutMs;
+  const staleProgressMs = step.staleProgressTimeoutMs ?? step.timeoutMs;
+
+  while (Date.now() < hardDeadline) {
+    if (signal.aborted) throw new AutoRunStoppedError();
+    const progress = readXmlScriptRunProgress(projectId, runId);
+
+    if (progress?.status === "verified") return;
+    if (progress?.status === "failed") {
+      throw new Error(
+        `${step.label} XML run ${runId.slice(0, 8)} failed${
+          progress.errorMessage ? `: ${progress.errorMessage}` : "."
+        }`,
+      );
+    }
+
+    const lastProgressMs = progress?.lastProgressAt
+      ? Date.parse(progress.lastProgressAt)
+      : Number.NaN;
+    if (Number.isFinite(lastProgressMs)) {
+      const inactiveMs = Date.now() - lastProgressMs;
+      if (inactiveMs >= staleProgressMs) {
+        throw new Error(
+          `${step.label} XML run ${runId.slice(0, 8)} stopped making progress for more than ${formatMinutes(staleProgressMs)}. Last status: ${describeWorkflowProgress(progress!)}.`,
+        );
+      }
+    } else if (Date.now() >= noProgressDeadline) {
+      throw new Error(
+        `${step.label} XML run ${runId.slice(0, 8)} did not report progress within ${formatMinutes(step.timeoutMs)}.`,
+      );
+    }
+
+    await sleep(4000, signal);
+  }
+
+  throw new Error(
+    `${step.label} XML run ${runId.slice(0, 8)} exceeded the ${formatMinutes(hardTimeoutMs)} hard auto-run limit before verification.`,
   );
 }
 
@@ -1279,6 +1394,8 @@ async function runPlanVisuals(
         nextProject.xmlScript.pipeline?.runId === runId &&
         nextProject.xmlScript.pipeline?.status === "failed",
     );
+    await waitForXmlScriptRunVerified(projectId, signal, step, runId);
+    current = assertAutoRunActive(projectId, autoRunId, signal);
   }
 
   if (!approved(current.xmlScript.status)) {

@@ -353,6 +353,18 @@ function directItemTiming(value: unknown) {
   return clampOptionalNumber(obj.animateIn ?? obj.revealAt ?? obj.startAt ?? obj.at ?? obj.time, 0, 120, 3);
 }
 
+function localizeMotionTiming(at: number | undefined, visualStart?: number, visualEnd?: number) {
+  if (at === undefined) return undefined;
+  const local = typeof visualStart === "number" && Number.isFinite(visualStart) ? at - visualStart : at;
+  const duration = typeof visualStart === "number" && typeof visualEnd === "number" && Number.isFinite(visualStart) && Number.isFinite(visualEnd)
+    ? visualEnd - visualStart
+    : undefined;
+  const clamped = typeof duration === "number" && Number.isFinite(duration)
+    ? Math.min(Math.max(0, local), Math.max(0, duration))
+    : Math.max(0, local);
+  return Math.round(clamped * 1000) / 1000;
+}
+
 function animationTimings(args: Record<string, unknown>) {
   const candidate = args.animationTimings || args.timings || args.animateIn;
   return candidate && typeof candidate === "object" && !Array.isArray(candidate)
@@ -548,13 +560,22 @@ function getTimelineVisuals(projectId: string): TimelineVisual[] {
       const start = clampOptionalNumber(attributes.start, 0, 10_000, 3);
       if (typeof start !== "number") return null;
       const end = clampOptionalNumber(attributes.end, 0, 10_000, 3);
+      const inlineMotionGraphic = /<motionGraphic\b/i.test(match);
+      const motionGraphicId = normalizeOptionalString(attributes.motionGraphicId || attributes.motionId || attributes.motionGraphic);
+      const visualType = attributes.visualType === "motion_graphic"
+        || attributes.type === "motion_graphic"
+        || Boolean(motionGraphicId)
+        || inlineMotionGraphic
+        ? "motion_graphic"
+        : "image";
+      const id = normalizeString(attributes.id, `visual-${index + 1}`);
       return {
-        id: normalizeString(attributes.id, `visual-${index + 1}`),
+        id,
         label: normalizeString(attributes.label, `Visual ${index + 1}`),
         start,
         ...(typeof end === "number" ? { end } : {}),
-        visualType: attributes.visualType === "motion_graphic" || attributes.type === "motion_graphic" || Boolean(attributes.motionGraphicId || attributes.motionId || attributes.motionGraphic) ? "motion_graphic" : "image",
-        motionGraphicId: normalizeOptionalString(attributes.motionGraphicId || attributes.motionId || attributes.motionGraphic),
+        visualType,
+        motionGraphicId: motionGraphicId || (inlineMotionGraphic ? id : undefined),
       };
     })
     .filter((visual): visual is TimelineVisual => Boolean(visual));
@@ -576,96 +597,139 @@ function parseOpeningTagAttributes(nodeSource: string, tagName: string) {
   return parseAttributes(openingTag);
 }
 
+function parseMotionGraphicConfigFromXml(
+  attributes: Record<string, string>,
+  body: string,
+  options: { idFallback?: string; visualStart?: number; visualEnd?: number } = {},
+) {
+  const id = normalizeOptionalString(attributes.id) || normalizeOptionalString(options.idFallback);
+  const templateId = normalizeOptionalString(attributes.templateId || attributes.template || attributes.motionGraphicType);
+  if (!id || !templateId) return undefined;
+
+  const args: Record<string, unknown> = {};
+  const timings: Record<string, unknown> = {};
+  const parseTiming = (attrs: Record<string, string>) => localizeMotionTiming(
+    parseMotionTimingAttribute(attrs),
+    options.visualStart,
+    options.visualEnd,
+  );
+
+  for (const argMatch of body.matchAll(/<arg\b([^>]*)>([\s\S]*?)<\/arg>/gi)) {
+    const argAttrs = parseAttributes(argMatch[1] || "");
+    const name = normalizeOptionalString(argAttrs.name);
+    if (!name) continue;
+    const text = decodeXmlText((argMatch[2] || "").replace(/\s+/g, " ").trim());
+    const numeric = Number(text);
+    args[name] = text && Number.isFinite(numeric) && /^[-+]?\d+(?:\.\d+)?$/.test(text) ? numeric : text;
+    assignMotionTiming(timings, name, parseTiming(argAttrs));
+  }
+
+  const data = Array.from(body.matchAll(/<item\b([^>]*?)\/?\s*>/gi))
+    .map((itemMatch) => {
+      const itemAttrs = parseAttributes(itemMatch[1] || "");
+      const label = normalizeOptionalString(itemAttrs.label);
+      const value = normalizeOptionalString(itemAttrs.value);
+      if (!label || !value) return null;
+      const numericValue = Number(value);
+      const animateIn = parseTiming(itemAttrs);
+      return {
+        label: decodeXmlText(label),
+        value: Number.isFinite(numericValue) ? numericValue : decodeXmlText(value),
+        ...(itemAttrs.displayValue ? { displayValue: decodeXmlText(itemAttrs.displayValue) } : {}),
+        ...(animateIn !== undefined ? { animateIn } : {}),
+      };
+    })
+    .filter((item): item is { label: string; value: number | string; displayValue?: string; animateIn?: number } => Boolean(item));
+  if (data.length > 0) {
+    args.data = data;
+    const dataTimings = data.map((item) => directItemTiming(item));
+    if (dataTimings.some((item) => item !== undefined)) timings.data = dataTimings;
+  }
+
+  const steps = Array.from(body.matchAll(/<step\b([^>]*)>([\s\S]*?)<\/step>/gi))
+    .map((stepMatch) => {
+      const stepAttrs = parseAttributes(stepMatch[1] || "");
+      const text = decodeXmlText((stepMatch[2] || "").replace(/\s+/g, " ").trim());
+      if (!text) return null;
+      const label = normalizeOptionalString(stepAttrs.label || stepAttrs.leftLabel || stepAttrs.marker);
+      const animateIn = parseTiming(stepAttrs);
+      return { ...(label ? { label: decodeXmlText(label) } : {}), text, ...(animateIn !== undefined ? { animateIn } : {}) };
+    })
+    .filter((step): step is { label?: string; text: string; animateIn?: number } => Boolean(step));
+  if (steps.length > 0) {
+    args.steps = steps;
+    args.items = steps;
+    const stepTimings = steps.map((step) => directItemTiming(step));
+    if (stepTimings.some((item) => item !== undefined)) {
+      timings.steps = stepTimings;
+      timings.items = stepTimings;
+    }
+  }
+
+  const lines = Array.from(body.matchAll(/<(line|blankLine)\b([^>]*)\/?\s*>(?:([\s\S]*?)<\/\1>)?/gi))
+    .map((lineMatch) => {
+      const tagName = String(lineMatch[1] || "").toLowerCase();
+      const lineAttrs = parseAttributes(lineMatch[2] || "");
+      const animateIn = parseTiming(lineAttrs);
+      if (tagName === "blankline") return { blank: true, ...(animateIn !== undefined ? { animateIn } : {}) };
+      const text = decodeXmlText((lineMatch[3] || "").replace(/\s+/g, " ").trim());
+      const size = normalizeOptionalString(lineAttrs.size || lineAttrs.lineSize);
+      return text ? { text, ...(size ? { size } : {}), ...(animateIn !== undefined ? { animateIn } : {}) } : { blank: true, ...(animateIn !== undefined ? { animateIn } : {}) };
+    });
+  if (lines.length > 0) {
+    args.lines = lines;
+    const lineTimings = lines.map((line) => directItemTiming(line));
+    if (lineTimings.some((item) => item !== undefined)) timings.lines = lineTimings;
+  }
+
+  for (const timingMatch of body.matchAll(/<timing\b([^>]*?)\/?\s*>/gi)) {
+    const timingAttrs = parseAttributes(timingMatch[1] || "");
+    assignMotionTiming(timings, timingAttrs.item || timingAttrs.name || timingAttrs.target, parseTiming(timingAttrs));
+  }
+
+  if (Object.keys(timings).length > 0) args.animationTimings = timings;
+  return {
+    id,
+    templateId,
+    rendererId: normalizeOptionalString(attributes.rendererId),
+    args,
+  };
+}
+
 function parseMotionGraphicAssetsFromXml(projectId: string) {
   const xmlScriptPath = path.join(getProjectDir(projectId), "xml-script.md");
   if (!fs.existsSync(xmlScriptPath)) return new Map<string, { id: string; templateId: string; rendererId?: string; args: Record<string, unknown> }>();
   const xml = extractBody(fs.readFileSync(xmlScriptPath, "utf-8"));
-  const assetsBody = xml.match(/<assets\b[^>]*>([\s\S]*?)<\/assets>/i)?.[1] || "";
   const assets = new Map<string, { id: string; templateId: string; rendererId?: string; args: Record<string, unknown> }>();
+  const assetsBody = xml.match(/<assets\b[^>]*>([\s\S]*?)<\/assets>/i)?.[1] || "";
+
   for (const match of assetsBody.matchAll(/<motionGraphic\b([^>]*)>([\s\S]*?)<\/motionGraphic>/gi)) {
     const attributes = parseAttributes(match[1] || "");
-    const id = normalizeOptionalString(attributes.id);
-    const templateId = normalizeOptionalString(attributes.templateId || attributes.template || attributes.motionGraphicType);
-    if (!id || !templateId) continue;
-    const body = match[2] || "";
-    const args: Record<string, unknown> = {};
-    const timings: Record<string, unknown> = {};
-    for (const argMatch of body.matchAll(/<arg\b([^>]*)>([\s\S]*?)<\/arg>/gi)) {
-      const argAttrs = parseAttributes(argMatch[1] || "");
-      const name = normalizeOptionalString(argAttrs.name);
-      if (!name) continue;
-      const text = decodeXmlText((argMatch[2] || "").replace(/\s+/g, " ").trim());
-      const numeric = Number(text);
-      args[name] = text && Number.isFinite(numeric) && /^[-+]?\d+(?:\.\d+)?$/.test(text) ? numeric : text;
-      assignMotionTiming(timings, name, parseMotionTimingAttribute(argAttrs));
-    }
-    const data = Array.from(body.matchAll(/<item\b([^>]*?)\/?\s*>/gi))
-      .map((itemMatch) => {
-        const itemAttrs = parseAttributes(itemMatch[1] || "");
-        const label = normalizeOptionalString(itemAttrs.label);
-        const value = normalizeOptionalString(itemAttrs.value);
-        if (!label || !value) return null;
-        const numericValue = Number(value);
-        const animateIn = parseMotionTimingAttribute(itemAttrs);
-        return {
-          label: decodeXmlText(label),
-          value: Number.isFinite(numericValue) ? numericValue : decodeXmlText(value),
-          ...(itemAttrs.displayValue ? { displayValue: decodeXmlText(itemAttrs.displayValue) } : {}),
-          ...(animateIn !== undefined ? { animateIn } : {}),
-        };
-      })
-      .filter((item): item is { label: string; value: number | string; displayValue?: string; animateIn?: number } => Boolean(item));
-    if (data.length > 0) {
-      args.data = data;
-      const dataTimings = data.map((item) => directItemTiming(item));
-      if (dataTimings.some((item) => item !== undefined)) timings.data = dataTimings;
-    }
-    const steps = Array.from(body.matchAll(/<step\b([^>]*)>([\s\S]*?)<\/step>/gi))
-      .map((stepMatch) => {
-        const stepAttrs = parseAttributes(stepMatch[1] || "");
-        const text = decodeXmlText((stepMatch[2] || "").replace(/\s+/g, " ").trim());
-        if (!text) return null;
-        const label = normalizeOptionalString(stepAttrs.label || stepAttrs.leftLabel || stepAttrs.marker);
-        const animateIn = parseMotionTimingAttribute(stepAttrs);
-        return { ...(label ? { label: decodeXmlText(label) } : {}), text, ...(animateIn !== undefined ? { animateIn } : {}) };
-      })
-      .filter((step): step is { label?: string; text: string; animateIn?: number } => Boolean(step));
-    if (steps.length > 0) {
-      args.steps = steps;
-      args.items = steps;
-      const stepTimings = steps.map((step) => directItemTiming(step));
-      if (stepTimings.some((item) => item !== undefined)) {
-        timings.steps = stepTimings;
-        timings.items = stepTimings;
-      }
-    }
-    const lines = Array.from(body.matchAll(/<(line|blankLine)\b([^>]*)\/?\s*>(?:([\s\S]*?)<\/\1>)?/gi))
-      .map((lineMatch) => {
-        const tagName = String(lineMatch[1] || "").toLowerCase();
-        const lineAttrs = parseAttributes(lineMatch[2] || "");
-        const animateIn = parseMotionTimingAttribute(lineAttrs);
-        if (tagName === "blankline") return { blank: true, ...(animateIn !== undefined ? { animateIn } : {}) };
-        const text = decodeXmlText((lineMatch[3] || "").replace(/\s+/g, " ").trim());
-        const size = normalizeOptionalString(lineAttrs.size || lineAttrs.lineSize);
-        return text ? { text, ...(size ? { size } : {}), ...(animateIn !== undefined ? { animateIn } : {}) } : { blank: true, ...(animateIn !== undefined ? { animateIn } : {}) };
-      });
-    if (lines.length > 0) {
-      args.lines = lines;
-      const lineTimings = lines.map((line) => directItemTiming(line));
-      if (lineTimings.some((item) => item !== undefined)) timings.lines = lineTimings;
-    }
-    for (const timingMatch of body.matchAll(/<timing\b([^>]*?)\/?\s*>/gi)) {
-      const timingAttrs = parseAttributes(timingMatch[1] || "");
-      assignMotionTiming(timings, timingAttrs.item || timingAttrs.name || timingAttrs.target, parseMotionTimingAttribute(timingAttrs));
-    }
-    if (Object.keys(timings).length > 0) args.animationTimings = timings;
-    assets.set(id, {
-      id,
-      templateId,
-      rendererId: normalizeOptionalString(attributes.rendererId),
-      args,
-    });
+    const asset = parseMotionGraphicConfigFromXml(attributes, match[2] || "");
+    if (asset) assets.set(asset.id, asset);
   }
+
+  const timelineBody = xml.match(/<timeline\b[^>]*>([\s\S]*?)<\/timeline>/i)?.[1] || "";
+  let visualIndex = 0;
+  for (const match of timelineBody.matchAll(/<visual\b([^>]*?)(?:\/>|>([\s\S]*?)<\/visual>)/gi)) {
+    visualIndex += 1;
+    const visualAttrs = parseAttributes(match[1] || "");
+    const visualBody = match[2] || "";
+    const inline = visualBody.match(/<motionGraphic\b([^>]*)>([\s\S]*?)<\/motionGraphic>/i);
+    if (!inline) continue;
+    const start = clampOptionalNumber(visualAttrs.start, 0, 10_000, 3);
+    const end = clampOptionalNumber(visualAttrs.end, 0, 10_000, 3);
+    const idFallback = normalizeOptionalString(visualAttrs.motionGraphicId || visualAttrs.motionId || visualAttrs.motionGraphic)
+      || normalizeOptionalString(visualAttrs.id)
+      || `visual-${visualIndex}`;
+    const asset = parseMotionGraphicConfigFromXml(parseAttributes(inline[1] || ""), inline[2] || "", {
+      idFallback,
+      visualStart: start,
+      visualEnd: end,
+    });
+    if (asset) assets.set(asset.id, asset);
+  }
+
   return assets;
 }
 

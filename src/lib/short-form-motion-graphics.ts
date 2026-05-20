@@ -1014,10 +1014,13 @@ export function renderMotionGraphicTemplatePromptInjection(settings = getShortFo
     templateBlocks,
     "",
     "XML usage for motion graphics:",
-    "- Define reusable motion assets inside <assets> as <motionGraphic id=\"...\" templateId=\"one_of_the_ids_above\">.",
+    "- Do not define motion graphics inside <assets>. Motion graphics are not reusable assets.",
+    "- Define each motion graphic directly inside exactly one <timeline><visual> as <visual visualType=\"motion_graphic\" start=\"...\" end=\"...\"><motionGraphic templateId=\"one_of_the_ids_above\">...</motionGraphic></visual>.",
+    "- Each motion_graphic visual must have one inline <motionGraphic>; do not reference a separate motionGraphicId asset.",
     "- Configure only the listed fields. Do not write arbitrary Remotion, JavaScript, CSS, HTML, or renderer code.",
     "- Use <arg name=\"fieldName\">value</arg> for text/number fields.",
-    "- To time a core item's animation-in, add animateIn=\"seconds_from_motion_graphic_visual_start\" on the relevant <item>, <step>, or <line>, or add <timing item=\"title\" at=\"0.20\" /> / <timing item=\"cause\" at=\"0.35\" /> inside the motionGraphic. Timings are local to that motion graphic visual, not absolute video timestamps.",
+    "- To time a core item's animation-in, add animateIn=\"absolute_video_timestamp_seconds\" on the relevant <item>, <step>, or <line>, or add <timing item=\"title\" at=\"12.20\" /> / <timing item=\"cause\" at=\"12.35\" /> inside the inline motionGraphic. Timings are absolute timestamps in the full video timeline, not seconds relative to the motion graphic visual start.",
+    "- Keep every motion graphic item timing within that visual's start/end bounds.",
     "- Only time the controllable animation-in items listed for that template. Items that visually belong together, such as a bar plus its value and label or a pie slice plus its legend row, animate together from the same timing.",
     "- For dataSeries fields, use repeated <item label=\"...\" value=\"...\" displayValue=\"...\" /> inside the motionGraphic.",
     "- For pie_chart, use the same dataSeries shape as bar_chart; values should be positive parts of a whole and displayValue should usually be a short percent label.",
@@ -1028,9 +1031,8 @@ export function renderMotionGraphicTemplatePromptInjection(settings = getShortFo
     "- For indicatorType fields, use exactly <arg name=\"indicatorType\">good</arg> or <arg name=\"indicatorType\">bad</arg>. The good-bad indicator template has only one text field: <arg name=\"text\">...</arg>.",
     "- For captionWordWallLines fields, use ordered <line size=\"regular\">spoken words for this row</line>, <line size=\"large\">intermediate emphasis row</line>, <line size=\"extra_large\">largest emphasis row</line>, and <blankLine /> entries inside the motionGraphic. Size is whole-line only; do not size individual inline words. Legacy <line emphasized=\"true\"> still maps to size=\"extra_large\".",
     "- For caption_word_wall specifically, line text must be exact spoken narration words in order from that visual's time range. The renderer uses forced-alignment word timestamps directly and does not use the deterministic caption JSON max-word chunks.",
-    "- Reference it from the timeline as <visual visualType=\"motion_graphic\" motionGraphicId=\"...\" start=\"...\" end=\"...\" label=\"...\" />.",
     "- Motion graphics are normal visuals; they must not include captions/subtitles/transcript text unless a configured field explicitly represents ordinary on-slide text. The caption_word_wall template is the only full-screen caption replacement and should not be paired with ordinary bottom captions.",
-    "- Use imageId for image visuals and motionGraphicId for motion_graphic visuals; do not put both on the same <visual>.",
+    "- Use imageId for image visuals. For motion_graphic visuals, do not set imageId or motionGraphicId; put the inline <motionGraphic> element inside the visual instead.",
   ].join("\n");
 }
 

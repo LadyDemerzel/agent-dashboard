@@ -26,6 +26,8 @@ const soundDesignSettingsPath = path.join(repoRoot, "src/lib/short-form-sound-de
 const soundDesignSettingsSource = fs.readFileSync(soundDesignSettingsPath, "utf-8");
 const sessionLogsPath = path.join(repoRoot, "src/lib/short-form-session-logs.ts");
 const sessionLogsSource = fs.readFileSync(sessionLogsPath, "utf-8");
+const secondaryNavPath = path.join(repoRoot, "src/lib/short-form-secondary-nav.ts");
+const secondaryNavSource = fs.readFileSync(secondaryNavPath, "utf-8");
 
 function assertIncludes(needle, message) {
   if (!source.includes(needle)) {
@@ -105,6 +107,14 @@ assertIncludes(
 assertIncludes(
   "freshAtOrAfter(nextProject.xmlScript.updatedAt, requestedAt)",
   "Plan Visuals auto-run must require a fresh XML artifact from the current request.",
+);
+assertIncludes(
+  "readXmlScriptRunProgress",
+  "Plan Visuals auto-run must inspect the XML worker status file before approving XML.",
+);
+assertIncludes(
+  "waitForXmlScriptRunVerified(projectId, signal, step, runId)",
+  "Plan Visuals auto-run must wait for the XML worker's final verified marker before approving XML.",
 );
 const perStepApprovalMatches = source.match(/await reconcileCompletedAutoRunApprovals\(/g) || [];
 if (perStepApprovalMatches.length < 3) {
@@ -197,6 +207,15 @@ if (!soundDesignSettingsSource.includes("Rewriting the same XML with only front 
 }
 if (!sessionLogsSource.includes("if (!sessionId) return undefined;")) {
   throw new Error("Session-log lookup must not treat an empty session id as matching every historical session file.");
+}
+if (
+  !secondaryNavSource.includes("project.xmlScript.exists ||") ||
+  !secondaryNavSource.includes("project.sceneImages.pending ||") ||
+  !secondaryNavSource.includes("project.sceneImages.scenes.length > 0")
+) {
+  throw new Error(
+    "Generate Visuals navigation should unlock when a visual plan exists, not only after the XML is approved.",
+  );
 }
 if (sessionLogsSource.indexOf("const normalizedSessionKey = sessionKey?.trim();") > sessionLogsSource.indexOf("const exactCandidates = [")) {
   throw new Error("Session-log lookup must prefer the explicit session key before loose session-id matching.");

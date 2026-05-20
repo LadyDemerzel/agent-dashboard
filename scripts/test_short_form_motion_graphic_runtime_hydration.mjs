@@ -7,6 +7,9 @@ import {
   hydrateRuntimeXmlMotionGraphicsFromManifest,
 } from "./short-form-motion-graphics-runtime.mjs";
 
+const repoRoot = process.cwd();
+const stageWorkerSource = fs.readFileSync(path.join(repoRoot, "scripts", "short-form-stage-worker.mjs"), "utf-8");
+
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "short-form-motion-runtime-"));
 const scenesDir = path.join(tempDir, "scenes");
 fs.mkdirSync(scenesDir, { recursive: true });
@@ -30,14 +33,15 @@ title: Example
 <video version="2">
   <assets>
     <image id="scene-one"><prompt>Scene one</prompt></image>
-    <motionGraphic id="mg-two" templateId="checklist">
-      <step>Use the real motion config</step>
-      <step>Do not render the poster placeholder</step>
-    </motionGraphic>
   </assets>
   <timeline>
     <visual id="visual-001" label="Image" start="0" end="1" imageId="scene-one" />
-    <visual id="visual-002" label="Motion" start="1" end="3" visualType="motion_graphic" motionGraphicId="mg-two" />
+    <visual id="visual-002" label="Motion" start="1" end="3" visualType="motion_graphic">
+      <motionGraphic id="mg-two" templateId="checklist">
+        <step animateIn="1.2">Use the real motion config</step>
+        <step animateIn="2.1">Do not render the poster placeholder</step>
+      </motionGraphic>
+    </visual>
   </timeline>
 </video>
 `;
@@ -60,7 +64,8 @@ const hydrated = hydrateMotionGraphicVisualTypes(runtimeXml, manifest, {
   sourceXml,
 });
 assert.deepEqual(hydrated.hydratedIndexes, [2]);
-assert.match(hydrated.xml, /<visual id="visual-002"[^>]*visualType="motion_graphic"[^>]*motionGraphicId="mg-two"[^>]*\/>/);
+assert.match(hydrated.xml, /<visual id="visual-002"[^>]*visualType="motion_graphic"[^>]*>/);
+assert.doesNotMatch(hydrated.xml, /<visual id="visual-002"[^>]*motionGraphicId="mg-two"/);
 assert.doesNotMatch(hydrated.xml, /<visual id="visual-002"[^>]*imageId="__motion_graphic_mg-two"/);
 assert.doesNotMatch(hydrated.xml, /<image id="__motion_graphic_mg-two"/);
 assert.match(hydrated.xml, /<motionGraphic id="mg-two" templateId="checklist">[\s\S]*Use the real motion config[\s\S]*<\/motionGraphic>/);
@@ -74,8 +79,16 @@ fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 fs.writeFileSync(sourceXmlPath, sourceXml);
 assert.deepEqual(hydrateRuntimeXmlMotionGraphicsFromManifest(runtimeXmlPath, manifestPath, { sourceXmlPath }), [2]);
 const hydratedRuntimeXml = fs.readFileSync(runtimeXmlPath, "utf-8");
-assert.match(hydratedRuntimeXml, /visual-002[^>]*visualType="motion_graphic"[^>]*motionGraphicId="mg-two"/);
+assert.match(hydratedRuntimeXml, /visual-002[^>]*visualType="motion_graphic"/);
+assert.doesNotMatch(hydratedRuntimeXml, /visual-002[^>]*motionGraphicId="mg-two"/);
 assert.doesNotMatch(hydratedRuntimeXml, /__motion_graphic_mg-two/);
 assert.match(hydratedRuntimeXml, /<motionGraphic id="mg-two"/);
+
+const runDirectVideoBody = stageWorkerSource.match(/function runDirectVideo\(job\) \{[\s\S]*?\n\}\n\nasync function main/)?.[0] || "";
+assert.match(runDirectVideoBody, /getLatestSceneImagesRuntimeXmlPath/, "Final-video should consume the scene-images runtime XML that already maps motion graphics to renderable placeholder imageIds.");
+assert.match(runDirectVideoBody, /preserveRuntimeMotionGraphicRendererMetadata/, "Final-video should repair older scene-images runtime XML so motion graphics keep renderer-facing metadata.");
+assert.doesNotMatch(runDirectVideoBody, /hydrateRuntimeXmlMotionGraphicsFromManifest/, "Final-video must not rehydrate renderer-facing XML back to inline motion graphics before calling xml-scene-video.");
+assert.match(stageWorkerSource, /attrs\.visualType = "motion_graphic"/, "Renderer-facing scene-images runtime XML must preserve motion-graphic visualType metadata for final-video substitution and caption suppression.");
+assert.match(stageWorkerSource, /attrs\.motionGraphicId = motionVisual\.asset\.id/, "Renderer-facing scene-images runtime XML must preserve motionGraphicId while using a poster imageId placeholder.");
 
 console.log("short-form motion graphic runtime hydration tests passed");

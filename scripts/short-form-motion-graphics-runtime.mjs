@@ -87,14 +87,32 @@ function parseSourceMotionGraphicBlocks(sourceXml) {
     const id = typeof attrs.id === "string" ? attrs.id.trim() : "";
     if (id && !blocks.has(id)) blocks.set(id, match[0].trim());
   }
+  const timelineBody = String(sourceXml || "").match(/<timeline\b[^>]*>([\s\S]*?)<\/timeline>/i)?.[1] || "";
+  let visualIndex = 0;
+  for (const visualMatch of timelineBody.matchAll(/<visual\b([^>]*?)(?:\/>|>([\s\S]*?)<\/visual>)/gi)) {
+    visualIndex += 1;
+    const visualAttrs = parseXmlAttributes(visualMatch[1] || "");
+    const visualBody = visualMatch[2] || "";
+    const motionMatch = visualBody.match(/<motionGraphic\b([^>]*)>[\s\S]*?<\/motionGraphic>/i);
+    if (!motionMatch) continue;
+    const motionAttrs = parseXmlAttributes(motionMatch[1] || "");
+    const id = String(motionAttrs.id || visualAttrs.motionGraphicId || visualAttrs.motionId || visualAttrs.motionGraphic || visualAttrs.id || `visual-${visualIndex}`).trim();
+    if (id && !blocks.has(id)) blocks.set(id, motionMatch[0].trim());
+  }
   return blocks;
 }
 
-function addOrUpdateMotionGraphicVisualAttrs(fullVisualTag, motionGraphicId) {
-  return fullVisualTag.replace(/<visual\b([^>]*?)(\/?)>/i, (tag, rawAttrs, selfClosing) => {
+function addOrUpdateMotionGraphicVisual(fullVisualTag, motionGraphicId, motionGraphicBlock) {
+  const normalizedBlock = typeof motionGraphicBlock === "string" && motionGraphicBlock.trim()
+    ? motionGraphicBlock.trim().replace(/\n/g, "\n    ")
+    : "";
+  const wasSelfClosing = /\/>\s*$/.test(String(fullVisualTag || ""));
+  const withAttrs = fullVisualTag.replace(/<visual\b([^>]*?)(\/?)>/i, (_tag, rawAttrs, selfClosing) => {
     const attrs = parseXmlAttributes(rawAttrs || "");
     attrs.visualType = "motion_graphic";
-    attrs.motionGraphicId = motionGraphicId;
+    delete attrs.motionGraphicId;
+    delete attrs.motionId;
+    delete attrs.motionGraphic;
 
     const placeholderId = `${MOTION_GRAPHIC_PLACEHOLDER_PREFIX}${motionGraphicId}`;
     if (attrs.imageId === placeholderId) {
@@ -102,8 +120,13 @@ function addOrUpdateMotionGraphicVisualAttrs(fullVisualTag, motionGraphicId) {
     }
 
     const renderedAttrs = renderXmlAttributes(attrs);
-    return `<visual${renderedAttrs ? ` ${renderedAttrs}` : ""}${selfClosing ? " /" : ""}>`;
+    return `<visual${renderedAttrs ? ` ${renderedAttrs}` : ""}${selfClosing && !normalizedBlock ? " /" : ""}>`;
   });
+  if (!normalizedBlock || /<motionGraphic\b/i.test(withAttrs)) return withAttrs;
+  if (wasSelfClosing) {
+    return withAttrs.replace(/>\s*$/, `>\n    ${normalizedBlock}\n  </visual>`);
+  }
+  return withAttrs.replace(/<\/visual>\s*$/i, `  ${normalizedBlock}\n  </visual>`);
 }
 
 function removePlaceholderImageAssets(xml, motionGraphicIds) {
@@ -114,27 +137,6 @@ function removePlaceholderImageAssets(xml, motionGraphicIds) {
     next = next.replace(new RegExp(`\\s*<image\\b(?=[^>]*\\bid=["']${placeholderId}["'])[^>]*/>`, "gi"), "");
   }
   return next;
-}
-
-function ensureMotionGraphicDefinitions(xml, sourceMotionGraphicBlocks, motionGraphicIds) {
-  if (motionGraphicIds.length === 0 || sourceMotionGraphicBlocks.size === 0) return xml;
-  const assetsMatch = String(xml || "").match(/<assets\b[^>]*>[\s\S]*?<\/assets>/i);
-  if (!assetsMatch) return xml;
-
-  const assetsXml = assetsMatch[0];
-  const existingIds = new Set();
-  for (const match of assetsXml.matchAll(/<motionGraphic\b([^>]*)>[\s\S]*?<\/motionGraphic>/gi)) {
-    const attrs = parseXmlAttributes(match[1] || "");
-    if (attrs.id) existingIds.add(String(attrs.id).trim());
-  }
-
-  const missingBlocks = motionGraphicIds
-    .filter((id) => !existingIds.has(id) && sourceMotionGraphicBlocks.has(id))
-    .map((id) => `    ${sourceMotionGraphicBlocks.get(id).replace(/\n/g, "\n    ")}`);
-  if (missingBlocks.length === 0) return xml;
-
-  const hydratedAssets = assetsXml.replace(/<\/assets>\s*$/i, `${missingBlocks.join("\n")}\n  </assets>`);
-  return String(xml || "").slice(0, assetsMatch.index) + hydratedAssets + String(xml || "").slice(assetsMatch.index + assetsXml.length);
 }
 
 export function hydrateMotionGraphicVisualTypes(xml, sceneManifest, options = {}) {
@@ -156,12 +158,11 @@ export function hydrateMotionGraphicVisualTypes(xml, sceneManifest, options = {}
     if (!motionScene) return full;
     hydratedIndexes.push(visualIndex);
     hydratedMotionGraphicIds.push(motionScene.motionGraphicId);
-    return addOrUpdateMotionGraphicVisualAttrs(full, motionScene.motionGraphicId);
+    return addOrUpdateMotionGraphicVisual(full, motionScene.motionGraphicId, sourceMotionGraphicBlocks.get(motionScene.motionGraphicId));
   });
 
   const uniqueMotionGraphicIds = [...new Set(hydratedMotionGraphicIds)];
   nextXml = removePlaceholderImageAssets(nextXml, uniqueMotionGraphicIds);
-  nextXml = ensureMotionGraphicDefinitions(nextXml, sourceMotionGraphicBlocks, uniqueMotionGraphicIds);
 
   return {
     xml: nextXml,

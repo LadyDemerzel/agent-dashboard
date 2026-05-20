@@ -10,9 +10,6 @@ import {
   suppressCaptionTimelineForRanges,
 } from "./short-form-caption-suppression.mjs";
 import {
-  hydrateRuntimeXmlMotionGraphicsFromManifest,
-} from "./short-form-motion-graphics-runtime.mjs";
-import {
   buildCaptionOverlayFramePlan,
   formatCaptionOverlayFrameAudit,
 } from "./short-form-caption-overlay-track.mjs";
@@ -1288,6 +1285,56 @@ function restoreMissingMotionGraphicVideosFromSceneImageRun(projectId, sceneImag
   return restored;
 }
 
+function preserveRuntimeMotionGraphicRendererMetadata(runtimeXmlPath, sceneManifestPath) {
+  if (!runtimeXmlPath || !sceneManifestPath || !fs.existsSync(runtimeXmlPath) || !fs.existsSync(sceneManifestPath)) {
+    return [];
+  }
+
+  const manifest = readManifestIfExists(sceneManifestPath);
+  const motionByIndex = new Map();
+  for (const scene of manifest.scenes || []) {
+    const index = Number(scene?.index);
+    if (!Number.isInteger(index) || index <= 0 || scene?.visual_type !== "motion_graphic") continue;
+    const motionGraphicId = collapseWhitespace(scene.motion_graphic_id)
+      || (collapseWhitespace(scene.image_id).startsWith("__motion_graphic_")
+        ? collapseWhitespace(scene.image_id).slice("__motion_graphic_".length)
+        : "");
+    if (!motionGraphicId) continue;
+    motionByIndex.set(index, motionGraphicId);
+  }
+  if (motionByIndex.size === 0) return [];
+
+  const runtimeXml = fs.readFileSync(runtimeXmlPath, "utf-8");
+  const updatedIndexes = [];
+  let visualIndex = 0;
+  const nextXml = runtimeXml.replace(/<visual\b([^>]*?)(?:\/>|>([\s\S]*?)<\/visual>)/gi, (full, rawAttrs, body) => {
+    visualIndex += 1;
+    const motionGraphicId = motionByIndex.get(visualIndex);
+    if (!motionGraphicId) return full;
+
+    const attrs = parseXmlAttributes(rawAttrs || "");
+    attrs.visualType = "motion_graphic";
+    attrs.motionGraphicId = motionGraphicId;
+    attrs.imageId = `__motion_graphic_${motionGraphicId}`;
+    delete attrs.type;
+    delete attrs.motionId;
+    delete attrs.motionGraphic;
+
+    const renderedAttrs = Object.entries(attrs)
+      .map(([key, value]) => `${key}="${escapeXmlAttribute(value)}"`)
+      .join(" ");
+    updatedIndexes.push(visualIndex);
+    return body !== undefined
+      ? `<visual ${renderedAttrs}>${body}</visual>`
+      : `<visual ${renderedAttrs} />`;
+  });
+
+  if (updatedIndexes.length > 0 && nextXml !== runtimeXml) {
+    fs.writeFileSync(runtimeXmlPath, `${nextXml.trimEnd()}\n`, "utf-8");
+  }
+  return updatedIndexes;
+}
+
 function parseSceneIdToIndex(sceneId) {
   if (typeof sceneId !== "string") return undefined;
   const match = sceneId.trim().match(/scene-(\d+)/i);
@@ -1339,6 +1386,19 @@ function parseMotionTimingAttribute(attrs) {
   if (raw === undefined || raw === null || raw === "") return undefined;
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed * 1000) / 1000) : undefined;
+}
+
+function normalizeMotionTimingForRenderer(at, options = {}) {
+  if (at === undefined) return undefined;
+  const parsed = Number(at);
+  if (!Number.isFinite(parsed)) return undefined;
+  const timingBaseSeconds = Number(options.timingBaseSeconds);
+  const local = Number.isFinite(timingBaseSeconds) ? parsed - timingBaseSeconds : parsed;
+  const timingDurationSeconds = Number(options.timingDurationSeconds);
+  const clamped = Number.isFinite(timingDurationSeconds)
+    ? Math.min(Math.max(0, local), timingDurationSeconds)
+    : Math.max(0, local);
+  return Math.round(clamped * 1000) / 1000;
 }
 
 function assignMotionTiming(timings, itemKey, at) {
@@ -1394,105 +1454,115 @@ function parseMotionGraphicAssets(xml) {
   for (const match of assetsBody.matchAll(/<motionGraphic\b([^>]*)>([\s\S]*?)<\/motionGraphic>/gi)) {
     const attributes = parseXmlAttributes(match[1] || "");
     const id = collapseWhitespace(attributes.id);
-    const templateId = collapseWhitespace(attributes.templateId || attributes.template || attributes.motionGraphicType);
-    if (!id || !templateId) continue;
-    const body = match[2] || "";
-    const args = {};
-    const animationTimings = {};
-    for (const argMatch of body.matchAll(/<arg\b([^>]*)>([\s\S]*?)<\/arg>/gi)) {
-      const argAttrs = parseXmlAttributes(argMatch[1] || "");
-      const name = collapseWhitespace(argAttrs.name);
-      if (!name) continue;
-      args[name] = decodeXmlText(collapseWhitespace(argMatch[2] || ""));
-      assignMotionTiming(animationTimings, name, parseMotionTimingAttribute(argAttrs));
+    const asset = parseMotionGraphicConfig(attributes, match[2] || "", { idFallback: id });
+    if (id && asset) assets.set(id, asset);
+  }
+  return assets;
+}
+
+function parseMotionGraphicConfig(attributes, body, options = {}) {
+  const id = collapseWhitespace(attributes.id) || collapseWhitespace(options.idFallback);
+  const templateId = collapseWhitespace(attributes.templateId || attributes.template || attributes.motionGraphicType);
+  if (!id || !templateId) return null;
+  const args = {};
+  const animationTimings = {};
+  const timingOptions = {
+    timingBaseSeconds: options.timingBaseSeconds,
+    timingDurationSeconds: options.timingDurationSeconds,
+  };
+  const parseTiming = (attrs) => normalizeMotionTimingForRenderer(parseMotionTimingAttribute(attrs), timingOptions);
+
+  for (const argMatch of String(body || "").matchAll(/<arg\b([^>]*)>([\s\S]*?)<\/arg>/gi)) {
+    const argAttrs = parseXmlAttributes(argMatch[1] || "");
+    const name = collapseWhitespace(argAttrs.name);
+    if (!name) continue;
+    args[name] = decodeXmlText(collapseWhitespace(argMatch[2] || ""));
+    assignMotionTiming(animationTimings, name, parseTiming(argAttrs));
+  }
+  const data = [];
+  for (const itemMatch of String(body || "").matchAll(/<item\b([^>]*?)\/?\s*>/gi)) {
+    const itemAttrs = parseXmlAttributes(itemMatch[1] || "");
+    const label = collapseWhitespace(itemAttrs.label);
+    const value = collapseWhitespace(itemAttrs.value);
+    if (!label || !value) continue;
+    const animateIn = parseTiming(itemAttrs);
+    if (animateIn !== undefined) {
+      if (!Array.isArray(animationTimings.data)) animationTimings.data = [];
+      animationTimings.data[data.length] = animateIn;
     }
-    const data = [];
-    for (const itemMatch of body.matchAll(/<item\b([^>]*?)\/?\s*>/gi)) {
-      const itemAttrs = parseXmlAttributes(itemMatch[1] || "");
-      const label = collapseWhitespace(itemAttrs.label);
-      const value = collapseWhitespace(itemAttrs.value);
-      if (!label || !value) continue;
-      const animateIn = parseMotionTimingAttribute(itemAttrs);
+    data.push({
+      label: decodeXmlText(label),
+      value: Number.isFinite(Number(value)) ? Number(value) : decodeXmlText(value),
+      ...(itemAttrs.displayValue ? { displayValue: decodeXmlText(collapseWhitespace(itemAttrs.displayValue)) } : {}),
+      ...(animateIn !== undefined ? { animateIn } : {}),
+    });
+  }
+  if (data.length > 0) args.data = data;
+  const steps = [];
+  for (const stepMatch of String(body || "").matchAll(/<step\b([^>]*)>([\s\S]*?)<\/step>/gi)) {
+    const stepAttrs = parseXmlAttributes(stepMatch[1] || "");
+    const text = decodeXmlText(collapseWhitespace(stepMatch[2] || ""));
+    const label = decodeXmlText(collapseWhitespace(stepAttrs.label || stepAttrs.leftLabel || stepAttrs.marker));
+    const animateIn = parseTiming(stepAttrs);
+    if (text) {
       if (animateIn !== undefined) {
-        if (!Array.isArray(animationTimings.data)) animationTimings.data = [];
-        animationTimings.data[data.length] = animateIn;
+        if (!Array.isArray(animationTimings.steps)) animationTimings.steps = [];
+        animationTimings.steps[steps.length] = animateIn;
       }
-      data.push({
-        label: decodeXmlText(label),
-        value: Number.isFinite(Number(value)) ? Number(value) : decodeXmlText(value),
-        ...(itemAttrs.displayValue ? { displayValue: decodeXmlText(collapseWhitespace(itemAttrs.displayValue)) } : {}),
-        ...(animateIn !== undefined ? { animateIn } : {}),
-      });
+      steps.push(label || animateIn !== undefined ? { ...(label ? { label } : {}), text, ...(animateIn !== undefined ? { animateIn } : {}) } : text);
     }
-    if (data.length > 0) args.data = data;
-    const steps = [];
-    for (const stepMatch of body.matchAll(/<step\b([^>]*)>([\s\S]*?)<\/step>/gi)) {
-      const stepAttrs = parseXmlAttributes(stepMatch[1] || "");
-      const text = decodeXmlText(collapseWhitespace(stepMatch[2] || ""));
-      const label = decodeXmlText(collapseWhitespace(stepAttrs.label || stepAttrs.leftLabel || stepAttrs.marker));
-      const animateIn = parseMotionTimingAttribute(stepAttrs);
-      if (text) {
-        if (animateIn !== undefined) {
-          if (!Array.isArray(animationTimings.steps)) animationTimings.steps = [];
-          animationTimings.steps[steps.length] = animateIn;
-        }
-        steps.push(label || animateIn !== undefined ? { ...(label ? { label } : {}), text, ...(animateIn !== undefined ? { animateIn } : {}) } : text);
-      }
-    }
-    if (steps.length > 0) args.steps = steps;
-    const lines = [];
-    const linePattern = /<(line|blankLine)\b([^>]*)\/?\s*>(?:([\s\S]*?)<\/\1>)?/gi;
-    for (const lineMatch of body.matchAll(linePattern)) {
-      const tagName = String(lineMatch[1] || "").toLowerCase();
-      const lineAttrs = parseXmlAttributes(lineMatch[2] || "");
-      if (tagName === "blankline" || parseBooleanAttribute(lineAttrs.blank)) {
-        const animateIn = parseMotionTimingAttribute(lineAttrs);
-        if (animateIn !== undefined) {
-          if (!Array.isArray(animationTimings.lines)) animationTimings.lines = [];
-          animationTimings.lines[lines.length] = animateIn;
-        }
-        lines.push({ blank: true, ...(animateIn !== undefined ? { animateIn } : {}) });
-        continue;
-      }
-      const text = decodeXmlText(collapseWhitespace(lineMatch[3] || ""));
-      const animateIn = parseMotionTimingAttribute(lineAttrs);
-      if (!text) {
-        if (animateIn !== undefined) {
-          if (!Array.isArray(animationTimings.lines)) animationTimings.lines = [];
-          animationTimings.lines[lines.length] = animateIn;
-        }
-        lines.push({ blank: true, ...(animateIn !== undefined ? { animateIn } : {}) });
-        continue;
-      }
-      const size = parseCaptionWordWallLineSize(lineAttrs.size || lineAttrs.lineSize, lineAttrs);
+  }
+  if (steps.length > 0) args.steps = steps;
+  const lines = [];
+  const linePattern = /<(line|blankLine)\b([^>]*)\/?\s*>(?:([\s\S]*?)<\/\1>)?/gi;
+  for (const lineMatch of String(body || "").matchAll(linePattern)) {
+    const tagName = String(lineMatch[1] || "").toLowerCase();
+    const lineAttrs = parseXmlAttributes(lineMatch[2] || "");
+    const animateIn = parseTiming(lineAttrs);
+    if (tagName === "blankline" || parseBooleanAttribute(lineAttrs.blank)) {
       if (animateIn !== undefined) {
         if (!Array.isArray(animationTimings.lines)) animationTimings.lines = [];
         animationTimings.lines[lines.length] = animateIn;
       }
-      lines.push({
-        text,
-        size,
-        ...(size === "extra_large" && parseBooleanAttribute(lineAttrs.emphasized || lineAttrs.emphasis) ? { emphasized: true } : {}),
-        ...(animateIn !== undefined ? { animateIn } : {}),
-      });
+      lines.push({ blank: true, ...(animateIn !== undefined ? { animateIn } : {}) });
+      continue;
     }
-    if (lines.length > 0) args.lines = lines;
-    for (const timingMatch of body.matchAll(/<timing\b([^>]*?)\/?\s*>/gi)) {
-      const timingAttrs = parseXmlAttributes(timingMatch[1] || "");
-      assignMotionTiming(animationTimings, timingAttrs.item || timingAttrs.name || timingAttrs.target, parseMotionTimingAttribute(timingAttrs));
+    const text = decodeXmlText(collapseWhitespace(lineMatch[3] || ""));
+    if (!text) {
+      if (animateIn !== undefined) {
+        if (!Array.isArray(animationTimings.lines)) animationTimings.lines = [];
+        animationTimings.lines[lines.length] = animateIn;
+      }
+      lines.push({ blank: true, ...(animateIn !== undefined ? { animateIn } : {}) });
+      continue;
     }
-    if (Object.keys(animationTimings).length > 0) args.animationTimings = animationTimings;
-    const rendererId = collapseWhitespace(attributes.rendererId);
-    assets.set(id, {
-      id,
-      templateId,
-      ...(rendererId ? { rendererId } : {}),
-      stylePreset: collapseWhitespace(attributes.stylePreset),
-      durationSeconds: Number.isFinite(Number(attributes.durationSeconds)) ? Number(attributes.durationSeconds) : undefined,
-      args,
+    const size = parseCaptionWordWallLineSize(lineAttrs.size || lineAttrs.lineSize, lineAttrs);
+    if (animateIn !== undefined) {
+      if (!Array.isArray(animationTimings.lines)) animationTimings.lines = [];
+      animationTimings.lines[lines.length] = animateIn;
+    }
+    lines.push({
+      text,
+      size,
+      ...(size === "extra_large" && parseBooleanAttribute(lineAttrs.emphasized || lineAttrs.emphasis) ? { emphasized: true } : {}),
+      ...(animateIn !== undefined ? { animateIn } : {}),
     });
   }
-  return assets;
+  if (lines.length > 0) args.lines = lines;
+  for (const timingMatch of String(body || "").matchAll(/<timing\b([^>]*?)\/?\s*>/gi)) {
+    const timingAttrs = parseXmlAttributes(timingMatch[1] || "");
+    assignMotionTiming(animationTimings, timingAttrs.item || timingAttrs.name || timingAttrs.target, parseTiming(timingAttrs));
+  }
+  if (Object.keys(animationTimings).length > 0) args.animationTimings = animationTimings;
+  const rendererId = collapseWhitespace(attributes.rendererId);
+  return {
+    id,
+    templateId,
+    ...(rendererId ? { rendererId } : {}),
+    stylePreset: collapseWhitespace(attributes.stylePreset),
+    durationSeconds: Number.isFinite(Number(attributes.durationSeconds)) ? Number(attributes.durationSeconds) : undefined,
+    args,
+  };
 }
 
 function parseMotionGraphicVisuals(xml) {
@@ -1505,14 +1575,25 @@ function parseMotionGraphicVisuals(xml) {
     const attributes = parseXmlAttributes(match[1] || "");
     const visualType = collapseWhitespace(attributes.visualType || attributes.type);
     const motionGraphicId = collapseWhitespace(attributes.motionGraphicId || attributes.motionId || attributes.motionGraphic);
-    if (visualType !== "motion_graphic" && !motionGraphicId) continue;
-    const asset = assets.get(motionGraphicId);
+    const visualId = collapseWhitespace(attributes.id) || `visual-${index}`;
+    const inlineMotionGraphicMatch = String(match[2] || "").match(/<motionGraphic\b([^>]*)>([\s\S]*?)<\/motionGraphic>/i);
+    if (visualType !== "motion_graphic" && !motionGraphicId && !inlineMotionGraphicMatch) continue;
+    const visualStart = Number(collapseWhitespace(attributes.start));
+    const visualEnd = Number(collapseWhitespace(attributes.end));
+    const inlineMotionGraphic = inlineMotionGraphicMatch
+      ? parseMotionGraphicConfig(parseXmlAttributes(inlineMotionGraphicMatch[1] || ""), inlineMotionGraphicMatch[2] || "", {
+        idFallback: motionGraphicId || visualId,
+        timingBaseSeconds: visualStart,
+        timingDurationSeconds: Number.isFinite(visualStart) && Number.isFinite(visualEnd) ? visualEnd - visualStart : undefined,
+      })
+      : null;
+    const asset = inlineMotionGraphic || assets.get(motionGraphicId);
     if (!asset) {
-      throw new Error(`Motion graphic visual ${attributes.id || index} references missing motionGraphicId ${motionGraphicId || "(empty)"}`);
+      throw new Error(`Motion graphic visual ${attributes.id || index} must either contain an inline <motionGraphic> definition or reference an existing motionGraphicId ${motionGraphicId || "(empty)"}`);
     }
     visuals.push({
       index,
-      visualId: collapseWhitespace(attributes.id) || `visual-${index}`,
+      visualId,
       label: collapseWhitespace(attributes.label) || `Motion graphic ${index}`,
       start: collapseWhitespace(attributes.start),
       end: collapseWhitespace(attributes.end),
@@ -1559,11 +1640,11 @@ function sanitizeXmlForMotionGraphics(xml, motionVisuals) {
     const motionVisual = motionVisuals.find((visual) => visual.index === visualIndex);
     if (!motionVisual) return full;
     const attrs = parseXmlAttributes(rawAttrs || "");
-    delete attrs.visualType;
     delete attrs.type;
-    delete attrs.motionGraphicId;
     delete attrs.motionId;
     delete attrs.motionGraphic;
+    attrs.visualType = "motion_graphic";
+    attrs.motionGraphicId = motionVisual.asset.id;
     attrs.imageId = `__motion_graphic_${motionVisual.asset.id}`;
     const renderedAttrs = Object.entries(attrs)
       .map(([key, value]) => `${key}="${escapeXmlAttribute(value)}"`)
@@ -4371,10 +4452,8 @@ function runDirectVideo(job) {
     "video-runtime.xml",
   );
   if (sceneImagesRuntimeXmlPath) {
+    preserveRuntimeMotionGraphicRendererMetadata(runtimeXmlPath, getSceneGeneratorManifestPath(job.projectId));
     restoreMissingMotionGraphicVideosFromSceneImageRun(job.projectId, config.sceneImagesDir);
-    hydrateRuntimeXmlMotionGraphicsFromManifest(runtimeXmlPath, getSceneGeneratorManifestPath(job.projectId), {
-      sourceXmlPath: config.scriptPath,
-    });
   }
   const xmlWorkDir = path.join(getProjectDir(job.projectId), "output", "xml-script-work");
   const captionsJsonPath = path.join(xmlWorkDir, "captions", "caption-sections.json");
@@ -4653,7 +4732,7 @@ process.on("SIGINT", () => handleTerminationSignal("SIGINT"));
 
 if (process.env.SHORT_FORM_STAGE_WORKER_PARSE_MOTION_GRAPHICS_TEST === "1") {
   const xml = fs.readFileSync(jobPath, "utf-8");
-  console.log(JSON.stringify([...parseMotionGraphicAssets(xml).values()], null, 2));
+  console.log(JSON.stringify(parseMotionGraphicVisuals(xml).map((visual) => visual.asset), null, 2));
   process.exit(0);
 }
 

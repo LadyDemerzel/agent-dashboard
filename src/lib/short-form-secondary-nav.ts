@@ -165,7 +165,13 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
   const showPlanVisuals = project
     ? showScript && (captionsStatus === 'approved' || project.xmlScript.exists || project.xmlScript.status === 'approved')
     : false;
-  const showSceneImages = project ? approved(project.xmlScript.status) : false;
+  const showSceneImages = project
+    ? Boolean(
+        project.xmlScript.exists ||
+          project.sceneImages.pending ||
+          project.sceneImages.scenes.length > 0
+      )
+    : false;
   const showPlanSoundDesign = project ? approved(project.sceneImages.status) : false;
   const showGenerateSoundDesign = project ? Boolean(project.soundDesign.exists) : false;
   const showVideo = project ? approved(project.sceneImages.status) : false;
@@ -267,11 +273,15 @@ export function getDetailRouteItems(projectId: string, project: Project | null):
       icon: 'generate-visuals',
       group: 'VISUALS',
       caption: 'Generate, review, and approve scene images from the XML plan.',
-      meta: approved(project?.xmlScript.status) ? 'XML approved' : 'Needs approved XML',
+      meta: approved(project?.xmlScript.status)
+        ? 'XML approved'
+        : project?.xmlScript.exists
+          ? 'XML plan ready'
+          : 'Needs XML visual plan',
       status: getDetailSectionStatus(project, 'scene-images'),
       available: showSceneImages,
       locked: !showSceneImages,
-      unlockHint: 'Approve the XML script first to unlock generated visuals.',
+      unlockHint: 'Plan visuals first to unlock generated visuals.',
     },
     {
       id: 'plan-sound-design',
