@@ -8,7 +8,11 @@ import {
   type DeliverableStatus,
 } from "@/lib/status";
 import { createThread, getThreadsForDeliverable } from "@/lib/feedback";
-import { enqueueShortFormStageRun, getPreferredModelsForStage } from "@/lib/short-form-stage-runner";
+import {
+  enqueueShortFormStageRun,
+  getPreferredModelsForStage,
+  stopShortFormStageRun,
+} from "@/lib/short-form-stage-runner";
 import { ensureXmlScriptDocument, getXmlScriptPath } from "@/lib/short-form-xml-script";
 import {
   ensureStageDocument,
@@ -46,6 +50,7 @@ import {
   SHORT_FORM_TEXT_SCRIPT_PASSING_SCORE,
 } from "@/lib/short-form-text-script-settings";
 import { getSoundDesignHandoffState } from "@/lib/short-form-sound-design-handoff";
+import { buildShortFormSoundDesignPrompt } from "@/lib/short-form-sound-design-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -194,22 +199,6 @@ function getStageArtifactRequirements(stage: ShortFormStageKey, paths: {
   }
 }
 
-function buildExecutionContract(stage: ShortFormStageKey, mode: "generate" | "revise", requirements: ReturnType<typeof getStageArtifactRequirements>) {
-  const stageLabel = getStageTitle(stage);
-  return [
-    "EXECUTION CONTRACT — REQUIRED FOR TASK SUCCESS",
-    `This is an artifact-writing task for the ${stageLabel} stage.`,
-    `You must create or update the required on-disk artifact(s), not just draft the content in chat.`,
-    `Required artifact path(s):\n${requirements.required.map((item) => `- ${item}`).join("\n")}`,
-    `Use the write/edit tool on the exact path(s) above. Do not stop after showing a draft in your response.`,
-    mode === "revise"
-      ? `This is a revision. You must overwrite/update the existing artifact in place at ${requirements.primary}. Do not create a second alternate file.`
-      : `This is an initial generation. The task is incomplete until the required artifact(s) exist on disk at the exact path(s) above.`,
-    `Before finishing, verify the artifact side effect yourself:\n${requirements.verification.map((item) => `- ${item}`).join("\n")}`,
-    "If you cannot write or verify the artifact(s), explicitly say the task FAILED and explain why. Do not claim completion without the file side effect.",
-  ].join("\n\n");
-}
-
 function buildTextScriptWorkflowConfig(
   project: NonNullable<ReturnType<typeof getShortFormProject>>,
   requestContext: { mode: "generate" | "revise"; notes?: string; textScriptRunId: string }
@@ -282,48 +271,20 @@ function buildStageTask(
 ) {
   const projectDir = getProjectDir(project.id);
   const researchPath = getStageFilePath(project.id, "research");
-  const scriptPath = getStageFilePath(project.id, "script");
   const sceneManifestPath = getSceneManifestPath(project.id);
   const sceneDocPath = getStageFilePath(project.id, "scene-images");
-  const soundDesignPath = getStageFilePath(project.id, "sound-design");
   const videoDocPath = getStageFilePath(project.id, "video");
   const xmlScriptPath = getXmlScriptPath(project.id);
   const finalVideoPath = `${projectDir}/output/final-video.mp4`;
   const sceneImagesDir = `${projectDir}/scenes`;
   const videoWorkDir = `${projectDir}/output/xml-scene-video-work`;
-  const requirements = getStageArtifactRequirements(stage, {
-    researchPath,
-    scriptPath: xmlScriptPath,
-    sceneManifestPath,
-    sceneDocPath,
-    soundDesignPath,
-    videoDocPath,
-    finalVideoPath,
-  });
-
   let renderedPrompt: string;
   if (stage === "sound-design") {
-    renderedPrompt = [
-      `Create or revise the sound-design artifact for the short-form project at ${soundDesignPath}.`,
-      `Topic: ${project.topic || "Untitled short-form video"}`,
-      project.selectedHookText ? `Selected hook: ${project.selectedHookText}` : "Selected hook: none approved yet.",
-      requestContext.notes ? `Requested changes: ${requestContext.notes}` : "Requested changes: none.",
-      `Use the approved XML/script context from ${xmlScriptPath}, caption timing, word-level forced alignment when present, and visual timing data when choosing cue timestamps.`,
-      "Keep the plan tasteful and aligned to narration pacing, but bias away from under-designing.",
-      "Prefer modern click/tick/tap/micro-accent SFX for emphasis and detail. Whooshes should be secondary, not the default transition answer.",
-      "Plan richer, more frequent sound effects where the edit supports them: click/tick accents every 1.5-3 seconds through active narration/visual changes, risers before anticipation/transition/payoff beats, and layered groups at bigger turns.",
-      "Motion-graphic boundary rule: always add tasteful transition SFX when visuals transition from a nano-banana/generated image/static visual into a motion_graphic visual, and when transitioning from a motion_graphic visual back to a generated/static image. For motion_graphic-to-motion_graphic visual changes, transition SFX are optional and left to Scribe's editorial discretion.",
-      "Motion-graphic interior rule: never add Scribe-planned non-music/non-ambience SFX inside the interior of motion_graphic scenes/segments. Music and ambience are fine. Boundary transition SFX around motion-graphic scene edges are explicitly allowed. Do not guess bars, text, cards, arrows, charts, or other template internals; those deterministic cues are owned by the dashboard renderer/resolver.",
-      'Output timestamp-only multi-track XML: <sound_design><music_segments><segment trackId="saved-music-id" start="..." end="..." /></music_segments><track><effect type="semantic-type" start="..." end="..." or duration="..." /></track></sound_design>.',
-      'Use <music_segments> when multiple saved music moods/pacing sections would feel more produced than one static bed. Segment attrs can include id, trackId, start, end/duration, gainDb, fadeInMs, fadeOutMs, mood, pacing, rationale.',
-      "For the first hook music segment, strongly prefer dramatic, high-tension, cinematic, or magnetic saved music/stingers that pull viewers in; transition into calmer proof or instruction music after the hook when useful.",
-      "Plan music segment gainDb about 2.5 dB louder than the prior baseline while keeping narration primary: hook -8.5 to -6.5 dB, proof/build -9.5 to -7.5 dB, instruction -11.5 to -9.5 dB, climax/payoff -7.5 to -5.5 dB, resolution -10.5 to -8.5 dB.",
-      "Plan non-music SFX about 3 dB quieter than the prior baseline while keeping them audible: impacts >= -9 dB, clicks/ticks/taps >= -10 dB, risers/whooshes >= -11 dB, ambience -25 to -21 dB; transients only need to sit about 1 dB above overlapping music and risers/whooshes may sit roughly even with it.",
-      'Use semantic type values when possible: impact, riser, click, whoosh, ambience, music-riser, music-reverb-tail, mix-duck, or mix-eq. If you need an exact saved sound, keep type semantic and add assetId="saved-library-id"; type="saved-library-id" is accepted only for backward compatibility.',
-      "Supported overlap values are allow, avoid, and layered. Root maxConcurrentOneShots limits simultaneous non-bed SFX; lower-priority overlaps may be auto-muted.",
-      "Do not emit anchors, sceneId, captionId, scene references, caption tags, or caption-boundary timing properties. Captions are context only.",
-      "Write the updated artifact back to the same sound-design path.",
-    ].join("\n");
+    renderedPrompt = buildShortFormSoundDesignPrompt(project.id, {
+      topic: project.topic || project.title || "Untitled short-form video",
+      selectedHook: project.selectedHookText || "No selected hook yet",
+      revisionNotes: requestContext.notes || "",
+    });
   } else {
     const prompts = getShortFormWorkflowPrompts();
     const promptMode = shouldUseCleanRerunPrompt(stage, requestContext.mode, requestContext.notes) ? "generate" : requestContext.mode;
@@ -348,7 +309,7 @@ function buildStageTask(
     });
   }
 
-  return [renderedPrompt, buildExecutionContract(stage, requestContext.mode, requirements)].join("\n\n");
+  return renderedPrompt;
 }
 
 function getProjectStageState(project: NonNullable<ReturnType<typeof getShortFormProject>>, stage: ShortFormStageKey) {
@@ -688,5 +649,35 @@ export async function PATCH(
       statusLog: readStatusLog(filePath),
       threads: getThreadsForDeliverable(filePath),
     },
+  });
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string; stage: string }> }
+) {
+  const { id, stage: rawStage } = await params;
+  const stage = rawStage as ShortFormStageKey;
+  const project = getShortFormProject(id);
+
+  if (!project) {
+    return NextResponse.json({ success: false, error: "Project not found" }, { status: 404 });
+  }
+
+  if (!["research", "script", "scene-images", "sound-design", "video"].includes(stage)) {
+    return NextResponse.json({ success: false, error: "Unknown workflow stage" }, { status: 400 });
+  }
+
+  const latestRequest = getLatestStageRequest(id, stage);
+  const result = stopShortFormStageRun(id, stage, latestRequest?.runId);
+  updatePendingStage(id, getPendingKey(stage), false);
+  updateProjectMeta(id, {});
+
+  return NextResponse.json({
+    success: true,
+    message: result.stopped
+      ? `${getStageTitle(stage)} generation stopped`
+      : `${getStageTitle(stage)} generation marked stopped`,
+    data: result,
   });
 }

@@ -21,6 +21,7 @@ export interface StageAgentRunClient {
   source?: 'workflow-run' | 'agent-session';
   status?: 'running' | 'verified' | 'failed';
   sessionId?: string;
+  sessionKey?: string;
   startedAt?: string;
   failedAt?: string;
   completedAt?: string;
@@ -60,6 +61,7 @@ export interface StageDoc {
   openThreads: number;
   pending?: boolean;
   validationError?: string;
+  agentRun?: StageAgentRunClient;
   revision?: StageRevisionClient;
 }
 
@@ -637,6 +639,31 @@ function normalizeStageDoc(value: unknown): StageDoc {
   const obj = asObject(value);
   const revisionObj = asObject(obj.revision);
   const agentRunObj = asObject(revisionObj.agentRun);
+  const directAgentRunObj = asObject(obj.agentRun);
+  const normalizeAgentRun = (runObj: Record<string, unknown>): StageAgentRunClient | undefined =>
+    Object.keys(runObj).length > 0
+      ? {
+          runId: asOptionalString(runObj.runId),
+          source:
+            runObj.source === 'workflow-run' || runObj.source === 'agent-session'
+              ? runObj.source
+              : undefined,
+          status:
+            runObj.status === 'running' ||
+            runObj.status === 'verified' ||
+            runObj.status === 'failed'
+              ? runObj.status
+              : undefined,
+          sessionId: asOptionalString(runObj.sessionId),
+          sessionKey: asOptionalString(runObj.sessionKey),
+          startedAt: asOptionalString(runObj.startedAt),
+          failedAt: asOptionalString(runObj.failedAt),
+          completedAt: asOptionalString(runObj.completedAt),
+          lastEventAt: asOptionalString(runObj.lastEventAt),
+          errorMessage: asOptionalString(runObj.errorMessage),
+          completionReason: asOptionalString(runObj.completionReason),
+        }
+      : undefined;
 
   const revision: StageRevisionClient | undefined = Object.keys(revisionObj).length > 0
     ? {
@@ -662,28 +689,7 @@ function normalizeStageDoc(value: unknown): StageDoc {
         isFailed: asBoolean(revisionObj.isFailed),
         isStale: asBoolean(revisionObj.isStale),
         warning: asOptionalString(revisionObj.warning),
-        agentRun: Object.keys(agentRunObj).length > 0
-          ? {
-              runId: asOptionalString(agentRunObj.runId),
-              source:
-                agentRunObj.source === 'workflow-run' || agentRunObj.source === 'agent-session'
-                  ? agentRunObj.source
-                  : undefined,
-              status:
-                agentRunObj.status === 'running' ||
-                agentRunObj.status === 'verified' ||
-                agentRunObj.status === 'failed'
-                  ? agentRunObj.status
-                  : undefined,
-              sessionId: asOptionalString(agentRunObj.sessionId),
-              startedAt: asOptionalString(agentRunObj.startedAt),
-              failedAt: asOptionalString(agentRunObj.failedAt),
-              completedAt: asOptionalString(agentRunObj.completedAt),
-              lastEventAt: asOptionalString(agentRunObj.lastEventAt),
-              errorMessage: asOptionalString(agentRunObj.errorMessage),
-              completionReason: asOptionalString(agentRunObj.completionReason),
-            }
-          : undefined,
+        agentRun: normalizeAgentRun(agentRunObj),
       }
     : undefined;
 
@@ -695,6 +701,7 @@ function normalizeStageDoc(value: unknown): StageDoc {
     openThreads: typeof obj.openThreads === 'number' ? obj.openThreads : 0,
     pending: asBoolean(obj.pending),
     validationError: asOptionalString(obj.validationError),
+    agentRun: normalizeAgentRun(directAgentRunObj),
     revision,
   };
 }

@@ -708,26 +708,61 @@ async function spawnAuthoringAttempt(job, model, attemptIndex) {
     throw new Error(`Webhook failed: ${response.status} ${errorText}`);
   }
 
-  return response.json();
+  const result = await response.json();
+  const status = typeof result?.status === "string" ? result.status.toLowerCase() : "";
+  if (result?.ok === false || status === "error" || result?.error || result?.errorMessage) {
+    const summary = result?.summary || result?.errorMessage || result?.error || JSON.stringify(result);
+    throw new Error(`Hook agent run failed: ${summary}`);
+  }
+  return result;
 }
 
-function hasFreshArtifact(filePath, requestedAt) {
-  if (!fs.existsSync(filePath)) return false;
-  const requestedAtMs = Date.parse(requestedAt || new Date().toISOString());
+function readXmlArtifactBody(filePath) {
+  if (!fs.existsSync(filePath)) return "";
   try {
-    return fs.statSync(filePath).mtimeMs > requestedAtMs + 1000;
+    return stripFrontMatter(fs.readFileSync(filePath, "utf-8")).replace(/\r\n/g, "\n").trim();
+  } catch {
+    return "";
+  }
+}
+
+function snapshotXmlAuthoringArtifact(filePath) {
+  if (!fs.existsSync(filePath)) return { body: "", exists: false, mtimeMs: undefined };
+  try {
+    return {
+      body: readXmlArtifactBody(filePath),
+      exists: true,
+      mtimeMs: fs.statSync(filePath).mtimeMs,
+    };
+  } catch {
+    return { body: "", exists: fs.existsSync(filePath), mtimeMs: undefined };
+  }
+}
+
+function hasFreshXmlAuthoringArtifact(filePath, previousArtifact, authoringStartedAtMs) {
+  if (!fs.existsSync(filePath)) return false;
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.mtimeMs + 1000 < authoringStartedAtMs) return false;
+    const body = readXmlArtifactBody(filePath);
+    const previousBody = previousArtifact?.body || "";
+    return (
+      body.length > 0 &&
+      !body.includes("Waiting for the XML script pipeline") &&
+      body !== previousBody
+    );
   } catch {
     return false;
   }
 }
 
-async function waitForFile(filePath, requestedAt, timeoutMs = 10 * 60_000, pollMs = 5000) {
+async function waitForXmlAuthoringArtifact(filePath, previousArtifact, authoringStartedAtMs, timeoutMs = 10 * 60_000, pollMs = 5000) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
-    if (hasFreshArtifact(filePath, requestedAt)) return true;
+    if (hasFreshXmlAuthoringArtifact(filePath, previousArtifact, authoringStartedAtMs)) return true;
     await new Promise((resolve) => setTimeout(resolve, pollMs));
   }
-  return hasFreshArtifact(filePath, requestedAt);
+  return hasFreshXmlAuthoringArtifact(filePath, previousArtifact, authoringStartedAtMs);
 }
 
 async function main() {
@@ -1050,16 +1085,23 @@ async function main() {
       }
       writeTextIfChanged(promptPath, job.prompt);
       updateStatus();
-      const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0 ? job.preferredModels : ["openai-codex/gpt-5.5"];
+      const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0 ? job.preferredModels : ["openai/gpt-5.5"];
       let verified = false;
       for (let index = 0; index < models.length; index += 1) {
         const model = models[index];
         const attempt = { step: "xml-authoring", model, startedAt: new Date().toISOString() };
+        const previousXmlArtifact = snapshotXmlAuthoringArtifact(job.xmlScriptPath);
+        const authoringStartedAtMs = Date.now();
         attempts.push(attempt);
         updateStatus();
         try {
           attempt.spawnResult = await spawnAuthoringAttempt(job, model, index);
-          verified = await waitForFile(job.xmlScriptPath, job.requestedAt);
+          updateStatus();
+          verified = await waitForXmlAuthoringArtifact(
+            job.xmlScriptPath,
+            previousXmlArtifact,
+            authoringStartedAtMs,
+          );
           attempt.verified = verified;
           attempt.finishedAt = new Date().toISOString();
           if (verified) break;
@@ -1070,7 +1112,7 @@ async function main() {
       }
 
       if (!verified) {
-        throw new Error("XML authoring finished without writing a fresh xml-script.md artifact.");
+        throw new Error("XML authoring finished without writing a body-different xml-script.md artifact. Identical-body rewrites are rejected; Scribe must make a meaningful Plan Visuals revision or fail with a clear reason.");
       }
     }
 
@@ -1097,4 +1139,10 @@ if (isDirectRun) {
   main().catch(() => process.exit(1));
 }
 
-export { buildCaptionPlan, chunkSentence, splitSentences };
+export {
+  buildCaptionPlan,
+  chunkSentence,
+  hasFreshXmlAuthoringArtifact,
+  snapshotXmlAuthoringArtifact,
+  splitSentences,
+};

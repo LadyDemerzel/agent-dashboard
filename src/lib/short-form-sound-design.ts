@@ -337,6 +337,77 @@ function clampOptionalNumber(value: unknown, min: number, max: number, digits = 
   return Math.min(max, Math.max(min, Math.round(parsed * factor) / factor));
 }
 
+function parseMotionTimingAttribute(attrs: Record<string, string>) {
+  return clampOptionalNumber(attrs.animateIn ?? attrs.revealAt ?? attrs.startAt ?? attrs.at ?? attrs.time, 0, 120, 3);
+}
+
+function assignMotionTiming(timings: Record<string, unknown>, itemKey: unknown, at: number | undefined) {
+  const key = normalizeOptionalString(itemKey);
+  if (!key || at === undefined) return;
+  timings[key] = at;
+}
+
+function directItemTiming(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const obj = value as Record<string, unknown>;
+  return clampOptionalNumber(obj.animateIn ?? obj.revealAt ?? obj.startAt ?? obj.at ?? obj.time, 0, 120, 3);
+}
+
+function animationTimings(args: Record<string, unknown>) {
+  const candidate = args.animationTimings || args.timings || args.animateIn;
+  return candidate && typeof candidate === "object" && !Array.isArray(candidate)
+    ? candidate as Record<string, unknown>
+    : {};
+}
+
+function timingSourceAliases(source: string) {
+  if (source === "items") return ["items", "steps"];
+  if (source === "steps") return ["steps", "items"];
+  return [source];
+}
+
+function visibleRepeatItems(args: Record<string, unknown>, source: string) {
+  for (const candidateSource of timingSourceAliases(source)) {
+    const value = args[candidateSource];
+    if (!Array.isArray(value)) continue;
+    return value.filter((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return true;
+      return (item as { blank?: unknown }).blank !== true;
+    });
+  }
+  return [];
+}
+
+function itemAnimationTiming(args: Record<string, unknown>, source: string, index: number) {
+  for (const candidateSource of timingSourceAliases(source)) {
+    const value = args[candidateSource];
+    if (Array.isArray(value)) {
+      const direct = directItemTiming(value[index]);
+      if (direct !== undefined) return direct;
+    }
+  }
+  const timings = animationTimings(args);
+  for (const candidateSource of timingSourceAliases(source)) {
+    const collection = timings[candidateSource];
+    if (Array.isArray(collection)) {
+      const timing = clampOptionalNumber(collection[index], 0, 120, 3);
+      if (timing !== undefined) return timing;
+    }
+    if (collection && typeof collection === "object") {
+      const timing = clampOptionalNumber((collection as Record<string, unknown>)[String(index + 1)], 0, 120, 3);
+      if (timing !== undefined) return timing;
+    }
+    const keyedTiming = clampOptionalNumber(
+      timings[`${candidateSource}.${index + 1}`] ?? timings[`${candidateSource}[${index + 1}]`] ?? timings[`${candidateSource}:${index + 1}`],
+      0,
+      120,
+      3,
+    );
+    if (keyedTiming !== undefined) return keyedTiming;
+  }
+  return undefined;
+}
+
 function normalizeFrequencyBand(value: unknown): ShortFormSoundFrequencyBand | undefined {
   return value === "low" || value === "mid" || value === "high" || value === "full-range" ? value : undefined;
 }
@@ -518,6 +589,7 @@ function parseMotionGraphicAssetsFromXml(projectId: string) {
     if (!id || !templateId) continue;
     const body = match[2] || "";
     const args: Record<string, unknown> = {};
+    const timings: Record<string, unknown> = {};
     for (const argMatch of body.matchAll(/<arg\b([^>]*)>([\s\S]*?)<\/arg>/gi)) {
       const argAttrs = parseAttributes(argMatch[1] || "");
       const name = normalizeOptionalString(argAttrs.name);
@@ -525,6 +597,7 @@ function parseMotionGraphicAssetsFromXml(projectId: string) {
       const text = decodeXmlText((argMatch[2] || "").replace(/\s+/g, " ").trim());
       const numeric = Number(text);
       args[name] = text && Number.isFinite(numeric) && /^[-+]?\d+(?:\.\d+)?$/.test(text) ? numeric : text;
+      assignMotionTiming(timings, name, parseMotionTimingAttribute(argAttrs));
     }
     const data = Array.from(body.matchAll(/<item\b([^>]*?)\/?\s*>/gi))
       .map((itemMatch) => {
@@ -533,35 +606,59 @@ function parseMotionGraphicAssetsFromXml(projectId: string) {
         const value = normalizeOptionalString(itemAttrs.value);
         if (!label || !value) return null;
         const numericValue = Number(value);
+        const animateIn = parseMotionTimingAttribute(itemAttrs);
         return {
           label: decodeXmlText(label),
           value: Number.isFinite(numericValue) ? numericValue : decodeXmlText(value),
           ...(itemAttrs.displayValue ? { displayValue: decodeXmlText(itemAttrs.displayValue) } : {}),
+          ...(animateIn !== undefined ? { animateIn } : {}),
         };
       })
-      .filter((item): item is { label: string; value: number | string; displayValue?: string } => Boolean(item));
-    if (data.length > 0) args.data = data;
+      .filter((item): item is { label: string; value: number | string; displayValue?: string; animateIn?: number } => Boolean(item));
+    if (data.length > 0) {
+      args.data = data;
+      const dataTimings = data.map((item) => directItemTiming(item));
+      if (dataTimings.some((item) => item !== undefined)) timings.data = dataTimings;
+    }
     const steps = Array.from(body.matchAll(/<step\b([^>]*)>([\s\S]*?)<\/step>/gi))
       .map((stepMatch) => {
         const stepAttrs = parseAttributes(stepMatch[1] || "");
         const text = decodeXmlText((stepMatch[2] || "").replace(/\s+/g, " ").trim());
         if (!text) return null;
         const label = normalizeOptionalString(stepAttrs.label || stepAttrs.leftLabel || stepAttrs.marker);
-        return label ? { label: decodeXmlText(label), text } : { text };
+        const animateIn = parseMotionTimingAttribute(stepAttrs);
+        return { ...(label ? { label: decodeXmlText(label) } : {}), text, ...(animateIn !== undefined ? { animateIn } : {}) };
       })
-      .filter((step): step is { label?: string; text: string } => Boolean(step));
+      .filter((step): step is { label?: string; text: string; animateIn?: number } => Boolean(step));
     if (steps.length > 0) {
       args.steps = steps;
       args.items = steps;
+      const stepTimings = steps.map((step) => directItemTiming(step));
+      if (stepTimings.some((item) => item !== undefined)) {
+        timings.steps = stepTimings;
+        timings.items = stepTimings;
+      }
     }
     const lines = Array.from(body.matchAll(/<(line|blankLine)\b([^>]*)\/?\s*>(?:([\s\S]*?)<\/\1>)?/gi))
       .map((lineMatch) => {
         const tagName = String(lineMatch[1] || "").toLowerCase();
-        if (tagName === "blankline") return { blank: true };
+        const lineAttrs = parseAttributes(lineMatch[2] || "");
+        const animateIn = parseMotionTimingAttribute(lineAttrs);
+        if (tagName === "blankline") return { blank: true, ...(animateIn !== undefined ? { animateIn } : {}) };
         const text = decodeXmlText((lineMatch[3] || "").replace(/\s+/g, " ").trim());
-        return text ? { text } : { blank: true };
+        const size = normalizeOptionalString(lineAttrs.size || lineAttrs.lineSize);
+        return text ? { text, ...(size ? { size } : {}), ...(animateIn !== undefined ? { animateIn } : {}) } : { blank: true, ...(animateIn !== undefined ? { animateIn } : {}) };
       });
-    if (lines.length > 0) args.lines = lines;
+    if (lines.length > 0) {
+      args.lines = lines;
+      const lineTimings = lines.map((line) => directItemTiming(line));
+      if (lineTimings.some((item) => item !== undefined)) timings.lines = lineTimings;
+    }
+    for (const timingMatch of body.matchAll(/<timing\b([^>]*?)\/?\s*>/gi)) {
+      const timingAttrs = parseAttributes(timingMatch[1] || "");
+      assignMotionTiming(timings, timingAttrs.item || timingAttrs.name || timingAttrs.target, parseMotionTimingAttribute(timingAttrs));
+    }
+    if (Object.keys(timings).length > 0) args.animationTimings = timings;
     assets.set(id, {
       id,
       templateId,
@@ -1588,16 +1685,46 @@ function slugifySoundCueId(value: string) {
 
 function deterministicCueRepeatCount(cue: MotionGraphicDeterministicSoundCue, args: Record<string, unknown>) {
   if (!cue.repeat) return 1;
-  const value = args[cue.repeat.source];
-  const count = Array.isArray(value) ? value.filter((item) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) return true;
-    return (item as { blank?: unknown }).blank !== true;
-  }).length : 0;
+  const count = visibleRepeatItems(args, cue.repeat.source).length;
   return Math.max(1, Math.min(cue.repeat.maxCount, count || 1));
 }
 
-function deterministicCueOffset(cue: MotionGraphicDeterministicSoundCue, index: number, duration: number) {
-  if (cue.repeat) return cue.repeat.firstOffsetSeconds + index * cue.repeat.stepSeconds;
+function deterministicCueTimingKeys(cue: MotionGraphicDeterministicSoundCue) {
+  const aliases: Record<string, string[]> = {
+    "value-pop": ["value"],
+    "title-tick": ["title"],
+    "axes-start": ["chart"],
+    "line-finish": ["chart"],
+    "before-reveal": ["before"],
+    "after-reveal": ["after"],
+    "cause-card": ["cause"],
+    "arrow-whoosh": ["arrow"],
+    "effect-card": ["effect"],
+    "paper-enter": ["paper"],
+    "finding-highlight": ["finding"],
+    "icon-enter": ["icon"],
+    "rule-confirm": ["rule"],
+  };
+  return [cue.id, ...(aliases[cue.id] || [])];
+}
+
+function deterministicCueOffset(cue: MotionGraphicDeterministicSoundCue, index: number, duration: number, args: Record<string, unknown> = {}) {
+  if (cue.repeat) {
+    const repeatItem = visibleRepeatItems(args, cue.repeat.source)[index];
+    const directTiming = directItemTiming(repeatItem);
+    if (directTiming !== undefined) return directTiming;
+    const itemTiming = itemAnimationTiming(args, cue.repeat.source, index);
+    if (itemTiming !== undefined) return itemTiming;
+    return cue.repeat.firstOffsetSeconds + index * cue.repeat.stepSeconds;
+  }
+  const timings = animationTimings(args);
+  for (const key of deterministicCueTimingKeys(cue)) {
+    const cueTiming = clampOptionalNumber(timings[key], 0, 120, 3);
+    if (cueTiming !== undefined) {
+      if (cue.id === "line-finish" && key === "chart") return cueTiming + 3;
+      return cueTiming;
+    }
+  }
   if (typeof cue.offsetSeconds === "number") return cue.offsetSeconds;
   if (typeof cue.offsetRatio === "number") return duration * cue.offsetRatio;
   return Math.min(0.5, duration * 0.25);
@@ -1627,7 +1754,7 @@ function buildDeterministicMotionGraphicSoundEvents(projectId: string): ShortFor
     for (const cue of cues) {
       const repeatCount = deterministicCueRepeatCount(cue, segment.args);
       for (let index = 0; index < repeatCount; index += 1) {
-        const offset = deterministicCueOffset(cue, index, duration);
+        const offset = deterministicCueOffset(cue, index, duration, segment.args);
         const startSeconds = segment.start + offset;
         if (startSeconds < safeStart || startSeconds > safeEnd) continue;
         const idParts = [
@@ -1683,7 +1810,7 @@ function buildDeterministicMotionGraphicPreviewSoundEvents(options: {
   for (const cue of cues) {
     const repeatCount = deterministicCueRepeatCount(cue, args);
     for (let index = 0; index < repeatCount; index += 1) {
-      const startSeconds = deterministicCueOffset(cue, index, duration);
+      const startSeconds = deterministicCueOffset(cue, index, duration, args);
       if (startSeconds < safeStart || startSeconds > safeEnd) continue;
       const idParts = [
         "det-mg-preview",

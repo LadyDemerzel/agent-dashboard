@@ -4,81 +4,78 @@ import { SHORT_FORM_VIDEOS_DIR } from "@/lib/short-form-videos";
 import { renderMotionGraphicTemplatePromptInjection } from "@/lib/short-form-motion-graphics";
 
 export interface ShortFormXmlVisualPlanningSettings {
+  planningGuidelinesTemplate: string;
   promptTemplate: string;
   revisePromptTemplate: string;
-  revisionNotesPromptTemplate: string;
 }
 
 const SETTINGS_PATH = path.join(SHORT_FORM_VIDEOS_DIR, "_xml-visual-planning-settings.json");
 
-const DEFAULT_REVISION_NOTES_PROMPT_TEMPLATE = "Revision notes: {{revisionNotes}}";
-
-const LEGACY_PLACEHOLDER_REPLACEMENTS: Array<[string, string]> = [
-  ["{{selectedHookLine}}", "Selected hook: {{selectedHook}}"],
-  ["{{revisionNotesLine}}", "{{revisionNotesBlock}}"],
-];
-
-const DEFAULT_PROMPT_TEMPLATE = [
-  "Write the XML script artifact for a short-form video workflow refactor.",
+const DEFAULT_PLANNING_GUIDELINES_TEMPLATE = [
+  "# Context for the short-form video",
+  "Inputs you must read before planning visuals and writing the XML plan:",
+  "- Topic of the short form video: {{topic}}",
+  "- Hook for the short form video: {{selectedHook}}",
+  "- Plain text script that is narrated out-loud for the short form video: {{textScriptPath}}",
+  "- Exact narration transcript used for TTS/alignment: {{transcriptPath}}",
+  "- Forced-alignment JSON: {{alignmentPath}}",
+  "- Captions/subtitles JSON (for timing/context only; do NOT copy it into XML): {{captionPlanPath}}",
   "",
+  "# XML Artifact",
   "You must write the final XML to the exact path below, with YAML front matter followed by raw XML only:",
   "{{xmlScriptPath}}",
   "",
-  "Project topic: {{topic}}",
-  "Selected hook: {{selectedHook}}",
-  "{{revisionNotesBlock}}",
-  "",
-  "Inputs you must read before writing:",
-  "- Approved plain text script: {{textScriptPath}}",
-  "- Exact narration transcript used for TTS/alignment: {{transcriptPath}}",
-  "- Forced-alignment JSON: {{alignmentPath}}",
-  "- Deterministic caption JSON (for timing/context only; do NOT copy it into XML): {{captionPlanPath}}",
-  "",
   "Required XML schema:",
   `<video version=\"2\">`,
-  `  <topic>...</topic>`,
-  `  <script>...</script>`,
   `  <assets>`,
-  `    <image id=\"asset-id\" characterDriven=\"false\">`,
+  `    <image id=\"asset-id\">`,
   `      <prompt>Describe one reusable image asset.</prompt>`,
   `    </image>`,
-  `    <image id=\"asset-id-2\" basedOn=\"asset-id\" characterDriven=\"true\">`,
+  `    <image id=\"asset-id-2\" basedOn=\"asset-id\">`,
   `      <prompt>Describe a NEW image to generate using the prior asset as a reference.</prompt>`,
   `    </image>`,
-  `    <motionGraphic id=\"motion-id\" templateId=\"bar_chart\">`,
-  `      <arg name=\"title\">Chart title</arg>`,
-  `      <item label=\"A\" value=\"35\" displayValue=\"35%\" />`,
-  `      <item label=\"B\" value=\"68\" displayValue=\"68%\" />`,
+  `    <motionGraphic id=\"start-not-strain\" templateId=\"good-bad-indicator\">`,
+  `      <timing item=\"icon\" at=\"0.15\" />`,
+  `      <timing item=\"text\" at=\"0.50\" />`,
+  `      <timing item=\"rule\" at=\"1.10\" />`,
+  `      <arg name=\"indicatorType\">good</arg>`,
+  `      <arg name=\"text\">Train the start, not the strain</arg>`,
   `    </motionGraphic>`,
   `  </assets>`,
   `  <timeline>`,
   `    <visual id=\"visual-1\" label=\"Hook setup\" start=\"0.00\" end=\"1.20\" imageId=\"asset-id\" cameraZoom=\"0.05\" />`,
-  `    <visual id=\"visual-2\" label=\"Data reveal\" start=\"1.20\" end=\"2.40\" visualType=\"motion_graphic\" motionGraphicId=\"motion-id\" />`,
+  `    <visual id=\"visual-2\" label=\"Reveal\" start=\"1.20\" end=\"2.40\" imageId=\"asset-id\" cameraZoomStart=\"0.02\" cameraZoomEnd=\"0.08\" />`,
+  `    <visual id=\"visual-3\" label=\"Indicator\" start=\"2.40\" end=\"4.00\" visualType=\"motion_graphic\" motionGraphicId=\"start-not-strain\" />`,
   `  </timeline>`,
   `</video>`,
   "",
-  "Semantics:",
-  "- <script> must match the approved plain text narration.",
-  "- Captions do NOT belong in the XML anymore. Do not emit <caption> nodes anywhere.",
+  "## XML Semantics",
+  "### Captions",
+  "- Captions do NOT belong in the XML. Do not emit <caption> nodes anywhere.",
   "- The caption JSON is a separate deterministic artifact used by the final renderer and review timeline.",
-  "- <timeline><visual> entries should only describe visuals: label, start/end timing, imageId or motionGraphicId, visualType, and optional camera motion.",
+  "",
+  "### <assets>/<image>",
   "- <assets>/<image id> defines reusable underlying image assets.",
-  "- Every <assets><image> may include characterDriven=\"true\" or characterDriven=\"false\".",
-  "- Set characterDriven=\"true\" only when a single recurring/person character is intentionally the focal point of that generated image asset.",
-  "- Set characterDriven=\"false\" for environments, products, props, UI/diagrams, facility shots, abstract/process imagery, and any asset where no character/person should appear. If unsure, use false.",
-  "- Examples: an empty modern operating room, modular stainless-steel wall panels, surgical lights, product close-ups, dashboard UI, and process diagrams are characterDriven=\"false\"; a recurring presenter demonstrating a face exercise is characterDriven=\"true\".",
+  "- Prompts should describe the intended image clearly and specifically, including environment/background details when they matter.",
+  "- No baked-in text in generated images.",
+  "",
+  "### <assets>/<motionGraphic>",
   "- <assets>/<motionGraphic id templateId> defines deterministic animated visuals rendered from approved templates.",
-  "- Use visualType=\"motion_graphic\" with motionGraphicId for animated slides/charts/motion graphics. Use imageId for normal generated image visuals.",
-  "- Do not invent renderer code. Configure only the allowed motion graphic template fields listed below.",
+  "- Motion graphics may include local animation-in timings for template core items. Use animateIn=\"seconds\" on <item>, <step>, or <line>, or <timing item=\"title\" at=\"seconds\" /> for named items like title/cause/arrow/effect.",
+  "- Configure only the allowed motion graphic template fields listed below.",
   "",
   "{{motionGraphicTemplates}}",
-  "- Reusing the exact same image asset = multiple <visual> entries with the same imageId.",
-  "- Generating a NEW image from a previous image reference = define a new <image id=... basedOn=...> asset.",
-  "- Ensure there is an actual visual or camera change at least every 3 seconds across the timeline.",
-  "- Camera motion/framing belongs on <visual> attributes, not on <image> assets.",
-  "- `cameraZoom` means a static zoom/framing value only.",
-  "- Use `cameraZoomStart` + `cameraZoomEnd` when you want an explicit animated zoom.",
-  "- Keep camera motion sparse and subtle by default.",
+  "",
+  "### <timeline>/<visual>",
+  "- <timeline><visual> entries should only describe visuals: label, start/end timing, imageId or motionGraphicId, visualType, and optional camera motion.",
+  "- Use visualType=\"motion_graphic\" with motionGraphicId for animated slides/charts/motion graphics. Use imageId for normal generated image visuals.",
+].join("\n");
+
+const DEFAULT_FULL_GENERATE_PROMPT_TEMPLATE = [
+  "# Goal",
+  "Plan the visuals that should be displayed on screen for a short-form video and write the plan as an XML artifact.",
+  "",
+  "{{planningVisualsGuidelines}}",
   "",
   "Practical authoring rules:",
   "- Give each <visual> a concise label attribute so the dashboard can identify the beat on the visual timeline.",
@@ -95,53 +92,43 @@ const DEFAULT_PROMPT_TEMPLATE = [
   "Project directory: {{projectDir}}",
 ].join("\n");
 
+const DEFAULT_FULL_REVISE_PROMPT_TEMPLATE = [
+  "# Goal",
+  "Revise the visuals that should be displayed on screen for a short-form video and write the revised plan as an XML artifact.",
+  "",
+  "{{planningVisualsGuidelines}}",
+  "",
+  "Practical authoring rules:",
+  "- Give each <visual> a concise label attribute so the dashboard can identify the beat on the visual timeline.",
+  "- Prefer fewer reusable assets than one fresh asset per caption when continuity makes sense.",
+  "- Distinguish exact asset reuse from reference-derived new assets clearly through image ids and basedOn.",
+  "- Prompts should describe the intended image clearly and specifically, including environment/background details when they matter.",
+  "- No baked-in text in generated images.",
+  "",
+  "Output contract:",
+  "- Write directly to the xml-script.md path above.",
+  "- Include YAML front matter with status: needs review, agent: workflow, and suitable title/tags.",
+  "- After writing, read the file back and verify it exists on disk.",
+  "",
+  "# Revising the visual plans XML artifact",
+  "- Apply the specific revision notes below to the existing Plan Visuals XML artifact.",
+  "- If xml-script.md already exists, read it first.",
+  "- The regenerated Plan Visuals XML must make meaningful body-level changes from the existing XML.",
+  "- Rewriting the same XML with only front matter/status/timestamp changes is invalid.",
+  "",
+  "### Revision notes:",
+  "{{revisionNotes}}",
+  "",
+  "Project directory: {{projectDir}}",
+].join("\n");
+
 function ensureSettingsDir() {
   fs.mkdirSync(path.dirname(SETTINGS_PATH), { recursive: true });
 }
 
-function normalizePromptTemplate(value: unknown) {
+function normalizePromptTemplate(value: unknown, fallback: string) {
   if (typeof value !== "string" || !value.trim()) {
-    return DEFAULT_PROMPT_TEMPLATE;
-  }
-
-  let normalized = value.replace(/\r/g, "").trim();
-  for (const [legacyPlaceholder, replacement] of LEGACY_PLACEHOLDER_REPLACEMENTS) {
-    normalized = normalized.replaceAll(legacyPlaceholder, replacement);
-  }
-
-  normalized = normalized.replace(/^[ \t]*Revision notes:\s*\{\{\s*revisionNotes\s*\}\}[ \t]*$/gm, "{{revisionNotesBlock}}");
-
-  if (!/\{\{\s*motionGraphicTemplates\s*\}\}/.test(normalized)) {
-    normalized = [
-      normalized,
-      "",
-      "Allowed deterministic motion graphic templates:",
-      "{{motionGraphicTemplates}}",
-    ].join("\n");
-  }
-
-  return ensureCharacterDrivenGuidance(normalized);
-}
-
-function ensureCharacterDrivenGuidance(template: string) {
-  if (/characterDriven\s*=/.test(template)) {
-    return template;
-  }
-
-  const guidance = [
-    "Image character routing:",
-    "- Every <assets><image> may include characterDriven=\"true\" or characterDriven=\"false\".",
-    "- Set characterDriven=\"true\" only when a single recurring/person character is intentionally the focal point of that generated image asset.",
-    "- Set characterDriven=\"false\" for environments, products, props, UI/diagrams, facility shots, abstract/process imagery, and any asset where no character/person should appear. If unsure, use false.",
-    "- Examples: an empty modern operating room, modular stainless-steel wall panels, surgical lights, product close-ups, dashboard UI, and process diagrams are characterDriven=\"false\"; a recurring presenter demonstrating a face exercise is characterDriven=\"true\".",
-  ].join("\n");
-
-  return [template, "", guidance].join("\n");
-}
-
-function normalizeRevisionNotesPromptTemplate(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) {
-    return DEFAULT_REVISION_NOTES_PROMPT_TEMPLATE;
+    return fallback;
   }
 
   return value.replace(/\r/g, "").trim();
@@ -149,9 +136,18 @@ function normalizeRevisionNotesPromptTemplate(value: unknown) {
 
 function normalize(candidate: Partial<ShortFormXmlVisualPlanningSettings> | null | undefined): ShortFormXmlVisualPlanningSettings {
   return {
-    promptTemplate: normalizePromptTemplate(candidate?.promptTemplate),
-    revisePromptTemplate: normalizePromptTemplate(candidate?.revisePromptTemplate ?? candidate?.promptTemplate),
-    revisionNotesPromptTemplate: normalizeRevisionNotesPromptTemplate(candidate?.revisionNotesPromptTemplate),
+    planningGuidelinesTemplate: normalizePromptTemplate(
+      candidate?.planningGuidelinesTemplate,
+      DEFAULT_PLANNING_GUIDELINES_TEMPLATE,
+    ),
+    promptTemplate: normalizePromptTemplate(
+      candidate?.promptTemplate,
+      DEFAULT_FULL_GENERATE_PROMPT_TEMPLATE,
+    ),
+    revisePromptTemplate: normalizePromptTemplate(
+      candidate?.revisePromptTemplate,
+      DEFAULT_FULL_REVISE_PROMPT_TEMPLATE,
+    ),
   };
 }
 
@@ -181,11 +177,5 @@ export function renderShortFormXmlVisualPlanningPrompt(template: string, values:
     ...values,
     motionGraphicTemplates: values.motionGraphicTemplates ?? renderMotionGraphicTemplatePromptInjection(),
   };
-  const withConditionalRevisionNotesBlock = template.replace(
-
-    /^[ \t]*\{\{\s*revisionNotesBlock\s*\}\}[ \t]*\n?/gm,
-    valuesWithMotionGraphics.revisionNotesBlock ? `${valuesWithMotionGraphics.revisionNotesBlock}\n` : ""
-  );
-
-  return withConditionalRevisionNotesBlock.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => valuesWithMotionGraphics[key] ?? "");
+  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => valuesWithMotionGraphics[key] ?? "");
 }

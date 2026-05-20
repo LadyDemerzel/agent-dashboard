@@ -210,6 +210,7 @@ export interface StageAgentRunSummary {
   source?: "workflow-run" | "agent-session";
   status?: "running" | "verified" | "failed";
   sessionId?: string;
+  sessionKey?: string;
   startedAt?: string;
   failedAt?: string;
   completedAt?: string;
@@ -242,6 +243,7 @@ export interface StageDocumentSummary {
   openThreads: number;
   pending?: boolean;
   validationError?: string;
+  agentRun?: StageAgentRunSummary;
   revision?: StageRevisionState;
 }
 
@@ -2039,7 +2041,7 @@ function findRelevantHookWorkflowRun(
           startedAt?: string;
           finishedAt?: string;
           error?: string;
-          spawnResult?: { sessionId?: string; id?: string };
+          spawnResult?: { sessionId?: string; id?: string; runId?: string };
         }>;
       };
 
@@ -2054,7 +2056,11 @@ function findRelevantHookWorkflowRun(
       const attempts = Array.isArray(parsed.attempts) ? parsed.attempts : [];
       const latestAttempt = attempts[attempts.length - 1];
       const errorAttempt = [...attempts].reverse().find((attempt) => typeof attempt.error === "string" && attempt.error.trim());
-      const sessionId = latestAttempt?.spawnResult?.sessionId || latestAttempt?.spawnResult?.id;
+      const sessionId = latestAttempt?.spawnResult?.sessionId || latestAttempt?.spawnResult?.id || latestAttempt?.spawnResult?.runId;
+      const attemptNumber = attempts.length;
+      const sessionKey = attemptNumber > 0
+        ? `hook:short-form:${projectId}:hooks:${parsed.runId}:attempt-${attemptNumber}`
+        : undefined;
       const lastEventAt = latestAttempt?.finishedAt || latestAttempt?.startedAt || parsed.startedAt;
 
       return {
@@ -2062,6 +2068,7 @@ function findRelevantHookWorkflowRun(
         source: "workflow-run",
         status: parsed.status,
         sessionId,
+        sessionKey,
         startedAt: parsed.startedAt,
         failedAt: parsed.failedAt,
         completedAt: parsed.status === "verified" ? parsed.verifiedAt : parsed.failedAt,
@@ -2122,10 +2129,11 @@ function findRelevantWorkflowRun(
         activeStep?: string;
         activeStatusText?: string;
         attempts?: Array<{
+          index?: number;
           startedAt?: string;
           finishedAt?: string;
           error?: string;
-          spawnResult?: { sessionId?: string; id?: string };
+          spawnResult?: { sessionId?: string; id?: string; runId?: string };
         }>;
       };
 
@@ -2140,7 +2148,11 @@ function findRelevantWorkflowRun(
       const attempts = Array.isArray(parsed.attempts) ? parsed.attempts : [];
       const latestAttempt = attempts[attempts.length - 1];
       const errorAttempt = [...attempts].reverse().find((attempt) => typeof attempt.error === "string" && attempt.error.trim());
-      const sessionId = latestAttempt?.spawnResult?.sessionId || latestAttempt?.spawnResult?.id;
+      const sessionId = latestAttempt?.spawnResult?.sessionId || latestAttempt?.spawnResult?.id || latestAttempt?.spawnResult?.runId;
+      const attemptNumber = typeof latestAttempt?.index === "number" ? latestAttempt.index : attempts.length;
+      const sessionKey = attemptNumber > 0 && parsed.runId
+        ? `hook:short-form:${projectId}:${stage}:${parsed.runId}:attempt-${attemptNumber}`
+        : undefined;
       const lastEventAt = latestAttempt?.finishedAt || latestAttempt?.startedAt || parsed.startedAt;
 
       return {
@@ -2148,6 +2160,7 @@ function findRelevantWorkflowRun(
         source: "workflow-run",
         status: parsed.status,
         sessionId,
+        sessionKey,
         startedAt: parsed.startedAt,
         failedAt: parsed.failedAt,
         completedAt: parsed.status === "verified" ? parsed.verifiedAt : parsed.failedAt,
@@ -2206,6 +2219,7 @@ function findRelevantSoundDesignRun(
         finishedAt?: string;
         errorMessage?: string;
         attempts?: Array<{
+          index?: number;
           startedAt?: string;
           finishedAt?: string;
           error?: string;
@@ -2225,6 +2239,10 @@ function findRelevantSoundDesignRun(
       const latestAttempt = attempts[attempts.length - 1];
       const errorAttempt = [...attempts].reverse().find((attempt) => typeof attempt.error === "string" && attempt.error.trim());
       const sessionId = latestAttempt?.spawnResult?.sessionId || latestAttempt?.spawnResult?.id || latestAttempt?.spawnResult?.runId;
+      const attemptNumber = typeof latestAttempt?.index === "number" ? latestAttempt.index : attempts.length;
+      const sessionKey = attemptNumber > 0 && parsed.runId
+        ? `hook:short-form:${projectId}:sound-design:${parsed.runId}:attempt-${attemptNumber}`
+        : undefined;
       const lastEventAt = parsed.finishedAt || latestAttempt?.finishedAt || latestAttempt?.startedAt || parsed.startedAt;
       const status = parsed.status === "completed" ? "verified" : parsed.status;
 
@@ -2233,6 +2251,7 @@ function findRelevantSoundDesignRun(
         source: "workflow-run",
         status,
         sessionId,
+        sessionKey,
         startedAt: parsed.startedAt || latestAttempt?.startedAt,
         failedAt: parsed.status === "failed" ? parsed.finishedAt : undefined,
         completedAt: parsed.status === "completed" ? parsed.finishedAt : parsed.status === "failed" ? parsed.finishedAt : undefined,
@@ -2338,6 +2357,7 @@ function findRelevantAgentRun(stage: ShortFormStageKey, filePath: string, reques
     return {
       source: "agent-session",
       sessionId,
+      sessionKey: candidate.entry.replace(/\.jsonl$/, ""),
       startedAt,
       failedAt,
       completedAt,
@@ -2371,14 +2391,18 @@ function deriveStageRevisionState(
     return undefined;
   }
 
-  const hasFreshArtifact = hasFreshStageArtifact(projectId, stage, doc, requestedAt);
-  if (hasFreshArtifact) {
-    return undefined;
-  }
-
   const workflowRun = stage === "sound-design"
     ? findRelevantSoundDesignRun(projectId, requestedAt, latestRequest?.runId)
     : findRelevantWorkflowRun(projectId, stage, requestedAt, latestRequest?.runId);
+  const hasFreshArtifact = hasFreshStageArtifact(projectId, stage, doc, requestedAt);
+  const soundDesignRunStillNeedsValidation =
+    stage === "sound-design" &&
+    Boolean(workflowRun) &&
+    workflowRun?.status !== "verified";
+
+  if (hasFreshArtifact && !soundDesignRunStillNeedsValidation) {
+    return undefined;
+  }
   const shouldTrack = mode === "revise"
     ? doc.status === "requested changes" || Boolean(options?.pending) || Boolean(workflowRun)
     : Boolean(options?.pending) || Boolean(workflowRun) || !hasMeaningfulStageOutput(stage, doc);
@@ -2428,6 +2452,24 @@ function deriveStageRevisionState(
   };
 }
 
+function deriveLatestStageAgentRun(
+  projectId: string,
+  stage: ShortFormStageKey,
+  doc: StageDocumentSummary,
+): StageAgentRunSummary | undefined {
+  const filePath = getStageFilePath(projectId, stage);
+  const latestRequest = getLatestStageRequest(projectId, stage);
+  const latestThread = getLatestOpenTopLevelThread(filePath);
+  const latestRequestLog = getLatestRequestedChangesLog(filePath);
+  const requestedAt = latestRequest?.requestedAt || latestThread?.createdAt || latestRequestLog?.timestamp || doc.updatedAt;
+
+  const workflowRun = stage === "sound-design"
+    ? findRelevantSoundDesignRun(projectId, requestedAt, latestRequest?.runId)
+    : findRelevantWorkflowRun(projectId, stage, requestedAt, latestRequest?.runId);
+
+  return workflowRun || findRelevantAgentRun(stage, filePath, requestedAt);
+}
+
 function readStageDocument(projectId: string, stage: ShortFormStageKey, options?: { pending?: boolean }): StageDocumentSummary {
   const filePath = getStageFilePath(projectId, stage);
   if (!fs.existsSync(filePath)) {
@@ -2449,6 +2491,7 @@ function readStageDocument(projectId: string, stage: ShortFormStageKey, options?
     openThreads: getOpenThreadCountForFile(filePath),
   };
   summary.revision = deriveStageRevisionState(projectId, stage, summary, options);
+  summary.agentRun = summary.revision?.agentRun || deriveLatestStageAgentRun(projectId, stage, summary);
   return summary;
 }
 
@@ -2829,6 +2872,7 @@ function getSoundDesignStage(projectId: string, options?: { pending?: boolean })
     openThreads: getOpenThreadCountForFile(doc.path),
   };
   stageDoc.revision = deriveStageRevisionState(projectId, "sound-design", stageDoc, options);
+  stageDoc.agentRun = stageDoc.revision?.agentRun || deriveLatestStageAgentRun(projectId, "sound-design", stageDoc);
   const previewPath = doc.resolution?.previewAudioRelativePath || getShortFormSoundDesignPreviewRelativePath(projectId);
   const previewAbsolutePath = previewPath ? path.join(getProjectDir(projectId), previewPath) : undefined;
   const previewExists = previewAbsolutePath ? fs.existsSync(previewAbsolutePath) : false;

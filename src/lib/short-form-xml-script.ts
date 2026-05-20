@@ -56,6 +56,21 @@ export interface XmlScriptDocumentSummary {
   content: string;
   updatedAt?: string;
   pending?: boolean;
+  agentRun?: {
+    runId?: string;
+    source?: "workflow-run" | "agent-session";
+    status?: "running" | "verified" | "failed";
+    sessionId?: string;
+    sessionKey?: string;
+    startedAt?: string;
+    failedAt?: string;
+    completedAt?: string;
+    lastEventAt?: string;
+    errorMessage?: string;
+    completionReason?: string;
+    activeStep?: string;
+    activeStatusText?: string;
+  };
   audioUrl?: string;
   audioPath?: string;
   originalAudioUrl?: string;
@@ -318,13 +333,60 @@ function isStaleRunningRun(run: XmlScriptRunStatusFile, latestArtifactTimestamp?
   return false;
 }
 
-function readLatestRunStatus(projectId: string, artifactPaths: string[]): XmlScriptRunStatusFile | undefined {
-  const statuses = readRunStatuses(projectId);
+function readLatestRunStatus(projectId: string, artifactPaths: string[], tasks?: XmlScriptRunStatus["task"][]): XmlScriptRunStatusFile | undefined {
+  const statuses = tasks
+    ? readRunStatuses(projectId).filter((status) => status.task && tasks.includes(status.task))
+    : readRunStatuses(projectId);
   if (statuses.length === 0) return undefined;
 
   const latestArtifactTimestamp = getLatestArtifactTimestamp(artifactPaths);
   const resolved = statuses.find((status) => !isStaleRunningRun(status, latestArtifactTimestamp));
   return resolved;
+}
+
+function summarizeXmlAgentRun(projectId: string, run: XmlScriptRunStatusFile | undefined) {
+  if (!run) return undefined;
+
+  const attempts = Array.isArray(run.attempts) ? run.attempts : [];
+  const latestAttempt = attempts[attempts.length - 1] as Record<string, unknown> | undefined;
+  const spawnResult = latestAttempt?.spawnResult && typeof latestAttempt.spawnResult === "object" && !Array.isArray(latestAttempt.spawnResult)
+    ? latestAttempt.spawnResult as Record<string, unknown>
+    : undefined;
+  const errorAttempt = [...attempts]
+    .reverse()
+    .find((attempt) => typeof attempt?.error === "string" && attempt.error.trim()) as Record<string, unknown> | undefined;
+  const sessionId = typeof spawnResult?.sessionId === "string"
+    ? spawnResult.sessionId
+    : typeof spawnResult?.id === "string"
+      ? spawnResult.id
+      : typeof spawnResult?.runId === "string"
+        ? spawnResult.runId
+        : undefined;
+  const latestAttemptStartedAt = typeof latestAttempt?.startedAt === "string" ? latestAttempt.startedAt : undefined;
+  const latestAttemptFinishedAt = typeof latestAttempt?.finishedAt === "string" ? latestAttempt.finishedAt : undefined;
+  const attemptNumber = attempts.length;
+  const sessionKey = attemptNumber > 0 && run.runId
+    ? `hook:short-form:${projectId}:xml-script:${run.runId}:attempt-${attemptNumber}`
+    : undefined;
+  const status = run.status === "verified" || run.status === "failed" || run.status === "running"
+    ? run.status
+    : undefined;
+
+  return {
+    runId: run.runId,
+    source: "workflow-run" as const,
+    status,
+    sessionId,
+    sessionKey,
+    startedAt: run.startedAt || latestAttemptStartedAt,
+    failedAt: run.failedAt,
+    completedAt: run.status === "verified" ? run.verifiedAt : run.status === "failed" ? run.failedAt : undefined,
+    lastEventAt: run.failedAt || run.verifiedAt || latestAttemptFinishedAt || latestAttemptStartedAt || run.startedAt,
+    errorMessage: run.errorMessage || (typeof errorAttempt?.error === "string" ? errorAttempt.error : undefined),
+    completionReason: run.status,
+    activeStep: run.progress?.step,
+    activeStatusText: run.progress?.label,
+  };
 }
 
 function getFreshArtifactTimestamp(filePath: string, freshnessFloorMs?: number) {
@@ -385,6 +447,7 @@ export function getXmlScriptDocument(
     alignmentOutputPath,
     captionPlanPath,
   ]);
+  const latestAuthoringRun = readLatestRunStatus(projectId, [filePath], ["full", "visuals"]);
 
   const frontMatterRepair = fs.existsSync(filePath) ? repairXmlScriptDocumentFrontMatter(projectId) : undefined;
   const content = frontMatterRepair?.content ?? "";
@@ -641,6 +704,7 @@ export function getXmlScriptDocument(
     content,
     updatedAt: exists ? timestampToIso(xmlFreshAt) || fileUpdatedAt(filePath) : undefined,
     pending: runActive,
+    agentRun: summarizeXmlAgentRun(projectId, latestAuthoringRun),
     audioUrl: processedAudioFreshAt ? toMediaUrl(projectId, audioRelative) : undefined,
     audioPath: processedAudioFreshAt ? audioRelative.split(path.sep).join("/") : undefined,
     originalAudioUrl: originalAudioFreshAt ? toMediaUrl(projectId, originalAudioRelative) : undefined,

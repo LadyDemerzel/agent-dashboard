@@ -30,8 +30,8 @@ export const dynamic = "force-dynamic";
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
 const REPO_ROOT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard");
 const WORKER_PATH = path.join(REPO_ROOT, "scripts", "xml-script-worker.mjs");
-const DEFAULT_RELIABLE_MODEL = process.env.SHORT_FORM_RELIABLE_MODEL || "openai-codex/gpt-5.5";
-const DEFAULT_RETRY_MODEL = process.env.SHORT_FORM_RETRY_MODEL || "openai/gpt-5.5";
+const DEFAULT_RELIABLE_MODEL = process.env.SHORT_FORM_RELIABLE_MODEL || "openai/gpt-5.5";
+const DEFAULT_RETRY_MODEL = process.env.SHORT_FORM_RETRY_MODEL || "";
 
 type XmlWorkflowTask = "full" | "narration" | "silence" | "captions" | "visuals";
 
@@ -71,28 +71,33 @@ function buildXmlAuthoringPrompt(project: NonNullable<ReturnType<typeof getShort
   const transcriptPath = path.join(workDir, "voice", "text-script.txt");
   const settings = getShortFormXmlVisualPlanningSettings();
   const revisionNotes = notes || "";
-  const revisionNotesBlock = revisionNotes
-    ? renderShortFormXmlVisualPlanningPrompt(settings.revisionNotesPromptTemplate, {
-        revisionNotes,
-        xmlScriptPath,
-      })
-    : "";
-
   const promptTemplate = revisionNotes
     ? settings.revisePromptTemplate
     : settings.promptTemplate;
 
-  return renderShortFormXmlVisualPlanningPrompt(promptTemplate, {
+  const existingBody = fs.existsSync(xmlScriptPath) ? extractBody(fs.readFileSync(xmlScriptPath, "utf-8")).trim() : "";
+  const promptValues = {
     xmlScriptPath,
     topic: project.topic || "Untitled short-form video",
     selectedHook: project.selectedHookText ?? "",
     revisionNotes,
-    revisionNotesBlock,
     textScriptPath,
     transcriptPath,
     alignmentPath,
     captionPlanPath,
     projectDir,
+    existingXmlBodySummary: existingBody
+      ? `The current artifact body is ${existingBody.length} characters; your saved body must differ from it.`
+      : "No previous XML body was found; write the initial complete XML body.",
+  };
+  const planningVisualsGuidelines = renderShortFormXmlVisualPlanningPrompt(
+    settings.planningGuidelinesTemplate,
+    promptValues,
+  );
+
+  return renderShortFormXmlVisualPlanningPrompt(promptTemplate, {
+    ...promptValues,
+    planningVisualsGuidelines,
   });
 }
 

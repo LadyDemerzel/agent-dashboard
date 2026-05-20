@@ -110,7 +110,13 @@ async function spawnAttempt(job, model, attemptIndex) {
     throw new Error(`Webhook failed: ${response.status} ${errorText}`);
   }
 
-  return response.json();
+  const result = await response.json();
+  const status = typeof result?.status === "string" ? result.status.toLowerCase() : "";
+  if (result?.ok === false || status === "error" || result?.error || result?.errorMessage) {
+    const summary = result?.summary || result?.errorMessage || result?.error || JSON.stringify(result);
+    throw new Error(`Hook agent run failed: ${summary}`);
+  }
+  return result;
 }
 
 async function main() {
@@ -130,7 +136,7 @@ async function main() {
 
   const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0
     ? job.preferredModels
-    : ["openai-codex/gpt-5.5", "openai/gpt-5.5"];
+    : ["openai/gpt-5.5"];
 
   for (let index = 0; index < models.length; index += 1) {
     const model = models[index];

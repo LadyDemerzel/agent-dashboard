@@ -5,11 +5,13 @@ import path from "node:path";
 import sharp from "sharp";
 
 import {
+  barChart,
   lineGrowthChart,
   pieChart,
   rankedPodium,
   scorecard,
   sequentialRevealTiming,
+  statReveal,
   stepChecklist,
   researchPaperCard,
   goodBadIndicator,
@@ -46,6 +48,14 @@ async function measureVisibleRoundedTextCardPadding(overlay) {
     right: cardX + overlay.debugRoundedTextCardWidth - 1 - maxX,
     textWidth: maxX - minX + 1,
   };
+}
+
+function hasEscapedTextAt(filters, rawText, timing) {
+  const escapedText = rawText.replace(/%/g, "\\%");
+  return filters.some((filter) =>
+    filter.includes(`text='${escapedText}'`)
+    && (filter.includes(`gte(t\\,${timing.toFixed(3)})`) || filter.includes(`between(t\\,${timing.toFixed(3)}`))
+  );
 }
 
 const preRevealed = sequentialRevealTiming(0, 2, { firstRevealAt: 0.42, revealDuration: 0.44, gapAfterReveal: 0.34 });
@@ -167,6 +177,21 @@ const scorecardFilters = scorecard(
 assert.ok(scorecardFilters.some((filter) => filter.includes("text='Fit score'")), "scorecard title should render");
 assert.ok(scorecardFilters.some((filter) => filter.includes("text='Clarity'")), "scorecard metric label should render");
 
+const apostropheOverlayInputs = [];
+apostropheOverlayInputs.tempDir = process.cwd();
+apostropheOverlayInputs.duration = 5;
+const apostropheFilters = await goodBadIndicator(
+  { indicatorType: "bad", text: "Don't assume it's weak", animationTimings: { text: 0.65 } },
+  "dark-pastel-watercolor",
+  apostropheOverlayInputs,
+);
+assert.ok(
+  apostropheFilters.some((filter) => filter.includes("text='Don’t assume'")) &&
+  apostropheFilters.some((filter) => filter.includes("text='it’s weak'")),
+  "drawtext strings should normalize apostrophes so FFmpeg filter quoting stays valid",
+);
+assert.ok(!apostropheFilters.some((filter) => filter.includes("text='Don't")), "drawtext strings must not contain raw apostrophes inside single-quoted filter values");
+
 const pieOverlayInputs = [];
 pieOverlayInputs.tempDir = process.cwd();
 pieOverlayInputs.duration = 6;
@@ -182,6 +207,41 @@ assert.ok(pieFilters.some((filter) => filter.includes("x=166:y=1209:w=37:h=37"))
 assert.ok(!pieFilters.some((filter) => filter.includes("x=166:y=1214:w=37:h=37")), "pie chart legend marker should not top-align with the legend text row");
 assert.ok(!pieFilters.some((filter) => filter.includes("x=166:y=1229:w=28:h=28")), "pie chart legend should not use the old smaller, lower color marker");
 assert.equal(pieOverlayInputs.length, 2, "pie chart should create one slice overlay per data point");
+
+const timedBarFilters = barChart(
+  {
+    title: "Timed bars",
+    animationTimings: { title: 0.21 },
+    data: [
+      { label: "A", value: 35, displayValue: "35%", animateIn: 0.74 },
+      { label: "B", value: 65, displayValue: "65%", animateIn: 1.36 },
+    ],
+  },
+  "dark-pastel-watercolor",
+  [],
+);
+assert.ok(timedBarFilters.some((filter) => filter.includes("text='Timed bars'") && filter.includes("gte(t\\,0.210)")), "bar chart title should honor explicit title animation timing");
+assert.ok(hasEscapedTextAt(timedBarFilters, "35%", 0.74), "bar chart item should honor animateIn on the data item");
+assert.ok(hasEscapedTextAt(timedBarFilters, "65%", 1.36), "bar chart second data item should honor its own animateIn timing");
+
+const timedStatFilters = statReveal(
+  { value: "81%", title: "Timed stat", animationTimings: { value: 0.31, title: 0.93 } },
+  "dark-pastel-watercolor",
+  [],
+);
+assert.ok(hasEscapedTextAt(timedStatFilters, "81%", 0.31), "stat reveal value should honor explicit value timing");
+assert.ok(timedStatFilters.some((filter) => filter.includes("text='Timed stat'") && filter.includes("gte(t\\,0.930)")), "stat reveal title should honor explicit title timing");
+
+const timedPieOverlayInputs = [];
+timedPieOverlayInputs.tempDir = process.cwd();
+timedPieOverlayInputs.duration = 6;
+const timedPieFilters = await pieChart(
+  { title: "Timed slices", animationTimings: { title: 0.18, data: [0.66, 1.18] }, data: [{ label: "A", value: 35, displayValue: "35%" }, { label: "B", value: 65, displayValue: "65%" }] },
+  "dark-pastel-watercolor",
+  timedPieOverlayInputs,
+);
+assert.ok(timedPieFilters.some((filter) => filter.includes("text='Timed slices'") && filter.includes("gte(t\\,0.180)")), "pie chart title should honor explicit title animation timing");
+assert.deepEqual(timedPieOverlayInputs.map((overlay) => overlay.start), [0.66, 1.18], "pie chart slice overlays should honor per-slice animation timings");
 
 const growthOverlayInputs = [];
 growthOverlayInputs.tempDir = process.cwd();
@@ -304,6 +364,19 @@ assert.equal(growthValueOverlay?.debugValueLabelTarget, "+86%", "line growth cha
 assert.equal(growthValueOverlay?.debugValueLabelFadeInDuration, 1, "line growth chart counter should fade in over 1000ms");
 assert.equal(growthValueOverlay?.debugValueLabelFadeInStartsAt, growthValueOverlay?.start + growthValueOverlay?.debugPrimaryLineStartOffset, "line growth chart counter fade should start with the primary line growth");
 
+const timedGrowthOverlayInputs = [];
+timedGrowthOverlayInputs.tempDir = process.cwd();
+timedGrowthOverlayInputs.duration = 6;
+const timedGrowthFilters = await lineGrowthChart(
+  { title: "Timed growth", direction: "increase", animationTimings: { title: 0.24, chart: 1.16 } },
+  "dark-pastel-watercolor",
+  timedGrowthOverlayInputs,
+);
+const timedGrowthOverlay = timedGrowthOverlayInputs.find((overlay) => overlay.filePath.includes("line-growth-main"));
+assert.equal(timedGrowthOverlay?.start, 1.16, "line growth chart should honor explicit chart timing for the animated graph overlay");
+assert.ok(timedGrowthFilters.some((filter) => filter.includes("text='Timed growth'") && filter.includes("gte(t\\,0.240)")), "line growth chart title should honor explicit title timing");
+assert.ok(timedGrowthFilters.some((filter) => filter.includes("text='Start'") && filter.includes("gte(t\\,2.000)")), "line growth chart axis labels should stay relative to explicit chart timing");
+
 const growthUnitsOverlayInputs = [];
 growthUnitsOverlayInputs.tempDir = process.cwd();
 growthUnitsOverlayInputs.duration = 6;
@@ -389,6 +462,21 @@ assert.ok(
   Math.abs((causeCard.debugRoundedTextCardY + (effectCard.debugRoundedTextCardY + effectCard.debugRoundedTextCardHeight)) / 2 - 960) <= 1,
   "cause/effect boxes and arrow should be vertically centered as one layout group",
 );
+
+const timedCauseEffectOverlayInputs = [];
+timedCauseEffectOverlayInputs.tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cause-effect-template-timed-test-"));
+timedCauseEffectOverlayInputs.duration = 6;
+await causeEffect(
+  { cause: "Timed cause", effect: "Timed effect", animationTimings: { cause: 0.24, arrow: 1.04, effect: 1.72 } },
+  "dark-pastel-watercolor",
+  timedCauseEffectOverlayInputs,
+);
+const timedCauseCard = timedCauseEffectOverlayInputs.find((overlay) => overlay.debugRoundedTextCardLines?.join(" ").includes("Timed cause"));
+const timedEffectCard = timedCauseEffectOverlayInputs.find((overlay) => overlay.debugRoundedTextCardLines?.join(" ").includes("Timed effect"));
+const timedCauseArrow = timedCauseEffectOverlayInputs.find((overlay) => overlay.debugDownArrow);
+assert.equal(timedCauseCard?.start, 0.24, "cause/effect cause card should honor explicit cause timing");
+assert.equal(timedCauseArrow?.start, 1.04, "cause/effect arrow should honor explicit arrow timing");
+assert.equal(timedEffectCard?.start, 1.72, "cause/effect effect card should honor explicit effect timing");
 
 const screenshotLikeCauseEffectOverlayInputs = [];
 screenshotLikeCauseEffectOverlayInputs.tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cause-effect-template-screenshot-like-test-"));
@@ -507,7 +595,7 @@ assert.ok(legacyOverlayInputs.some((overlay) => overlay.filePath.includes("octag
 const doIconPath = overlayInputs.find((overlay) => overlay.filePath.includes("circleCheck"))?.filePath;
 const longDoIconPath = longGoodOverlayInputs.find((overlay) => overlay.filePath.includes("circleCheck"))?.filePath;
 const stopIconPath = stopOverlayInputs.find((overlay) => overlay.filePath.includes("octagonX"))?.filePath;
-for (const overlay of [...pieOverlayInputs, ...growthOverlayInputs, ...growthValueOverlayInputs, ...declineOverlayInputs]) {
+for (const overlay of [...pieOverlayInputs, ...timedPieOverlayInputs, ...growthOverlayInputs, ...growthValueOverlayInputs, ...timedGrowthOverlayInputs, ...growthUnitsOverlayInputs, ...declineOverlayInputs]) {
   if (overlay.filePath) fs.rmSync(overlay.filePath, { force: true });
   if (overlay.framesDir) fs.rmSync(overlay.framesDir, { recursive: true, force: true });
 }
@@ -519,6 +607,7 @@ for (const overlay of legacyOverlayInputs) {
 }
 fs.rmSync(checklistOverlayInputs.tempDir, { recursive: true, force: true });
 fs.rmSync(causeEffectOverlayInputs.tempDir, { recursive: true, force: true });
+fs.rmSync(timedCauseEffectOverlayInputs.tempDir, { recursive: true, force: true });
 fs.rmSync(wrappedCauseEffectOverlayInputs.tempDir, { recursive: true, force: true });
 
 console.log("new motion graphic template tests passed");

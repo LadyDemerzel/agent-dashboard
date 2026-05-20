@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { spawn } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import { randomUUID } from "crypto";
 import type { ShortFormStageKey } from "@/lib/short-form-videos";
 import type { ShortFormNanoBananaPromptTemplates, ShortFormStyleReferenceImage } from "@/lib/short-form-image-styles";
@@ -101,13 +101,22 @@ export interface ShortFormStageRunJob {
     | { kind: "video"; config: DirectVideoConfig };
 }
 
+interface ShortFormStageRunProcess {
+  runId: string;
+  projectId: string;
+  stage: ShortFormStageKey;
+  pid?: number;
+  processGroupId?: number;
+  startedAt: string;
+}
+
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
 const REPO_ROOT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard");
 const WORKER_PATH = path.join(REPO_ROOT, "scripts", "short-form-stage-worker.mjs");
 const DEFAULT_RELIABLE_MODEL =
-  process.env.SHORT_FORM_RELIABLE_MODEL || "openai-codex/gpt-5.5";
+  process.env.SHORT_FORM_RELIABLE_MODEL || "openai/gpt-5.5";
 const DEFAULT_RETRY_MODEL =
-  process.env.SHORT_FORM_RETRY_MODEL || "openai/gpt-5.5";
+  process.env.SHORT_FORM_RETRY_MODEL || "";
 
 function ensureDir(dirPath: string) {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -124,6 +133,103 @@ function getRunDir(projectId: string) {
     projectId,
     ".workflow-runs",
   );
+}
+
+function readJsonFile<T>(filePath: string): T | undefined {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf-8")) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeJsonFile(filePath: string, value: unknown) {
+  fs.writeFileSync(filePath, JSON.stringify(value, null, 2), "utf-8");
+}
+
+function getRunFilePath(projectId: string, runId: string, suffix: "job" | "status" | "process") {
+  return path.join(getRunDir(projectId), `${runId}.${suffix}.json`);
+}
+
+function findRunningStageRun(projectId: string, stage: ShortFormStageKey) {
+  const runDir = getRunDir(projectId);
+  if (!fs.existsSync(runDir)) return undefined;
+
+  const candidates = fs
+    .readdirSync(runDir)
+    .filter((entry) => entry.endsWith(".status.json"))
+    .map((entry) => {
+      const fullPath = path.join(runDir, entry);
+      let mtimeMs = 0;
+      try {
+        mtimeMs = fs.statSync(fullPath).mtimeMs;
+      } catch {
+        mtimeMs = 0;
+      }
+      return { entry, fullPath, mtimeMs };
+    })
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  for (const candidate of candidates) {
+    const status = readJsonFile<{
+      runId?: string;
+      projectId?: string;
+      stage?: ShortFormStageKey;
+      status?: string;
+    }>(candidate.fullPath);
+    if (
+      status?.projectId === projectId &&
+      status.stage === stage &&
+      status.status === "running" &&
+      status.runId
+    ) {
+      return status.runId;
+    }
+  }
+
+  return undefined;
+}
+
+function findWorkerPidForJobPath(jobPath: string) {
+  const result = spawnSync("ps", ["-axo", "pid=,command="], {
+    encoding: "utf-8",
+    maxBuffer: 1024 * 1024,
+  });
+  if (result.error || result.status !== 0) return undefined;
+
+  const normalizedJobPath = path.resolve(jobPath);
+  for (const line of (result.stdout || "").split("\n")) {
+    const match = line.match(/^\s*(\d+)\s+(.+)$/);
+    if (!match) continue;
+    const pid = Number.parseInt(match[1], 10);
+    const command = match[2] || "";
+    if (
+      Number.isFinite(pid) &&
+      pid !== process.pid &&
+      command.includes(WORKER_PATH) &&
+      command.includes(normalizedJobPath)
+    ) {
+      return pid;
+    }
+  }
+
+  return undefined;
+}
+
+function markStageRunStopped(projectId: string, stage: ShortFormStageKey, runId: string, message: string) {
+  const statusPath = getRunFilePath(projectId, runId, "status");
+  const existing = readJsonFile<Record<string, unknown>>(statusPath) || {};
+  const now = new Date().toISOString();
+  writeJsonFile(statusPath, {
+    ...existing,
+    runId,
+    projectId,
+    stage,
+    status: "failed",
+    failedAt: now,
+    stoppedAt: now,
+    errorMessage: message,
+  });
 }
 
 function getVerificationSettingsForStage(stage: ShortFormStageKey): { verificationTimeoutMs: number; verificationPollMs: number } {
@@ -181,7 +287,57 @@ export function enqueueShortFormStageRun(job: Omit<ShortFormStageRunJob, "runId"
     detached: true,
     stdio: "ignore",
   });
+  const processInfo: ShortFormStageRunProcess = {
+    runId,
+    projectId: fullJob.projectId,
+    stage: fullJob.stage,
+    pid: child.pid,
+    processGroupId: child.pid,
+    startedAt: new Date().toISOString(),
+  };
+  writeJsonFile(getRunFilePath(job.projectId, runId, "process"), processInfo);
   child.unref();
 
   return { runId, jobPath };
+}
+
+export function stopShortFormStageRun(projectId: string, stage: ShortFormStageKey, runId?: string) {
+  const targetRunId = runId || findRunningStageRun(projectId, stage);
+  if (!targetRunId) {
+    return { stopped: false, reason: "No active workflow run was found." };
+  }
+
+  const jobPath = getRunFilePath(projectId, targetRunId, "job");
+  const processInfo = readJsonFile<ShortFormStageRunProcess>(
+    getRunFilePath(projectId, targetRunId, "process"),
+  );
+  const pid = processInfo?.pid || findWorkerPidForJobPath(jobPath);
+  const message = "Stopped by user from the dashboard.";
+
+  if (!pid || !Number.isFinite(pid)) {
+    markStageRunStopped(projectId, stage, targetRunId, message);
+    return {
+      stopped: false,
+      runId: targetRunId,
+      reason: "The run was marked stopped, but no worker process id was available.",
+    };
+  }
+
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      markStageRunStopped(projectId, stage, targetRunId, message);
+      return {
+        stopped: false,
+        runId: targetRunId,
+        reason: "The run was marked stopped, but the worker process was no longer running.",
+      };
+    }
+  }
+
+  markStageRunStopped(projectId, stage, targetRunId, message);
+  return { stopped: true, runId: targetRunId };
 }

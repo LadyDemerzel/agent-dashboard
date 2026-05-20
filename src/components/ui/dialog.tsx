@@ -1,4 +1,7 @@
+"use client";
+
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
 interface DialogOverlayProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -6,14 +9,23 @@ interface DialogOverlayProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 function DialogOverlay({ open, className, children, ...props }: DialogOverlayProps) {
+  const [portalContainer, setPortalContainer] = React.useState<HTMLElement | null>(null);
+
+  React.useEffect(() => {
+    setPortalContainer(document.body);
+  }, []);
+
   if (!open) return null;
-  return (
+  if (!portalContainer) return null;
+
+  return createPortal(
     <div
-      className={cn("fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm", className)}
+      className={cn("fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm", className)}
       {...props}
     >
       {children}
-    </div>
+    </div>,
+    portalContainer
   );
 }
 

@@ -49,6 +49,32 @@ type PromptKey =
   | "videoGenerate"
   | "videoRevise";
 
+type TextScriptPromptTemplateKey =
+  | "generatePrompt"
+  | "revisePrompt"
+  | "reviewPrompt";
+
+type XmlVisualPlanningPromptTemplateKey =
+  | "planningGuidelinesTemplate"
+  | "promptTemplate"
+  | "revisePromptTemplate";
+
+type SoundDesignPromptTemplateKey =
+  | "promptTemplate"
+  | "revisionPromptTemplate";
+
+type ImagePromptTemplateKey =
+  | "styleInstructionsTemplate"
+  | "characterReferenceTemplate"
+  | "sceneTemplate";
+
+type PromptTemplateId =
+  | PromptKey
+  | `textScript.${TextScriptPromptTemplateKey}`
+  | `xmlVisualPlanning.${XmlVisualPlanningPromptTemplateKey}`
+  | `soundDesign.${SoundDesignPromptTemplateKey}`
+  | `imageStyles.${ImagePromptTemplateKey}`;
+
 type SettingsSectionId =
   | "tts-voice"
   | "pause-removal"
@@ -124,6 +150,12 @@ interface ImageStyleSettings {
   defaultStyleId: string;
   styles: ImageStyle[];
   promptTemplates: NanoBananaPromptTemplates;
+}
+
+interface PromptPlaceholderRow {
+  placeholder: string;
+  explanation: string;
+  example: string;
 }
 
 const VISUAL_GENERATION_MODEL_OPTIONS =
@@ -215,6 +247,13 @@ const NANO_BANANA_PLACEHOLDER_ROWS = [
 
 const XML_VISUAL_PLANNING_PLACEHOLDER_ROWS = [
   {
+    placeholder: "{{planningVisualsGuidelines}}",
+    explanation:
+      "The fully rendered Guidelines for planning visuals template. Use this in the Full generate and Full revise prompt templates wherever the shared visual-planning instructions should appear.",
+    example:
+      "# Context for the short-form video\nInputs you must read before planning visuals...",
+  },
+  {
     placeholder: "{{xmlScriptPath}}",
     explanation:
       "Absolute path where Scribe must write the final xml-script.md artifact.",
@@ -234,16 +273,9 @@ const XML_VISUAL_PLANNING_PLACEHOLDER_ROWS = [
     example: "Your jawline changed because your posture changed",
   },
   {
-    placeholder: "{{revisionNotesBlock}}",
-    explanation:
-      "The fully rendered conditional revision-notes block. It is injected only when rerun revision notes exist.",
-    example:
-      "Revision notes: Make the asset reuse more explicit and reduce camera motion.",
-  },
-  {
     placeholder: "{{revisionNotes}}",
     explanation:
-      "The raw rerun revision notes text. Prefer {{revisionNotesBlock}} when you want the notes to disappear cleanly on non-revision runs.",
+      "The raw rerun revision notes text. This is only populated in the Full revise prompt template because that template is selected only when notes exist.",
     example: "Make the asset reuse more explicit and reduce camera motion.",
   },
   {
@@ -287,23 +319,55 @@ const XML_VISUAL_PLANNING_PLACEHOLDER_ROWS = [
     example:
       "Allowed deterministic motion graphic templates: bar_chart, scorecard, timeline...",
   },
+  {
+    placeholder: "{{existingXmlBodySummary}}",
+    explanation:
+      "A generated state summary of the existing xml-script.md body, used only if this placeholder is present in the template.",
+    example:
+      "The current artifact body is 18742 characters; your saved body must differ from it.",
+  },
 ] as const;
 
-const XML_VISUAL_PLANNING_REVISION_NOTES_PLACEHOLDER_ROWS = [
-  {
-    placeholder: "{{revisionNotes}}",
-    explanation:
-      "The rerun revision notes text only. Put any surrounding label text directly in this conditional template.",
-    example: "Make the asset reuse more explicit and reduce camera motion.",
-  },
-  {
-    placeholder: "{{xmlScriptPath}}",
-    explanation:
-      "Absolute path to the existing xml-script.md artifact for this project, so rerun guidance can tell Scribe exactly which file to read or edit.",
-    example:
-      "/Users/ittaisvidler/tenxsolo/business/content/deliverables/short-form-videos/abc123/xml-script.md",
-  },
-] as const;
+function PromptPlaceholderTable({
+  title,
+  rows,
+}: {
+  title: string;
+  rows: readonly PromptPlaceholderRow[];
+}) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-background/40 p-3 text-xs text-muted-foreground">
+      <p className="font-medium text-foreground">{title}</p>
+      <div className="mt-2 overflow-x-auto">
+        <table className="min-w-full border-collapse text-left text-xs text-muted-foreground">
+          <thead>
+            <tr className="border-b border-border/70 text-[11px] uppercase tracking-wide text-muted-foreground">
+              <th className="px-2 py-2 font-medium">Placeholder</th>
+              <th className="px-2 py-2 font-medium">What it represents</th>
+              <th className="px-2 py-2 font-medium">Example value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr
+                key={row.placeholder}
+                className="border-b border-border/50 align-top last:border-b-0"
+              >
+                <td className="px-2 py-2 font-mono text-[11px] text-foreground">
+                  {row.placeholder}
+                </td>
+                <td className="px-2 py-2 leading-5">{row.explanation}</td>
+                <td className="whitespace-pre-wrap px-2 py-2 leading-5 text-foreground/80">
+                  {row.example}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 type VoiceMode = "voice-design" | "custom-voice";
 type VoiceSourceType = "generated" | "uploaded-reference";
@@ -439,9 +503,9 @@ interface TextScriptSettings {
 }
 
 interface XmlVisualPlanningSettings {
+  planningGuidelinesTemplate: string;
   promptTemplate: string;
   revisePromptTemplate: string;
-  revisionNotesPromptTemplate: string;
 }
 
 type MotionGraphicFieldType = "text" | "textarea" | "number" | "stringList" | "timelineSteps" | "dataSeries" | "captionWordWallLines" | "indicatorType";
@@ -814,6 +878,290 @@ const PROMPT_GROUPS: Array<{
   },
 ];
 
+const PROMPT_GROUP_PLACEHOLDER_ROWS: Record<"prompt-hooks" | "prompt-research", PromptPlaceholderRow[]> = {
+  "prompt-hooks": [
+    {
+      placeholder: "{{topic}}",
+      explanation: "The short-form project topic.",
+      example: "Facial posture reset",
+    },
+    {
+      placeholder: "{{selectedHookLine}}",
+      explanation: "A preformatted selected-hook line when one exists; otherwise an empty string.",
+      example: "Currently selected hook: Your face may look uneven from tiny muscle habits",
+    },
+    {
+      placeholder: "{{descriptionOrFallback}}",
+      explanation: "Extra direction supplied when requesting more hooks, or the fallback text `None.`.",
+      example: "Make these more curiosity-driven and less clinical.",
+    },
+    {
+      placeholder: "{{priorHooksBlock}}",
+      explanation: "A formatted list of previously generated hooks so the next batch can avoid duplicates.",
+      example: "Previously generated hooks (avoid duplicates...):\n- Your face may look uneven from tiny muscle habits",
+    },
+    {
+      placeholder: "{{hooksPayloadHint}}",
+      explanation: "The visible JSON file-writing and validation instructions for the hooks artifact.",
+      example: "Save the result to .../hooks.json as strict JSON with this shape...",
+    },
+    {
+      placeholder: "{{projectDir}}",
+      explanation: "Absolute project root for the short-form deliverable.",
+      example: "/Users/ittaisvidler/.../short-form-videos/project-id",
+    },
+  ],
+  "prompt-research": [
+    {
+      placeholder: "{{topic}}",
+      explanation: "The short-form project topic.",
+      example: "Facial posture reset",
+    },
+    {
+      placeholder: "{{selectedHookLine}}",
+      explanation: "A preformatted selected-hook line when one exists; otherwise an empty string.",
+      example: "Selected hook: Your face may look uneven from tiny muscle habits",
+    },
+    {
+      placeholder: "{{notesOrFallback}}",
+      explanation: "Revision notes for a Research rerun, or an empty string when none were supplied.",
+      example: "Add stronger sources around facial muscle activation.",
+    },
+    {
+      placeholder: "{{researchPath}}",
+      explanation: "Absolute path where Oracle must write or update the Research artifact.",
+      example: "/Users/ittaisvidler/.../short-form-videos/project-id/research.md",
+    },
+    {
+      placeholder: "{{projectDir}}",
+      explanation: "Absolute project root for the short-form deliverable.",
+      example: "/Users/ittaisvidler/.../short-form-videos/project-id",
+    },
+  ],
+};
+
+const TEXT_SCRIPT_PLACEHOLDER_ROWS: PromptPlaceholderRow[] = [
+  {
+    placeholder: "{{retentionSkillPath}}",
+    explanation: "Absolute path to the retention writer skill instructions.",
+    example: "/Users/ittaisvidler/.openclaw/skills/video-script-retention/SKILL.md",
+  },
+  {
+    placeholder: "{{retentionPlaybookPath}}",
+    explanation: "Absolute path to the retention playbook reference file.",
+    example: "/Users/ittaisvidler/.openclaw/skills/video-script-retention/references/playbook.md",
+  },
+  {
+    placeholder: "{{graderSkillPath}}",
+    explanation: "Absolute path to the retention grader skill instructions.",
+    example: "/Users/ittaisvidler/.openclaw/skills/video-script-retention-grader/SKILL.md",
+  },
+  {
+    placeholder: "{{graderRubricPath}}",
+    explanation: "Absolute path to the grader rubric reference file.",
+    example: "/Users/ittaisvidler/.openclaw/skills/video-script-retention-grader/references/rubric.md",
+  },
+  {
+    placeholder: "{{topic}}",
+    explanation: "The short-form project topic.",
+    example: "Facial posture reset",
+  },
+  {
+    placeholder: "{{selectedHookTextOrFallback}}",
+    explanation: "The selected hook text, or fallback text when no hook is selected.",
+    example: "Your face may look uneven from tiny muscle habits",
+  },
+  {
+    placeholder: "{{workflowMode}}",
+    explanation: "Whether the current Text Script loop was started as generate or revise.",
+    example: "revise",
+  },
+  {
+    placeholder: "{{iterationNumber}}",
+    explanation: "The current draft/review iteration number inside the Text Script loop.",
+    example: "2",
+  },
+  {
+    placeholder: "{{maxIterations}}",
+    explanation: "The maximum number of writer/reviewer iterations allowed for this run.",
+    example: "3",
+  },
+  {
+    placeholder: "{{passingScore}}",
+    explanation: "The score threshold the backend uses when deciding whether a reviewed draft passes.",
+    example: "95",
+  },
+  {
+    placeholder: "{{draftPath}}",
+    explanation: "Absolute path where the writer must save the current iteration draft.",
+    example: "/Users/ittaisvidler/.../text-script-work/runs/run-id/iterations/01-draft.md",
+  },
+  {
+    placeholder: "{{reviewPath}}",
+    explanation: "Absolute path where the grader must save the current iteration review.",
+    example: "/Users/ittaisvidler/.../text-script-work/runs/run-id/iterations/01-review.md",
+  },
+  {
+    placeholder: "{{scriptPath}}",
+    explanation: "Absolute path to the final published Text Script artifact.",
+    example: "/Users/ittaisvidler/.../short-form-videos/project-id/script.md",
+  },
+  {
+    placeholder: "{{runManifestPath}}",
+    explanation: "Absolute path to the Text Script loop manifest owned by the backend.",
+    example: "/Users/ittaisvidler/.../text-script-work/runs/run-id/run.json",
+  },
+  {
+    placeholder: "{{revisionNotesOrNone}}",
+    explanation: "Raw revision notes for the run, or `None.` when there are no notes.",
+    example: "Make the first proof beat more specific.",
+  },
+  {
+    placeholder: "{{revisionInstructionLine}}",
+    explanation: "A preformatted revise/regenerate instruction line derived from the supplied notes.",
+    example: "Revise the existing plain text script based on this feedback:\nMake the first proof beat more specific.",
+  },
+  {
+    placeholder: "{{approvedResearch}}",
+    explanation: "The approved Research artifact content used as grounding context.",
+    example: "---\ntitle: ...\n---\n# Research\n...",
+  },
+  {
+    placeholder: "{{currentScriptContent}}",
+    explanation: "The current script content passed into the run config for revision context; use priorDraftBlock for iteration-local draft context.",
+    example: "---\ntitle: ...\n---\nYour face may look uneven...",
+  },
+  {
+    placeholder: "{{priorDraftBlock}}",
+    explanation: "A formatted prior-draft block for iterations after the first draft, or empty on the first draft.",
+    example: "Prior draft to improve:\nYour face may look uneven...",
+  },
+  {
+    placeholder: "{{priorReviewBlock}}",
+    explanation: "A formatted prior-review summary and feedback block after a failed review, or empty before review feedback exists.",
+    example: "Prior grader summary:\nStrong hook, weak proof specificity...",
+  },
+  {
+    placeholder: "{{draftBody}}",
+    explanation: "The current draft body supplied to the review prompt.",
+    example: "Your face may look uneven from tiny muscle habits. Try this test...",
+  },
+  {
+    placeholder: "{{projectDir}}",
+    explanation: "Absolute project root for the short-form deliverable.",
+    example: "/Users/ittaisvidler/.../short-form-videos/project-id",
+  },
+];
+
+const SOUND_DESIGN_PLACEHOLDER_ROWS: PromptPlaceholderRow[] = [
+  {
+    placeholder: "{{topic}}",
+    explanation: "The short-form project topic.",
+    example: "Facial posture reset",
+  },
+  {
+    placeholder: "{{selectedHook}}",
+    explanation: "The selected hook text only.",
+    example: "Your face may look uneven from tiny muscle habits",
+  },
+  {
+    placeholder: "{{selectedHookTextOrFallback}}",
+    explanation: "The selected hook text, or fallback text when no hook is selected.",
+    example: "Your face may look uneven from tiny muscle habits",
+  },
+  {
+    placeholder: "{{revisionNotes}}",
+    explanation: "Raw Plan Sound Design revision notes.",
+    example: "Make the opening more cinematic and reduce ticks after 30 seconds.",
+  },
+  {
+    placeholder: "{{revisionNotesBlock}}",
+    explanation: "The rendered conditional revision-notes template output, or empty when no notes exist.",
+    example: "Revision notes: Make the opening more cinematic...",
+  },
+  {
+    placeholder: "{{projectId}}",
+    explanation: "The short-form project id.",
+    example: "facial-posture-reset-20260519162000",
+  },
+  {
+    placeholder: "{{projectDir}}",
+    explanation: "Absolute project root for the short-form deliverable.",
+    example: "/Users/ittaisvidler/.../short-form-videos/project-id",
+  },
+  {
+    placeholder: "{{soundDesignPath}}",
+    explanation: "Absolute path where Scribe must write the sound-design artifact.",
+    example: "/Users/ittaisvidler/.../short-form-videos/project-id/sound-design.md",
+  },
+  {
+    placeholder: "{{xmlScriptPath}}",
+    explanation: "Absolute path to the XML visual plan artifact.",
+    example: "/Users/ittaisvidler/.../short-form-videos/project-id/xml-script.md",
+  },
+  {
+    placeholder: "{{captionPlanPath}}",
+    explanation: "Absolute path to the deterministic caption timing JSON.",
+    example: "/Users/ittaisvidler/.../output/xml-script-work/captions/caption-sections.json",
+  },
+  {
+    placeholder: "{{sceneManifestPath}}",
+    explanation: "Absolute path to the generated visual timing/cut manifest JSON.",
+    example: "/Users/ittaisvidler/.../short-form-videos/project-id/scenes/manifest.json",
+  },
+  {
+    placeholder: "{{visualBeatMapJson}}",
+    explanation: "Compact JSON summary of scene cuts, visual ids, labels, and timing windows.",
+    example: "{ \"sceneCount\": 19, \"cuts\": [ ... ] }",
+  },
+  {
+    placeholder: "{{soundLibraryJson}}",
+    explanation: "Compact JSON payload of saved sound-library entries available for planning.",
+    example: "[{ \"id\": \"impact-soft-organic-hit\", \"category\": \"Impact\", ... }]",
+  },
+  {
+    placeholder: "{{musicLibraryJson}}",
+    explanation: "Compact JSON payload of saved music-library tracks available for planning.",
+    example: "[{ \"id\": \"music-cinematic-tension\", \"mood\": \"tense\", ... }]",
+  },
+  {
+    placeholder: "{{existingSoundDesignBodySummary}}",
+    explanation: "A generated state summary of the existing sound-design XML body, used only if this placeholder is present in the template.",
+    example: "The current artifact body is 14666 characters; your saved body must differ from it.",
+  },
+];
+
+const SOUND_DESIGN_REVISION_PLACEHOLDER_ROWS: PromptPlaceholderRow[] = [
+  {
+    placeholder: "{{revisionNotes}}",
+    explanation: "Raw Plan Sound Design revision notes.",
+    example: "Make the opening more cinematic and reduce ticks after 30 seconds.",
+  },
+  {
+    placeholder: "{{soundDesignPath}}",
+    explanation: "Absolute path to the existing sound-design artifact.",
+    example: "/Users/ittaisvidler/.../short-form-videos/project-id/sound-design.md",
+  },
+];
+
+const PROMPT_TEMPLATE_IDS = [
+  "hooksGenerate",
+  "hooksMore",
+  "researchGenerate",
+  "researchRevise",
+  "textScript.generatePrompt",
+  "textScript.revisePrompt",
+  "textScript.reviewPrompt",
+  "xmlVisualPlanning.planningGuidelinesTemplate",
+  "xmlVisualPlanning.promptTemplate",
+  "xmlVisualPlanning.revisePromptTemplate",
+  "soundDesign.promptTemplate",
+  "soundDesign.revisionPromptTemplate",
+  "imageStyles.styleInstructionsTemplate",
+  "imageStyles.characterReferenceTemplate",
+  "imageStyles.sceneTemplate",
+] as const satisfies PromptTemplateId[];
+
 const SETTINGS_PAGE_META: Record<
   ShortFormSettingsRouteSection,
   {
@@ -897,7 +1245,6 @@ const SETTINGS_PAGE_META: Record<
       "Manage the full Plan Sound Design prompt and conditional revision-notes prompt.",
     summaryLabel: "2 prompt templates",
     sectionIds: ["sound-library"],
-    pageActionSectionId: "sound-library",
   },
   "generate-sound-design": {
     eyebrow: "Short-form workflow settings",
@@ -956,6 +1303,18 @@ function createEmptySectionFeedback(): Record<
     "text-script-prompts": { saving: false, error: null, message: null },
     "xml-visual-planning": { saving: false, error: null, message: null },
   };
+}
+
+function createEmptyPromptTemplateFeedback(): Record<
+  PromptTemplateId,
+  SectionFeedback
+> {
+  return Object.fromEntries(
+    PROMPT_TEMPLATE_IDS.map((id) => [
+      id,
+      { saving: false, error: null, message: null },
+    ]),
+  ) as Record<PromptTemplateId, SectionFeedback>;
 }
 
 function serializeForCompare(value: unknown) {
@@ -1885,12 +2244,14 @@ function SectionActions({
   dirty,
   saving,
   saveLabel,
+  resetLabel = "Reset",
   onSave,
   onReset,
 }: {
   dirty: boolean;
   saving: boolean;
   saveLabel: string;
+  resetLabel?: string;
   onSave: () => void;
   onReset: () => void;
 }) {
@@ -1911,7 +2272,7 @@ function SectionActions({
         onClick={onReset}
         disabled={!dirty || saving}
       >
-        Reset
+        {resetLabel}
       </Button>
       <Button size="sm" onClick={onSave} disabled={!dirty || saving}>
         {saving ? "Saving…" : saveLabel}
@@ -2342,6 +2703,9 @@ export function ShortFormVideoSettingsView({
   const [sectionFeedback, setSectionFeedback] = useState<
     Record<SettingsSectionId, SectionFeedback>
   >(createEmptySectionFeedback());
+  const [promptTemplateFeedback, setPromptTemplateFeedback] = useState<
+    Record<PromptTemplateId, SectionFeedback>
+  >(createEmptyPromptTemplateFeedback());
   const [ttsPreview, setTtsPreview] = useState<TtsPreviewState>({
     isLoading: false,
     error: null,
@@ -2685,6 +3049,7 @@ export function ShortFormVideoSettingsView({
       setStyleTestsById(buildStyleTestsById(data.imageStyles.styles));
       if (!options?.background) {
         setSectionFeedback(createEmptySectionFeedback());
+        setPromptTemplateFeedback(createEmptyPromptTemplateFeedback());
       }
       setError(null);
     },
@@ -3096,6 +3461,13 @@ export function ShortFormVideoSettingsView({
     () => Object.values(sectionFeedback).some((section) => section.saving),
     [sectionFeedback],
   );
+  const anyPromptTemplateSaving = useMemo(
+    () =>
+      Object.values(promptTemplateFeedback).some(
+        (template) => template.saving,
+      ),
+    [promptTemplateFeedback],
+  );
 
   useEffect(() => {
     if (!selectedAnimationPreset) return;
@@ -3325,6 +3697,7 @@ export function ShortFormVideoSettingsView({
   const autoRefreshPaused =
     anyDirty ||
     anySectionSaving ||
+    anyPromptTemplateSaving ||
     anyStyleTesting ||
     ttsPreview.isLoading ||
     musicPreview.isLoading ||
@@ -3412,6 +3785,7 @@ export function ShortFormVideoSettingsView({
   );
   const pageHasTransientWork =
     pageHasSectionSaving ||
+    anyPromptTemplateSaving ||
     (activeSection === "generate-narration-audio" &&
       (ttsPreview.isLoading || Boolean(selectedVoiceUpload?.isUploading))) ||
     ((activeSection === "plan-sound-design" ||
@@ -3432,6 +3806,7 @@ export function ShortFormVideoSettingsView({
   const pageReloadDisabled =
     loading ||
     anySectionSaving ||
+    anyPromptTemplateSaving ||
     anyStyleTesting ||
     ttsPreview.isLoading ||
     musicPreview.isLoading ||
@@ -3476,7 +3851,6 @@ export function ShortFormVideoSettingsView({
   ]);
 
   const promptSections = PROMPT_GROUPS.map((group) => {
-    const feedback = sectionFeedback[group.id];
     const dirty = dirtyBySection[group.id];
     return (
       <section key={group.id} id={group.id} className="scroll-mt-24">
@@ -3487,32 +3861,38 @@ export function ShortFormVideoSettingsView({
               description={group.description}
               status={dirty ? "needs review" : "approved"}
             />
-            <SectionActions
-              dirty={dirty}
-              saving={feedback.saving}
-              saveLabel={`Save ${group.title.toLowerCase()}`}
-              onSave={() => void saveSection(group.id)}
-              onReset={() => resetSection(group.id)}
-            />
           </div>
 
           <div className="space-y-6">
             {group.keys.map((key) => {
               const definition = promptDefinitionsByKey[key];
+              const templateId = key as PromptTemplateId;
+              const templateFeedback = promptTemplateFeedback[templateId];
+              const templateDirty = isPromptTemplateDirty(templateId);
               return (
                 <div
                   key={key}
                   className="space-y-2 border-t border-border pt-4 first:border-t-0 first:pt-0"
                 >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-sm font-medium text-foreground">
-                      {definition?.title || key}
-                    </h3>
-                    {definition?.stage ? (
-                      <span className="rounded-full border border-border px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
-                        {definition.stage}
-                      </span>
-                    ) : null}
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-medium text-foreground">
+                        {definition?.title || key}
+                      </h3>
+                      {definition?.stage ? (
+                        <span className="rounded-full border border-border px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+                          {definition.stage}
+                        </span>
+                      ) : null}
+                    </div>
+                    <SectionActions
+                      dirty={templateDirty}
+                      saving={templateFeedback.saving}
+                      saveLabel="Save template"
+                      resetLabel="Restore"
+                      onSave={() => void savePromptTemplate(templateId)}
+                      onReset={() => resetPromptTemplate(templateId)}
+                    />
                   </div>
                   {definition?.description ? (
                     <p className="text-sm text-muted-foreground">
@@ -3521,24 +3901,25 @@ export function ShortFormVideoSettingsView({
                   ) : null}
                   <Textarea
                     value={prompts[key] || ""}
-                    onChange={(event) => {
-                      updateSectionFeedbackState(group.id, {
-                        error: null,
-                        message: null,
-                      });
-                      setPrompts((current) => ({
-                        ...current,
-                        [key]: event.target.value,
-                      }));
-                    }}
+                    onChange={(event) =>
+                      setPromptTemplateValue(templateId, event.target.value)
+                    }
                     className="min-h-[220px] font-mono text-xs"
                   />
+                  <SectionFeedbackNotice feedback={templateFeedback} />
                 </div>
               );
             })}
           </div>
 
-          <SectionFeedbackNotice feedback={feedback} />
+          <PromptPlaceholderTable
+            title="Prompt placeholders"
+            rows={
+              PROMPT_GROUP_PLACEHOLDER_ROWS[
+                group.id as "prompt-hooks" | "prompt-research"
+              ]
+            }
+          />
         </Card>
       </section>
     );
@@ -3557,53 +3938,40 @@ export function ShortFormVideoSettingsView({
                 : "approved"
             }
           />
-          <SectionActions
-            dirty={dirtyBySection["text-script-prompts"]}
-            saving={sectionFeedback["text-script-prompts"].saving}
-            saveLabel="Save text-script prompts"
-            onSave={() => void saveSection("text-script-prompts")}
-            onReset={() => resetSection("text-script-prompts")}
-          />
         </div>
 
         {textScriptSettings ? (
           <div className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Default max draft iterations
-              </label>
-              <Input
-                type="number"
-                min={1}
-                max={8}
-                value={textScriptSettings.defaultMaxIterations}
-                onChange={(event) => {
-                  updateSectionFeedbackState("text-script-prompts", {
-                    error: null,
-                    message: null,
-                  });
-                  setTextScriptSettings({
-                    ...textScriptSettings,
-                    defaultMaxIterations: Math.max(
-                      1,
-                      Math.min(8, Number(event.target.value) || 1),
-                    ),
-                  });
-                }}
-                className="max-w-xs"
-              />
-              <p className="text-xs text-muted-foreground">
-                New short-form projects can optionally override this per project
-                from the Text Script section, but this is the dashboard-wide
-                default.
-              </p>
-            </div>
+            <div className="space-y-4 rounded-lg border border-border/70 bg-background/40 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-medium text-foreground">
+                    Text-script defaults
+                  </h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Loop limits and post-processing options saved separately
+                    from the prompt templates.
+                  </p>
+                </div>
+                <SectionActions
+                  dirty={isTextScriptDefaultsDirty()}
+                  saving={sectionFeedback["text-script-prompts"].saving}
+                  saveLabel="Save defaults"
+                  resetLabel="Restore"
+                  onSave={() => void saveTextScriptDefaults()}
+                  onReset={resetTextScriptDefaults}
+                />
+              </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="flex items-start gap-3 rounded-md border bg-muted/30 p-3 text-sm text-foreground">
-                <input
-                  type="checkbox"
-                  checked={textScriptSettings.enforceNaturalContractions}
+              <div className="space-y-2">
+                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Default max draft iterations
+                </label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={8}
+                  value={textScriptSettings.defaultMaxIterations}
                   onChange={(event) => {
                     updateSectionFeedbackState("text-script-prompts", {
                       error: null,
@@ -3611,142 +3979,192 @@ export function ShortFormVideoSettingsView({
                     });
                     setTextScriptSettings({
                       ...textScriptSettings,
-                      enforceNaturalContractions: event.target.checked,
+                      defaultMaxIterations: Math.max(
+                        1,
+                        Math.min(8, Number(event.target.value) || 1),
+                      ),
                     });
                   }}
-                  className="mt-1"
+                  className="max-w-xs"
                 />
-                <span>
-                  <span className="block font-medium">
-                    Contract natural two-word forms
-                  </span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    Applies once after the final Text Script loop draft is
-                    selected.
-                  </span>
-                </span>
-              </label>
-
-              <label className="flex items-start gap-3 rounded-md border bg-muted/30 p-3 text-sm text-foreground">
-                <input
-                  type="checkbox"
-                  checked={textScriptSettings.formatNumericPercentages}
-                  onChange={(event) => {
-                    updateSectionFeedbackState("text-script-prompts", {
-                      error: null,
-                      message: null,
-                    });
-                    setTextScriptSettings({
-                      ...textScriptSettings,
-                      formatNumericPercentages: event.target.checked,
-                    });
-                  }}
-                  className="mt-1"
-                />
-                <span>
-                  <span className="block font-medium">
-                    Convert numeric percent phrases
-                  </span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    Converts values like 87.8 percent or 87.8 per cent to 87.8%.
-                  </span>
-                </span>
-              </label>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Full generate prompt template
-              </label>
-              <Textarea
-                value={textScriptSettings.generatePrompt}
-                onChange={(event) => {
-                  updateSectionFeedbackState("text-script-prompts", {
-                    error: null,
-                    message: null,
-                  });
-                  setTextScriptSettings({
-                    ...textScriptSettings,
-                    generatePrompt: event.target.value,
-                  });
-                }}
-                className="min-h-[280px] font-mono text-xs"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Full revise prompt template
-              </label>
-              <Textarea
-                value={textScriptSettings.revisePrompt}
-                onChange={(event) => {
-                  updateSectionFeedbackState("text-script-prompts", {
-                    error: null,
-                    message: null,
-                  });
-                  setTextScriptSettings({
-                    ...textScriptSettings,
-                    revisePrompt: event.target.value,
-                  });
-                }}
-                className="min-h-[320px] font-mono text-xs"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Full review prompt template
-              </label>
-              <Textarea
-                value={textScriptSettings.reviewPrompt}
-                onChange={(event) => {
-                  updateSectionFeedbackState("text-script-prompts", {
-                    error: null,
-                    message: null,
-                  });
-                  setTextScriptSettings({
-                    ...textScriptSettings,
-                    reviewPrompt: event.target.value,
-                  });
-                }}
-                className="min-h-[300px] font-mono text-xs"
-              />
-              <div className="space-y-1 text-xs text-muted-foreground">
-                <p>
-                  These templates support runtime placeholders such as{" "}
-                  <code>{"{{topic}}"}</code>,{" "}
-                  <code>{"{{selectedHookTextOrFallback}}"}</code>,{" "}
-                  <code>{"{{approvedResearch}}"}</code>,{" "}
-                  <code>{"{{draftPath}}"}</code>,{" "}
-                  <code>{"{{reviewPath}}"}</code>,{" "}
-                  <code>{"{{runManifestPath}}"}</code>,{" "}
-                  <code>{"{{iterationNumber}}"}</code>,{" "}
-                  <code>{"{{maxIterations}}"}</code>,{" "}
-                  <code>{"{{revisionInstructionLine}}"}</code>,{" "}
-                  <code>{"{{priorDraftBlock}}"}</code>,{" "}
-                  <code>{"{{priorReviewBlock}}"}</code>,{" "}
-                  <code>{"{{retentionSkillPath}}"}</code>,{" "}
-                  <code>{"{{retentionPlaybookPath}}"}</code>,{" "}
-                  <code>{"{{graderSkillPath}}"}</code>,{" "}
-                  <code>{"{{graderRubricPath}}"}</code>,{" "}
-                  <code>{"{{passingScore}}"}</code>, and{" "}
-                  <code>{"{{draftBody}}"}</code>.
-                </p>
-                <p>
-                  Keep each field as the complete top-level Scribe prompt for
-                  that loop step. If you change artifact instructions or
-                  placeholder names here, the runtime behavior will change
-                  accordingly.
+                <p className="text-xs text-muted-foreground">
+                  New short-form projects can optionally override this per
+                  project from the Text Script section, but this is the
+                  dashboard-wide default.
                 </p>
               </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="flex items-start gap-3 rounded-md border bg-muted/30 p-3 text-sm text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={textScriptSettings.enforceNaturalContractions}
+                    onChange={(event) => {
+                      updateSectionFeedbackState("text-script-prompts", {
+                        error: null,
+                        message: null,
+                      });
+                      setTextScriptSettings({
+                        ...textScriptSettings,
+                        enforceNaturalContractions: event.target.checked,
+                      });
+                    }}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block font-medium">
+                      Contract natural two-word forms
+                    </span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      Applies once after the final Text Script loop draft is
+                      selected.
+                    </span>
+                  </span>
+                </label>
+
+                <label className="flex items-start gap-3 rounded-md border bg-muted/30 p-3 text-sm text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={textScriptSettings.formatNumericPercentages}
+                    onChange={(event) => {
+                      updateSectionFeedbackState("text-script-prompts", {
+                        error: null,
+                        message: null,
+                      });
+                      setTextScriptSettings({
+                        ...textScriptSettings,
+                        formatNumericPercentages: event.target.checked,
+                      });
+                    }}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block font-medium">
+                      Convert numeric percent phrases
+                    </span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      Converts values like 87.8 percent or 87.8 per cent to
+                      87.8%.
+                    </span>
+                  </span>
+                </label>
+              </div>
+              <SectionFeedbackNotice
+                feedback={sectionFeedback["text-script-prompts"]}
+              />
             </div>
+
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Full generate prompt template
+                </label>
+                <SectionActions
+                  dirty={isPromptTemplateDirty("textScript.generatePrompt")}
+                  saving={
+                    promptTemplateFeedback["textScript.generatePrompt"].saving
+                  }
+                  saveLabel="Save template"
+                  resetLabel="Restore"
+                  onSave={() =>
+                    void savePromptTemplate("textScript.generatePrompt")
+                  }
+                  onReset={() =>
+                    resetPromptTemplate("textScript.generatePrompt")
+                  }
+                />
+              </div>
+              <Textarea
+                value={textScriptSettings.generatePrompt}
+                onChange={(event) =>
+                  setPromptTemplateValue(
+                    "textScript.generatePrompt",
+                    event.target.value,
+                  )
+                }
+                className="min-h-[280px] font-mono text-xs"
+              />
+              <SectionFeedbackNotice
+                feedback={promptTemplateFeedback["textScript.generatePrompt"]}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Full revise prompt template
+                </label>
+                <SectionActions
+                  dirty={isPromptTemplateDirty("textScript.revisePrompt")}
+                  saving={
+                    promptTemplateFeedback["textScript.revisePrompt"].saving
+                  }
+                  saveLabel="Save template"
+                  resetLabel="Restore"
+                  onSave={() =>
+                    void savePromptTemplate("textScript.revisePrompt")
+                  }
+                  onReset={() =>
+                    resetPromptTemplate("textScript.revisePrompt")
+                  }
+                />
+              </div>
+              <Textarea
+                value={textScriptSettings.revisePrompt}
+                onChange={(event) =>
+                  setPromptTemplateValue(
+                    "textScript.revisePrompt",
+                    event.target.value,
+                  )
+                }
+                className="min-h-[320px] font-mono text-xs"
+              />
+              <SectionFeedbackNotice
+                feedback={promptTemplateFeedback["textScript.revisePrompt"]}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Full review prompt template
+                </label>
+                <SectionActions
+                  dirty={isPromptTemplateDirty("textScript.reviewPrompt")}
+                  saving={
+                    promptTemplateFeedback["textScript.reviewPrompt"].saving
+                  }
+                  saveLabel="Save template"
+                  resetLabel="Restore"
+                  onSave={() =>
+                    void savePromptTemplate("textScript.reviewPrompt")
+                  }
+                  onReset={() =>
+                    resetPromptTemplate("textScript.reviewPrompt")
+                  }
+                />
+              </div>
+              <Textarea
+                value={textScriptSettings.reviewPrompt}
+                onChange={(event) =>
+                  setPromptTemplateValue(
+                    "textScript.reviewPrompt",
+                    event.target.value,
+                  )
+                }
+                className="min-h-[300px] font-mono text-xs"
+              />
+              <SectionFeedbackNotice
+                feedback={promptTemplateFeedback["textScript.reviewPrompt"]}
+              />
+            </div>
+
+            <PromptPlaceholderTable
+              title="Text Script prompt placeholders"
+              rows={TEXT_SCRIPT_PLACEHOLDER_ROWS}
+            />
           </div>
         ) : null}
-
-        <SectionFeedbackNotice
-          feedback={sectionFeedback["text-script-prompts"]}
-        />
       </Card>
     </section>
   );
@@ -3757,41 +4175,116 @@ export function ShortFormVideoSettingsView({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <WorkflowSectionHeader
             title="Visual-planning Scribe prompt"
-            description="These are the actual full top-level prompt templates the dashboard sends to Scribe when Plan Visuals writes or revises the XML script. The only extra layer is an optional revision-notes block that you place explicitly with {{revisionNotesBlock}}."
+            description="These are the actual full top-level prompt templates the dashboard sends to Scribe when Plan Visuals writes or revises the XML script. The generate template is used for new/no-notes runs; the revise template is used only when revision notes exist."
             status={
               dirtyBySection["xml-visual-planning"]
                 ? "needs review"
                 : "approved"
             }
           />
-          <SectionActions
-            dirty={dirtyBySection["xml-visual-planning"]}
-            saving={sectionFeedback["xml-visual-planning"].saving}
-            saveLabel="Save visual-planning prompt"
-            onSave={() => void saveSection("xml-visual-planning")}
-            onReset={() => resetSection("xml-visual-planning")}
-          />
         </div>
 
         {xmlVisualPlanningSettings ? (
           <div className="space-y-6">
             <div className="space-y-2">
-              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Full generate prompt template
-              </label>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Guidelines for planning visuals template
+                </label>
+                <SectionActions
+                  dirty={isPromptTemplateDirty(
+                    "xmlVisualPlanning.planningGuidelinesTemplate",
+                  )}
+                  saving={
+                    promptTemplateFeedback[
+                      "xmlVisualPlanning.planningGuidelinesTemplate"
+                    ].saving
+                  }
+                  saveLabel="Save template"
+                  resetLabel="Restore"
+                  onSave={() =>
+                    void savePromptTemplate(
+                      "xmlVisualPlanning.planningGuidelinesTemplate",
+                    )
+                  }
+                  onReset={() =>
+                    resetPromptTemplate(
+                      "xmlVisualPlanning.planningGuidelinesTemplate",
+                    )
+                  }
+                />
+              </div>
+              <Textarea
+                value={xmlVisualPlanningSettings.planningGuidelinesTemplate}
+                onChange={(event) =>
+                  setPromptTemplateValue(
+                    "xmlVisualPlanning.planningGuidelinesTemplate",
+                    event.target.value,
+                  )
+                }
+                className="min-h-[560px] font-mono text-xs"
+              />
+              <SectionFeedbackNotice
+                feedback={
+                  promptTemplateFeedback[
+                    "xmlVisualPlanning.planningGuidelinesTemplate"
+                  ]
+                }
+              />
+              <div className="space-y-1 text-xs text-muted-foreground">
+                <p>
+                  This shared template is rendered first, then injected into
+                  the full generate/revise prompts wherever{" "}
+                  <code>{"{{planningVisualsGuidelines}}"}</code> appears.
+                </p>
+                <p>
+                  Use this for the common visual-planning context, schema, XML
+                  semantics, and other guidance that should stay synchronized
+                  between generate and revise runs.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Full generate prompt template
+                </label>
+                <SectionActions
+                  dirty={isPromptTemplateDirty(
+                    "xmlVisualPlanning.promptTemplate",
+                  )}
+                  saving={
+                    promptTemplateFeedback[
+                      "xmlVisualPlanning.promptTemplate"
+                    ].saving
+                  }
+                  saveLabel="Save template"
+                  resetLabel="Restore"
+                  onSave={() =>
+                    void savePromptTemplate(
+                      "xmlVisualPlanning.promptTemplate",
+                    )
+                  }
+                  onReset={() =>
+                    resetPromptTemplate("xmlVisualPlanning.promptTemplate")
+                  }
+                />
+              </div>
               <Textarea
                 value={xmlVisualPlanningSettings.promptTemplate}
-                onChange={(event) => {
-                  updateSectionFeedbackState("xml-visual-planning", {
-                    error: null,
-                    message: null,
-                  });
-                  setXmlVisualPlanningSettings({
-                    ...xmlVisualPlanningSettings,
-                    promptTemplate: event.target.value,
-                  });
-                }}
+                onChange={(event) =>
+                  setPromptTemplateValue(
+                    "xmlVisualPlanning.promptTemplate",
+                    event.target.value,
+                  )
+                }
                 className="min-h-[560px] font-mono text-xs"
+              />
+              <SectionFeedbackNotice
+                feedback={
+                  promptTemplateFeedback["xmlVisualPlanning.promptTemplate"]
+                }
               />
               <div className="space-y-1 text-xs text-muted-foreground">
                 <p>
@@ -3802,12 +4295,6 @@ export function ShortFormVideoSettingsView({
                   them always visible.
                 </p>
                 <p>
-                  Place <code>{"{{revisionNotesBlock}}"}</code> wherever the
-                  optional revision-notes instructions should appear. If no
-                  revision notes are supplied for a rerun, that block is omitted
-                  entirely.
-                </p>
-                <p>
                   Keep this field as the complete top-level prompt. If you
                   change artifact instructions or placeholder names here, the
                   Plan Visuals runtime behavior will change immediately.
@@ -3816,29 +4303,56 @@ export function ShortFormVideoSettingsView({
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Full revise prompt template
-              </label>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Full revise prompt template
+                </label>
+                <SectionActions
+                  dirty={isPromptTemplateDirty(
+                    "xmlVisualPlanning.revisePromptTemplate",
+                  )}
+                  saving={
+                    promptTemplateFeedback[
+                      "xmlVisualPlanning.revisePromptTemplate"
+                    ].saving
+                  }
+                  saveLabel="Save template"
+                  resetLabel="Restore"
+                  onSave={() =>
+                    void savePromptTemplate(
+                      "xmlVisualPlanning.revisePromptTemplate",
+                    )
+                  }
+                  onReset={() =>
+                    resetPromptTemplate(
+                      "xmlVisualPlanning.revisePromptTemplate",
+                    )
+                  }
+                />
+              </div>
               <Textarea
                 value={xmlVisualPlanningSettings.revisePromptTemplate}
-                onChange={(event) => {
-                  updateSectionFeedbackState("xml-visual-planning", {
-                    error: null,
-                    message: null,
-                  });
-                  setXmlVisualPlanningSettings({
-                    ...xmlVisualPlanningSettings,
-                    revisePromptTemplate: event.target.value,
-                  });
-                }}
+                onChange={(event) =>
+                  setPromptTemplateValue(
+                    "xmlVisualPlanning.revisePromptTemplate",
+                    event.target.value,
+                  )
+                }
                 className="min-h-[560px] font-mono text-xs"
+              />
+              <SectionFeedbackNotice
+                feedback={
+                  promptTemplateFeedback[
+                    "xmlVisualPlanning.revisePromptTemplate"
+                  ]
+                }
               />
               <div className="space-y-1 text-xs text-muted-foreground">
                 <p>
                   This is the complete top-level prompt used when Plan Visuals
-                  revises an existing XML plan. Place{" "}
-                  <code>{"{{revisionNotesBlock}}"}</code> exactly where the
-                  rendered revision notes should appear.
+                  revises an existing XML plan. Put the revision-notes label
+                  and <code>{"{{revisionNotes}}"}</code> directly in this
+                  template where you want those notes to appear.
                 </p>
                 <p>
                   The dashboard does not append hidden motion-graphic or schema
@@ -3884,89 +4398,8 @@ export function ShortFormVideoSettingsView({
                 </table>
               </div>
             </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Conditional revision-notes prompt template
-              </label>
-              <Textarea
-                value={xmlVisualPlanningSettings.revisionNotesPromptTemplate}
-                onChange={(event) => {
-                  updateSectionFeedbackState("xml-visual-planning", {
-                    error: null,
-                    message: null,
-                  });
-                  setXmlVisualPlanningSettings({
-                    ...xmlVisualPlanningSettings,
-                    revisionNotesPromptTemplate: event.target.value,
-                  });
-                }}
-                className="min-h-[120px] font-mono text-xs"
-              />
-              <div className="space-y-1 text-xs text-muted-foreground">
-                <p>
-                  This template renders only when rerun revision notes exist.
-                  The rendered result becomes{" "}
-                  <code>{"{{revisionNotesBlock}}"}</code> inside the full prompt
-                  above.
-                </p>
-                <p>
-                  Use this to control the revision-notes label or any extra
-                  guidance without leaving an empty line like “Revision notes:”
-                  when no notes were provided.
-                </p>
-                <p>
-                  This conditional template supports both{" "}
-                  <code>{"{{revisionNotes}}"}</code> and{" "}
-                  <code>{"{{xmlScriptPath}}"}</code>.
-                </p>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-border/70 bg-background/40 p-3 text-xs text-muted-foreground">
-              <p className="font-medium text-foreground">
-                Revision-notes template placeholders
-              </p>
-              <div className="mt-2 overflow-x-auto">
-                <table className="min-w-full border-collapse text-left text-xs text-muted-foreground">
-                  <thead>
-                    <tr className="border-b border-border/70 text-[11px] uppercase tracking-wide text-muted-foreground">
-                      <th className="px-2 py-2 font-medium">Placeholder</th>
-                      <th className="px-2 py-2 font-medium">
-                        What it represents
-                      </th>
-                      <th className="px-2 py-2 font-medium">Example value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {XML_VISUAL_PLANNING_REVISION_NOTES_PLACEHOLDER_ROWS.map(
-                      (row) => (
-                        <tr
-                          key={row.placeholder}
-                          className="border-b border-border/50 align-top last:border-b-0"
-                        >
-                          <td className="px-2 py-2 font-mono text-[11px] text-foreground">
-                            {row.placeholder}
-                          </td>
-                          <td className="px-2 py-2 leading-5">
-                            {row.explanation}
-                          </td>
-                          <td className="px-2 py-2 leading-5 text-foreground/80">
-                            {row.example}
-                          </td>
-                        </tr>
-                      ),
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
           </div>
         ) : null}
-
-        <SectionFeedbackNotice
-          feedback={sectionFeedback["xml-visual-planning"]}
-        />
       </Card>
     </section>
   );
@@ -4041,73 +4474,118 @@ export function ShortFormVideoSettingsView({
             {activeSection === "plan-sound-design" ? (
             <div className="grid gap-4 lg:grid-cols-2">
               <Card className="space-y-2 p-4">
-                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Full Plan Sound Design prompt template
-                </label>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Full Plan Sound Design prompt template
+                  </label>
+                  <SectionActions
+                    dirty={isPromptTemplateDirty(
+                      "soundDesign.promptTemplate",
+                    )}
+                    saving={
+                      promptTemplateFeedback["soundDesign.promptTemplate"]
+                        .saving
+                    }
+                    saveLabel="Save template"
+                    resetLabel="Restore"
+                    onSave={() =>
+                      void savePromptTemplate("soundDesign.promptTemplate")
+                    }
+                    onReset={() =>
+                      resetPromptTemplate("soundDesign.promptTemplate")
+                    }
+                  />
+                </div>
                 <Textarea
                   value={soundDesignSettings.promptTemplate}
-                  onChange={(event) => {
-                    updateSectionFeedbackState("sound-library", {
-                      error: null,
-                      message: null,
-                    });
-                    setSoundDesignSettings({
-                      ...soundDesignSettings,
-                      promptTemplate: event.target.value,
-                    });
-                  }}
+                  onChange={(event) =>
+                    setPromptTemplateValue(
+                      "soundDesign.promptTemplate",
+                      event.target.value,
+                    )
+                  }
                   className="min-h-[320px] font-mono text-xs"
                 />
-                <div className="space-y-2 text-xs text-muted-foreground">
+                <SectionFeedbackNotice
+                  feedback={
+                    promptTemplateFeedback["soundDesign.promptTemplate"]
+                  }
+                />
+                <div className="space-y-1 text-xs text-muted-foreground">
                   <p>
                     This is the actual full top-level prompt template the
                     dashboard sends to Scribe when Plan Sound Design runs.
                     Keep labels, file-writing rules, and placeholder usage
                     inline here when you want them enforced every time.
                   </p>
-                  <p>
-                    Runtime placeholders supported here include{" "}
-                    <code>{"{{topic}}"}</code>,{" "}
-                    <code>{"{{selectedHookTextOrFallback}}"}</code>,{" "}
-                    <code>{"{{revisionNotesBlock}}"}</code>,{" "}
-                    <code>{"{{xmlScriptPath}}"}</code>,{" "}
-                    <code>{"{{captionPlanPath}}"}</code>,{" "}
-                    <code>{"{{sceneManifestPath}}"}</code>,{" "}
-                    <code>{"{{soundDesignPath}}"}</code>,{" "}
-                    <code>{"{{soundLibraryJson}}"}</code>, and{" "}
-                    <code>{"{{projectDir}}"}</code>.
-                  </p>
                 </div>
               </Card>
               <Card className="space-y-4 p-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Conditional revision-notes prompt template
-                  </label>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Conditional revision-notes prompt template
+                    </label>
+                    <SectionActions
+                      dirty={isPromptTemplateDirty(
+                        "soundDesign.revisionPromptTemplate",
+                      )}
+                      saving={
+                        promptTemplateFeedback[
+                          "soundDesign.revisionPromptTemplate"
+                        ].saving
+                      }
+                      saveLabel="Save template"
+                      resetLabel="Restore"
+                      onSave={() =>
+                        void savePromptTemplate(
+                          "soundDesign.revisionPromptTemplate",
+                        )
+                      }
+                      onReset={() =>
+                        resetPromptTemplate(
+                          "soundDesign.revisionPromptTemplate",
+                        )
+                      }
+                    />
+                  </div>
                   <Textarea
                     value={soundDesignSettings.revisionPromptTemplate}
-                    onChange={(event) => {
-                      updateSectionFeedbackState("sound-library", {
-                        error: null,
-                        message: null,
-                      });
-                      setSoundDesignSettings({
-                        ...soundDesignSettings,
-                        revisionPromptTemplate: event.target.value,
-                      });
-                    }}
+                    onChange={(event) =>
+                      setPromptTemplateValue(
+                        "soundDesign.revisionPromptTemplate",
+                        event.target.value,
+                      )
+                    }
                     className="min-h-[140px] font-mono text-xs"
+                  />
+                  <SectionFeedbackNotice
+                    feedback={
+                      promptTemplateFeedback[
+                        "soundDesign.revisionPromptTemplate"
+                      ]
+                    }
                   />
                   <p className="text-xs text-muted-foreground">
                     This template renders only when rerun revision notes exist.
                     The rendered result becomes{" "}
                     <code>{"{{revisionNotesBlock}}"}</code> inside the full
-                    prompt above, and it supports{" "}
-                    <code>{"{{revisionNotes}}"}</code> plus{" "}
-                    <code>{"{{soundDesignPath}}"}</code>.
+                    prompt above.
                   </p>
                 </div>
               </Card>
+              <div className="lg:col-span-2">
+                <PromptPlaceholderTable
+                  title="Plan Sound Design prompt placeholders"
+                  rows={SOUND_DESIGN_PLACEHOLDER_ROWS}
+                />
+              </div>
+              <div className="lg:col-span-2">
+                <PromptPlaceholderTable
+                  title="Plan Sound Design revision-notes placeholders"
+                  rows={SOUND_DESIGN_REVISION_PLACEHOLDER_ROWS}
+                />
+              </div>
             </div>
             ) : (
               <Card className="space-y-4 p-4">
@@ -5974,7 +6452,9 @@ export function ShortFormVideoSettingsView({
           </div>
         ) : null}
 
-        <SectionFeedbackNotice feedback={sectionFeedback["sound-library"]} />
+        {activeSection === "plan-sound-design" ? null : (
+          <SectionFeedbackNotice feedback={sectionFeedback["sound-library"]} />
+        )}
       </div>
     </section>
   );
@@ -5990,6 +6470,308 @@ export function ShortFormVideoSettingsView({
         ...patch,
       },
     }));
+  }
+
+  function updatePromptTemplateFeedbackState(
+    templateId: PromptTemplateId,
+    patch: Partial<SectionFeedback>,
+  ) {
+    setPromptTemplateFeedback((current) => ({
+      ...current,
+      [templateId]: {
+        ...current[templateId],
+        ...patch,
+      },
+    }));
+  }
+
+  function splitPromptTemplateId(templateId: PromptTemplateId) {
+    const [scope, key] = templateId.split(".") as [
+      "textScript" | "xmlVisualPlanning" | "soundDesign" | "imageStyles",
+      string,
+    ];
+    return { scope, key };
+  }
+
+  function getPromptTemplateValue(templateId: PromptTemplateId) {
+    if (!templateId.includes(".")) {
+      return prompts[templateId as PromptKey] || "";
+    }
+
+    const { scope, key } = splitPromptTemplateId(templateId);
+    if (scope === "textScript") {
+      return (
+        textScriptSettings?.[key as TextScriptPromptTemplateKey] || ""
+      );
+    }
+    if (scope === "xmlVisualPlanning") {
+      return (
+        xmlVisualPlanningSettings?.[
+          key as XmlVisualPlanningPromptTemplateKey
+        ] || ""
+      );
+    }
+    if (scope === "imageStyles") {
+      return imageStyles?.promptTemplates[key as ImagePromptTemplateKey] || "";
+    }
+    return (
+      soundDesignSettings?.[key as SoundDesignPromptTemplateKey] || ""
+    );
+  }
+
+  function getInitialPromptTemplateValue(templateId: PromptTemplateId) {
+    if (!templateId.includes(".")) {
+      return initialPrompts[templateId as PromptKey] || "";
+    }
+
+    const { scope, key } = splitPromptTemplateId(templateId);
+    if (scope === "textScript") {
+      return (
+        initialTextScriptSettings?.[
+          key as TextScriptPromptTemplateKey
+        ] || ""
+      );
+    }
+    if (scope === "xmlVisualPlanning") {
+      return (
+        initialXmlVisualPlanningSettings?.[
+          key as XmlVisualPlanningPromptTemplateKey
+        ] || ""
+      );
+    }
+    if (scope === "imageStyles") {
+      return (
+        initialImageStyles?.promptTemplates[key as ImagePromptTemplateKey] || ""
+      );
+    }
+    return (
+      initialSoundDesignSettings?.[
+        key as SoundDesignPromptTemplateKey
+      ] || ""
+    );
+  }
+
+  function isPromptTemplateDirty(templateId: PromptTemplateId) {
+    return (
+      getPromptTemplateValue(templateId) !==
+      getInitialPromptTemplateValue(templateId)
+    );
+  }
+
+  function setPromptTemplateValue(
+    templateId: PromptTemplateId,
+    value: string,
+  ) {
+    updatePromptTemplateFeedbackState(templateId, {
+      error: null,
+      message: null,
+    });
+
+    if (!templateId.includes(".")) {
+      setPrompts((current) => ({
+        ...current,
+        [templateId as PromptKey]: value,
+      }));
+      return;
+    }
+
+    const { scope, key } = splitPromptTemplateId(templateId);
+    if (scope === "textScript") {
+      setTextScriptSettings((current) =>
+        current
+          ? {
+              ...current,
+              [key as TextScriptPromptTemplateKey]: value,
+            }
+          : current,
+      );
+      return;
+    }
+    if (scope === "xmlVisualPlanning") {
+      setXmlVisualPlanningSettings((current) =>
+        current
+          ? {
+              ...current,
+              [key as XmlVisualPlanningPromptTemplateKey]: value,
+            }
+          : current,
+      );
+      return;
+    }
+    if (scope === "imageStyles") {
+      setImageStyles((current) =>
+        current
+          ? {
+              ...current,
+              promptTemplates: {
+                ...current.promptTemplates,
+                [key as ImagePromptTemplateKey]: value,
+              },
+            }
+          : current,
+      );
+      return;
+    }
+    setSoundDesignSettings((current) =>
+      current
+        ? {
+            ...current,
+            [key as SoundDesignPromptTemplateKey]: value,
+          }
+        : current,
+    );
+  }
+
+  function buildPromptTemplateSavePayload(templateId: PromptTemplateId) {
+    const value = getPromptTemplateValue(templateId);
+    if (!value.trim()) {
+      throw new Error("Prompt template must be a non-empty string");
+    }
+    if (!templateId.includes(".")) {
+      return { prompts: { [templateId]: value } };
+    }
+
+    const { scope, key } = splitPromptTemplateId(templateId);
+    if (scope === "textScript") {
+      return { textScript: { [key]: value } };
+    }
+    if (scope === "xmlVisualPlanning") {
+      return { xmlVisualPlanning: { [key]: value } };
+    }
+    if (scope === "imageStyles") {
+      return { imageStyles: { promptTemplates: { [key]: value } } };
+    }
+    return { soundDesign: { [key]: value } };
+  }
+
+  function mergeSavedPromptTemplate(
+    templateId: PromptTemplateId,
+    data: SettingsData,
+  ) {
+    if (!templateId.includes(".")) {
+      const key = templateId as PromptKey;
+      const value = data.prompts[key] || "";
+      setPrompts((current) => ({ ...current, [key]: value }));
+      setInitialPrompts((current) => ({ ...current, [key]: value }));
+      return;
+    }
+
+    const { scope, key } = splitPromptTemplateId(templateId);
+    if (scope === "textScript") {
+      const textScriptKey = key as TextScriptPromptTemplateKey;
+      const value = data.textScript[textScriptKey];
+      setTextScriptSettings((current) =>
+        current ? { ...current, [textScriptKey]: value } : data.textScript,
+      );
+      setInitialTextScriptSettings((current) =>
+        current ? { ...current, [textScriptKey]: value } : data.textScript,
+      );
+      return;
+    }
+    if (scope === "xmlVisualPlanning") {
+      const xmlKey = key as XmlVisualPlanningPromptTemplateKey;
+      const value = data.xmlVisualPlanning[xmlKey];
+      setXmlVisualPlanningSettings((current) =>
+        current
+          ? { ...current, [xmlKey]: value }
+          : data.xmlVisualPlanning,
+      );
+      setInitialXmlVisualPlanningSettings((current) =>
+        current
+          ? { ...current, [xmlKey]: value }
+          : data.xmlVisualPlanning,
+      );
+      return;
+    }
+
+    if (scope === "imageStyles") {
+      const imageKey = key as ImagePromptTemplateKey;
+      const value = data.imageStyles.promptTemplates[imageKey];
+      setImageStyles((current) =>
+        current
+          ? {
+              ...current,
+              promptTemplates: {
+                ...current.promptTemplates,
+                [imageKey]: value,
+              },
+            }
+          : data.imageStyles,
+      );
+      setInitialImageStyles((current) =>
+        current
+          ? {
+              ...current,
+              promptTemplates: {
+                ...current.promptTemplates,
+                [imageKey]: value,
+              },
+            }
+          : data.imageStyles,
+      );
+      return;
+    }
+
+    const soundKey = key as SoundDesignPromptTemplateKey;
+    const value = data.soundDesign[soundKey];
+    setSoundDesignSettings((current) =>
+      current ? { ...current, [soundKey]: value } : data.soundDesign,
+    );
+    setInitialSoundDesignSettings((current) =>
+      current ? { ...current, [soundKey]: value } : data.soundDesign,
+    );
+  }
+
+  async function savePromptTemplate(templateId: PromptTemplateId) {
+    updatePromptTemplateFeedbackState(templateId, {
+      saving: true,
+      error: null,
+      message: null,
+    });
+
+    try {
+      const payload = buildPromptTemplateSavePayload(templateId);
+      const data = await parseResponse(
+        await fetch("/api/short-form-videos/settings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }),
+      );
+      mergeSavedPromptTemplate(templateId, data);
+      updatePromptTemplateFeedbackState(templateId, {
+        saving: false,
+        error: null,
+        message:
+          "Saved. New workflow runs will use this prompt template immediately.",
+      });
+      return data;
+    } catch (err) {
+      updatePromptTemplateFeedbackState(templateId, {
+        saving: false,
+        error:
+          err instanceof Error ? err.message : "Failed to save prompt template",
+        message: null,
+      });
+      throw err;
+    }
+  }
+
+  function resetPromptTemplate(templateId: PromptTemplateId) {
+    if (!isPromptTemplateDirty(templateId)) return;
+    const confirmed = window.confirm(
+      "Restore this prompt template to its last saved value?",
+    );
+    if (!confirmed) return;
+
+    setPromptTemplateValue(
+      templateId,
+      getInitialPromptTemplateValue(templateId),
+    );
+    updatePromptTemplateFeedbackState(templateId, {
+      error: null,
+      message: null,
+    });
   }
 
   function clearStyleTest(styleId: string) {
@@ -6413,6 +7195,118 @@ export function ShortFormVideoSettingsView({
       });
       throw err;
     }
+  }
+
+  function isTextScriptDefaultsDirty() {
+    if (!textScriptSettings || !initialTextScriptSettings) return false;
+    return (
+      serializeForCompare({
+        defaultMaxIterations: textScriptSettings.defaultMaxIterations,
+        enforceNaturalContractions:
+          textScriptSettings.enforceNaturalContractions,
+        formatNumericPercentages: textScriptSettings.formatNumericPercentages,
+      }) !==
+      serializeForCompare({
+        defaultMaxIterations: initialTextScriptSettings.defaultMaxIterations,
+        enforceNaturalContractions:
+          initialTextScriptSettings.enforceNaturalContractions,
+        formatNumericPercentages:
+          initialTextScriptSettings.formatNumericPercentages,
+      })
+    );
+  }
+
+  async function saveTextScriptDefaults() {
+    if (!textScriptSettings) return null;
+    updateSectionFeedbackState("text-script-prompts", {
+      saving: true,
+      error: null,
+      message: null,
+    });
+
+    try {
+      const data = await parseResponse(
+        await fetch("/api/short-form-videos/settings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            textScript: {
+              defaultMaxIterations: textScriptSettings.defaultMaxIterations,
+              enforceNaturalContractions:
+                textScriptSettings.enforceNaturalContractions,
+              formatNumericPercentages:
+                textScriptSettings.formatNumericPercentages,
+            },
+          }),
+        }),
+      );
+      setTextScriptSettings((current) =>
+        current
+          ? {
+              ...current,
+              defaultMaxIterations: data.textScript.defaultMaxIterations,
+              enforceNaturalContractions:
+                data.textScript.enforceNaturalContractions,
+              formatNumericPercentages:
+                data.textScript.formatNumericPercentages,
+            }
+          : data.textScript,
+      );
+      setInitialTextScriptSettings((current) =>
+        current
+          ? {
+              ...current,
+              defaultMaxIterations: data.textScript.defaultMaxIterations,
+              enforceNaturalContractions:
+                data.textScript.enforceNaturalContractions,
+              formatNumericPercentages:
+                data.textScript.formatNumericPercentages,
+            }
+          : data.textScript,
+      );
+      updateSectionFeedbackState("text-script-prompts", {
+        saving: false,
+        error: null,
+        message:
+          "Saved. New text-script runs will use these defaults immediately.",
+      });
+      return data;
+    } catch (err) {
+      updateSectionFeedbackState("text-script-prompts", {
+        saving: false,
+        error:
+          err instanceof Error
+            ? err.message
+            : "Failed to save text-script defaults",
+        message: null,
+      });
+      throw err;
+    }
+  }
+
+  function resetTextScriptDefaults() {
+    if (!isTextScriptDefaultsDirty() || !initialTextScriptSettings) return;
+    const confirmed = window.confirm(
+      "Restore text-script defaults to their last saved values?",
+    );
+    if (!confirmed) return;
+
+    setTextScriptSettings((current) =>
+      current
+        ? {
+            ...current,
+            defaultMaxIterations: initialTextScriptSettings.defaultMaxIterations,
+            enforceNaturalContractions:
+              initialTextScriptSettings.enforceNaturalContractions,
+            formatNumericPercentages:
+              initialTextScriptSettings.formatNumericPercentages,
+          }
+        : current,
+    );
+    updateSectionFeedbackState("text-script-prompts", {
+      error: null,
+      message: null,
+    });
   }
 
   function resetSection(sectionId: SettingsSectionId) {
@@ -8838,105 +9732,160 @@ export function ShortFormVideoSettingsView({
                       : "approved"
                   }
                 />
-                <SectionActions
-                  dirty={dirtyBySection["image-templates"]}
-                  saving={sectionFeedback["image-templates"].saving}
-                  saveLabel="Save templates"
-                  onSave={() => void saveSection("image-templates")}
-                  onReset={() => resetSection("image-templates")}
-                />
               </div>
 
               {imageStyles ? (
                 <div className="space-y-4">
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
                         <h3 className="text-sm font-medium text-foreground">
                           Scene generation template
                         </h3>
-                        <span className="text-[11px] text-muted-foreground">
-                          Used as the real per-scene Nano Banana prompt surface
-                        </span>
+                        <SectionActions
+                          dirty={isPromptTemplateDirty(
+                            "imageStyles.sceneTemplate",
+                          )}
+                          saving={
+                            promptTemplateFeedback[
+                              "imageStyles.sceneTemplate"
+                            ].saving
+                          }
+                          saveLabel="Save template"
+                          resetLabel="Restore"
+                          onSave={() =>
+                            void savePromptTemplate(
+                              "imageStyles.sceneTemplate",
+                            )
+                          }
+                          onReset={() =>
+                            resetPromptTemplate("imageStyles.sceneTemplate")
+                          }
+                        />
                       </div>
+                      <p className="text-xs text-muted-foreground">
+                        Used as the real per-scene Nano Banana prompt surface.
+                      </p>
                       <Textarea
                         value={imageStyles.promptTemplates.sceneTemplate}
-                        onChange={(event) => {
-                          updateSectionFeedbackState("image-templates", {
-                            error: null,
-                            message: null,
-                          });
-                          setImageStyles({
-                            ...imageStyles,
-                            promptTemplates: {
-                              ...imageStyles.promptTemplates,
-                              sceneTemplate: event.target.value,
-                            },
-                          });
-                        }}
+                        onChange={(event) =>
+                          setPromptTemplateValue(
+                            "imageStyles.sceneTemplate",
+                            event.target.value,
+                          )
+                        }
                         className="min-h-[240px] font-mono text-xs"
+                      />
+                      <SectionFeedbackNotice
+                        feedback={
+                          promptTemplateFeedback["imageStyles.sceneTemplate"]
+                        }
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
                         <h3 className="text-sm font-medium text-foreground">
                           Style instructions template
                         </h3>
-                        <span className="text-[11px] text-muted-foreground">
-                          Rendered first, then injected into the scene and
-                          character templates
-                        </span>
+                        <SectionActions
+                          dirty={isPromptTemplateDirty(
+                            "imageStyles.styleInstructionsTemplate",
+                          )}
+                          saving={
+                            promptTemplateFeedback[
+                              "imageStyles.styleInstructionsTemplate"
+                            ].saving
+                          }
+                          saveLabel="Save template"
+                          resetLabel="Restore"
+                          onSave={() =>
+                            void savePromptTemplate(
+                              "imageStyles.styleInstructionsTemplate",
+                            )
+                          }
+                          onReset={() =>
+                            resetPromptTemplate(
+                              "imageStyles.styleInstructionsTemplate",
+                            )
+                          }
+                        />
                       </div>
+                      <p className="text-xs text-muted-foreground">
+                        Rendered first, then injected into the scene and
+                        character templates.
+                      </p>
                       <Textarea
                         value={
                           imageStyles.promptTemplates.styleInstructionsTemplate
                         }
-                        onChange={(event) => {
-                          updateSectionFeedbackState("image-templates", {
-                            error: null,
-                            message: null,
-                          });
-                          setImageStyles({
-                            ...imageStyles,
-                            promptTemplates: {
-                              ...imageStyles.promptTemplates,
-                              styleInstructionsTemplate: event.target.value,
-                            },
-                          });
-                        }}
+                        onChange={(event) =>
+                          setPromptTemplateValue(
+                            "imageStyles.styleInstructionsTemplate",
+                            event.target.value,
+                          )
+                        }
                         className="min-h-[240px] font-mono text-xs"
+                      />
+                      <SectionFeedbackNotice
+                        feedback={
+                          promptTemplateFeedback[
+                            "imageStyles.styleInstructionsTemplate"
+                          ]
+                        }
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
                         <h3 className="text-sm font-medium text-foreground">
                           Character reference template
                         </h3>
-                        <span className="text-[11px] text-muted-foreground">
-                          Used only when no primary character reference image is
-                          supplied
-                        </span>
+                        <SectionActions
+                          dirty={isPromptTemplateDirty(
+                            "imageStyles.characterReferenceTemplate",
+                          )}
+                          saving={
+                            promptTemplateFeedback[
+                              "imageStyles.characterReferenceTemplate"
+                            ].saving
+                          }
+                          saveLabel="Save template"
+                          resetLabel="Restore"
+                          onSave={() =>
+                            void savePromptTemplate(
+                              "imageStyles.characterReferenceTemplate",
+                            )
+                          }
+                          onReset={() =>
+                            resetPromptTemplate(
+                              "imageStyles.characterReferenceTemplate",
+                            )
+                          }
+                        />
                       </div>
+                      <p className="text-xs text-muted-foreground">
+                        Used only when no primary character reference image is
+                        supplied.
+                      </p>
                       <Textarea
                         value={
                           imageStyles.promptTemplates.characterReferenceTemplate
                         }
-                        onChange={(event) => {
-                          updateSectionFeedbackState("image-templates", {
-                            error: null,
-                            message: null,
-                          });
-                          setImageStyles({
-                            ...imageStyles,
-                            promptTemplates: {
-                              ...imageStyles.promptTemplates,
-                              characterReferenceTemplate: event.target.value,
-                            },
-                          });
-                        }}
+                        onChange={(event) =>
+                          setPromptTemplateValue(
+                            "imageStyles.characterReferenceTemplate",
+                            event.target.value,
+                          )
+                        }
                         className="min-h-[240px] font-mono text-xs"
+                      />
+                      <SectionFeedbackNotice
+                        feedback={
+                          promptTemplateFeedback[
+                            "imageStyles.characterReferenceTemplate"
+                          ]
+                        }
                       />
                     </div>
                   </div>
@@ -8983,10 +9932,6 @@ export function ShortFormVideoSettingsView({
                   </div>
                 </div>
               ) : null}
-
-              <SectionFeedbackNotice
-                feedback={sectionFeedback["image-templates"]}
-              />
             </Card>
           </section>
 

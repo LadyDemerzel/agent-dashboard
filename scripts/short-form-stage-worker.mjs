@@ -1334,6 +1334,20 @@ function parseBooleanAttribute(value) {
   return value === true || ["true", "1", "yes", "emphasized", "emphasis"].includes(String(value || "").trim().toLowerCase());
 }
 
+function parseMotionTimingAttribute(attrs) {
+  const raw = attrs.animateIn ?? attrs.revealAt ?? attrs.startAt ?? attrs.at ?? attrs.time;
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed * 1000) / 1000) : undefined;
+}
+
+function assignMotionTiming(timings, itemKey, at) {
+  const key = collapseWhitespace(itemKey);
+  const timing = Number(at);
+  if (!key || !Number.isFinite(timing)) return;
+  timings[key] = Math.max(0, Math.round(timing * 1000) / 1000);
+}
+
 const SUPPORTED_MOTION_GRAPHIC_RENDERERS = new Set([
   "stat_reveal",
   "bar_chart",
@@ -1384,11 +1398,13 @@ function parseMotionGraphicAssets(xml) {
     if (!id || !templateId) continue;
     const body = match[2] || "";
     const args = {};
+    const animationTimings = {};
     for (const argMatch of body.matchAll(/<arg\b([^>]*)>([\s\S]*?)<\/arg>/gi)) {
       const argAttrs = parseXmlAttributes(argMatch[1] || "");
       const name = collapseWhitespace(argAttrs.name);
       if (!name) continue;
       args[name] = decodeXmlText(collapseWhitespace(argMatch[2] || ""));
+      assignMotionTiming(animationTimings, name, parseMotionTimingAttribute(argAttrs));
     }
     const data = [];
     for (const itemMatch of body.matchAll(/<item\b([^>]*?)\/?\s*>/gi)) {
@@ -1396,10 +1412,16 @@ function parseMotionGraphicAssets(xml) {
       const label = collapseWhitespace(itemAttrs.label);
       const value = collapseWhitespace(itemAttrs.value);
       if (!label || !value) continue;
+      const animateIn = parseMotionTimingAttribute(itemAttrs);
+      if (animateIn !== undefined) {
+        if (!Array.isArray(animationTimings.data)) animationTimings.data = [];
+        animationTimings.data[data.length] = animateIn;
+      }
       data.push({
         label: decodeXmlText(label),
         value: Number.isFinite(Number(value)) ? Number(value) : decodeXmlText(value),
         ...(itemAttrs.displayValue ? { displayValue: decodeXmlText(collapseWhitespace(itemAttrs.displayValue)) } : {}),
+        ...(animateIn !== undefined ? { animateIn } : {}),
       });
     }
     if (data.length > 0) args.data = data;
@@ -1408,7 +1430,14 @@ function parseMotionGraphicAssets(xml) {
       const stepAttrs = parseXmlAttributes(stepMatch[1] || "");
       const text = decodeXmlText(collapseWhitespace(stepMatch[2] || ""));
       const label = decodeXmlText(collapseWhitespace(stepAttrs.label || stepAttrs.leftLabel || stepAttrs.marker));
-      if (text) steps.push(label ? { label, text } : text);
+      const animateIn = parseMotionTimingAttribute(stepAttrs);
+      if (text) {
+        if (animateIn !== undefined) {
+          if (!Array.isArray(animationTimings.steps)) animationTimings.steps = [];
+          animationTimings.steps[steps.length] = animateIn;
+        }
+        steps.push(label || animateIn !== undefined ? { ...(label ? { label } : {}), text, ...(animateIn !== undefined ? { animateIn } : {}) } : text);
+      }
     }
     if (steps.length > 0) args.steps = steps;
     const lines = [];
@@ -1417,22 +1446,42 @@ function parseMotionGraphicAssets(xml) {
       const tagName = String(lineMatch[1] || "").toLowerCase();
       const lineAttrs = parseXmlAttributes(lineMatch[2] || "");
       if (tagName === "blankline" || parseBooleanAttribute(lineAttrs.blank)) {
-        lines.push({ blank: true });
+        const animateIn = parseMotionTimingAttribute(lineAttrs);
+        if (animateIn !== undefined) {
+          if (!Array.isArray(animationTimings.lines)) animationTimings.lines = [];
+          animationTimings.lines[lines.length] = animateIn;
+        }
+        lines.push({ blank: true, ...(animateIn !== undefined ? { animateIn } : {}) });
         continue;
       }
       const text = decodeXmlText(collapseWhitespace(lineMatch[3] || ""));
+      const animateIn = parseMotionTimingAttribute(lineAttrs);
       if (!text) {
-        lines.push({ blank: true });
+        if (animateIn !== undefined) {
+          if (!Array.isArray(animationTimings.lines)) animationTimings.lines = [];
+          animationTimings.lines[lines.length] = animateIn;
+        }
+        lines.push({ blank: true, ...(animateIn !== undefined ? { animateIn } : {}) });
         continue;
       }
       const size = parseCaptionWordWallLineSize(lineAttrs.size || lineAttrs.lineSize, lineAttrs);
+      if (animateIn !== undefined) {
+        if (!Array.isArray(animationTimings.lines)) animationTimings.lines = [];
+        animationTimings.lines[lines.length] = animateIn;
+      }
       lines.push({
         text,
         size,
         ...(size === "extra_large" && parseBooleanAttribute(lineAttrs.emphasized || lineAttrs.emphasis) ? { emphasized: true } : {}),
+        ...(animateIn !== undefined ? { animateIn } : {}),
       });
     }
     if (lines.length > 0) args.lines = lines;
+    for (const timingMatch of body.matchAll(/<timing\b([^>]*?)\/?\s*>/gi)) {
+      const timingAttrs = parseXmlAttributes(timingMatch[1] || "");
+      assignMotionTiming(animationTimings, timingAttrs.item || timingAttrs.name || timingAttrs.target, parseMotionTimingAttribute(timingAttrs));
+    }
+    if (Object.keys(animationTimings).length > 0) args.animationTimings = animationTimings;
     const rendererId = collapseWhitespace(attributes.rendererId);
     assets.set(id, {
       id,
@@ -2191,34 +2240,52 @@ function buildTextScriptWriterPrompt(config, options) {
     workflowMode: config.mode,
     iterationNumber: options.iterationNumber,
     maxIterations: config.maxIterations,
+    passingScore: config.passingScore,
     draftPath: options.draftPath,
+    reviewPath: "",
     scriptPath: config.scriptPath,
     runManifestPath: config.runManifestPath,
     revisionNotesOrNone: config.notes || "None.",
+    currentScriptContent: normalizeString(config.currentScriptContent, ""),
     approvedResearch: normalizeString(config.approvedResearch, "No approved research provided."),
     priorDraftBlock,
     priorReviewBlock,
     revisionInstructionLine: config.notes
       ? `Revise the existing plain text script based on this feedback:\n${config.notes}`
       : "No specific revision notes were supplied. Regenerate the existing plain text script in place as a clean rerun from the approved inputs, preserving the current workflow requirements and writing the refreshed result back to the same path.",
+    graderSkillPath: config.graderSkillPath,
+    graderRubricPath: config.graderRubricPath,
+    draftBody: priorDraftBody,
     projectDir: config.projectDir,
   });
 }
 
 function buildTextScriptGraderPrompt(config, options) {
   return renderTextScriptPromptTemplate(config.reviewPromptTemplate, {
+    retentionSkillPath: config.retentionSkillPath,
+    retentionPlaybookPath: config.retentionPlaybookPath,
     graderSkillPath: config.graderSkillPath,
     graderRubricPath: config.graderRubricPath,
     topic: config.topic || "Untitled short-form video",
     selectedHookTextOrFallback: config.selectedHookText || "No explicit hook is selected. Grade against the topic context.",
+    workflowMode: config.mode,
     iterationNumber: options.iterationNumber,
     maxIterations: config.maxIterations,
     passingScore: config.passingScore,
     draftPath: options.draftPath,
     reviewPath: options.reviewPath,
+    scriptPath: config.scriptPath,
     runManifestPath: config.runManifestPath,
+    revisionNotesOrNone: config.notes || "None.",
+    revisionInstructionLine: config.notes
+      ? `Revise the existing plain text script based on this feedback:\n${config.notes}`
+      : "No specific revision notes were supplied.",
     approvedResearch: normalizeString(config.approvedResearch, "No approved research provided."),
+    currentScriptContent: normalizeString(config.currentScriptContent, ""),
+    priorDraftBlock: "",
+    priorReviewBlock: "",
     draftBody: options.draftBody,
+    projectDir: config.projectDir,
   });
 }
 
@@ -2257,14 +2324,20 @@ async function spawnWorkflowAttempt({
     throw new Error(`Webhook failed: ${response.status} ${errorText}`);
   }
 
-  return response.json();
+  const result = await response.json();
+  const status = typeof result?.status === "string" ? result.status.toLowerCase() : "";
+  if (result?.ok === false || status === "error" || result?.error || result?.errorMessage) {
+    const summary = result?.summary || result?.errorMessage || result?.error || JSON.stringify(result);
+    throw new Error(`Hook agent run failed: ${summary}`);
+  }
+  return result;
 }
 
 async function runTextScriptAgentStep(job, options) {
   const attempts = activeRunContext?.attempts || [];
   const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0
     ? job.preferredModels
-    : ["openai-codex/gpt-5.5", "openai/gpt-5.5"];
+    : ["openai/gpt-5.5"];
   let lastError = "Unknown error";
 
   for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {
@@ -2290,6 +2363,9 @@ async function runTextScriptAgentStep(job, options) {
       });
       attempt.spawnResult = spawnResult;
       attempt.sessionId = spawnResult?.sessionId || spawnResult?.id;
+      finalizeRun({
+        status: "running",
+      });
 
       const verified = await waitForArtifactPaths(
         options.artifactPaths,
@@ -4487,7 +4563,7 @@ async function main() {
 
   const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0
     ? job.preferredModels
-    : ["openai-codex/gpt-5.5", "openai/gpt-5.5"];
+    : ["openai/gpt-5.5"];
 
   for (let index = 0; index < models.length; index += 1) {
     const model = models[index];
@@ -4504,6 +4580,9 @@ async function main() {
     try {
       const spawnResult = await spawnAttempt(job, model, index);
       attempt.spawnResult = spawnResult;
+      finalizeRun({
+        status: "running",
+      });
       const verified = await waitForArtifacts(
         job,
         job.requiredArtifacts,

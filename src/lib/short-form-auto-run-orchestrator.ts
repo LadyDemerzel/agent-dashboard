@@ -44,6 +44,11 @@ type AutoRunJob = {
   promise: Promise<void>;
 };
 
+type AutoRunStepRunOptions = {
+  prepareCurrent?: boolean;
+  force?: boolean;
+};
+
 const jobs = new Map<string, AutoRunJob>();
 
 class AutoRunStoppedError extends Error {
@@ -702,6 +707,30 @@ function latestRequestForAutoRunStep(
   return { stage, request };
 }
 
+function canUseExistingAutoRunArtifact(
+  autoRun: ShortFormAutoRunState | undefined,
+  stepId: ShortFormAutoRunStepId,
+) {
+  if (!autoRun) return true;
+  return getShortFormAutoRunCurrentStep(autoRun.startedFrom)?.id === stepId;
+}
+
+function selectedStepNeedsFreshRun(
+  autoRun: ShortFormAutoRunState | undefined,
+  stepId: ShortFormAutoRunStepId,
+) {
+  return Boolean(autoRun && !canUseExistingAutoRunArtifact(autoRun, stepId));
+}
+
+function selectedStepArtifactFresh(
+  autoRun: ShortFormAutoRunState | undefined,
+  stepId: ShortFormAutoRunStepId,
+  updatedAt: string | undefined,
+) {
+  if (!selectedStepNeedsFreshRun(autoRun, stepId)) return true;
+  return freshAtOrAfter(updatedAt, autoRun!.startedAt);
+}
+
 function latestWorkflowProgressForAutoRunStep(
   projectId: string,
   _project: ShortFormProject,
@@ -843,6 +872,13 @@ function autoRunStepActuallyCompleted(
   autoRun?: ShortFormAutoRunState,
 ) {
   const latestRequest = latestRequestForAutoRunStep(projectId, autoRun, stepId);
+  if (
+    selectedStepNeedsFreshRun(autoRun, stepId) &&
+    workflowStageForAutoRunStep(stepId) &&
+    !latestRequest
+  ) {
+    return false;
+  }
   if (latestRequest && !workflowRequestVerifiedForAutoRunStep(projectId, project, autoRun, stepId)) {
     return false;
   }
@@ -852,36 +888,47 @@ function autoRunStepActuallyCompleted(
       return (
         stageDocumentReady(project.research) &&
         approved(project.research.status) &&
+        selectedStepArtifactFresh(autoRun, stepId, project.research.updatedAt) &&
         (!latestRequest || freshAtOrAfter(project.research.updatedAt, latestRequest.request.requestedAt))
       );
     case "text-script":
       return (
         stageDocumentReady(project.script) &&
         approved(project.script.status) &&
+        selectedStepArtifactFresh(autoRun, stepId, project.script.updatedAt) &&
         (!latestRequest || freshAtOrAfter(project.script.updatedAt, latestRequest.request.requestedAt))
       );
     case "generate-narration-audio":
-      return Boolean(project.xmlScript.audioUrl);
+      return (
+        Boolean(project.xmlScript.audioUrl) &&
+        selectedStepArtifactFresh(autoRun, stepId, xmlPipelineStepUpdatedAt(project, "narration"))
+      );
     case "plan-captions":
-      return Boolean(project.xmlScript.captions?.length);
+      return (
+        Boolean(project.xmlScript.captions?.length) &&
+        selectedStepArtifactFresh(autoRun, stepId, xmlPipelineStepUpdatedAt(project, "captions"))
+      );
     case "plan-visuals":
       return (
         project.xmlScript.exists &&
         !project.xmlScript.pending &&
         project.xmlScript.content.trim().length > 0 &&
-        approved(project.xmlScript.status)
+        approved(project.xmlScript.status) &&
+        selectedStepArtifactFresh(autoRun, stepId, project.xmlScript.updatedAt)
       );
     case "generate-visuals":
       return (
         stageDocumentReady(project.sceneImages) &&
         project.sceneImages.scenes.length > 0 &&
         approved(project.sceneImages.status) &&
+        selectedStepArtifactFresh(autoRun, stepId, project.sceneImages.updatedAt) &&
         (!latestRequest || freshAtOrAfter(project.sceneImages.updatedAt, latestRequest.request.requestedAt))
       );
     case "plan-sound-design":
       return (
         stageDocumentReady(project.soundDesign) &&
         approved(project.soundDesign.status) &&
+        selectedStepArtifactFresh(autoRun, stepId, project.soundDesign.updatedAt) &&
         (!latestRequest || freshAtOrAfter(project.soundDesign.updatedAt, latestRequest.request.requestedAt))
       );
     case "generate-sound-design":
@@ -891,6 +938,7 @@ function autoRunStepActuallyCompleted(
         stageDocumentReady(project.video) &&
         (project.video.pipeline?.status === "completed" || Boolean(project.video.videoUrl)) &&
         approved(project.video.status) &&
+        selectedStepArtifactFresh(autoRun, stepId, project.video.updatedAt) &&
         (!latestRequest || freshAtOrAfter(project.video.updatedAt, latestRequest.request.requestedAt))
       );
   }
@@ -1017,12 +1065,13 @@ async function runResearch(
   signal: AbortSignal,
   step: ShortFormAutoRunStepDefinition,
   current: ShortFormProject,
+  options?: AutoRunStepRunOptions,
 ) {
   if (!current.selectedHookText) {
     throw new Error("Select a hook before auto-running Research.");
   }
 
-  if (!current.research.exists || !current.research.content.trim()) {
+  if (options?.force || !current.research.exists || !current.research.content.trim()) {
     const requestedAt = nowIso();
     const response = await postJson(
       baseUrl,
@@ -1059,13 +1108,14 @@ async function runTextScript(
   signal: AbortSignal,
   step: ShortFormAutoRunStepDefinition,
   current: ShortFormProject,
-  options?: { prepareCurrent?: boolean },
+  options?: AutoRunStepRunOptions,
 ) {
   if (!approved(current.research.status)) {
     throw new Error("Approve Research before auto-running Text Script.");
   }
 
   const shouldGenerate =
+    options?.force ||
     !current.script.exists ||
     !current.script.content.trim() ||
     (!options?.prepareCurrent &&
@@ -1185,13 +1235,14 @@ async function runPlanVisuals(
   signal: AbortSignal,
   step: ShortFormAutoRunStepDefinition,
   current: ShortFormProject,
-  options?: { prepareCurrent?: boolean },
+  options?: AutoRunStepRunOptions,
 ) {
   if (!current.xmlScript.captions?.length) {
     throw new Error("Plan Captions before auto-running Plan Visuals.");
   }
 
   const shouldGenerate =
+    options?.force ||
     !current.xmlScript.exists ||
     !current.xmlScript.content.trim() ||
     (!options?.prepareCurrent &&
@@ -1199,6 +1250,7 @@ async function runPlanVisuals(
         updatedBefore(current.xmlScript.updatedAt, xmlPipelineStepUpdatedAt(current, "captions"))));
 
   if (shouldGenerate) {
+    const requestedAt = nowIso();
     const response = await postJson(
       baseUrl,
       `/api/short-form-videos/${projectId}/xml-script`,
@@ -1212,11 +1264,17 @@ async function runPlanVisuals(
       autoRunId,
       signal,
       step,
-      (nextProject) =>
-        nextProject.xmlScript.pipeline?.runId === runId &&
-        !hasActiveXmlPipeline(nextProject) &&
-        nextProject.xmlScript.exists &&
-        nextProject.xmlScript.content.trim().length > 0,
+      (nextProject) => {
+        const xmlStep = nextProject.xmlScript.pipeline?.steps.find((item) => item.id === "xml");
+        return (
+          nextProject.xmlScript.pipeline?.runId === runId &&
+          !hasActiveXmlPipeline(nextProject) &&
+          xmlStep?.status === "completed" &&
+          nextProject.xmlScript.exists &&
+          nextProject.xmlScript.content.trim().length > 0 &&
+          freshAtOrAfter(nextProject.xmlScript.updatedAt, requestedAt)
+        );
+      },
       (nextProject) =>
         nextProject.xmlScript.pipeline?.runId === runId &&
         nextProject.xmlScript.pipeline?.status === "failed",
@@ -1238,7 +1296,7 @@ async function runGenerateVisuals(
   signal: AbortSignal,
   step: ShortFormAutoRunStepDefinition,
   current: ShortFormProject,
-  options?: { force?: boolean; prepareCurrent?: boolean },
+  options?: AutoRunStepRunOptions,
 ) {
   if (!approved(current.xmlScript.status)) {
     throw new Error("Approve Plan Visuals before auto-running Generate Visuals.");
@@ -1292,13 +1350,14 @@ async function runPlanSoundDesign(
   signal: AbortSignal,
   step: ShortFormAutoRunStepDefinition,
   current: ShortFormProject,
-  options?: { prepareCurrent?: boolean },
+  options?: AutoRunStepRunOptions,
 ) {
   if (!approved(current.sceneImages.status)) {
     throw new Error("Approve Generate Visuals before auto-running Plan Sound Design.");
   }
 
   const shouldGenerate =
+    options?.force ||
     !current.soundDesign.exists ||
     !current.soundDesign.content.trim() ||
     (!options?.prepareCurrent &&
@@ -1615,25 +1674,27 @@ async function runStep(
   autoRunId: string,
   signal: AbortSignal,
   step: ShortFormAutoRunStepDefinition,
-  options?: { prepareCurrent?: boolean },
+  options?: AutoRunStepRunOptions,
 ) {
   const current = assertAutoRunActive(projectId, autoRunId, signal);
+  const force = options?.force ?? !options?.prepareCurrent;
+  const stepOptions = { ...options, force };
 
   switch (step.id) {
     case "research":
-      return runResearch(baseUrl, projectId, autoRunId, signal, step, current);
+      return runResearch(baseUrl, projectId, autoRunId, signal, step, current, stepOptions);
     case "text-script":
-      return runTextScript(baseUrl, projectId, autoRunId, signal, step, current, options);
+      return runTextScript(baseUrl, projectId, autoRunId, signal, step, current, stepOptions);
     case "generate-narration-audio":
       return runNarrationAudio(baseUrl, projectId, autoRunId, signal, step);
     case "plan-captions":
       return runPlanCaptions(baseUrl, projectId, autoRunId, signal, step);
     case "plan-visuals":
-      return runPlanVisuals(baseUrl, projectId, autoRunId, signal, step, current, options);
+      return runPlanVisuals(baseUrl, projectId, autoRunId, signal, step, current, stepOptions);
     case "generate-visuals":
-      return runGenerateVisuals(baseUrl, projectId, autoRunId, signal, step, current, options);
+      return runGenerateVisuals(baseUrl, projectId, autoRunId, signal, step, current, stepOptions);
     case "plan-sound-design":
-      return runPlanSoundDesign(baseUrl, projectId, autoRunId, signal, step, current, options);
+      return runPlanSoundDesign(baseUrl, projectId, autoRunId, signal, step, current, stepOptions);
     case "generate-sound-design":
       return runGenerateSoundDesign(baseUrl, projectId, autoRunId, signal, current);
     case "final-video":
@@ -1667,6 +1728,14 @@ async function runAutoRun(
         currentStep: undefined,
         completedSteps: Array.from(new Set([...autoRun.completedSteps, currentStep.id])),
       });
+      await reconcileCompletedAutoRunApprovals(
+        baseUrl,
+        projectId,
+        autoRun.id,
+        signal,
+        autoRun,
+      );
+      autoRun = assertAutoRunActive(projectId, autoRun.id, signal).autoRun || autoRun;
     }
 
     for (const step of subsequentSteps) {
@@ -1679,6 +1748,14 @@ async function runAutoRun(
         currentStep: undefined,
         completedSteps: Array.from(new Set([...autoRun.completedSteps, step.id])),
       });
+      await reconcileCompletedAutoRunApprovals(
+        baseUrl,
+        projectId,
+        autoRun.id,
+        signal,
+        autoRun,
+      );
+      autoRun = assertAutoRunActive(projectId, autoRun.id, signal).autoRun || autoRun;
     }
 
     await reconcileCompletedAutoRunApprovals(

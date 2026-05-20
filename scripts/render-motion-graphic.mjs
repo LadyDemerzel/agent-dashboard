@@ -160,6 +160,94 @@ function asNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function asOptionalTimingSeconds(value) {
+  if (value === undefined || value === null || value === "") return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.max(0, Math.round(parsed * 1000) / 1000);
+}
+
+function timingAttrsFromObject(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const timing = asOptionalTimingSeconds(value.animateIn ?? value.revealAt ?? value.startAt ?? value.at ?? value.time);
+  return timing === undefined ? {} : { animateIn: timing };
+}
+
+function normalizeAnimationTimings(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const normalized = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (Array.isArray(raw)) {
+      const items = raw.map(asOptionalTimingSeconds);
+      if (items.some((item) => item !== undefined)) normalized[key] = items;
+      continue;
+    }
+    if (raw && typeof raw === "object") {
+      const nested = normalizeAnimationTimings(raw);
+      if (Object.keys(nested).length > 0) normalized[key] = nested;
+      continue;
+    }
+    const timing = asOptionalTimingSeconds(raw);
+    if (timing !== undefined) normalized[key] = timing;
+  }
+  return normalized;
+}
+
+function animationTimings(args = {}) {
+  return normalizeAnimationTimings(args.animationTimings || args.timings || args.animateIn || {});
+}
+
+function directTiming(value) {
+  return asOptionalTimingSeconds(value?.animateIn ?? value?.revealAt ?? value?.startAt ?? value?.at ?? value?.time);
+}
+
+function lookupTimingValue(source, key) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return undefined;
+  return source[key];
+}
+
+function timingValue(args, keys, fallback) {
+  const timings = animationTimings(args);
+  for (const key of Array.isArray(keys) ? keys : [keys]) {
+    const timing = asOptionalTimingSeconds(lookupTimingValue(timings, key));
+    if (timing !== undefined) return timing;
+  }
+  return fallback;
+}
+
+function itemTiming(args, sourceName, item, index, fallback, aliases = []) {
+  const direct = directTiming(item);
+  if (direct !== undefined) return direct;
+
+  const timings = animationTimings(args);
+  const names = [sourceName, ...aliases].filter(Boolean);
+  for (const name of names) {
+    const collection = lookupTimingValue(timings, name);
+    if (Array.isArray(collection)) {
+      const timing = asOptionalTimingSeconds(collection[index]);
+      if (timing !== undefined) return timing;
+    }
+    if (collection && typeof collection === "object") {
+      const byOneBasedIndex = asOptionalTimingSeconds(collection[index + 1] ?? collection[String(index + 1)]);
+      if (byOneBasedIndex !== undefined) return byOneBasedIndex;
+      const label = asText(item?.label || item?.text || "");
+      if (label) {
+        const byLabel = asOptionalTimingSeconds(collection[label]);
+        if (byLabel !== undefined) return byLabel;
+      }
+    }
+
+    const keyedTiming = asOptionalTimingSeconds(
+      timings[`${name}.${index + 1}`]
+      ?? timings[`${name}[${index + 1}]`]
+      ?? timings[`${name}:${index + 1}`]
+      ?? (item?.label ? timings[`${name}:${item.label}`] : undefined)
+    );
+    if (keyedTiming !== undefined) return keyedTiming;
+  }
+  return fallback;
+}
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -183,6 +271,7 @@ function asTimelineSteps(value, fallback = []) {
       return {
         label: asText(item.label ?? item.leftLabel ?? item.marker, autoTimelineLabel(index)).slice(0, 60),
         text,
+        ...timingAttrsFromObject(item),
       };
     }
     const text = asText(item);
@@ -211,6 +300,7 @@ function asData(value) {
           label: asText(item.label, `Item ${index + 1}`),
           value: asNumber(item.value, 0),
           displayValue: asText(item.displayValue, asText(item.value, "0")),
+          ...timingAttrsFromObject(item),
         };
       }
       return { label: `Item ${index + 1}`, value: asNumber(item, 0), displayValue: asText(item, String(item ?? "0")) };
@@ -244,6 +334,7 @@ function asCaptionWordWallLines(value, fallback = []) {
           ...(blank ? { blank: true } : { text }),
           ...(!blank ? { size } : {}),
           ...(size === "extra_large" && (line.emphasized === true || line.emphasis === true || String(line.emphasized || line.emphasis).toLowerCase() === "true") ? { emphasized: true } : {}),
+          ...timingAttrsFromObject(line),
         };
       }
       const text = asText(line);
@@ -626,7 +717,7 @@ function buildCaptionWordWallTimeline({ lines, alignmentWords, visualStartSecond
       size,
       emphasized: size === "extra_large",
       words: resolvedWords,
-      lineStart: resolvedWords[0]?.start ?? 0,
+      lineStart: directTiming(line) ?? resolvedWords[0]?.start ?? 0,
       lineEnd: resolvedWords[resolvedWords.length - 1]?.end ?? 0,
     };
   });
@@ -936,7 +1027,7 @@ function esc(value) {
   return asText(value)
     .replace(/\\/g, "\\\\")
     .replace(/:/g, "\\:")
-    .replace(/'/g, "\\'")
+    .replace(/'/g, "’")
     .replace(/%/g, "\\%")
     .replace(/\[/g, "\\[")
     .replace(/\]/g, "\\]");
@@ -2034,13 +2125,14 @@ function baseFilters(stylePreset) {
 
 function statReveal(args, stylePreset, overlayInputs) {
   void overlayInputs;
-  const titleStart = 1.12;
+  const valueStart = timingValue(args, ["value", "stat", "number"], 0.72);
+  const titleStart = timingValue(args, "title", 1.12);
   const titleRevealDuration = 0.54;
   const valueStyle = STAT_REVEAL_TEXT_STYLE.value;
   const titleStyle = STAT_REVEAL_TEXT_STYLE.title;
   return [
     ...baseFilters(stylePreset),
-    animatedUnifiedText(args.value || "73%", 124, 564, valueStyle.fontSize, valueStyle.color, 0.72, 58, textShadow(valueStyle.shadowOpacity, valueStyle.shadowOffsetY), 0.66),
+    animatedUnifiedText(args.value || "73%", 124, 564, valueStyle.fontSize, valueStyle.color, valueStart, 58, textShadow(valueStyle.shadowOpacity, valueStyle.shadowOffsetY), 0.66),
     ...animatedUnifiedTextLines(args.title || "people notice the change", 132, 804, titleStyle.fontSize, titleStyle.color, titleStart, titleStyle.maxChars, titleStyle.lineGap, 52),
     ...animatedHorizontalRule(132, 1064, 616, 4, UNIFIED_PALETTE.faintGrey, titleStart, titleRevealDuration),
   ];
@@ -2055,7 +2147,15 @@ function barChart(args, stylePreset, overlayInputs) {
   const barRevealDuration = 0.4;
   const barGapAfterReveal = 0.3;
   const revealSlotCount = Math.max(1, data.length);
-  const lastRevealFinish = firstRevealAt + (revealSlotCount - 1) * (barRevealDuration + barGapAfterReveal) + barRevealDuration;
+  const titleRevealAt = timingValue(args, "title", firstRevealAt);
+  const barRevealTimes = data.map((item, index) =>
+    itemTiming(args, "data", item, index, fixedRevealTiming(index, { firstRevealAt, revealDuration: barRevealDuration, gapAfterReveal: barGapAfterReveal }).revealAt, ["bars", "bar", "items"]),
+  );
+  const lastRevealFinish = Math.max(
+    firstRevealAt + (revealSlotCount - 1) * (barRevealDuration + barGapAfterReveal) + barRevealDuration,
+    titleRevealAt + titleRevealDuration,
+    ...barRevealTimes.map((revealAt) => revealAt + barRevealDuration),
+  );
   const barBaseY = 1398;
   const barMaxH = 610;
   const gap = data.length <= 3 ? 64 : 42;
@@ -2063,11 +2163,12 @@ function barChart(args, stylePreset, overlayInputs) {
   const accents = [UNIFIED_PALETTE.mutedBlue, UNIFIED_PALETTE.mutedSage, UNIFIED_PALETTE.mutedPeach, UNIFIED_PALETTE.mutedLavender, "#d7d2c9@0.66"];
   const filters = [
     ...baseFilters(stylePreset),
-    ...animatedUnifiedTextLines(args.title || "What changed most", 124, 260, 62, UNIFIED_PALETTE.offWhite, firstRevealAt, 22, 18, 46, "", titleRevealDuration, 0, titleRevealDuration),
-    ...animatedHorizontalRule(124, barBaseY + 22, 832, 3, UNIFIED_PALETTE.faintGrey, firstRevealAt, lastRevealFinish - firstRevealAt),
+    ...animatedUnifiedTextLines(args.title || "What changed most", 124, 260, 62, UNIFIED_PALETTE.offWhite, titleRevealAt, 22, 18, 46, "", titleRevealDuration, 0, titleRevealDuration),
+    ...animatedHorizontalRule(124, barBaseY + 22, 832, 3, UNIFIED_PALETTE.faintGrey, titleRevealAt, Math.max(0.1, lastRevealFinish - titleRevealAt)),
   ];
   data.forEach((item, i) => {
     const timing = fixedRevealTiming(i, { firstRevealAt, revealDuration: barRevealDuration, gapAfterReveal: barGapAfterReveal });
+    timing.revealAt = barRevealTimes[i] ?? timing.revealAt;
     const x = 130 + i * (barW + gap);
     const centerX = x + barW / 2;
     const h = Math.max(40, Math.round((Math.abs(item.value) / max) * barMaxH));
@@ -2095,6 +2196,7 @@ async function pieChart(args, stylePreset, overlayInputs) {
   const firstRevealAt = 0.58;
   const sliceRevealDuration = 0.34;
   const sliceGapAfterReveal = 0.16;
+  const titleRevealAt = timingValue(args, "title", 0.36);
   const chartCenterX = 540;
   const chartCenterY = 805;
   const radius = 284;
@@ -2108,7 +2210,7 @@ async function pieChart(args, stylePreset, overlayInputs) {
   const legendSwatchOffsetY = Math.round((legendTextVisibleHeight - legendSwatchSize) / 2);
   const filters = [
     ...baseFilters(stylePreset),
-    ...animatedUnifiedTextLines(args.title || "What changed most", 124, 260, 62, UNIFIED_PALETTE.offWhite, 0.36, 22, 18, 46, "", 0.42, 0, 0.34),
+    ...animatedUnifiedTextLines(args.title || "What changed most", 124, 260, 62, UNIFIED_PALETTE.offWhite, titleRevealAt, 22, 18, 46, "", 0.42, 0, 0.34),
   ];
   const sliceOverlayPromises = [];
 
@@ -2118,6 +2220,7 @@ async function pieChart(args, stylePreset, overlayInputs) {
       ? 270
       : currentAngle + (item.value / total) * 360;
     const timing = fixedRevealTiming(index, { firstRevealAt, revealDuration: sliceRevealDuration, gapAfterReveal: sliceGapAfterReveal });
+    timing.revealAt = itemTiming(args, "data", item, index, timing.revealAt, ["slices", "slice", "items"]);
     sliceOverlayPromises.push(createPieSliceOverlay({
       tempDir: overlayInputs.tempDir,
       centerX: chartCenterX,
@@ -2174,7 +2277,9 @@ async function lineGrowthChart(args, stylePreset, overlayInputs) {
     : "";
   const title = asText(args.title, direction === "decrease" ? "Decline trend" : "Growth trend");
   const accent = direction === "decrease" ? UNIFIED_PALETTE.mutedPeach : UNIFIED_PALETTE.mutedSage;
-  const xAxisLabelRevealAt = 1.72;
+  const titleRevealAt = timingValue(args, "title", 0.36);
+  const chartRevealAt = timingValue(args, ["chart", "line", "trend"], 0.88);
+  const xAxisLabelRevealAt = chartRevealAt + 0.84;
   const xAxisLabelRevealDuration = 0.42;
   const xAxisLabelSlideDistance = 14;
   const bendX = axisW * 0.66;
@@ -2192,7 +2297,7 @@ async function lineGrowthChart(args, stylePreset, overlayInputs) {
       ];
   const filters = [
     ...baseFilters(stylePreset),
-    ...animatedUnifiedTextLines(title, 124, 260, 62, UNIFIED_PALETTE.offWhite, 0.36, 22, 18, 46, "", 0.42, 0, 0.34),
+    ...animatedUnifiedTextLines(title, 124, 260, 62, UNIFIED_PALETTE.offWhite, titleRevealAt, 22, 18, 46, "", 0.42, 0, 0.34),
     animatedUnifiedTextSlideUp(startLabel, axisX, axisY + 58, 30, UNIFIED_PALETTE.dimGrey, xAxisLabelRevealAt, xAxisLabelSlideDistance, textShadow(0.58, 3), xAxisLabelRevealDuration, xAxisLabelRevealDuration),
     animatedUnifiedRightAlignedTextSlideUp(endLabel, axisX + axisW, axisY + 58, 30, UNIFIED_PALETTE.dimGrey, xAxisLabelRevealAt + 0.08, xAxisLabelSlideDistance, textShadow(0.58, 3), xAxisLabelRevealDuration, xAxisLabelRevealDuration),
   ];
@@ -2206,7 +2311,7 @@ async function lineGrowthChart(args, stylePreset, overlayInputs) {
     points,
     color: accent,
     index: "main",
-    start: 0.88,
+    start: chartRevealAt,
     growRightDuration: lineDrawInDuration,
     exitStart: Math.max(2.5, (overlayInputs.duration || 6) - 0.35),
     debugChartOrigin: { x: axisX, y: axisY },
@@ -2259,7 +2364,15 @@ function comparisonRevealTiming(args = {}) {
 
 function comparison(args, stylePreset, overlayInputs) {
   void overlayInputs;
-  const timing = comparisonRevealTiming(args);
+  const timing = {
+    ...comparisonRevealTiming(args),
+  };
+  const beforeOverride = timingValue(args, "before", timing.beforeStart);
+  const afterOverride = timingValue(args, "after", timing.afterStart);
+  timing.beforeStart = beforeOverride;
+  timing.beforeCopyStart = beforeOverride + COMPARISON_TIMING.beforeCopyOffset;
+  timing.afterStart = afterOverride;
+  timing.afterCopyStart = afterOverride + COMPARISON_TIMING.beforeCopyOffset;
   return [
     ...baseFilters(stylePreset),
     animatedVerticalRule(538, 574, 720, UNIFIED_PALETTE.faintGrey, 0.92, 4),
@@ -2277,7 +2390,14 @@ function timeline(args, stylePreset, overlayInputs) {
   // Fixed, duration-independent timing: each step reveals for 360ms, then the next step starts 300ms later.
   const stepRevealDuration = 0.36;
   const gapAfterStepReveal = 0.3;
-  const lastRevealFinish = firstRevealAt + (steps.length - 1) * (stepRevealDuration + gapAfterStepReveal) + stepRevealDuration;
+  const stepRevealTimes = steps.map((step, index) =>
+    itemTiming(args, "steps", step, index, fixedRevealTiming(index, { firstRevealAt, revealDuration: stepRevealDuration, gapAfterReveal: gapAfterStepReveal }).revealAt, ["items", "timeline"]),
+  );
+  const firstStepRevealAt = Math.min(...stepRevealTimes, firstRevealAt);
+  const lastRevealFinish = Math.max(
+    firstRevealAt + (steps.length - 1) * (stepRevealDuration + gapAfterStepReveal) + stepRevealDuration,
+    ...stepRevealTimes.map((revealAt) => revealAt + stepRevealDuration),
+  );
   const stepGap = steps.length <= 3 ? 266 : steps.length === 4 ? 218 : 180;
   const stepFontSize = steps.length <= 3 ? 54 : 48;
   const stepTextTopOffset = -14;
@@ -2317,10 +2437,11 @@ function timeline(args, stylePreset, overlayInputs) {
   const lastRuleCenterY = startY + stepExtents[stepExtents.length - 1].ruleCenterY;
   const filters = [
     ...baseFilters(stylePreset),
-    ...animatedVerticalRuleForDuration(verticalRuleX, firstRuleCenterY, lastRuleCenterY - firstRuleCenterY, UNIFIED_PALETTE.faintGrey, firstRevealAt, lastRevealFinish - firstRevealAt, verticalRuleW),
+    ...animatedVerticalRuleForDuration(verticalRuleX, firstRuleCenterY, lastRuleCenterY - firstRuleCenterY, UNIFIED_PALETTE.faintGrey, firstStepRevealAt, Math.max(0.1, lastRevealFinish - firstStepRevealAt), verticalRuleW),
   ];
   steps.forEach((step, i) => {
     const timing = fixedRevealTiming(i, { firstRevealAt, revealDuration: stepRevealDuration, gapAfterReveal: gapAfterStepReveal });
+    timing.revealAt = stepRevealTimes[i] ?? timing.revealAt;
     const y = startY + i * stepGap;
     const connectorY = Math.round(y + stepTextTopOffset + stepFontSize / 2 - ruleH / 2);
     filters.push(...animatedCenterOutHorizontalRule(ruleX, connectorY, ruleW, ruleH, i % 2 ? UNIFIED_PALETTE.mutedSage : UNIFIED_PALETTE.mutedPeach, timing.revealAt, timing.revealDuration));
@@ -2357,6 +2478,12 @@ function rankedPodium(args, stylePreset, overlayInputs) {
 
   items.forEach((item, index) => {
     const timing = sequentialRevealTiming(index, startIndex, revealOptions);
+    const explicitRevealAt = itemTiming(args, "items", item, index, Number.NaN, ["steps", "ranks", "ranked"]);
+    if (Number.isFinite(explicitRevealAt)) {
+      timing.preRevealed = false;
+      timing.revealAt = explicitRevealAt;
+      timing.finishAt = explicitRevealAt + timing.revealDuration;
+    }
     const y = startY + index * (rowH + gap);
     const rank = asText(item.label, String(index + 1).padStart(2, "0")).replace(/^#?/, "");
     const color = accents[index % accents.length];
@@ -2423,6 +2550,12 @@ async function stepChecklist(args, stylePreset, overlayInputs) {
     const item = items[index];
     const layout = itemLayouts[index];
     const timing = sequentialRevealTiming(index, startIndex, revealOptions);
+    const explicitRevealAt = itemTiming(args, "items", item, index, Number.NaN, ["steps", "checklist"]);
+    if (Number.isFinite(explicitRevealAt)) {
+      timing.preRevealed = false;
+      timing.revealAt = explicitRevealAt;
+      timing.finishAt = explicitRevealAt + timing.revealDuration;
+    }
     const rowH = layout.rowH;
     const boxY = Math.round(y + (rowH - checkSize) / 2);
     const textY = Math.round(y + (rowH - layout.textBlockH) / 2);
@@ -2492,9 +2625,10 @@ function scorecard(args, stylePreset, overlayInputs) {
     { label: "Effort", value: 91, displayValue: "91" },
   ];
   const max = Math.max(1, ...rows.map((item) => Math.abs(item.value)));
+  const titleRevealAt = timingValue(args, "title", 0.36);
   const filters = [
     ...baseFilters(stylePreset),
-    ...animatedUnifiedTextLines(args.title || "Scorecard", 124, 280, 66, UNIFIED_PALETTE.offWhite, 0.36, 20, 18, 42, "", 0.42, 0.02, 0.34),
+    ...animatedUnifiedTextLines(args.title || "Scorecard", 124, 280, 66, UNIFIED_PALETTE.offWhite, titleRevealAt, 20, 18, 42, "", 0.42, 0.02, 0.34),
   ];
   const rowH = rows.length <= 3 ? 168 : 140;
   const gap = rows.length <= 3 ? 56 : 34;
@@ -2507,6 +2641,7 @@ function scorecard(args, stylePreset, overlayInputs) {
 
   rows.forEach((item, index) => {
     const timing = fixedRevealTiming(index, { firstRevealAt: 0.82, revealDuration: 0.42, gapAfterReveal: 0.28 });
+    timing.revealAt = itemTiming(args, "data", item, index, timing.revealAt, ["rows", "items"]);
     const y = startY + index * (rowH + gap);
     const scoreW = Math.max(18, Math.round((Math.abs(item.value) / max) * barW));
     filters.push(animatedUnifiedTextSlideDown(item.label, labelX, y, 40, UNIFIED_PALETTE.offWhite, timing.revealAt, 30, "", timing.revealDuration, timing.revealDuration));
@@ -2535,30 +2670,34 @@ function researchPaperCard(args, stylePreset, overlayInputs) {
   const paper = "#f3efe6@0.94";
   const marginX = sheetX + 70;
   const rightX = sheetX + sheetW - 70;
+  const paperRevealAt = timingValue(args, ["paper", "card", "sheet"], 0.28);
+  const sourceRevealAt = timingValue(args, ["source", "journal"], 0.66);
+  const titleRevealAt = timingValue(args, "title", 0.9);
+  const findingRevealAt = timingValue(args, "finding", 1.5);
 
-  filters.push(box(sheetX + 18, sheetY + 22, sheetW, sheetH, "#050505@0.18", revealEnable(0.24)));
-  filters.push(animatedBoxSlideDown(sheetX, sheetY, sheetW, sheetH, paper, 0.28, 26, 0.38));
-  filters.push(box(sheetX + 24, sheetY + 24, sheetW - 48, sheetH - 48, "#000000@0.00", revealEnable(0.32)));
-  filters.push(...animatedHorizontalRule(marginX, sheetY + 128, sheetW - 140, 3, rule, 0.44, 0.42));
-  filters.push(...animatedHorizontalRule(marginX, sheetY + 1132, sheetW - 140, 2, faintRule, 1.7, 0.44));
+  filters.push(box(sheetX + 18, sheetY + 22, sheetW, sheetH, "#050505@0.18", revealEnable(Math.max(0, paperRevealAt - 0.04))));
+  filters.push(animatedBoxSlideDown(sheetX, sheetY, sheetW, sheetH, paper, paperRevealAt, 26, 0.38));
+  filters.push(box(sheetX + 24, sheetY + 24, sheetW - 48, sheetH - 48, "#000000@0.00", revealEnable(paperRevealAt + 0.04)));
+  filters.push(...animatedHorizontalRule(marginX, sheetY + 128, sheetW - 140, 3, rule, paperRevealAt + 0.16, 0.42));
+  filters.push(...animatedHorizontalRule(marginX, sheetY + 1132, sheetW - 140, 2, faintRule, findingRevealAt + 0.2, 0.44));
 
-  filters.push(animatedUnifiedText("RESEARCH PAPER", marginX, sheetY + 72, 30, mutedInk, 0.5, 20, "", 0.34, 0.3));
-  filters.push(animatedUnifiedRightAlignedTextSlideDown(year, rightX, sheetY + 72, 30, mutedInk, 0.5, 20, "", 0.34, 0.3));
-  filters.push(...animatedUnifiedTextLines(source, marginX, sheetY + 176, 34, "#244968@0.82", 0.66, 32, 10, 26, "", 0.38, 0, 0.3));
-  filters.push(...animatedUnifiedTextLines(title, marginX, sheetY + 278, 52, ink, 0.9, 20, 15, 34, "", 0.48, 0.025, 0.32));
+  filters.push(animatedUnifiedText("RESEARCH PAPER", marginX, sheetY + 72, 30, mutedInk, paperRevealAt + 0.22, 20, "", 0.34, 0.3));
+  filters.push(animatedUnifiedRightAlignedTextSlideDown(year, rightX, sheetY + 72, 30, mutedInk, paperRevealAt + 0.22, 20, "", 0.34, 0.3));
+  filters.push(...animatedUnifiedTextLines(source, marginX, sheetY + 176, 34, "#244968@0.82", sourceRevealAt, 32, 10, 26, "", 0.38, 0, 0.3));
+  filters.push(...animatedUnifiedTextLines(title, marginX, sheetY + 278, 52, ink, titleRevealAt, 20, 15, 34, "", 0.48, 0.025, 0.32));
 
-  filters.push(animatedUnifiedText("[1]", marginX, sheetY + 560, 38, mutedInk, 1.18, 20, "", 0.34, 0.28));
-  filters.push(...animatedHorizontalRule(marginX + 82, sheetY + 584, 230, 3, rule, 1.18, 0.34));
-  filters.push(...animatedHorizontalRule(marginX + 82, sheetY + 634, 520, 2, faintRule, 1.26, 0.34));
-  filters.push(...animatedHorizontalRule(marginX + 82, sheetY + 682, 474, 2, faintRule, 1.32, 0.34));
-  filters.push(...animatedHorizontalRule(marginX + 82, sheetY + 730, 554, 2, faintRule, 1.38, 0.34));
+  filters.push(animatedUnifiedText("[1]", marginX, sheetY + 560, 38, mutedInk, titleRevealAt + 0.28, 20, "", 0.34, 0.28));
+  filters.push(...animatedHorizontalRule(marginX + 82, sheetY + 584, 230, 3, rule, titleRevealAt + 0.28, 0.34));
+  filters.push(...animatedHorizontalRule(marginX + 82, sheetY + 634, 520, 2, faintRule, titleRevealAt + 0.36, 0.34));
+  filters.push(...animatedHorizontalRule(marginX + 82, sheetY + 682, 474, 2, faintRule, titleRevealAt + 0.42, 0.34));
+  filters.push(...animatedHorizontalRule(marginX + 82, sheetY + 730, 554, 2, faintRule, titleRevealAt + 0.48, 0.34));
 
-  filters.push(box(marginX, sheetY + 824, sheetW - 140, 156, "#d7d2c9@0.24", revealEnable(1.5)));
-  filters.push(animatedUnifiedText("KEY FINDING", marginX + 34, sheetY + 858, 26, mutedInk, 1.58, 18, "", 0.32, 0.26));
-  filters.push(...animatedUnifiedTextLines(finding, marginX + 34, sheetY + 908, 42, ink, 1.74, 27, 12, 30, "", 0.44, 0.02, 0.3));
+  filters.push(box(marginX, sheetY + 824, sheetW - 140, 156, "#d7d2c9@0.24", revealEnable(findingRevealAt)));
+  filters.push(animatedUnifiedText("KEY FINDING", marginX + 34, sheetY + 858, 26, mutedInk, findingRevealAt + 0.08, 18, "", 0.32, 0.26));
+  filters.push(...animatedUnifiedTextLines(finding, marginX + 34, sheetY + 908, 42, ink, findingRevealAt + 0.24, 27, 12, 30, "", 0.44, 0.02, 0.3));
 
-  filters.push(animatedUnifiedText("doi:", marginX, sheetY + 1186, 24, mutedInk, 1.92, 16, "", 0.3, 0.24));
-  filters.push(...animatedHorizontalRule(marginX + 62, sheetY + 1204, 342, 2, faintRule, 1.96, 0.32));
+  filters.push(animatedUnifiedText("doi:", marginX, sheetY + 1186, 24, mutedInk, findingRevealAt + 0.42, 16, "", 0.3, 0.24));
+  filters.push(...animatedHorizontalRule(marginX + 62, sheetY + 1204, 342, 2, faintRule, findingRevealAt + 0.46, 0.32));
   return filters;
 }
 
@@ -2585,6 +2724,9 @@ async function goodBadIndicator(args, stylePreset, overlayInputs) {
   const textBlockHeight = textSize + Math.max(0, textLines.length - 1) * (textSize + textLineGap);
   const ruleMarginTop = 56;
   const ruleY = Math.max(1040, textTopY + textBlockHeight + ruleMarginTop);
+  const iconRevealAt = timingValue(args, "icon", 0.3);
+  const textRevealAt = timingValue(args, "text", 0.78);
+  const ruleRevealAt = timingValue(args, ["rule", "underline"], 1.18);
   overlayInputs.push(await createLucideIconOverlay({
     tempDir: overlayInputs.tempDir,
     icon: isGood ? "circleCheck" : "octagonX",
@@ -2592,15 +2734,15 @@ async function goodBadIndicator(args, stylePreset, overlayInputs) {
     topY: iconTopY,
     size: iconSize,
     color: accent,
-    start: 0.3,
+    start: iconRevealAt,
     index: indicatorType,
     fadeIn: 0.32,
     exitStart: Math.max(2.5, (overlayInputs.duration || 5) - 0.72),
   }));
 
   const filters = [...baseFilters(stylePreset)];
-  filters.push(...animatedUnifiedTextLines(copy, contentX, textTopY, textSize, UNIFIED_PALETTE.offWhite, 0.78, textMaxChars, textLineGap, 50, textShadow(0.78, 5), 0.58, 0.035, 0.38));
-  filters.push(...animatedHorizontalRule(contentX, ruleY, 720, 4, accent, 1.18, 0.5));
+  filters.push(...animatedUnifiedTextLines(copy, contentX, textTopY, textSize, UNIFIED_PALETTE.offWhite, textRevealAt, textMaxChars, textLineGap, 50, textShadow(0.78, 5), 0.58, 0.035, 0.38));
+  filters.push(...animatedHorizontalRule(contentX, ruleY, 720, 4, accent, ruleRevealAt, 0.5));
   return filters;
 }
 
@@ -2622,7 +2764,9 @@ async function causeEffect(args, stylePreset, overlayInputs) {
   const arrowStemX = layoutCenterX;
   const arrowMargin = 84;
   const arrowHeight = 156;
-  const arrowStart = 1.12;
+  const causeRevealAt = timingValue(args, "cause", 0.5);
+  const arrowStart = timingValue(args, "arrow", 1.12);
+  const effectRevealAt = timingValue(args, "effect", 1.86);
   const arrowColor = UNIFIED_PALETTE.mutedBlue;
   const bodyLineHeight = bodySize + bodyLineGap;
   const textBlockHeight = (lineCount) => bodySize + Math.max(0, lineCount - 1) * bodyLineHeight;
@@ -2661,7 +2805,7 @@ async function causeEffect(args, stylePreset, overlayInputs) {
     width: causeCard.width,
     height: causeCard.height,
     lines: causeCard.lines,
-    start: 0.5,
+    start: causeRevealAt,
     index: "cause-effect-cause",
   }));
   overlayInputs.push(await createDownArrowOverlay({
@@ -2685,7 +2829,7 @@ async function causeEffect(args, stylePreset, overlayInputs) {
     width: effectCard.width,
     height: effectCard.height,
     lines: effectCard.lines,
-    start: 1.86,
+    start: effectRevealAt,
     index: "cause-effect-effect",
   }));
   return filters;
@@ -3157,8 +3301,10 @@ async function main() {
 
 export {
   COMPARISON_TIMING,
+  barChart,
   comparison,
   comparisonRevealTiming,
+  statReveal,
   pieChart,
   lineGrowthChart,
   rankedPodium,

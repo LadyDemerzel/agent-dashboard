@@ -56,8 +56,7 @@ for (const phrase of [
   assert(soundSettings.includes(phrase), `Sound-design settings prompt is missing: ${phrase}`);
 }
 
-assert(workflowRoute.includes("Motion-graphic boundary rule"), "Workflow route sound-design prompt is missing the motion-graphic boundary rule.");
-assert(workflowRoute.includes("Motion-graphic interior rule"), "Workflow route sound-design prompt is missing the motion-graphic interior rule.");
+assert(workflowRoute.includes("buildShortFormSoundDesignPrompt"), "Workflow route sound-design path must use the editable sound-design prompt template builder.");
 assert(soundDesign.includes("buildDeterministicMotionGraphicSoundEvents"), "Resolver is missing deterministic motion-graphic event generation.");
 assert(soundDesign.includes("mergePlannedAndDeterministicSoundEvents"), "Resolver is missing planned+deterministic event merge.");
 assert(soundDesign.includes("deterministic-motion-graphic-internal-sfx"), "Deterministic cues are missing their resolution marker.");

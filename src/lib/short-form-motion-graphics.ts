@@ -92,6 +92,21 @@ const LEGACY_RENDERER_ALIASES: Record<string, MotionGraphicRendererId> = {
   instruction: "good_bad_indicator",
   step_checklist: "checklist",
 };
+const ANIMATION_TIMING_CONTROLS: Record<MotionGraphicRendererId, string[]> = {
+  stat_reveal: ["value", "title"],
+  bar_chart: ["title", "each data <item> / bar group"],
+  pie_chart: ["title", "each data <item> / slice group"],
+  line_growth_chart: ["title", "chart"],
+  comparison_before_after: ["before", "after"],
+  timeline: ["each <step> timeline item"],
+  cause_effect: ["cause", "arrow", "effect"],
+  caption_word_wall: ["each <line> caption row; word highlighting still follows forced alignment"],
+  ranked_podium: ["each <step> / ranked item"],
+  checklist: ["each <step> / checklist item"],
+  scorecard: ["title", "each data <item> / score row"],
+  research_paper_card: ["paper", "source", "title", "finding"],
+  good_bad_indicator: ["icon", "text", "rule"],
+};
 
 const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
   {
@@ -985,6 +1000,7 @@ export function renderMotionGraphicTemplatePromptInjection(settings = getShortFo
       `  stylePreset default: ${template.stylePreset}`,
       `  Description: ${template.description}`,
       `  When to use: ${template.whenToUse}`,
+      `  Controllable animation-in timing items: ${(ANIMATION_TIMING_CONTROLS[template.rendererId] || []).join("; ") || "none"}.`,
       template.deterministicSoundEffects?.length
         ? `  Built-in internal SFX: ${template.deterministicSoundEffects.map((cue) => cue.description).join("; ")}. These are generated deterministically by the renderer/resolver, not by Scribe.`
         : "  Built-in internal SFX: none.",
@@ -1001,6 +1017,8 @@ export function renderMotionGraphicTemplatePromptInjection(settings = getShortFo
     "- Define reusable motion assets inside <assets> as <motionGraphic id=\"...\" templateId=\"one_of_the_ids_above\">.",
     "- Configure only the listed fields. Do not write arbitrary Remotion, JavaScript, CSS, HTML, or renderer code.",
     "- Use <arg name=\"fieldName\">value</arg> for text/number fields.",
+    "- To time a core item's animation-in, add animateIn=\"seconds_from_motion_graphic_visual_start\" on the relevant <item>, <step>, or <line>, or add <timing item=\"title\" at=\"0.20\" /> / <timing item=\"cause\" at=\"0.35\" /> inside the motionGraphic. Timings are local to that motion graphic visual, not absolute video timestamps.",
+    "- Only time the controllable animation-in items listed for that template. Items that visually belong together, such as a bar plus its value and label or a pie slice plus its legend row, animate together from the same timing.",
     "- For dataSeries fields, use repeated <item label=\"...\" value=\"...\" displayValue=\"...\" /> inside the motionGraphic.",
     "- For pie_chart, use the same dataSeries shape as bar_chart; values should be positive parts of a whole and displayValue should usually be a short percent label.",
     "- For line_growth_chart, set <arg name=\"direction\">increase</arg> for an up/right trend or <arg name=\"direction\">decrease</arg> for a down/right trend. Optional dataSeries points should match that direction. To show units on the moving counter, set <arg name=\"valueLabel\">90</arg> and optional <arg name=\"units\">homes</arg>; the renderer appends the unit text throughout the count-up.",

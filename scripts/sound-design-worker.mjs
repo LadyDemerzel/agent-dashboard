@@ -1,7 +1,9 @@
 import fs from "fs";
 import path from "path";
 
-const jobPath = process.argv[2];
+const isDirectRun = Boolean(process.argv[1]) && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname);
+const jobPath = isDirectRun ? process.argv[2] : null;
+if (isDirectRun && !jobPath) process.exit(1);
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
 const HOOK_WEBHOOK_TIMEOUT_MS = 30_000;
 const OPENCLAW_CONFIG_CANDIDATES = [
@@ -16,6 +18,11 @@ function readJson(filePath) {
 function writeJson(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2), "utf-8");
+}
+
+function stripFrontMatter(content) {
+  const match = content.match(/^---\s*\n[\s\S]*?\n---\s*\n?([\s\S]*)$/);
+  return (match ? match[1] : content).trim();
 }
 
 function getGatewayConfig() {
@@ -81,14 +88,51 @@ async function spawnAuthoringAttempt(job, model, attemptIndex) {
     throw new Error(`Webhook failed: ${response.status} ${errorText}`);
   }
 
-  return response.json();
+  const result = await response.json();
+  const status = typeof result?.status === "string" ? result.status.toLowerCase() : "";
+  if (result?.ok === false || status === "error" || result?.error || result?.errorMessage) {
+    const summary = result?.summary || result?.errorMessage || result?.error || JSON.stringify(result);
+    throw new Error(`Hook agent run failed: ${summary}`);
+  }
+  return result;
 }
 
-function hasFreshArtifact(filePath, requestedAt) {
-  if (!fs.existsSync(filePath)) return false;
-  const requestedAtMs = Date.parse(requestedAt || new Date().toISOString());
+function readSoundDesignArtifactBody(filePath) {
+  if (!fs.existsSync(filePath)) return "";
   try {
-    return fs.statSync(filePath).mtimeMs > requestedAtMs + 1000;
+    return stripFrontMatter(fs.readFileSync(filePath, "utf-8")).replace(/\r\n/g, "\n").trim();
+  } catch {
+    return "";
+  }
+}
+
+function snapshotSoundDesignAuthoringArtifact(filePath) {
+  if (!fs.existsSync(filePath)) return { body: "", exists: false, mtimeMs: undefined };
+  try {
+    return {
+      body: readSoundDesignArtifactBody(filePath),
+      exists: true,
+      mtimeMs: fs.statSync(filePath).mtimeMs,
+    };
+  } catch {
+    return { body: "", exists: fs.existsSync(filePath), mtimeMs: undefined };
+  }
+}
+
+function isPlaceholderSoundDesignBody(body) {
+  return !body ||
+    body.includes("Waiting for the dashboard workflow to plan tasteful sound design") ||
+    !/<sound_design\b/i.test(body);
+}
+
+function hasFreshSoundDesignAuthoringArtifact(filePath, previousArtifact, authoringStartedAtMs) {
+  if (!fs.existsSync(filePath)) return false;
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.mtimeMs + 1000 < authoringStartedAtMs) return false;
+    const body = readSoundDesignArtifactBody(filePath);
+    const previousBody = previousArtifact?.body || "";
+    return !isPlaceholderSoundDesignBody(body) && body !== previousBody;
   } catch {
     return false;
   }
@@ -121,14 +165,14 @@ function setMarkdownStatus(filePath, status) {
   fs.writeFileSync(filePath, `---\n${frontMatter}\n---\n${content.slice(match[0].length)}`, "utf-8");
 }
 
-async function waitForFile(filePath, requestedAt, timeoutMs = 10 * 60_000, pollMs = 5000) {
+async function waitForSoundDesignAuthoringArtifact(filePath, previousArtifact, authoringStartedAtMs, timeoutMs = 10 * 60_000, pollMs = 5000) {
   const startedAt = Date.now();
   let stableSince = 0;
   let lastSignature = null;
   const stableMs = 45_000;
 
   while (Date.now() - startedAt < timeoutMs) {
-    if (hasFreshArtifact(filePath, requestedAt)) {
+    if (hasFreshSoundDesignAuthoringArtifact(filePath, previousArtifact, authoringStartedAtMs)) {
       const signature = getFileSignature(filePath);
       const changed =
         !signature ||
@@ -147,7 +191,11 @@ async function waitForFile(filePath, requestedAt, timeoutMs = 10 * 60_000, pollM
     }
     await new Promise((resolve) => setTimeout(resolve, pollMs));
   }
-  return Boolean(hasFreshArtifact(filePath, requestedAt) && lastSignature && Date.now() - stableSince >= stableMs);
+  return Boolean(
+    hasFreshSoundDesignAuthoringArtifact(filePath, previousArtifact, authoringStartedAtMs) &&
+    lastSignature &&
+    Date.now() - stableSince >= stableMs
+  );
 }
 
 async function main() {
@@ -162,7 +210,7 @@ async function main() {
     attempts,
   });
 
-  const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0 ? job.preferredModels : ["openai-codex/gpt-5.5"];
+  const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0 ? job.preferredModels : ["openai/gpt-5.5"];
   let lastError = null;
 
   for (const [index, model] of models.entries()) {
@@ -183,13 +231,28 @@ async function main() {
     });
 
     try {
+      const previousSoundDesignArtifact = snapshotSoundDesignAuthoringArtifact(job.soundDesignPath);
+      const authoringStartedAtMs = Date.now();
       attempt.spawnResult = await spawnAuthoringAttempt(job, model, index);
       attempt.waitingForArtifact = true;
-      const ok = await waitForFile(job.soundDesignPath, job.requestedAt, 12 * 60_000, 5000);
+      writeJson(statusPath, {
+        status: "running",
+        runId: job.runId,
+        projectId: job.projectId,
+        startedAt: attempt.startedAt,
+        attempts,
+      });
+      const ok = await waitForSoundDesignAuthoringArtifact(
+        job.soundDesignPath,
+        previousSoundDesignArtifact,
+        authoringStartedAtMs,
+        12 * 60_000,
+        5000,
+      );
       attempt.finishedAt = new Date().toISOString();
       attempt.verified = ok;
       if (!ok) {
-        throw new Error("Scribe run completed, but the sound-design XML artifact was not updated on disk.");
+        throw new Error("Scribe run completed without writing a body-different sound-design.md artifact. Identical-body rewrites are rejected; Scribe must make a meaningful Plan Sound Design revision or fail with a clear reason.");
       }
       const minEffectCount = Number.isFinite(Number(job.minEffectCount)) ? Number(job.minEffectCount) : 0;
       if (minEffectCount > 0) {
@@ -225,12 +288,20 @@ async function main() {
   process.exitCode = 1;
 }
 
-main().catch((error) => {
-  const statusPath = jobPath.replace(/\.job\.json$/, ".status.json");
-  writeJson(statusPath, {
-    status: "failed",
-    errorMessage: describeError(error),
-    finishedAt: new Date().toISOString(),
+if (isDirectRun) {
+  main().catch((error) => {
+    const statusPath = jobPath.replace(/\.job\.json$/, ".status.json");
+    writeJson(statusPath, {
+      status: "failed",
+      errorMessage: describeError(error),
+      finishedAt: new Date().toISOString(),
+    });
+    process.exitCode = 1;
   });
-  process.exitCode = 1;
-});
+}
+
+export {
+  hasFreshSoundDesignAuthoringArtifact,
+  readSoundDesignArtifactBody,
+  snapshotSoundDesignAuthoringArtifact,
+};

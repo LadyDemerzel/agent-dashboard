@@ -704,13 +704,6 @@ def run_openclaw_infer(args: argparse.Namespace) -> int:
             and openclaw_edit_rejected_reference_images(result)
         ):
             emit_failed_openclaw_result(result)
-            fallback_prompt = (
-                f"{args.prompt}\n\n"
-                "Reference images were requested, but this OpenAI Codex OAuth image transport rejected "
-                "the attached image payload. Continue as a text-to-image generation using the "
-                "style, identity, and continuity instructions already written in the prompt; do not invent "
-                "a character unless the prompt explicitly asks for one."
-            )
             print(
                 "WARN: OpenClaw Codex image edit rejected reference image data; retrying once without --file attachments.",
                 file=sys.stderr,
@@ -719,7 +712,7 @@ def run_openclaw_infer(args: argparse.Namespace) -> int:
                 args,
                 requested_output,
                 input_images=[],
-                prompt=fallback_prompt,
+                prompt=args.prompt,
             )
             result = run_openclaw_command(command, env)
     finally:

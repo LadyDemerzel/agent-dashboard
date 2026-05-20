@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import Link from "next/link";
+import { ChevronDown, Square, TerminalSquare } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
@@ -50,6 +51,7 @@ import {
   type Scene,
   type ShortFormProjectClient as Project,
   type SoundDesignResolvedEventClient,
+  type StageAgentRunClient,
   type StageDoc,
   type TextScriptRunClient,
 } from "@/lib/short-form-video-client";
@@ -114,6 +116,7 @@ interface XmlScriptDoc {
   content: string;
   updatedAt?: string;
   pending?: boolean;
+  agentRun?: StageAgentRunClient;
   audioUrl?: string;
   audioPath?: string;
   originalAudioUrl?: string;
@@ -221,6 +224,22 @@ interface SoundDesignReviewVariant {
   kind: "saved" | "baseline" | "render";
   renderMode?: SoundDesignReviewRenderMode;
   renderTrack?: string;
+}
+
+interface SessionLogEntry {
+  id: string;
+  timestamp?: string;
+  kind: "session" | "user" | "assistant" | "tool" | "system" | "error";
+  label: string;
+  text: string;
+}
+
+interface SessionLogResponse {
+  agentId: string;
+  sessionId: string;
+  sessionKey?: string;
+  updatedAt?: string;
+  entries: SessionLogEntry[];
 }
 
 type StageKey =
@@ -573,6 +592,153 @@ function MarkdownOrCode({
       content={body}
       language={mode === "xml" ? "xml" : mode === "json" ? "json" : "text"}
     />
+  );
+}
+
+function formatLogTime(value?: string) {
+  if (!value) return "";
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(parsed));
+}
+
+function sessionLogKindClass(kind: SessionLogEntry["kind"]) {
+  switch (kind) {
+    case "assistant":
+      return "border-emerald-400/25 bg-emerald-400/10 text-emerald-200";
+    case "user":
+      return "border-sky-400/25 bg-sky-400/10 text-sky-200";
+    case "tool":
+      return "border-violet-400/25 bg-violet-400/10 text-violet-200";
+    case "error":
+      return "border-red-400/30 bg-red-400/10 text-red-200";
+    case "session":
+      return "border-amber-400/25 bg-amber-400/10 text-amber-200";
+    default:
+      return "border-border bg-muted/40 text-muted-foreground";
+  }
+}
+
+function AgentSessionLogsAccordion({
+  projectId,
+  agentId,
+  agentRun,
+  working,
+  title = "Session logs",
+}: {
+  projectId: string;
+  agentId: "oracle" | "scribe" | "workflow";
+  agentRun?: StageAgentRunClient;
+  working: boolean;
+  title?: string;
+}) {
+  const [expanded, setExpanded] = useState(working);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const sessionId = agentRun?.sessionId || "";
+  const sessionKey = agentRun?.sessionKey || "";
+  const sessionLogsUrl = sessionId
+    ? `/api/short-form-videos/${projectId}/session-logs?agentId=${encodeURIComponent(agentId)}&sessionId=${encodeURIComponent(sessionId)}${sessionKey ? `&sessionKey=${encodeURIComponent(sessionKey)}` : ""}`
+    : sessionKey
+      ? `/api/short-form-videos/${projectId}/session-logs?agentId=${encodeURIComponent(agentId)}&sessionKey=${encodeURIComponent(sessionKey)}`
+    : null;
+  const { data: logsPayload } = useSWR<ApiResponse<SessionLogResponse>>(
+    sessionLogsUrl,
+    apiEnvelopeFetcher,
+    {
+      ...realtimeSWRConfig,
+      refreshInterval: working ? 2000 : 0,
+    },
+  );
+  const logs = logsPayload?.data?.entries || [];
+  const isExpanded = working || expanded;
+
+  useEffect(() => {
+    if (!isExpanded || !scrollRef.current) return;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [isExpanded, logs.length, logsPayload?.data?.updatedAt]);
+
+  if (!agentRun && !working) return null;
+
+  const status =
+    working || agentRun?.status === "running"
+      ? "Streaming"
+      : agentRun?.status === "failed"
+        ? "Failed"
+        : agentRun?.status === "verified"
+          ? "Completed"
+          : "Latest session";
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-background/60">
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <TerminalSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="truncate text-sm font-medium text-foreground">
+            {title}
+          </span>
+          <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+            {agentId}
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+          {status}
+          <ChevronDown
+            className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+          />
+        </span>
+      </button>
+
+      {isExpanded ? (
+        <div
+          ref={scrollRef}
+          className="max-h-[420px] space-y-3 overflow-y-auto border-t border-border bg-black/20 p-4"
+        >
+          {!sessionId && !sessionKey ? (
+            <div className="text-sm text-muted-foreground">
+              Waiting for the agent session to start.
+            </div>
+          ) : logs.length === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              No session log entries found yet for this run.
+            </div>
+          ) : (
+            logs.map((entry) => (
+              <article
+                key={entry.id}
+                className="rounded-md border border-border/70 bg-background/80 p-3"
+              >
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${sessionLogKindClass(entry.kind)}`}
+                  >
+                    {entry.kind}
+                  </span>
+                  <span className="text-xs font-medium text-foreground">
+                    {entry.label}
+                  </span>
+                  {entry.timestamp ? (
+                    <span className="text-xs text-muted-foreground">
+                      {formatLogTime(entry.timestamp)}
+                    </span>
+                  ) : null}
+                </div>
+                <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-muted-foreground">
+                  {entry.text}
+                </pre>
+              </article>
+            ))
+          )}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -2365,6 +2531,15 @@ function XMLScriptSection({
           />
         ) : null}
         {loading && !doc ? <OrbitLoader label="Loading XML script" /> : null}
+        {doc?.agentRun || visualsRunInProgress ? (
+          <AgentSessionLogsAccordion
+            projectId={project.id}
+            agentId="scribe"
+            agentRun={doc?.agentRun}
+            working={visualsRunInProgress || doc?.agentRun?.status === "running"}
+            title="Plan Visuals session logs"
+          />
+        ) : null}
         {editing ? (
           <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
             <div className="flex items-center justify-between gap-3">
@@ -2442,12 +2617,16 @@ function StageReviewSection({
   triggerPayload,
   triggerDisabled = false,
   triggerDisabledReason,
+  stopLabel,
+  stoppingLabel = "Stopping…",
+  onStop,
   collapseDocumentByDefault = false,
   hideReviewDocument = false,
   showExtraWhenEmpty = false,
   simplifiedReviewActions = false,
   allowRerunWithNotes = true,
   wrapDocumentInCard = false,
+  sessionLogsAgentId,
 }: {
   projectId: string;
   title: string;
@@ -2463,17 +2642,22 @@ function StageReviewSection({
   triggerPayload?: Record<string, unknown>;
   triggerDisabled?: boolean;
   triggerDisabledReason?: React.ReactNode;
+  stopLabel?: string;
+  stoppingLabel?: string;
+  onStop?: () => Promise<void>;
   collapseDocumentByDefault?: boolean;
   hideReviewDocument?: boolean;
   showExtraWhenEmpty?: boolean;
   simplifiedReviewActions?: boolean;
   allowRerunWithNotes?: boolean;
   wrapDocumentInCard?: boolean;
+  sessionLogsAgentId?: "oracle" | "scribe" | "workflow";
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(doc.content);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [approving, setApproving] = useState(false);
   const [status, setStatus] = useState(doc.status || "draft");
   const [actionError, setActionError] = useState<string | null>(null);
@@ -2585,6 +2769,27 @@ function StageReviewSection({
     }
   }
 
+  async function stopStageAction() {
+    if (!onStop || stopping || !doc.pending) return;
+
+    setStopping(true);
+    setActionError(null);
+
+    try {
+      await onStop();
+      await onRefresh();
+    } catch (err) {
+      setActionError(
+        err instanceof Error
+          ? err.message
+          : `Failed to stop ${title.toLowerCase()}`,
+      );
+      await onRefresh().catch(() => undefined);
+    } finally {
+      setStopping(false);
+    }
+  }
+
   async function approveStage() {
     setSaving(true);
     setApproving(true);
@@ -2632,6 +2837,9 @@ function StageReviewSection({
   const showSimplifiedReviewActions = simplifiedReviewActions && doc.exists;
   const showApproveAction =
     showSimplifiedReviewActions && needsReviewStatus(status || doc.status);
+  const sessionLogsAgentRun = revision?.agentRun || doc.agentRun;
+  const showSessionLogs = Boolean(sessionLogsAgentId && (sessionLogsAgentRun || doc.pending || revision?.isPending));
+  const showStopAction = Boolean(onStop && doc.pending);
 
   function toggleDocumentEdit() {
     if (canCollapseDocument && !documentExpanded) {
@@ -2717,22 +2925,44 @@ function StageReviewSection({
 
       {!doc.exists ? (
         <div className="space-y-3">
+          {showSessionLogs && sessionLogsAgentId ? (
+            <AgentSessionLogsAccordion
+              projectId={projectId}
+              agentId={sessionLogsAgentId}
+              agentRun={sessionLogsAgentRun}
+              working={Boolean(doc.pending || revision?.isPending || sessionLogsAgentRun?.status === "running")}
+              title={`${title} session logs`}
+            />
+          ) : null}
           <p className="text-sm text-muted-foreground">{emptyText}</p>
-          <WorkflowArtifactActionButton
-            hasArtifact={false}
-            initialLabel={triggerLabel}
-            rerunLabel={`Re-${triggerLabel.toLowerCase()}`}
-            rerunWithNotesLabel={`Re-${triggerLabel.toLowerCase()} with revision notes`}
-            allowRerunWithNotes={allowRerunWithNotes}
-            loading={doc.pending || saving}
-            loadingLabel={`${triggerLabel}…`}
-            disabled={triggerDisabled}
-            onInitialRun={() => triggerStageAction("generate")}
-            onCleanRerun={() => triggerStageAction("generate")}
-            onRerunWithNotes={(notes) =>
-              triggerStageAction("revise", { notes })
-            }
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <WorkflowArtifactActionButton
+              hasArtifact={false}
+              initialLabel={triggerLabel}
+              rerunLabel={`Re-${triggerLabel.toLowerCase()}`}
+              rerunWithNotesLabel={`Re-${triggerLabel.toLowerCase()} with revision notes`}
+              allowRerunWithNotes={allowRerunWithNotes}
+              loading={doc.pending || saving}
+              loadingLabel={`${triggerLabel}…`}
+              disabled={triggerDisabled}
+              onInitialRun={() => triggerStageAction("generate")}
+              onCleanRerun={() => triggerStageAction("generate")}
+              onRerunWithNotes={(notes) =>
+                triggerStageAction("revise", { notes })
+              }
+            />
+            {showStopAction ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void stopStageAction()}
+                disabled={stopping}
+              >
+                <Square aria-hidden="true" className="h-4 w-4" />
+                {stopping ? stoppingLabel : stopLabel || `Stop ${title.toLowerCase()}`}
+              </Button>
+            ) : null}
+          </div>
           {triggerDescription ? (
             <p className="text-xs text-muted-foreground">
               {triggerDescription}
@@ -2773,6 +3003,17 @@ function StageReviewSection({
                 disabled={saving || doc.pending}
               >
                 {approving ? "Approving…" : "Approve"}
+              </Button>
+            ) : null}
+            {showStopAction ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void stopStageAction()}
+                disabled={stopping}
+              >
+                <Square aria-hidden="true" className="h-4 w-4" />
+                {stopping ? stoppingLabel : stopLabel || `Stop ${title.toLowerCase()}`}
               </Button>
             ) : null}
             {showSimplifiedReviewActions && !hideReviewDocument ? (
@@ -2819,6 +3060,16 @@ function StageReviewSection({
                   ? `${title} revision is in progress — this is still the current on-disk version.`
                   : `${title} revision has not landed — this is still the current on-disk version.`
               }
+            />
+          ) : null}
+
+          {showSessionLogs && sessionLogsAgentId ? (
+            <AgentSessionLogsAccordion
+              projectId={projectId}
+              agentId={sessionLogsAgentId}
+              agentRun={sessionLogsAgentRun}
+              working={Boolean(doc.pending || revision?.isPending || sessionLogsAgentRun?.status === "running")}
+              title={`${title} session logs`}
             />
           ) : null}
 
@@ -3659,6 +3910,15 @@ function SceneImagesSection({
     }
   }
 
+  async function stopGeneratingVisuals() {
+    await parseJsonResponse(
+      await fetch(`/api/short-form-videos/${project.id}/workflow/scene-images`, {
+        method: "DELETE",
+      }),
+      "Failed to stop generating visuals",
+    );
+  }
+
   const sceneProgress = project.sceneImages.sceneProgress;
   const defaultStyleLabel =
     styleOptions.find((style) => style.id === defaultStyleId)?.name ||
@@ -3691,6 +3951,8 @@ function SceneImagesSection({
       mode="markdown"
       emptyText="No generated visuals yet. Generate them after approving the XML script."
       triggerLabel="Generate visuals"
+      stopLabel="Stop generating visuals"
+      onStop={stopGeneratingVisuals}
       triggerDescription={`This should create green-screen scene plates using ${activeVisualGenerationLabel} and the selected image style${project.selectedImageStyleName ? ` (${project.selectedImageStyleName})` : ""}${project.selectedBackgroundVideoName ? `, then prepare preview compositing against ${project.selectedBackgroundVideoName}` : ""}.`}
       onRefresh={refresh}
       collapseDocumentByDefault
@@ -4955,6 +5217,16 @@ function SoundDesignSection({
 
         {planStatusError ? (
           <ValidationNotice title="Plan Sound Design status failed" message={planStatusError} />
+        ) : null}
+
+        {project.soundDesign.agentRun || project.soundDesign.pending ? (
+          <AgentSessionLogsAccordion
+            projectId={project.id}
+            agentId="scribe"
+            agentRun={project.soundDesign.agentRun}
+            working={project.soundDesign.pending || project.soundDesign.agentRun?.status === "running"}
+            title="Plan Sound Design session logs"
+          />
         ) : null}
 
         {editing ? (
@@ -6686,6 +6958,7 @@ export function ShortFormVideoDetailView({
             onRefresh={refreshProject}
             simplifiedReviewActions
             wrapDocumentInCard
+            sessionLogsAgentId="oracle"
           />
         );
       case "text-script":

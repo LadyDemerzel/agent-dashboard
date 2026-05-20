@@ -358,10 +358,10 @@ function normalizeGeneratePrompt(
 
   const normalized = normalizePromptText(value);
   if (!options.migrateLegacy) {
-    return ensureCurrentWriterRequirements(normalized);
+    return normalized;
   }
   if (FULL_WRITER_PROMPT_MARKERS.every((marker) => normalized.includes(marker))) {
-    return ensureCurrentWriterRequirements(normalized);
+    return normalized;
   }
 
   return ensureCurrentWriterRequirements(buildWriterPromptTemplate(normalizeLegacyWriterFragment("generate", normalized, options)));
@@ -380,10 +380,10 @@ function normalizeRevisePrompt(
 
   const normalized = normalizePromptText(value);
   if (!options.migrateLegacy) {
-    return ensureCurrentWriterRequirements(normalized);
+    return normalized;
   }
   if (FULL_WRITER_PROMPT_MARKERS.every((marker) => normalized.includes(marker))) {
-    return ensureCurrentWriterRequirements(normalized);
+    return normalized;
   }
 
   return ensureCurrentWriterRequirements(buildWriterPromptTemplate(normalizeLegacyWriterFragment("revise", normalized, options)));
@@ -394,10 +394,10 @@ function normalizeReviewPrompt(value: unknown, { migrateLegacy }: { migrateLegac
     return DEFAULT_SHORT_FORM_TEXT_SCRIPT_SETTINGS.reviewPrompt;
   }
 
-  const stripped = stripEmbeddedLegacyReviewFragment(normalizePromptText(value));
   if (!migrateLegacy) {
-    return stripped;
+    return normalizePromptText(value);
   }
+  const stripped = stripEmbeddedLegacyReviewFragment(normalizePromptText(value));
   if (FULL_REVIEW_PROMPT_MARKERS.every((marker) => stripped.includes(marker))) {
     return stripped;
   }
@@ -466,7 +466,7 @@ export function getShortFormTextScriptSettings(): ShortFormTextScriptSettings {
     }
   }
 
-  return normalize(parsed, { migrateLegacy: true });
+  return normalize(parsed, { migrateLegacy: false });
 }
 
 export function saveShortFormTextScriptSettings(patch: Partial<ShortFormTextScriptSettings>) {

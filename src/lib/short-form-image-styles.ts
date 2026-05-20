@@ -144,6 +144,7 @@ const DEFAULT_NANO_BANANA_PROMPT_TEMPLATES: ShortFormNanoBananaPromptTemplates =
     SCENE_TEMPLATE_ASSET_DERIVATION_BLOCK,
     "Treat this as reusable source art that may be referenced by multiple timeline visuals, so do not optimize it around a single visual label, caption, or beat name.",
     "Honor the requested framing and viewpoint cues from the asset prompt. If a primary character reference is attached, preserve the same outfit from that reference unless the asset prompt explicitly changes wardrobe.",
+    "If reference images are unavailable or rejected by the image provider, continue as a text-to-image generation using the style, identity, and continuity instructions already written in this prompt; do not invent a character unless this prompt explicitly asks for one.",
     SCENE_TEMPLATE_EXTRA_DIRECTION_BLOCK,
     "{{continuityInstructions}}",
     "Make the core idea instantly understandable at a glance and visually scroll-stopping.",
@@ -534,16 +535,18 @@ function normalizePromptTemplates(value: unknown): ShortFormNanoBananaPromptTemp
     return {
       ...DEFAULT_NANO_BANANA_PROMPT_TEMPLATES,
       styleInstructionsTemplate: normalizeStyleInstructionsTemplate(DEFAULT_NANO_BANANA_PROMPT_TEMPLATES.styleInstructionsTemplate),
+      sceneTemplate: normalizeSceneTemplate(DEFAULT_NANO_BANANA_PROMPT_TEMPLATES.sceneTemplate),
     };
   }
 
   const obj = value as Record<string, unknown>;
   return {
-    styleInstructionsTemplate: normalizeStyleInstructionsTemplate(
-      normalizePromptTemplateValue(obj.styleInstructionsTemplate, DEFAULT_NANO_BANANA_PROMPT_TEMPLATES.styleInstructionsTemplate),
+    styleInstructionsTemplate: normalizePromptTemplateValue(
+      obj.styleInstructionsTemplate,
+      DEFAULT_NANO_BANANA_PROMPT_TEMPLATES.styleInstructionsTemplate,
     ),
     characterReferenceTemplate: normalizePromptTemplateValue(obj.characterReferenceTemplate, DEFAULT_NANO_BANANA_PROMPT_TEMPLATES.characterReferenceTemplate),
-    sceneTemplate: normalizeSceneTemplate(normalizePromptTemplateValue(obj.sceneTemplate, DEFAULT_NANO_BANANA_PROMPT_TEMPLATES.sceneTemplate)),
+    sceneTemplate: normalizePromptTemplateValue(obj.sceneTemplate, DEFAULT_NANO_BANANA_PROMPT_TEMPLATES.sceneTemplate),
   };
 }
 

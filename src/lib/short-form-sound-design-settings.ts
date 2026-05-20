@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { extractBody } from "@/lib/frontmatter";
 import { getShortFormVideoRenderSettings } from "@/lib/short-form-video-render-settings";
 
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
@@ -122,6 +123,11 @@ function buildTopLevelSoundDesignPromptTemplate(planningBriefTemplate: string) {
     "- For every music segment transition, choose an intentional connector (crossfade, suckback + reverse riser, reverb-tail + gap + drop-in, or stinger landing) and name it in the segment rationale.",
     "- Reserve at least one music-driven climax beat where music gain is 2-3 dB louder than the surrounding segments and SFX support (not replace) the lift.",
     "- Write the updated artifact back to {{soundDesignPath}}, then read it back and verify the file exists and contains a <sound_design> root with <track> and <effect> entries.",
+    "- If sound-design.md already exists, read it first. The regenerated Plan Sound Design XML must make meaningful body-level changes from the existing XML. Rewriting the same XML with only front matter/status/timestamp changes is invalid.",
+    "- Compare only the sound-design XML body after YAML front matter. A timestamp/front-matter-only change is not a successful Plan Sound Design revision.",
+    "- If an existing sound-design XML body is present, make a meaningful cue, timing, gain, track, rationale, or music-bed revision that changes the XML body while preserving valid schema and QA constraints.",
+    "- If you cannot make a meaningful body change, fail clearly instead of writing the same body again.",
+    "- Existing artifact body state: {{existingSoundDesignBodySummary}}",
   ].join("\n");
 }
 
@@ -691,55 +697,12 @@ function enrichLibraryEntry(entry: ShortFormSoundLibraryEntry) {
   };
 }
 
-const STALE_BRIEF_MARKERS = [
-  "Target a denser editorial pass",
-  "one click/tick/micro-accent every 1.5-3 seconds",
-  "Include at least 12 purposeful <effect /> cues",
-  "music segment gainDb about -14 to -10",
-  "Bias away from under-designing",
-  "Cue-count coverage rules:",
-  "Modern editorial density rules:",
-  "Audibility and loudness rules:",
-  "Music gain shaping (target range -16 to -8 dB)",
-  "Plan music gains in the -16 to -8 dB target range",
-  "hook segment -11 to -9 dB",
-  "impacts >= -6 dB, clicks/ticks/taps >= -7 dB, risers >= -8 dB, whooshes >= -8 dB",
-  "transients must sit at least 4 dB above the loudest music segment",
-  "Create a tasteful sound-design plan for this short-form video.",
-  "Create a tasteful but confidently designed sound-design plan for this short-form video.",
-  "Music gain ceiling: cap music segment gainDb at -13 dB.",
-  "transients (impacts, ticks, stingers) must sit at least 6 dB above the loudest music segment",
-];
-
 function normalizePromptTemplate(value: unknown) {
   if (typeof value !== "string" || !value.trim()) {
     return DEFAULT_PROMPT_TEMPLATE;
   }
 
-  const normalized = value.replace(/\r/g, "").trim();
-  const hasNewBudgetMarker = normalized.includes("Per-section cue budget")
-    && normalized.includes("no two consecutive cues of the same type may share the same assetId")
-    && normalized.includes("Relative-to-music gain rule:");
-  const hasCinematicMusicMarker = normalized.includes("Score this video like a film or TV editor")
-    && normalized.includes("Default to multiple music segments")
-    && normalized.includes("Music transitions between segments must be intentional");
-  const hasMusicGainLiteralMarker = normalized.includes("Music gainDb is the literal relative gain")
-    && normalized.includes("Music audibility QA target");
-  const hasGainFloorsMarker = normalized.includes("Absolute minimum SFX gain floors");
-  const hasLouderMusicGainMarker = normalized.includes("Music gain shaping (target range -13.5 to -5.5 dB)")
-    && normalized.includes("hook segment -8.5 to -6.5 dB");
-  const hasQuieterSfxMarker = normalized.includes("impacts >= -9 dB")
-    && normalized.includes("transients should sit about 1 dB above");
-  const hasMotionGraphicBoundaryMarker = normalized.includes("Motion-graphic boundary rule")
-    && normalized.includes("Motion-graphic interior rule")
-    && normalized.includes("dashboard renderer/resolver owns deterministic internal motion-graphic SFX");
-  if (hasNewBudgetMarker && hasCinematicMusicMarker && hasMusicGainLiteralMarker && hasGainFloorsMarker && hasLouderMusicGainMarker && hasQuieterSfxMarker && hasMotionGraphicBoundaryMarker) {
-    return normalized;
-  }
-
-  const looksStale = STALE_BRIEF_MARKERS.some((marker) => normalized.includes(marker))
-    || normalized.includes("Music is a co-protagonist, not wallpaper.");
-  return looksStale ? DEFAULT_PROMPT_TEMPLATE : normalized;
+  return value.replace(/\r/g, "").trim();
 }
 
 function normalizeRevisionPromptTemplate(value: unknown) {
@@ -747,10 +710,7 @@ function normalizeRevisionPromptTemplate(value: unknown) {
     return DEFAULT_REVISION_PROMPT_TEMPLATE;
   }
 
-  const normalized = value.replace(/\r/g, "").trim();
-  return normalized.includes("timestamp-only")
-    ? normalized
-    : `${normalized}\nKeep the revised sound-design XML timestamp-only: no anchors, sceneId, captionId, scene references, or caption-boundary timing properties.`;
+  return value.replace(/\r/g, "").trim();
 }
 
 function normalizeSettings(candidate: Partial<ShortFormSoundDesignSettings> | null | undefined): ShortFormSoundDesignSettings {
@@ -1113,6 +1073,16 @@ export function buildShortFormSoundDesignPrompt(projectId: string, options: {
         soundDesignPath,
       })
     : undefined;
+  let existingSoundDesignBody = "";
+  if (fs.existsSync(soundDesignPath)) {
+    try {
+      existingSoundDesignBody = extractBody(
+        fs.readFileSync(soundDesignPath, "utf-8"),
+      ).trim();
+    } catch {
+      existingSoundDesignBody = "";
+    }
+  }
 
   return renderShortFormSoundDesignPrompt(settings.promptTemplate, {
     topic: options.topic?.trim() || "Untitled short-form video",
@@ -1129,6 +1099,9 @@ export function buildShortFormSoundDesignPrompt(projectId: string, options: {
     visualBeatMapJson: buildPromptVisualBeatMapJson(projectDir),
     soundLibraryJson: buildPromptSoundLibraryJson(settings.library),
     musicLibraryJson: buildPromptMusicLibraryJson(),
+    existingSoundDesignBodySummary: existingSoundDesignBody
+      ? `The current artifact body is ${existingSoundDesignBody.length} characters; your saved body must differ from it.`
+      : "No previous sound-design XML body was found; write the initial complete XML body.",
   });
 }
 
