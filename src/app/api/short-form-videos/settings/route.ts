@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getShortFormPromptDefinitions,
-  getShortFormWorkflowPrompts,
   saveShortFormWorkflowPrompts,
   type ShortFormPromptKey,
 } from "@/lib/short-form-workflow-prompts";
@@ -37,30 +36,15 @@ import {
   type ShortFormMotionGraphicsSettings,
 } from "@/lib/short-form-motion-graphics";
 import {
-  appendSoundLibraryUrls,
   getShortFormSoundDesignSettings,
   saveShortFormSoundDesignSettings,
   type ShortFormSoundDesignSettings,
 } from "@/lib/short-form-sound-design-settings";
+import { getShortFormSettingsPayload } from "@/lib/short-form-settings";
 
 export const dynamic = "force-dynamic";
 
 const LEGACY_MOTION_GRAPHIC_RENDERERS = new Set(["instruction", "step_checklist"]);
-
-function buildPayload() {
-  return {
-    prompts: getShortFormWorkflowPrompts(),
-    definitions: getShortFormPromptDefinitions(),
-    imageStyles: getShortFormImageStyleSettings(),
-    videoRender: getShortFormVideoRenderSettings(),
-    backgroundVideos: getShortFormBackgroundVideoSettings(),
-    textScript: getShortFormTextScriptSettings(),
-    xmlVisualPlanning: getShortFormXmlVisualPlanningSettings(),
-    motionGraphics: getShortFormMotionGraphicsSettings(),
-    supportedMotionGraphicRenderers: SUPPORTED_MOTION_GRAPHIC_RENDERERS,
-    soundDesign: appendSoundLibraryUrls(getShortFormSoundDesignSettings()),
-  };
-}
 
 function mergeImageStylesPatch(patch: Partial<ShortFormImageStyleSettings>) {
   const current = getShortFormImageStyleSettings();
@@ -115,7 +99,7 @@ function mergeSoundDesignPatch(patch: Partial<ShortFormSoundDesignSettings>) {
 export async function GET() {
   return NextResponse.json({
     success: true,
-    data: buildPayload(),
+    data: getShortFormSettingsPayload(),
   });
 }
 
@@ -141,8 +125,9 @@ export async function PATCH(request: NextRequest) {
 
     const updates: Partial<Record<ShortFormPromptKey, string>> = {};
 
+    const promptPatch = prompts as Partial<Record<ShortFormPromptKey, unknown>>;
     for (const definition of getShortFormPromptDefinitions()) {
-      const value = prompts[definition.key];
+      const value = promptPatch[definition.key];
       if (value === undefined) continue;
       if (typeof value !== "string" || !value.trim()) {
         return NextResponse.json(
@@ -472,6 +457,9 @@ export async function PATCH(request: NextRequest) {
       if (typeof template.whenToUse !== "string" || !template.whenToUse.trim()) {
         return NextResponse.json({ success: false, error: `Motion graphics template ${template.displayName} needs when-to-use guidance` }, { status: 400 });
       }
+      if ("additionalUsageInstructions" in template && typeof template.additionalUsageInstructions !== "string") {
+        return NextResponse.json({ success: false, error: `Motion graphics template ${template.displayName} additional usage instructions must be plain text` }, { status: 400 });
+      }
       if (typeof template.durationSeconds !== "number" || Number.isNaN(template.durationSeconds) || template.durationSeconds < 3 || template.durationSeconds > 12) {
         return NextResponse.json({ success: false, error: `Motion graphics template ${template.displayName} preview duration must be between 3 and 12 seconds` }, { status: 400 });
       }
@@ -618,6 +606,6 @@ export async function PATCH(request: NextRequest) {
 
   return NextResponse.json({
     success: true,
-    data: buildPayload(),
+    data: getShortFormSettingsPayload(),
   });
 }

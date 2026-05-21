@@ -40,7 +40,7 @@ export function ShortFormVideoDetailShell({
   const [project, setProject] = useState<Project | null>(initialProject);
 
   useSWR<ApiResponse<Project>>(
-    projectId ? `/api/short-form-videos/${projectId}` : null,
+    projectId ? `/api/short-form-videos/${projectId}?view=nav` : null,
     apiEnvelopeFetcher,
     {
       ...realtimeSWRConfig,

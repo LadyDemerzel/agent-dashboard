@@ -1766,8 +1766,8 @@ function deterministicCueTimingKeys(cue: MotionGraphicDeterministicSoundCue) {
     "effect-card": ["effect"],
     "paper-enter": ["paper"],
     "finding-highlight": ["finding"],
-    "icon-enter": ["icon"],
-    "rule-confirm": ["rule"],
+    "icon-enter": ["text"],
+    "rule-confirm": ["text"],
   };
   return [cue.id, ...(aliases[cue.id] || [])];
 }

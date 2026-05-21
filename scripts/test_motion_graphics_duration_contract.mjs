@@ -16,6 +16,18 @@ const rendererSource = fs.readFileSync(
   path.join(repoRoot, "scripts/render-motion-graphic.mjs"),
   "utf-8",
 );
+const settingsViewSource = fs.readFileSync(
+  path.join(repoRoot, "src/components/short-form-video/ShortFormVideoSettingsView.tsx"),
+  "utf-8",
+);
+const settingsPageSource = fs.readFileSync(
+  path.join(repoRoot, "src/app/short-form-video/settings/[section]/page.tsx"),
+  "utf-8",
+);
+const motionGraphicsPreviewFileRouteSource = fs.readFileSync(
+  path.join(repoRoot, "src/app/api/short-form-videos/settings/motion-graphics-previews/[...filePath]/route.ts"),
+  "utf-8",
+);
 
 assert.match(
   motionGraphicsSource,
@@ -26,6 +38,26 @@ assert.match(
   motionGraphicsSource,
   /Duration guidance:/,
   "Scribe prompt injection must include duration guidance text.",
+);
+assert.match(
+  motionGraphicsSource,
+  /additionalUsageInstructions:\s*string/,
+  "MotionGraphicTemplateConfig must include editable additional usage instructions.",
+);
+assert.match(
+  motionGraphicsSource,
+  /Additional usage instructions:/,
+  "Scribe prompt injection must include filled additional usage instructions.",
+);
+assert.match(
+  motionGraphicsSource,
+  /Timeline step labels should all belong to the same semantic category of abstraction/,
+  "Timeline template must include the semantic-label usage instruction by default.",
+);
+assert.match(
+  motionGraphicsSource,
+  /formatAdditionalUsageInstructions\(template\.additionalUsageInstructions\)/,
+  "Blank additional usage instructions must be omitted from Scribe prompt injection.",
 );
 assert.match(
   motionGraphicsSource,
@@ -96,6 +128,51 @@ assert.match(
   rendererSource,
   /function resolveRendererKey/,
   "Renderer CLI must normalize known template ids before dispatching to renderer implementations.",
+);
+assert.match(
+  settingsViewSource,
+  /motionTemplatePreviewRequestIdsRef/,
+  "Motion graphics preview requests must track latest request ids so stale or aborted renders cannot leave stuck loading state.",
+);
+assert.match(
+  settingsViewSource,
+  /err instanceof DOMException && err\.name === "AbortError"[\s\S]*isLoading: false/,
+  "Aborted motion graphics preview requests must clear loading state when they are still the latest request.",
+);
+assert.match(
+  settingsViewSource,
+  /selectedTemplate = motionGraphicsSettings\.templates\.find[\s\S]*requestMotionTemplatePreview\(selectedTemplate/,
+  "Generate Visuals settings must auto-render only the selected motion graphics template instead of kicking off the full gallery.",
+);
+assert.doesNotMatch(
+  settingsViewSource,
+  /for \(const template of (?:orderedTemplates|motionGraphicsSettings\.templates)\)/,
+  "Generate Visuals settings must not auto-render every motion graphics template in a background loop.",
+);
+assert.doesNotMatch(
+  motionGraphicsPreviewFileRouteSource,
+  /Readable\.toWeb/,
+  "Motion graphics preview file serving must not use Readable.toWeb, which can throw Controller already closed when preview media requests are aborted.",
+);
+assert.match(
+  motionGraphicsPreviewFileRouteSource,
+  /fs\.promises\.readFile/,
+  "Motion graphics preview file serving should return a buffered response for small preview assets.",
+);
+assert.match(
+  settingsPageSource,
+  /const initialSettings =[\s\S]*getShortFormSettingsPayload\(\)[\s\S]*initialSettings=\{initialSettings\}/,
+  "Short-form settings pages must pass server-loaded initial settings into the client view.",
+);
+assert.match(
+  settingsViewSource,
+  /useState\(!initialSettings\)/,
+  "Short-form settings view must not show first-load skeletons when server initial settings are available.",
+);
+assert.match(
+  settingsViewSource,
+  /fallbackData: initialSettings/,
+  "Short-form settings SWR must reuse server initial settings before background revalidation.",
 );
 
 console.log("motion graphics duration contract: ok");

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import { Readable } from "stream";
 import { getProjectDir } from "@/lib/short-form-videos";
 
 export const dynamic = "force-dynamic";
@@ -57,6 +56,18 @@ function parseRangeHeader(rangeHeader: string, fileSize: number) {
   return { start, end, unsatisfiable: false as const };
 }
 
+async function readFileRange(filePath: string, start: number, end: number) {
+  const length = end - start + 1;
+  const handle = await fs.promises.open(filePath, "r");
+  try {
+    const buffer = Buffer.alloc(length);
+    const { bytesRead } = await handle.read(buffer, 0, length, start);
+    return bytesRead === length ? buffer : buffer.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; filePath: string[] }> }
@@ -103,9 +114,9 @@ export async function GET(
 
     const { start, end } = parsedRange;
     const chunkSize = end - start + 1;
-    const stream = fs.createReadStream(absolutePath, { start, end });
+    const body = await readFileRange(absolutePath, start, end);
 
-    return new NextResponse(Readable.toWeb(stream) as unknown as ReadableStream, {
+    return new NextResponse(body, {
       status: 206,
       headers: new Headers({
         ...Object.fromEntries(baseHeaders.entries()),
@@ -115,9 +126,9 @@ export async function GET(
     });
   }
 
-  const stream = fs.createReadStream(absolutePath);
+  const body = await fs.promises.readFile(absolutePath);
 
-  return new NextResponse(Readable.toWeb(stream) as unknown as ReadableStream, {
+  return new NextResponse(body, {
     headers: new Headers({
       ...Object.fromEntries(baseHeaders.entries()),
       "Content-Length": String(stat.size),

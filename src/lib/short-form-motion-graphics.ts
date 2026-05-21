@@ -69,6 +69,7 @@ export interface MotionGraphicTemplateConfig {
   displayName: string;
   description: string;
   whenToUse: string;
+  additionalUsageInstructions: string;
   durationSeconds: number;
   durationGuidance: string;
   stylePreset: string;
@@ -105,7 +106,7 @@ const ANIMATION_TIMING_CONTROLS: Record<MotionGraphicRendererId, string[]> = {
   checklist: ["each <step> / checklist item"],
   scorecard: ["title", "each data <item> / score row"],
   research_paper_card: ["paper", "source", "title", "finding"],
-  good_bad_indicator: ["icon", "text", "rule"],
+  good_bad_indicator: ["text"],
 };
 
 const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
@@ -115,6 +116,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     displayName: "Stat reveal",
     description: "Large animated number over the unified dark pastel watercolor background with minimal supporting context.",
     whenToUse: "Use for a single memorable statistic, percentage, dollar amount, study result, or surprising quantified claim that should feel premium and focused.",
+    additionalUsageInstructions: "",
     durationSeconds: 6,
     durationGuidance: "Usually 4-6 seconds: long enough for the number to reveal, settle, and give the viewer a beat to read the title.",
     stylePreset: DEFAULT_STYLE_PRESET,
@@ -135,6 +137,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     displayName: "Bar chart",
     description: "Minimal animated bar chart over the unified dark pastel watercolor background with subdued labels and pastel accents.",
     whenToUse: "Use when comparing 2–5 categories, routines, channels, habits, or measured outcomes.",
+    additionalUsageInstructions: "",
     durationSeconds: 7,
     durationGuidance: "Around 2 seconds for the setup plus about 1 second per bar, so 3 bars should land around 5 seconds and 5 bars around 7 seconds.",
     stylePreset: DEFAULT_STYLE_PRESET,
@@ -154,6 +157,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     displayName: "Pie chart",
     description: "Minimal animated pie chart over the unified dark pastel watercolor background with pastel slices and a compact legend.",
     whenToUse: "Use when showing a part-to-whole split across 2-5 categories, such as shares, proportions, budget/time allocation, or outcome mix.",
+    additionalUsageInstructions: "",
     durationSeconds: 7,
     durationGuidance: "Around 2 seconds for setup plus about 0.5 seconds per slice, so 3-5 slices usually lands around 5-7 seconds.",
     stylePreset: DEFAULT_STYLE_PRESET,
@@ -191,6 +195,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     displayName: "Line growth chart",
     description: "Simple Cartesian chart with muted axes and an animated arrow line that grows to the right, either upward for increase or downward for decrease.",
     whenToUse: "Use when one metric improves, grows, declines, worsens, or shrinks over time and the viewer needs a simple directional trend instead of exact chart detail.",
+    additionalUsageInstructions: "",
     durationSeconds: 6,
     durationGuidance: "Usually 5-7 seconds: reveal the title and axes first, then let the arrow line grow across the chart for a full 3 seconds and hold the final value.",
     stylePreset: DEFAULT_STYLE_PRESET,
@@ -246,6 +251,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     displayName: "Before / after comparison",
     description: "Minimal two-column comparison over the unified dark pastel watercolor background with no panels or card boxes.",
     whenToUse: "Use for transformations, posture/routine contrasts, old-vs-new workflow, or mistake-vs-fix moments.",
+    additionalUsageInstructions: "",
     durationSeconds: 6,
     durationGuidance: "Usually 5-7 seconds: give the before side time to read first, then reveal the after side with a short pause before the visual ends.",
     stylePreset: DEFAULT_STYLE_PRESET,
@@ -268,6 +274,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     displayName: "Timeline",
     description: "Minimal stepped timeline over the unified dark pastel watercolor background with smooth equal-segment reveals.",
     whenToUse: "Use for sequence, history, program phases, study timeline, or what happens over the next few seconds/days/weeks.",
+    additionalUsageInstructions: "Timeline step labels should all belong to the same semantic category of abstraction. Do not mix label types in one timeline, such as using a date for one step label and a percentage for another step label.",
     durationSeconds: 7,
     durationGuidance: "Around 3 seconds for each step on the timeline, e.g. 4 steps should be around 12 seconds.",
     stylePreset: DEFAULT_STYLE_PRESET,
@@ -293,6 +300,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     displayName: "Cause / effect",
     description: "Center-aligned cause-to-effect relationship with rounded translucent content cards, subtle shadows, and a deterministic downward arrow reveal over the unified dark pastel watercolor background.",
     whenToUse: "Use when explaining mechanisms, causal relationships, inputs that drive outcomes, or why one action creates a visible result.",
+    additionalUsageInstructions: "",
     durationSeconds: 6,
     durationGuidance: "Usually 5-7 seconds: give the cause a readable beat, then reveal the arrow and effect with enough time for the effect copy to land.",
     stylePreset: DEFAULT_STYLE_PRESET,
@@ -314,6 +322,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     displayName: "Caption word wall",
     description: "Full-screen caption wall that replaces both the normal scene visual and bottom captions, using forced-alignment word timing with stat-reveal-style typography and an active-word pop.",
     whenToUse: "Use for retention-heavy moments where the spoken words should take over the full frame as a kinetic caption wall instead of sitting over a generated image.",
+    additionalUsageInstructions: "",
     durationSeconds: 6,
     durationGuidance: "Match the exact spoken narration range for the caption wall. The start/end times should cover only the words represented by the configured lines.",
     stylePreset: DEFAULT_STYLE_PRESET,
@@ -353,6 +362,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     displayName: "Ranked list / podium",
     description: "Animated ranking with oversized rank numbers and podium-like rows over the unified dark pastel watercolor background.",
     whenToUse: "Use for top-3/top-5 lists, ranked mistakes, priorities, symptoms, channels, exercises, or results where ranking order matters.",
+    additionalUsageInstructions: "",
     durationSeconds: 7,
     durationGuidance: "Around 1 second per ranking. For multi-visual sequences, set startIndex to the first rank that should animate in this visual.",
     stylePreset: DEFAULT_STYLE_PRESET,
@@ -404,6 +414,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     displayName: "Checklist",
     description: "Animated checklist with deterministic check marks, concise item copy, and optional future-item ghosting.",
     whenToUse: "Use for routines, protocols, decision checklists, action lists, and ordered items that should feel complete as they appear.",
+    additionalUsageInstructions: "",
     durationSeconds: 7,
     durationGuidance: "Around 1 second per checklist item. For multi-visual sequences, set startIndex to the first item that should animate in this visual.",
     stylePreset: DEFAULT_STYLE_PRESET,
@@ -455,6 +466,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     displayName: "Scorecard",
     description: "Animated metric scorecard with rows, values, and compact progress bars.",
     whenToUse: "Use for grading a routine, comparing criteria, assessing risk, showing before/after subscores, or summarizing an evaluation.",
+    additionalUsageInstructions: "",
     durationSeconds: 6,
     durationGuidance: "Usually 5-7 seconds for 3-5 metrics with a short title reveal and one row reveal per beat.",
     stylePreset: DEFAULT_STYLE_PRESET,
@@ -492,6 +504,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     displayName: "Research paper card",
     description: "Animated study-card visual with source, paper title, and one plain-English finding.",
     whenToUse: "Use when citing a study, paper, review, clinical trial, author group, journal, or named research result.",
+    additionalUsageInstructions: "",
     durationSeconds: 6,
     durationGuidance: "Usually 5-7 seconds: reveal the paper/source first, then the finding.",
     stylePreset: DEFAULT_STYLE_PRESET,
@@ -519,8 +532,9 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     displayName: "Good/Bad Indicator",
     description: "Minimal good/bad indicator card with one indicator type and one short supporting line. Good uses a green accent; bad uses a red accent.",
     whenToUse: "Use to highlight that something is good or bad, such as a helpful habit, risky behavior, recommended choice, mistake, or warning moment.",
+    additionalUsageInstructions: "",
     durationSeconds: 5,
-    durationGuidance: "Usually 4-6 seconds: reveal the good/bad icon quickly, then hold one short readable line.",
+    durationGuidance: "Usually 4-6 seconds: reveal the good/bad icon, underline, and short readable line together, then hold.",
     stylePreset: DEFAULT_STYLE_PRESET,
     defaultArgs: {
       indicatorType: "good",
@@ -538,8 +552,8 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
       { name: "text", label: "Indicator text", type: "textarea", required: true, defaultValue: "Lift from the lower lid" },
     ],
     deterministicSoundEffects: [
-      { id: "icon-enter", type: "click", offsetSeconds: 0.3, durationSeconds: 0.16, gainDb: -11, fadeOutMs: 90, description: "Tick as the good/bad icon appears", searchQuery: "soft icon tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "nice-to-have" },
-      { id: "rule-confirm", type: "impact", offsetSeconds: 1.18, durationSeconds: 0.24, gainDb: -11, fadeOutMs: 120, description: "Soft confirmation accent as the rule underline resolves", searchQuery: "soft confirmation impact", frequencyBand: "mid", layerRole: "punctuation", literalness: "stylized", priority: "optional" },
+      { id: "icon-enter", type: "click", offsetSeconds: 0.78, durationSeconds: 0.16, gainDb: -11, fadeOutMs: 90, description: "Tick as the good/bad icon appears with the indicator text", searchQuery: "soft icon tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "nice-to-have" },
+      { id: "rule-confirm", type: "impact", offsetSeconds: 0.78, durationSeconds: 0.24, gainDb: -11, fadeOutMs: 120, description: "Soft confirmation accent as the rule underline resolves with the indicator text", searchQuery: "soft confirmation impact", frequencyBand: "mid", layerRole: "punctuation", literalness: "stylized", priority: "optional" },
     ],
     enabled: true,
   },
@@ -564,6 +578,23 @@ function isLegacyRendererAlias(value: unknown) {
 
 function cleanString(value: unknown, fallback: string) {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function cleanOptionalString(value: unknown, fallback = "") {
+  return typeof value === "string" ? value.trim() : fallback;
+}
+
+function formatAdditionalUsageInstructions(value: string) {
+  const lines = value
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return null;
+  return [
+    "  Additional usage instructions:",
+    ...lines.map((line) => `    - ${line}`),
+  ].join("\n");
 }
 
 function autoTimelineStepLabel(index: number) {
@@ -928,6 +959,7 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
     displayName: rendererId === "checklist" ? "Checklist" : cleanString(candidate.displayName, fallback.displayName),
     description: rendererId === "checklist" ? fallback.description : cleanString(candidate.description, fallback.description),
     whenToUse: rendererId === "checklist" ? fallback.whenToUse : cleanString(candidate.whenToUse, fallback.whenToUse),
+    additionalUsageInstructions: cleanOptionalString(candidate.additionalUsageInstructions, fallback.additionalUsageInstructions || ""),
     durationSeconds: typeof candidate.durationSeconds === "number" && Number.isFinite(candidate.durationSeconds)
       ? Math.min(12, Math.max(3, candidate.durationSeconds))
       : fallback.durationSeconds,
@@ -1000,13 +1032,14 @@ export function renderMotionGraphicTemplatePromptInjection(settings = getShortFo
       `  stylePreset default: ${template.stylePreset}`,
       `  Description: ${template.description}`,
       `  When to use: ${template.whenToUse}`,
+      formatAdditionalUsageInstructions(template.additionalUsageInstructions),
       `  Controllable animation-in timing items: ${(ANIMATION_TIMING_CONTROLS[template.rendererId] || []).join("; ") || "none"}.`,
       template.deterministicSoundEffects?.length
         ? `  Built-in internal SFX: ${template.deterministicSoundEffects.map((cue) => cue.description).join("; ")}. These are generated deterministically by the renderer/resolver, not by Scribe.`
         : "  Built-in internal SFX: none.",
       `  Configurable fields:`,
       fields,
-    ].join("\n");
+    ].filter((line): line is string => typeof line === "string").join("\n");
   }).join("\n\n");
 
   return [

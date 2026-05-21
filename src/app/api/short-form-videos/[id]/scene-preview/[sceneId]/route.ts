@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import { Readable } from "stream";
 import { spawnSync } from "child_process";
 import { getProjectDir, readProjectMeta } from "@/lib/short-form-videos";
 import {
@@ -121,8 +120,8 @@ export async function GET(
     }
 
     const stat = fs.statSync(outputPath);
-    const stream = fs.createReadStream(outputPath);
-    return new NextResponse(Readable.toWeb(stream) as unknown as ReadableStream, {
+    const body = await fs.promises.readFile(outputPath);
+    return new NextResponse(body, {
       headers: {
         "Content-Type": "video/mp4",
         "Content-Length": String(stat.size),

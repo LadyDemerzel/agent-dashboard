@@ -2724,9 +2724,9 @@ async function goodBadIndicator(args, stylePreset, overlayInputs) {
   const textBlockHeight = textSize + Math.max(0, textLines.length - 1) * (textSize + textLineGap);
   const ruleMarginTop = 56;
   const ruleY = Math.max(1040, textTopY + textBlockHeight + ruleMarginTop);
-  const iconRevealAt = timingValue(args, "icon", 0.3);
   const textRevealAt = timingValue(args, "text", 0.78);
-  const ruleRevealAt = timingValue(args, ["rule", "underline"], 1.18);
+  const iconRevealAt = textRevealAt;
+  const ruleRevealAt = textRevealAt;
   overlayInputs.push(await createLucideIconOverlay({
     tempDir: overlayInputs.tempDir,
     icon: isGood ? "circleCheck" : "octagonX",

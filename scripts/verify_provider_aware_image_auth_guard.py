@@ -16,6 +16,7 @@ def main() -> int:
     namespace = runpy.run_path(str(SCRIPT_PATH))
     prepare_openclaw_image_env = namespace["prepare_openclaw_image_env"]
     openclaw_edit_rejected_reference_images = namespace["openclaw_edit_rejected_reference_images"]
+    should_fallback_openclaw_edit_to_generate = namespace["should_fallback_openclaw_edit_to_generate"]
     build_openclaw_command = namespace["build_openclaw_command"]
     script_globals = prepare_openclaw_image_env.__globals__
     original_home_dir = script_globals["HOME_DIR"]
@@ -139,6 +140,15 @@ def main() -> int:
             stderr='[type=invalid_request_error, code=invalid_value]',
         )
         assert openclaw_edit_rejected_reference_images(rejected), "reference-image rejection should trigger text-to-image fallback"
+        assert should_fallback_openclaw_edit_to_generate(rejected), "reference-image rejection should trigger edit-to-generate fallback"
+
+        transport_failed = subprocess.CompletedProcess(
+            args=[],
+            returncode=1,
+            stdout="",
+            stderr="[image-generation] candidate failed: openai/gpt-image-2: fetch failed | write EPIPE",
+        )
+        assert should_fallback_openclaw_edit_to_generate(transport_failed), "OpenClaw image-edit transport failures should trigger edit-to-generate fallback"
 
         command = build_openclaw_command(
             SimpleNamespace(

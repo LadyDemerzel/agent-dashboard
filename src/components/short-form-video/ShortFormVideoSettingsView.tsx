@@ -525,6 +525,7 @@ interface MotionGraphicTemplateConfig {
   displayName: string;
   description: string;
   whenToUse: string;
+  additionalUsageInstructions: string;
   durationSeconds: number;
   durationGuidance: string;
   stylePreset: string;
@@ -538,6 +539,28 @@ interface MotionGraphicsSettings {
   defaultStylePreset: string;
   templates: MotionGraphicTemplateConfig[];
 }
+
+const MOTION_GRAPHIC_TIMING_CONTROLS: Record<
+  string,
+  { fields: string[]; extraTargets?: string[] }
+> = {
+  stat_reveal: { fields: ["value", "title"] },
+  bar_chart: { fields: ["title", "data"] },
+  pie_chart: { fields: ["title", "data"] },
+  line_growth_chart: { fields: ["title"], extraTargets: ["Chart line"] },
+  comparison_before_after: { fields: ["before", "after"] },
+  timeline: { fields: ["steps"] },
+  cause_effect: { fields: ["cause", "effect"], extraTargets: ["Arrow"] },
+  caption_word_wall: {
+    fields: ["lines"],
+    extraTargets: ["Forced-alignment word highlight"],
+  },
+  ranked_podium: { fields: ["items"] },
+  checklist: { fields: ["items"] },
+  scorecard: { fields: ["title", "data"] },
+  research_paper_card: { fields: ["source", "title", "finding"] },
+  good_bad_indicator: { fields: ["text"] },
+};
 
 function resolveMotionTemplateSelection({
   templates,
@@ -2451,6 +2474,683 @@ function CaptionStyleNumberField({
   );
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function motionArgText(value: unknown) {
+  return typeof value === "string" ? value : value == null ? "" : String(value);
+}
+
+function motionArgArray(value: unknown) {
+  return Array.isArray(value) ? value : [];
+}
+
+function parseOptionalMotionNumber(value: string) {
+  if (!value.trim()) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function motionFieldTypeLabel(type: MotionGraphicFieldType) {
+  switch (type) {
+    case "captionWordWallLines":
+      return "array · caption lines";
+    case "dataSeries":
+      return "array · data rows";
+    case "indicatorType":
+      return "good/bad selector";
+    case "stringList":
+      return "array · text items";
+    case "timelineSteps":
+      return "array · step objects";
+    default:
+      return type;
+  }
+}
+
+function isArrayMotionField(type: MotionGraphicFieldType) {
+  return (
+    type === "captionWordWallLines" ||
+    type === "dataSeries" ||
+    type === "stringList" ||
+    type === "timelineSteps"
+  );
+}
+
+interface MotionFieldParameter {
+  name: string;
+  label: string;
+  valueType: string;
+  required?: boolean;
+  timing?: boolean;
+  options?: string[];
+}
+
+function getMotionFieldParameters(
+  field: MotionGraphicTemplateField,
+  timingControllable: boolean,
+): MotionFieldParameter[] {
+  switch (field.type) {
+    case "dataSeries":
+      return [
+        { name: "label", label: "Label", valueType: "text", required: true },
+        { name: "value", label: "Value", valueType: "number", required: true },
+        { name: "displayValue", label: "Display value", valueType: "text" },
+        { name: "animateIn", label: "Animate in", valueType: "timestamp", timing: true },
+      ];
+    case "timelineSteps":
+      return [
+        { name: "label", label: "Label", valueType: "text" },
+        { name: "text", label: "Text", valueType: "text", required: true },
+        { name: "animateIn", label: "Animate in", valueType: "timestamp", timing: true },
+      ];
+    case "captionWordWallLines":
+      return [
+        { name: "text", label: "Line text", valueType: "text" },
+        {
+          name: "size",
+          label: "Line size",
+          valueType: "option",
+          options: ["regular", "large", "extra_large"],
+        },
+        { name: "blank", label: "Blank spacer", valueType: "boolean" },
+        { name: "emphasized", label: "Emphasized", valueType: "boolean" },
+        { name: "animateIn", label: "Animate in", valueType: "timestamp", timing: true },
+      ];
+    case "stringList":
+      return [{ name: "item", label: "Text item", valueType: "text", required: true }];
+    case "indicatorType":
+      return [
+        {
+          name: field.name,
+          label: field.label,
+          valueType: "option",
+          required: field.required,
+          timing: timingControllable,
+          options: ["good", "bad"],
+        },
+      ];
+    default:
+      return [
+        {
+          name: field.name,
+          label: field.label,
+          valueType: field.type === "number" ? "number" : "text",
+          required: field.required,
+          timing: timingControllable,
+        },
+      ];
+  }
+}
+
+function motionFieldShapeLabel(field: MotionGraphicTemplateField) {
+  if (field.type === "dataSeries") return "Array of data row objects";
+  if (field.type === "timelineSteps") return "Array of step objects";
+  if (field.type === "captionWordWallLines") return "Array of caption line objects";
+  if (field.type === "stringList") return "Array of text values";
+  return "Single value";
+}
+
+function MotionArgTextInput({
+  label,
+  value,
+  textarea = false,
+  onChange,
+}: {
+  label: string;
+  value: unknown;
+  textarea?: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </label>
+      {textarea ? (
+        <Textarea
+          value={motionArgText(value)}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      ) : (
+        <Input
+          value={motionArgText(value)}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )}
+    </div>
+  );
+}
+
+function MotionArgNumberInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: unknown;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </label>
+      <Input
+        type="number"
+        value={motionArgText(value)}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+    </div>
+  );
+}
+
+function MotionDefaultArgsEditor({
+  template,
+  onChangeArg,
+}: {
+  template: MotionGraphicTemplateConfig;
+  onChangeArg: (name: string, value: unknown) => void;
+}) {
+  const fieldNames = new Set(template.fields.map((field) => field.name));
+  const extraArgs = Object.entries(template.defaultArgs).filter(
+    ([name]) => !fieldNames.has(name),
+  );
+
+  const renderField = (field: MotionGraphicTemplateField) => {
+    const value =
+      template.defaultArgs[field.name] !== undefined
+        ? template.defaultArgs[field.name]
+        : field.defaultValue;
+    const updateArrayItem = (
+      index: number,
+      patch: Record<string, unknown>,
+      fallback: Record<string, unknown>,
+    ) => {
+      const current = motionArgArray(value);
+      const next = current.map((item, itemIndex) =>
+        itemIndex === index
+          ? { ...fallback, ...(isPlainRecord(item) ? item : {}), ...patch }
+          : item,
+      );
+      onChangeArg(field.name, next);
+    };
+    const removeArrayItem = (index: number) => {
+      onChangeArg(
+        field.name,
+        motionArgArray(value).filter((_, itemIndex) => itemIndex !== index),
+      );
+    };
+
+    if (field.type === "textarea") {
+      return (
+        <MotionArgTextInput
+          key={field.name}
+          label={field.label}
+          value={value}
+          textarea
+          onChange={(next) => onChangeArg(field.name, next)}
+        />
+      );
+    }
+    if (field.type === "number") {
+      return (
+        <MotionArgNumberInput
+          key={field.name}
+          label={field.label}
+          value={value}
+          onChange={(next) => onChangeArg(field.name, next)}
+        />
+      );
+    }
+    if (field.type === "indicatorType") {
+      return (
+        <div key={field.name} className="space-y-2">
+          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {field.label}
+          </label>
+          <Select
+            value={motionArgText(value) || "good"}
+            onChange={(event) => onChangeArg(field.name, event.target.value)}
+          >
+            <option value="good">Good</option>
+            <option value="bad">Bad</option>
+          </Select>
+        </div>
+      );
+    }
+    if (field.type === "stringList") {
+      const rows = motionArgArray(value).map((item) => motionArgText(item));
+      return (
+        <div key={field.name} className="space-y-2">
+          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {field.label}
+          </label>
+          <div className="space-y-2">
+            {rows.map((item, index) => (
+              <div key={index} className="flex gap-2">
+                <Input
+                  value={item}
+                  onChange={(event) => {
+                    const next = [...rows];
+                    next[index] = event.target.value;
+                    onChangeArg(field.name, next);
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => removeArrayItem(index)}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onChangeArg(field.name, [...rows, ""])}
+            >
+              Add item
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    if (field.type === "dataSeries") {
+      const rows = motionArgArray(value);
+      return (
+        <div key={field.name} className="space-y-3">
+          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {field.label}
+          </label>
+          <div className="space-y-3">
+            {rows.map((item, index) => {
+              const row = isPlainRecord(item) ? item : {};
+              return (
+                <div key={index} className="grid gap-2 rounded-md border border-border bg-background/50 p-3 sm:grid-cols-[1fr_7rem_1fr_7rem_auto]">
+                  <Input
+                    value={motionArgText(row.label)}
+                    placeholder="Label"
+                    onChange={(event) =>
+                      updateArrayItem(index, { label: event.target.value }, {})
+                    }
+                  />
+                  <Input
+                    type="number"
+                    value={motionArgText(row.value)}
+                    placeholder="Value"
+                    onChange={(event) =>
+                      updateArrayItem(index, { value: Number(event.target.value) }, {})
+                    }
+                  />
+                  <Input
+                    value={motionArgText(row.displayValue)}
+                    placeholder="Display value"
+                    onChange={(event) =>
+                      updateArrayItem(index, { displayValue: event.target.value }, {})
+                    }
+                  />
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={motionArgText(row.animateIn)}
+                    placeholder="Animate in"
+                    onChange={(event) =>
+                      updateArrayItem(index, { animateIn: parseOptionalMotionNumber(event.target.value) }, {})
+                    }
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => removeArrayItem(index)}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              );
+            })}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                onChangeArg(field.name, [
+                  ...rows,
+                  { label: "New", value: 0, displayValue: "0" },
+                ])
+              }
+            >
+              Add row
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    if (field.type === "timelineSteps") {
+      const rows = motionArgArray(value);
+      return (
+        <div key={field.name} className="space-y-3">
+          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {field.label}
+          </label>
+          <div className="space-y-3">
+            {rows.map((item, index) => {
+              const row = isPlainRecord(item) ? item : { text: motionArgText(item) };
+              return (
+                <div key={index} className="grid gap-2 rounded-md border border-border bg-background/50 p-3 sm:grid-cols-[9rem_1fr_7rem_auto]">
+                  <Input
+                    value={motionArgText(row.label)}
+                    placeholder="Label"
+                    onChange={(event) =>
+                      updateArrayItem(index, { label: event.target.value }, {})
+                    }
+                  />
+                  <Input
+                    value={motionArgText(row.text)}
+                    placeholder="Text"
+                    onChange={(event) =>
+                      updateArrayItem(index, { text: event.target.value }, {})
+                    }
+                  />
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={motionArgText(row.animateIn)}
+                    placeholder="Animate in"
+                    onChange={(event) =>
+                      updateArrayItem(index, { animateIn: parseOptionalMotionNumber(event.target.value) }, {})
+                    }
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => removeArrayItem(index)}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              );
+            })}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                onChangeArg(field.name, [...rows, { label: "", text: "" }])
+              }
+            >
+              Add step
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    if (field.type === "captionWordWallLines") {
+      const rows = motionArgArray(value);
+      return (
+        <div key={field.name} className="space-y-3">
+          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {field.label}
+          </label>
+          <div className="space-y-3">
+            {rows.map((item, index) => {
+              const row = isPlainRecord(item) ? item : { text: motionArgText(item) };
+              const blank = Boolean(row.blank);
+              return (
+                <div key={index} className="space-y-2 rounded-md border border-border bg-background/50 p-3">
+                  <div className="grid gap-2 sm:grid-cols-[1fr_8rem_7rem_auto]">
+                    <Input
+                      value={motionArgText(row.text)}
+                      placeholder="Line text"
+                      disabled={blank}
+                      onChange={(event) =>
+                        updateArrayItem(index, { text: event.target.value, blank: false }, {})
+                      }
+                    />
+                    <Select
+                      value={motionArgText(row.size) || "regular"}
+                      disabled={blank}
+                      onChange={(event) =>
+                        updateArrayItem(index, { size: event.target.value }, {})
+                      }
+                    >
+                      <option value="regular">Regular</option>
+                      <option value="large">Large</option>
+                      <option value="extra_large">Extra large</option>
+                    </Select>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={motionArgText(row.animateIn)}
+                      placeholder="Animate in"
+                      onChange={(event) =>
+                        updateArrayItem(index, { animateIn: parseOptionalMotionNumber(event.target.value) }, {})
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => removeArrayItem(index)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={blank}
+                        onChange={(event) =>
+                          updateArrayItem(
+                            index,
+                            event.target.checked
+                              ? { blank: true, text: "" }
+                              : { blank: false },
+                            {},
+                          )
+                        }
+                      />
+                      Blank spacer line
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(row.emphasized)}
+                        disabled={blank}
+                        onChange={(event) =>
+                          updateArrayItem(index, { emphasized: event.target.checked }, {})
+                        }
+                      />
+                      Emphasized
+                    </label>
+                  </div>
+                </div>
+              );
+            })}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onChangeArg(field.name, [...rows, { text: "" }])}
+            >
+              Add line
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <MotionArgTextInput
+        key={field.name}
+        label={field.label}
+        value={value}
+        onChange={(next) => onChangeArg(field.name, next)}
+      />
+    );
+  };
+
+  return (
+    <div className="space-y-4 rounded-lg border border-border bg-background/60 p-4">
+      <div>
+        <h3 className="text-sm font-medium text-foreground">Default args</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          These values drive the preview and become the fallback when Scribe does
+          not override a field in Plan Visuals.
+        </p>
+      </div>
+      <div className="space-y-4">
+        {template.fields.map((field) => (
+          <div key={field.name} className="space-y-2">
+            {renderField(field)}
+            {field.description ? (
+              <p className="text-xs text-muted-foreground">{field.description}</p>
+            ) : null}
+          </div>
+        ))}
+        {extraArgs.length > 0 ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            {extraArgs.map(([name, value]) => (
+              <MotionArgTextInput
+                key={name}
+                label={name}
+                value={value}
+                onChange={(next) => onChangeArg(name, next)}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function MotionConfigurableFieldsSummary({
+  template,
+}: {
+  template: MotionGraphicTemplateConfig;
+}) {
+  const timingConfig = MOTION_GRAPHIC_TIMING_CONTROLS[template.rendererId] || {
+    fields: [],
+    extraTargets: [],
+  };
+  const timingFields = new Set(timingConfig.fields);
+  const extraTargets = timingConfig.extraTargets || [];
+  return (
+    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+      <div>
+        <h3 className="text-sm font-medium text-foreground">
+          Configurable fields Scribe sees
+        </h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          This is the readable field schema injected into the Plan Visuals prompt.
+          Fields with timing support can receive an exact animation-in timestamp.
+        </p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {template.fields.map((field) => {
+          const timingControllable = timingFields.has(field.name);
+          const parameters = getMotionFieldParameters(field, timingControllable);
+          return (
+            <div
+              key={field.name}
+              className="space-y-3 rounded-md border border-border bg-muted/20 p-3"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    {field.label}
+                  </p>
+                  <p className="font-mono text-xs text-muted-foreground">
+                    {field.name}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  <Badge variant="outline">{motionFieldTypeLabel(field.type)}</Badge>
+                  {isArrayMotionField(field.type) ? (
+                    <Badge variant="secondary">Array</Badge>
+                  ) : null}
+                  {timingControllable ? (
+                    <Badge variant="success">Timing controllable</Badge>
+                  ) : null}
+                  {field.required ? <Badge variant="secondary">Required</Badge> : null}
+                </div>
+              </div>
+              <div className="rounded-md border border-border/70 bg-background/50 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {motionFieldShapeLabel(field)}
+                  </p>
+                  {timingControllable ? (
+                    <span className="text-xs text-emerald-200">
+                      Supports animateIn
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-3 grid gap-2">
+                  {parameters.map((parameter) => (
+                    <div
+                      key={parameter.name}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2"
+                    >
+                      <div>
+                        <p className="text-sm text-foreground">{parameter.label}</p>
+                        <p className="font-mono text-xs text-muted-foreground">
+                          {parameter.name}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap justify-end gap-1">
+                        <Badge variant="outline">{parameter.valueType}</Badge>
+                        {parameter.options?.map((option) => (
+                          <Badge key={option} variant="secondary">
+                            {option}
+                          </Badge>
+                        ))}
+                        {parameter.timing ? (
+                          <Badge variant="success">Timing</Badge>
+                        ) : null}
+                        {parameter.required ? (
+                          <Badge variant="secondary">Required</Badge>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {field.description ? (
+                <p className="text-xs leading-5 text-muted-foreground">
+                  {field.description}
+                </p>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      {extraTargets.length > 0 ? (
+        <div className="rounded-md border border-border bg-muted/20 p-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Additional renderer timing targets
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {extraTargets.map((target) => (
+              <Badge key={target} variant="success">
+                {target}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function AnimationPresetTrackEditor({
   label,
   helper,
@@ -2590,8 +3290,10 @@ function AnimationPresetTrackEditor({
 
 export function ShortFormVideoSettingsView({
   activeSection,
+  initialSettings,
 }: {
   activeSection: ShortFormSettingsRouteSection;
+  initialSettings?: SettingsData;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -2603,58 +3305,85 @@ export function ShortFormVideoSettingsView({
   const activeSectionRef = useRef(activeSection);
   const requestedMotionTemplateIdRef = useRef(requestedMotionTemplateId);
 
-  const [definitions, setDefinitions] = useState<PromptDefinition[]>([]);
+  const [definitions, setDefinitions] = useState<PromptDefinition[]>(
+    initialSettings?.definitions || [],
+  );
   const [prompts, setPrompts] = useState<Partial<Record<PromptKey, string>>>(
-    {},
+    initialSettings?.prompts || {},
   );
   const [initialPrompts, setInitialPrompts] = useState<
     Partial<Record<PromptKey, string>>
-  >({});
+  >(initialSettings?.prompts || {});
   const [imageStyles, setImageStyles] = useState<ImageStyleSettings | null>(
-    null,
+    initialSettings?.imageStyles || null,
   );
   const [initialImageStyles, setInitialImageStyles] =
-    useState<ImageStyleSettings | null>(null);
+    useState<ImageStyleSettings | null>(initialSettings?.imageStyles || null);
   const [videoRender, setVideoRender] = useState<VideoRenderSettings | null>(
-    null,
+    initialSettings?.videoRender || null,
   );
   const [initialVideoRender, setInitialVideoRender] =
-    useState<VideoRenderSettings | null>(null);
+    useState<VideoRenderSettings | null>(initialSettings?.videoRender || null);
   const [backgroundVideos, setBackgroundVideos] =
-    useState<BackgroundVideoSettings | null>(null);
+    useState<BackgroundVideoSettings | null>(initialSettings?.backgroundVideos || null);
   const [initialBackgroundVideos, setInitialBackgroundVideos] =
-    useState<BackgroundVideoSettings | null>(null);
+    useState<BackgroundVideoSettings | null>(initialSettings?.backgroundVideos || null);
   const [textScriptSettings, setTextScriptSettings] =
-    useState<TextScriptSettings | null>(null);
+    useState<TextScriptSettings | null>(initialSettings?.textScript || null);
   const [initialTextScriptSettings, setInitialTextScriptSettings] =
-    useState<TextScriptSettings | null>(null);
+    useState<TextScriptSettings | null>(initialSettings?.textScript || null);
   const [xmlVisualPlanningSettings, setXmlVisualPlanningSettings] =
-    useState<XmlVisualPlanningSettings | null>(null);
+    useState<XmlVisualPlanningSettings | null>(initialSettings?.xmlVisualPlanning || null);
   const [
     initialXmlVisualPlanningSettings,
     setInitialXmlVisualPlanningSettings,
-  ] = useState<XmlVisualPlanningSettings | null>(null);
+  ] = useState<XmlVisualPlanningSettings | null>(initialSettings?.xmlVisualPlanning || null);
   const [motionGraphicsSettings, setMotionGraphicsSettings] =
-    useState<MotionGraphicsSettings | null>(null);
+    useState<MotionGraphicsSettings | null>(initialSettings?.motionGraphics || null);
   const [initialMotionGraphicsSettings, setInitialMotionGraphicsSettings] =
-    useState<MotionGraphicsSettings | null>(null);
+    useState<MotionGraphicsSettings | null>(initialSettings?.motionGraphics || null);
   const [supportedMotionGraphicRenderers, setSupportedMotionGraphicRenderers] =
-    useState<string[]>([]);
+    useState<string[]>(initialSettings?.supportedMotionGraphicRenderers || []);
   const [selectedMotionTemplateId, setSelectedMotionTemplateId] =
-    useState<string | null>(null);
+    useState<string | null>(() =>
+      initialSettings
+        ? resolveMotionTemplateSelection({
+            templates: initialSettings.motionGraphics.templates,
+            currentId: null,
+            requestedId:
+              activeSection === "generate-visuals"
+                ? requestedMotionTemplateId
+                : null,
+          })
+        : null,
+    );
   const pendingMotionTemplateUrlIdRef = useRef<{
     templateId: string | null;
   } | null>(null);
   const [motionDefaultArgsJsonDraft, setMotionDefaultArgsJsonDraft] = useState("");
   const [motionFieldsJsonDraft, setMotionFieldsJsonDraft] = useState("");
   const [soundDesignSettings, setSoundDesignSettings] =
-    useState<SoundDesignSettings | null>(null);
+    useState<SoundDesignSettings | null>(initialSettings?.soundDesign || null);
   const [initialSoundDesignSettings, setInitialSoundDesignSettings] =
-    useState<SoundDesignSettings | null>(null);
-  const [selectedStyleId, setSelectedStyleId] = useState<string | null>(null);
-  const [selectedVoiceId, setSelectedVoiceId] = useState<string | null>(null);
-  const [selectedMusicId, setSelectedMusicId] = useState<string | null>(null);
-  const [selectedSoundId, setSelectedSoundId] = useState<string | null>(null);
+    useState<SoundDesignSettings | null>(initialSettings?.soundDesign || null);
+  const [selectedStyleId, setSelectedStyleId] = useState<string | null>(
+    initialSettings?.imageStyles.defaultStyleId ||
+      initialSettings?.imageStyles.styles[0]?.id ||
+      null,
+  );
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string | null>(
+    initialSettings?.videoRender.defaultVoiceId ||
+      initialSettings?.videoRender.voices[0]?.id ||
+      null,
+  );
+  const [selectedMusicId, setSelectedMusicId] = useState<string | null>(
+    initialSettings?.videoRender.defaultMusicTrackId ||
+      initialSettings?.videoRender.musicTracks[0]?.id ||
+      null,
+  );
+  const [selectedSoundId, setSelectedSoundId] = useState<string | null>(
+    initialSettings?.soundDesign.library[0]?.id || null,
+  );
   const [selectedAudioLibraryKind, setSelectedAudioLibraryKind] =
     useState<AudioLibrarySelectionKind>("sfx");
   const [audioLibraryTypeFilter, setAudioLibraryTypeFilter] =
@@ -2670,15 +3399,19 @@ export function ShortFormVideoSettingsView({
   const [musicEnergyFilter, setMusicEnergyFilter] = useState("all");
   const [selectedCaptionStyleId, setSelectedCaptionStyleId] = useState<
     string | null
-  >(null);
+  >(
+    initialSettings?.videoRender.defaultCaptionStyleId ||
+      initialSettings?.videoRender.captionStyles[0]?.id ||
+      null,
+  );
   const [selectedAnimationPresetId, setSelectedAnimationPresetId] = useState<
     string | null
-  >(null);
+  >(initialSettings?.videoRender.animationPresets[0]?.id || null);
   const [captionLibraryTab, setCaptionLibraryTab] = useState<
     "styles" | "presets"
   >("styles");
   const [animationPresetJsonDraft, setAnimationPresetJsonDraft] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialSettings);
   const [error, setError] = useState<string | null>(null);
   const [styleTestsById, setStyleTestsById] = useState<
     Record<string, StyleTestState>
@@ -2687,6 +3420,7 @@ export function ShortFormVideoSettingsView({
     Record<string, MotionGraphicPreviewState>
   >({});
   const motionTemplatePreviewsRef = useRef(motionTemplatePreviewsById);
+  const motionTemplatePreviewRequestIdsRef = useRef<Record<string, number>>({});
   const [styleReferenceUploadsById, setStyleReferenceUploadsById] = useState<
     Record<string, StyleReferenceUploadState>
   >({});
@@ -2776,6 +3510,8 @@ export function ShortFormVideoSettingsView({
       options?: { force?: boolean; signal?: AbortSignal },
     ) => {
       const previewKey = buildMotionTemplatePreviewKey(template);
+      const requestId = (motionTemplatePreviewRequestIdsRef.current[template.id] || 0) + 1;
+      motionTemplatePreviewRequestIdsRef.current[template.id] = requestId;
       setMotionTemplatePreviewsById((current) => ({
         ...current,
         [template.id]: {
@@ -2796,6 +3532,9 @@ export function ShortFormVideoSettingsView({
             signal: options?.signal,
           }),
         );
+        if (motionTemplatePreviewRequestIdsRef.current[template.id] !== requestId) {
+          return data;
+        }
         setMotionTemplatePreviewsById((current) => ({
           ...current,
           [template.id]: {
@@ -2809,7 +3548,21 @@ export function ShortFormVideoSettingsView({
         }));
         return data;
       } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return null;
+        if (motionTemplatePreviewRequestIdsRef.current[template.id] !== requestId) {
+          return null;
+        }
+        if (err instanceof DOMException && err.name === "AbortError") {
+          setMotionTemplatePreviewsById((current) => ({
+            ...current,
+            [template.id]: {
+              ...(current[template.id] || createEmptyMotionPreviewState(previewKey)),
+              isLoading: false,
+              error: null,
+              previewKey,
+            },
+          }));
+          return null;
+        }
         setMotionTemplatePreviewsById((current) => ({
           ...current,
           [template.id]: {
@@ -2829,35 +3582,39 @@ export function ShortFormVideoSettingsView({
   );
 
   useEffect(() => {
-    if (activeSection !== "generate-visuals" || !motionGraphicsSettings) return;
+    if (
+      activeSection !== "generate-visuals" ||
+      !motionGraphicsSettings ||
+      !selectedMotionTemplateId
+    ) {
+      return;
+    }
+
+    const selectedTemplate = motionGraphicsSettings.templates.find(
+      (template) => template.id === selectedMotionTemplateId,
+    );
+    if (!selectedTemplate) return;
 
     const controller = new AbortController();
-    let cancelled = false;
     const timeout = window.setTimeout(() => {
-      void (async () => {
-        for (const template of motionGraphicsSettings.templates) {
-          if (cancelled) break;
-          const previewKey = buildMotionTemplatePreviewKey(template);
-          const currentPreview = motionTemplatePreviewsRef.current[template.id];
-          if (
-            currentPreview?.previewKey === previewKey &&
-            (currentPreview.videoUrl || currentPreview.isLoading)
-          ) {
-            continue;
-          }
-          await requestMotionTemplatePreview(template, {
-            signal: controller.signal,
-          });
-        }
-      })();
+      const previewKey = buildMotionTemplatePreviewKey(selectedTemplate);
+      const currentPreview = motionTemplatePreviewsRef.current[selectedTemplate.id];
+      if (
+        currentPreview?.previewKey === previewKey &&
+        (currentPreview.videoUrl || currentPreview.isLoading)
+      ) {
+        return;
+      }
+      void requestMotionTemplatePreview(selectedTemplate, {
+        signal: controller.signal,
+      });
     }, 350);
 
     return () => {
-      cancelled = true;
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [activeSection, motionGraphicsSettings, requestMotionTemplatePreview]);
+  }, [activeSection, motionGraphicsSettings, requestMotionTemplatePreview, selectedMotionTemplateId]);
 
   useEffect(() => {
     if (activeSection !== "generate-visuals" || !motionGraphicsSettings) return;
@@ -2979,7 +3736,7 @@ export function ShortFormVideoSettingsView({
     }
   }, [selectedAnimationPresetId, videoRender]);
 
-  const hasAppliedSettingsRef = useRef(false);
+  const hasAppliedSettingsRef = useRef(Boolean(initialSettings));
   const applySettings = useCallback(
     (data: SettingsData, options?: { background?: boolean }) => {
       setDefinitions(data.definitions);
@@ -3091,7 +3848,7 @@ export function ShortFormVideoSettingsView({
         ? JSON.stringify(selectedMotionTemplate.fields, null, 2)
         : "",
     );
-  }, [selectedMotionTemplate?.id]);
+  }, [selectedMotionTemplate]);
   const selectedVoice = useMemo(
     () =>
       videoRender?.voices.find((voice) => voice.id === selectedVoiceId) || null,
@@ -3712,7 +4469,9 @@ export function ShortFormVideoSettingsView({
     mutate: mutateSettings,
   } = useSWR<SettingsData>("/api/short-form-videos/settings", apiDataFetcher, {
     ...realtimeSWRConfig,
-    refreshInterval: autoRefreshPaused ? 0 : 5000,
+    fallbackData: initialSettings,
+    revalidateOnMount: !initialSettings,
+    refreshInterval: autoRefreshPaused ? 0 : 30000,
     revalidateOnFocus: !autoRefreshPaused,
   });
 
@@ -6804,6 +7563,16 @@ export function ShortFormVideoSettingsView({
     }
   }
 
+  function updateSelectedMotionTemplateDefaultArg(name: string, value: unknown) {
+    updateSelectedMotionTemplate((template) => ({
+      ...template,
+      defaultArgs: {
+        ...template.defaultArgs,
+        [name]: value,
+      },
+    }));
+  }
+
   function addMotionTemplate() {
     if (!motionGraphicsSettings) return;
     const rendererId = supportedMotionGraphicRenderers[0] || "stat_reveal";
@@ -6814,6 +7583,7 @@ export function ShortFormVideoSettingsView({
       displayName: "New motion template",
       description: "Configured deterministic motion graphic template.",
       whenToUse: "Use when this recurring visual pattern fits the scene better than a generated image.",
+      additionalUsageInstructions: "",
       durationSeconds: 6,
       durationGuidance: "Set visual start/end times to match the planned animation beat; do not assume a fixed template duration.",
       stylePreset: motionGraphicsSettings.defaultStylePreset || "watercolor-editorial",
@@ -9535,6 +10305,24 @@ export function ShortFormVideoSettingsView({
                         />
                       </div>
                       <div className="space-y-2">
+                        <label className="text-sm font-medium text-foreground">
+                          Additional usage instructions
+                        </label>
+                        <Textarea
+                          value={selectedMotionTemplate.additionalUsageInstructions || ""}
+                          placeholder="Optional. Leave blank when this template does not need extra Scribe-facing guidance."
+                          onChange={(event) =>
+                            updateSelectedMotionTemplate((template) => ({
+                              ...template,
+                              additionalUsageInstructions: event.target.value,
+                            }))
+                          }
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          If filled out, this text is injected into Scribe’s Plan Visuals prompt inside this template’s motion-graphic reference. Blank values are omitted entirely.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
                         <label className="text-sm font-medium text-foreground">Duration guidance</label>
                         <Textarea
                           value={selectedMotionTemplate.durationGuidance}
@@ -9546,48 +10334,62 @@ export function ShortFormVideoSettingsView({
                           }
                         />
                       </div>
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium text-foreground">Default args JSON</label>
-                          <Textarea
-                            className="min-h-40 font-mono text-xs"
-                            value={motionDefaultArgsJsonDraft}
-                            onChange={(event) => {
-                              const draft = event.target.value;
-                              setMotionDefaultArgsJsonDraft(draft);
-                              try {
-                                const nextArgs = JSON.parse(draft) as Record<string, unknown>;
-                                if (!nextArgs || typeof nextArgs !== "object" || Array.isArray(nextArgs)) {
-                                  throw new Error("Default args must be a JSON object.");
+                      <MotionDefaultArgsEditor
+                        template={selectedMotionTemplate}
+                        onChangeArg={updateSelectedMotionTemplateDefaultArg}
+                      />
+
+                      <MotionConfigurableFieldsSummary
+                        template={selectedMotionTemplate}
+                      />
+
+                      <details className="rounded-lg border border-border bg-background/60 p-4">
+                        <summary className="cursor-pointer text-sm font-medium text-foreground">
+                          Advanced JSON editors
+                        </summary>
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-foreground">Default args JSON</label>
+                            <Textarea
+                              className="min-h-40 font-mono text-xs"
+                              value={motionDefaultArgsJsonDraft}
+                              onChange={(event) => {
+                                const draft = event.target.value;
+                                setMotionDefaultArgsJsonDraft(draft);
+                                try {
+                                  const nextArgs = JSON.parse(draft) as Record<string, unknown>;
+                                  if (!nextArgs || typeof nextArgs !== "object" || Array.isArray(nextArgs)) {
+                                    throw new Error("Default args must be a JSON object.");
+                                  }
+                                  updateSelectedMotionTemplate((template) => ({ ...template, defaultArgs: nextArgs }));
+                                } catch {
+                                  updateSectionFeedbackState("motion-graphics", { error: "Default args must be valid JSON before saving." });
                                 }
-                                updateSelectedMotionTemplate((template) => ({ ...template, defaultArgs: nextArgs }));
-                              } catch {
-                                updateSectionFeedbackState("motion-graphics", { error: "Default args must be valid JSON before saving." });
-                              }
-                            }}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium text-foreground">Configurable fields JSON</label>
-                          <Textarea
-                            className="min-h-40 font-mono text-xs"
-                            value={motionFieldsJsonDraft}
-                            onChange={(event) => {
-                              const draft = event.target.value;
-                              setMotionFieldsJsonDraft(draft);
-                              try {
-                                const nextFields = JSON.parse(draft) as MotionGraphicTemplateField[];
-                                if (!Array.isArray(nextFields)) {
-                                  throw new Error("Configurable fields must be a JSON array.");
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-foreground">Configurable fields JSON</label>
+                            <Textarea
+                              className="min-h-40 font-mono text-xs"
+                              value={motionFieldsJsonDraft}
+                              onChange={(event) => {
+                                const draft = event.target.value;
+                                setMotionFieldsJsonDraft(draft);
+                                try {
+                                  const nextFields = JSON.parse(draft) as MotionGraphicTemplateField[];
+                                  if (!Array.isArray(nextFields)) {
+                                    throw new Error("Configurable fields must be a JSON array.");
+                                  }
+                                  updateSelectedMotionTemplate((template) => ({ ...template, fields: nextFields }));
+                                } catch {
+                                  updateSectionFeedbackState("motion-graphics", { error: "Configurable fields must be valid JSON before saving." });
                                 }
-                                updateSelectedMotionTemplate((template) => ({ ...template, fields: nextFields }));
-                              } catch {
-                                updateSectionFeedbackState("motion-graphics", { error: "Configurable fields must be valid JSON before saving." });
-                              }
-                            }}
-                          />
+                              }}
+                            />
+                          </div>
                         </div>
-                      </div>
+                      </details>
                       <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
                         <span>
                           Enabled templates are auto-injected into Scribe’s Plan Visuals prompt via {"{{motionGraphicTemplates}}"}.
@@ -10257,6 +11059,8 @@ export function ShortFormVideoSettingsView({
                                               reference.label ||
                                               `Style reference ${index + 1}`
                                             }
+                                            loading="lazy"
+                                            decoding="async"
                                             className="aspect-[3/4] w-full rounded-md border border-border bg-muted object-cover"
                                           />
                                         ) : (
@@ -10495,6 +11299,8 @@ export function ShortFormVideoSettingsView({
                                 <img
                                   src={selectedStyleTest.cleanImageUrl}
                                   alt={`${selectedStyle.name} clean style test`}
+                                  loading="lazy"
+                                  decoding="async"
                                   className="aspect-[9/16] w-full rounded-lg border border-border bg-muted object-cover"
                                 />
                               </div>
@@ -10507,6 +11313,8 @@ export function ShortFormVideoSettingsView({
                                 <img
                                   src={selectedStyleTest.previewImageUrl}
                                   alt={`${selectedStyle.name} preview style test`}
+                                  loading="lazy"
+                                  decoding="async"
                                   className="aspect-[9/16] w-full rounded-lg border border-border bg-muted object-cover"
                                 />
                               </div>

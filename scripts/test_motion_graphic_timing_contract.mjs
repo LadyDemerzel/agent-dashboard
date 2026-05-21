@@ -54,14 +54,17 @@ try {
   assert.equal(parsedMotionGraphics[0].args.lines[0].animateIn, 0.7);
 
   assert.match(motionGraphicsSource, /Controllable animation-in timing items:/, "Scribe motion graphic prompt injection must list controllable timing items per template.");
+  assert.match(motionGraphicsSource, /good_bad_indicator:\s*\["text"\]/, "Good/bad indicator must expose only indicator text as Scribe-controllable timing.");
   assert.match(motionGraphicsSource, /<timing item=\\"title\\" at=\\"12\.20\\"/, "Scribe prompt injection must document named absolute timing controls.");
   assert.match(motionGraphicsSource, /Items that visually belong together[\s\S]*animate together/, "Scribe prompt injection must explain grouped item timing.");
   assert.match(visualPlanningSource, /absolute video timestamps/, "XML visual planning prompt must document absolute item timing attributes.");
   assert.match(visualPlanningSource, /not seconds relative to the visual start/, "XML visual planning prompt must reject local timing for new motion graphics.");
+  assert.doesNotMatch(visualPlanningSource, /<timing item=\\"(?:icon|rule)\\"/, "Good/bad indicator example must not suggest separate icon/rule timing.");
 
   assert.match(soundDesignSource, /const repeatItem = visibleRepeatItems\(args, cue\.repeat\.source\)\[index\]/, "Deterministic repeated SFX must align to visible timed data/step/line items.");
   assert.match(soundDesignSource, /cue\.id === "line-finish" && key === "chart"[\s\S]*return cueTiming \+ 3/, "Line-growth finish SFX must remain aligned to explicit chart animation timing.");
   assert.match(soundDesignSource, /"cause-card": \["cause"\][\s\S]*"effect-card": \["effect"\]/, "Deterministic SFX aliases must include named motion core items.");
+  assert.match(soundDesignSource, /"icon-enter": \["text"\][\s\S]*"rule-confirm": \["text"\]/, "Good/bad indicator deterministic SFX must follow text timing.");
 
   console.log("motion graphic timing contract: ok");
 } finally {

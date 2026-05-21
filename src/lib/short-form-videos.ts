@@ -19,6 +19,7 @@ import {
   getXmlScriptDocument,
   getXmlScriptPath,
   type XmlScriptDocumentSummary,
+  type XmlScriptPipelineStep,
 } from "@/lib/short-form-xml-script";
 import {
   getShortFormSoundDesignPreviewRelativePath,
@@ -29,7 +30,10 @@ import {
 } from "@/lib/short-form-sound-design";
 import { getSoundDesignHandoffState } from "@/lib/short-form-sound-design-handoff";
 import type { ShortFormVisualGenerationModelId } from "@/lib/short-form-visual-generation";
-import type { ShortFormAutoRunState } from "@/lib/short-form-auto-run";
+import {
+  summarizeShortFormAutoRunError,
+  type ShortFormAutoRunState,
+} from "@/lib/short-form-auto-run";
 
 export type ShortFormStageKey = "research" | "script" | "scene-images" | "sound-design" | "video";
 export type PendingStageKey = "hooks" | ShortFormStageKey;
@@ -3151,7 +3155,12 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
     captionMaxWordsOverride: nextMeta.captionMaxWordsOverride,
     pauseRemovalMinSilenceDurationSecondsOverride: nextMeta.pauseRemovalMinSilenceDurationSecondsOverride,
     pauseRemovalSilenceThresholdDbOverride: nextMeta.pauseRemovalSilenceThresholdDbOverride,
-    autoRun: nextMeta.autoRun,
+    autoRun: nextMeta.autoRun
+      ? {
+          ...nextMeta.autoRun,
+          error: summarizeShortFormAutoRunError(nextMeta.autoRun.error),
+        }
+      : undefined,
     currentStage: "topic",
     pendingStages: getPendingStages(nextMeta, {
       research: resolvedResearch,
@@ -3179,6 +3188,408 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
   return project;
 }
 
+type ShortFormProjectPayloadView =
+  | "nav"
+  | "topic"
+  | "hook"
+  | "research"
+  | "text-script"
+  | "generate-narration-audio"
+  | "plan-captions"
+  | "plan-visuals"
+  | "generate-visuals"
+  | "plan-sound-design"
+  | "generate-sound-design"
+  | "final-video";
+
+const XML_DETAIL_VIEWS = new Set<ShortFormProjectPayloadView>([
+  "generate-narration-audio",
+  "plan-captions",
+  "plan-visuals",
+]);
+
+function compactStageDocument<T extends { content: string }>(
+  doc: T,
+  options?: { includeContent?: boolean },
+): T {
+  return {
+    ...doc,
+    content: options?.includeContent ? doc.content : "",
+  };
+}
+
+function compactPipeline<T extends { steps: Array<VideoPipelineStep | XmlScriptPipelineStep> }>(
+  pipeline: T | undefined,
+  options?: { includeDetails?: boolean },
+): T | undefined {
+  if (!pipeline) return undefined;
+  return {
+    ...pipeline,
+    steps: pipeline.steps.map((step) => ({
+      ...step,
+      details: options?.includeDetails ? step.details : [],
+    })),
+  };
+}
+
+function compactTextScriptRuns(
+  runs: TextScriptRunSummary[] | undefined,
+  options?: { includeDetails?: boolean },
+): TextScriptRunSummary[] | undefined {
+  if (!runs || !options?.includeDetails) return undefined;
+  return runs;
+}
+
+function compactSoundDesignResolution(
+  resolution: ShortFormSoundDesignResolution | undefined,
+  options?: { includeEvents?: boolean },
+): ShortFormSoundDesignResolution | undefined {
+  if (!resolution || options?.includeEvents) return resolution;
+  return {
+    version: resolution.version,
+    generatedAt: resolution.generatedAt,
+    previewAudioRelativePath: resolution.previewAudioRelativePath,
+    previewUpdatedAt: resolution.previewUpdatedAt,
+    qa: resolution.qa,
+    events: [],
+    stats: resolution.stats,
+  };
+}
+
+function compactSceneImagesStage(
+  stage: ShortFormProject["sceneImages"],
+  options?: { includeDetails?: boolean },
+): ShortFormProject["sceneImages"] {
+  return {
+    ...compactStageDocument(stage, { includeContent: options?.includeDetails }),
+    scenes: options?.includeDetails
+      ? stage.scenes
+      : stage.scenes.map((scene) => ({
+          id: scene.id,
+          number: scene.number,
+          caption: scene.caption,
+          status: scene.status,
+          visualType: scene.visualType,
+        })),
+  };
+}
+
+function readStageDocumentForRow(projectId: string, stage: ShortFormStageKey, options?: { pending?: boolean }): StageDocumentSummary {
+  const filePath = getStageFilePath(projectId, stage);
+  if (!fs.existsSync(filePath)) {
+    return {
+      exists: false,
+      status: "draft",
+      content: "",
+      openThreads: 0,
+      pending: Boolean(options?.pending),
+    };
+  }
+
+  const content = fs.readFileSync(filePath, "utf-8");
+  const stats = fs.statSync(filePath);
+  return {
+    exists: extractBody(content).trim().length > 0,
+    status: normalizeStatus(content),
+    content: "",
+    updatedAt: stats.mtime.toISOString(),
+    openThreads: 0,
+    pending: Boolean(options?.pending),
+  };
+}
+
+function getSoundDesignStageForRow(projectId: string, options?: { pending?: boolean }): SoundDesignStageSummary {
+  const docPath = getStageFilePath(projectId, "sound-design");
+  const content = fs.existsSync(docPath) ? fs.readFileSync(docPath, "utf-8") : "";
+  const stats = fs.existsSync(docPath) ? fs.statSync(docPath) : null;
+  const resolution = readJsonFileIfExists(
+    path.join(getShortFormSoundDesignWorkDir(projectId), "resolution.json"),
+  ) as ShortFormSoundDesignResolution | undefined;
+  const previewPath = resolution?.previewAudioRelativePath || getShortFormSoundDesignPreviewRelativePath(projectId);
+  const previewExists = previewPath ? sceneMediaPathExists(projectId, previewPath) : false;
+
+  return {
+    exists: extractBody(content).trim().length > 0,
+    status: normalizeStatus(content),
+    content: "",
+    updatedAt: stats?.mtime.toISOString(),
+    openThreads: 0,
+    pending: Boolean(options?.pending),
+    ...(previewExists && previewPath ? {
+      previewAudioPath: previewPath,
+      previewAudioUrl: toMediaUrl(projectId, previewPath, getProjectMediaVersion(projectId, previewPath)),
+    } : {}),
+    ...(resolution ? {
+      resolution: compactSoundDesignResolution(resolution, { includeEvents: false }),
+    } : {}),
+  };
+}
+
+function getVideoStageForRow(projectId: string, options?: { pending?: boolean }): StageDocumentSummary & {
+  videoPath?: string;
+  videoUrl?: string;
+  pipeline?: VideoPipelineSummary;
+} {
+  const doc = readStageDocumentForRow(projectId, "video", options);
+  const videoArtifactPath = getVideoArtifactPath(projectId);
+  const videoPath = videoArtifactPath
+    ? path.relative(getProjectDir(projectId), videoArtifactPath).split(path.sep).join("/")
+    : undefined;
+
+  return {
+    ...doc,
+    videoPath,
+    videoUrl: videoPath ? toMediaUrl(projectId, videoPath, getProjectMediaVersion(projectId, videoPath)) : undefined,
+    pipeline: videoPath
+      ? {
+          status: "completed",
+          steps: [],
+        }
+      : options?.pending
+        ? {
+            status: "running",
+            steps: [],
+          }
+        : undefined,
+  };
+}
+
+export function selectShortFormProjectPayload(
+  project: ShortFormProject,
+  view: ShortFormProjectPayloadView | string | null | undefined,
+): ShortFormProject {
+  const payloadView = (view || "full") as ShortFormProjectPayloadView | "full";
+  if (payloadView === "full") return project;
+
+  const includeXmlDetails = XML_DETAIL_VIEWS.has(payloadView);
+  const includeSceneDetails = payloadView === "generate-visuals";
+  const includeSoundDetails =
+    payloadView === "plan-sound-design" || payloadView === "generate-sound-design";
+  const includeVideoDetails = payloadView === "final-video";
+  const includeTextScriptDetails = payloadView === "text-script";
+
+  return {
+    ...project,
+    hooks: {
+      ...project.hooks,
+      generations: payloadView === "hook" ? project.hooks.generations : [],
+    },
+    research: compactStageDocument(project.research, {
+      includeContent: payloadView === "research",
+    }),
+    script: {
+      ...compactStageDocument(project.script, {
+        includeContent: includeTextScriptDetails,
+      }),
+      textScriptRuns: compactTextScriptRuns(project.script.textScriptRuns, {
+        includeDetails: includeTextScriptDetails,
+      }),
+    },
+    xmlScript: {
+      ...compactStageDocument(project.xmlScript, {
+        includeContent: includeXmlDetails,
+      }),
+      audioUrl: project.xmlScript.audioUrl,
+      audioPath: project.xmlScript.audioPath,
+      originalAudioUrl: project.xmlScript.originalAudioUrl,
+      originalAudioPath: project.xmlScript.originalAudioPath,
+      captions:
+        includeXmlDetails || includeSceneDetails
+          ? project.xmlScript.captions
+          : project.xmlScript.captions?.map((caption) => ({
+              id: caption.id,
+              index: caption.index,
+              text: caption.text,
+              start: caption.start,
+              end: caption.end,
+              wordCount: caption.wordCount,
+            })),
+      pipeline: compactPipeline(project.xmlScript.pipeline, {
+        includeDetails: includeXmlDetails,
+      }),
+    },
+    sceneImages: compactSceneImagesStage(project.sceneImages, {
+      includeDetails: includeSceneDetails,
+    }),
+    soundDesign: {
+      ...compactStageDocument(project.soundDesign, {
+        includeContent: includeSoundDetails,
+      }),
+      previewAudioUrl: project.soundDesign.previewAudioUrl,
+      previewAudioPath: project.soundDesign.previewAudioPath,
+      reviewAudioUrls: includeSoundDetails
+        ? project.soundDesign.reviewAudioUrls
+        : undefined,
+      resolution: compactSoundDesignResolution(project.soundDesign.resolution, {
+        includeEvents: includeSoundDetails,
+      }),
+    },
+    video: {
+      ...compactStageDocument(project.video, {
+        includeContent: includeVideoDetails,
+      }),
+      videoUrl: project.video.videoUrl,
+      videoPath: project.video.videoPath,
+      pipeline: compactPipeline(project.video.pipeline, {
+        includeDetails: false,
+      }),
+    },
+  };
+}
+
+function getShortFormProjectRow(projectId: string): ShortFormProjectRow | null {
+  const meta = readProjectMeta(projectId);
+  if (!meta) return null;
+
+  const hooksResult = readHooksResult(projectId);
+  const latestHookRequest = meta.latestHookRequest;
+  const hookArtifactFresh = hasFreshHooksArtifact(projectId, latestHookRequest?.requestedAt);
+  const hookRun = hookArtifactFresh
+    ? undefined
+    : findRelevantHookWorkflowRun(projectId, latestHookRequest?.requestedAt, latestHookRequest?.runId);
+  const research = {
+    ...readStageDocumentForRow(projectId, "research", { pending: Boolean(meta.pendingResearch) }),
+    pending: Boolean(meta.pendingResearch),
+  };
+  const script = {
+    ...readStageDocumentForRow(projectId, "script", { pending: Boolean(meta.pendingScript) }),
+    pending: Boolean(meta.pendingScript),
+  };
+  const resolvedPauseRemoval = resolveShortFormPauseRemovalSettings({
+    ...(typeof meta.pauseRemovalMinSilenceDurationSecondsOverride === "number"
+      ? { minSilenceDurationSeconds: meta.pauseRemovalMinSilenceDurationSecondsOverride }
+      : {}),
+    ...(typeof meta.pauseRemovalSilenceThresholdDbOverride === "number"
+      ? { silenceThresholdDb: meta.pauseRemovalSilenceThresholdDbOverride }
+      : {}),
+  });
+  const xmlScript = getXmlScriptDocument(projectId, {
+    expectedVoiceId: meta.selectedVoiceId,
+    expectedPauseRemoval: resolvedPauseRemoval,
+  });
+  const sceneImages = {
+    ...getSceneImagesStage(projectId, { pending: Boolean(meta.pendingSceneImages) }),
+    pending: Boolean(meta.pendingSceneImages),
+  };
+  const soundDesign = getSoundDesignStageForRow(projectId, { pending: Boolean(meta.pendingSoundDesign) });
+  const video = {
+    ...getVideoStageForRow(projectId, { pending: Boolean(meta.pendingVideo) }),
+    pending: Boolean(meta.pendingVideo),
+  };
+
+  const nextMeta = reconcilePendingStages(projectId, meta, {
+    hooks: hooksResult,
+    hookRun,
+    hookArtifactFresh,
+    research,
+    script,
+    sceneImages,
+    soundDesign,
+    video,
+  });
+  const resolvedSelectedHook = resolveSelectedHook(
+    hooksResult.data,
+    nextMeta.selectedHookId,
+    nextMeta.selectedHookText,
+  );
+  const selectedHookText = resolvedSelectedHook?.text ?? nextMeta.selectedHookText;
+  const resolvedResearch = { ...research, pending: Boolean(nextMeta.pendingResearch || research.revision?.isPending) };
+  const resolvedScript = { ...script, pending: Boolean(nextMeta.pendingScript || script.revision?.isPending) };
+  const resolvedSceneImages = { ...sceneImages, pending: Boolean(nextMeta.pendingSceneImages || sceneImages.revision?.isPending) };
+  const resolvedSoundDesign = { ...soundDesign, pending: Boolean(nextMeta.pendingSoundDesign || soundDesign.revision?.isPending) };
+  const resolvedVideo = { ...video, pending: Boolean(nextMeta.pendingVideo || video.revision?.isPending) };
+  const sceneImagesApproved = resolvedSceneImages.status === "approved" || resolvedSceneImages.status === "published";
+  const soundDesignHandoff = getSoundDesignHandoffState({
+    soundDesignDecision: nextMeta.soundDesignDecision,
+    soundDesignSkipReason: nextMeta.soundDesignSkipReason,
+    soundDesign: resolvedSoundDesign,
+  });
+  const soundDesignRowStatus = resolvedSoundDesign.pending
+    ? "working"
+    : soundDesignHandoff.canProceedToFinalVideo
+      ? soundDesignHandoff.status
+      : resolvedSoundDesign.exists
+        ? (soundDesignHandoff.canApprove ? "ready" : "needs review")
+        : sceneImagesApproved
+          ? "ready"
+          : resolvedSoundDesign.status;
+  const videoRowStatus = resolvedVideo.pipeline?.status === "failed" || resolvedVideo.revision?.isFailed
+    ? "failed"
+    : resolvedVideo.pipeline?.status === "completed"
+      ? "completed"
+      : resolvedVideo.pending || resolvedVideo.pipeline?.status === "running"
+        ? "running"
+        : !sceneImagesApproved
+          ? "draft"
+          : !soundDesignHandoff.canProceedToFinalVideo
+            ? "blocked"
+            : resolvedVideo.status || "ready";
+  const currentStage = inferCurrentStage({
+    selectedHookText,
+    research: resolvedResearch,
+    script: resolvedScript,
+    xmlScript,
+    sceneImages: resolvedSceneImages,
+    soundDesign: resolvedSoundDesign,
+    soundDesignDecision: nextMeta.soundDesignDecision,
+    soundDesignSkipReason: nextMeta.soundDesignSkipReason,
+    video: resolvedVideo,
+  });
+
+  return {
+    id: nextMeta.id,
+    topic: nextMeta.topic,
+    title: nextMeta.title,
+    createdAt: nextMeta.createdAt,
+    updatedAt: nextMeta.updatedAt,
+    currentStage,
+    hooks: {
+      selectedHookText,
+      pending: Boolean(nextMeta.pendingHooks),
+    },
+    research: {
+      status: resolvedResearch.status,
+      pending: resolvedResearch.pending,
+    },
+    script: {
+      status: resolvedScript.status,
+      pending: resolvedScript.pending,
+      textScriptMaxIterationsOverride: nextMeta.textScriptMaxIterationsOverride,
+    },
+    xmlScript: {
+      status: xmlScript.status,
+      pending: xmlScript.pending,
+      audioUrl: xmlScript.audioUrl,
+      captionsCount: xmlScript.captions?.length || 0,
+      pipeline: xmlScript.pipeline
+        ? {
+            status: xmlScript.pipeline.status,
+            steps: xmlScript.pipeline.steps.map((step) => ({
+              id: step.id,
+              label: step.label,
+              status: step.status,
+            })),
+          }
+        : undefined,
+    },
+    sceneImages: {
+      status: resolvedSceneImages.status,
+      sceneCount: resolvedSceneImages.scenes.length,
+      pending: resolvedSceneImages.pending,
+    },
+    soundDesign: {
+      status: soundDesignRowStatus,
+      eventCount: resolvedSoundDesign.resolution?.stats?.total || resolvedSoundDesign.resolution?.events?.length || 0,
+      pending: resolvedSoundDesign.pending,
+    },
+    video: {
+      status: videoRowStatus,
+      videoUrl: resolvedVideo.videoUrl,
+      pending: resolvedVideo.pending,
+    },
+  };
+}
+
 export function listShortFormProjectRows(): ShortFormProjectRow[] {
   ensureShortFormRoot();
   const dirs = fs
@@ -3186,86 +3597,7 @@ export function listShortFormProjectRows(): ShortFormProjectRow[] {
     .filter((entry) => fs.statSync(path.join(SHORT_FORM_VIDEOS_DIR, entry)).isDirectory());
 
   const projects = dirs
-    .map((dir): ShortFormProjectRow | null => {
-      const project = getShortFormProject(dir);
-      if (!project) return null;
-      const sceneImagesApproved = project.sceneImages.status === "approved" || project.sceneImages.status === "published";
-      const soundDesignHandoff = getSoundDesignHandoffState(project);
-      const soundDesignRowStatus = project.soundDesign.pending
-        ? "working"
-        : soundDesignHandoff.canProceedToFinalVideo
-          ? soundDesignHandoff.status
-          : project.soundDesign.exists
-            ? (soundDesignHandoff.canApprove ? "ready" : "needs review")
-            : sceneImagesApproved
-              ? "ready"
-              : project.soundDesign.status;
-      const videoRowStatus = project.video.pipeline?.status === "failed" || project.video.revision?.isFailed
-        ? "failed"
-        : project.video.pipeline?.status === "completed"
-          ? "completed"
-          : project.video.pending || project.video.pipeline?.status === "running"
-            ? "running"
-            : !sceneImagesApproved
-              ? "draft"
-              : !soundDesignHandoff.canProceedToFinalVideo
-                ? "blocked"
-                : project.video.status || "ready";
-
-      return {
-        id: project.id,
-        topic: project.topic,
-        title: project.title,
-        createdAt: project.createdAt,
-        updatedAt: project.updatedAt,
-        currentStage: project.currentStage,
-        hooks: {
-          selectedHookText: project.hooks.selectedHookText,
-          pending: project.hooks.pending,
-        },
-        research: {
-          status: project.research.status,
-          pending: project.research.pending,
-        },
-        script: {
-          status: project.script.status,
-          pending: project.script.pending,
-          textScriptLatestRunId: project.script.textScriptLatestRunId,
-          textScriptMaxIterationsOverride: project.script.textScriptMaxIterationsOverride,
-        },
-        xmlScript: {
-          status: project.xmlScript.status,
-          pending: project.xmlScript.pending,
-          audioUrl: project.xmlScript.audioUrl,
-          captionsCount: project.xmlScript.captions?.length || 0,
-          pipeline: project.xmlScript.pipeline
-            ? {
-                status: project.xmlScript.pipeline.status,
-                steps: project.xmlScript.pipeline.steps.map((step) => ({
-                  id: step.id,
-                  label: step.label,
-                  status: step.status,
-                })),
-              }
-            : undefined,
-        },
-        sceneImages: {
-          status: project.sceneImages.status,
-          sceneCount: project.sceneImages.scenes.length,
-          pending: project.sceneImages.pending,
-        },
-        soundDesign: {
-          status: soundDesignRowStatus,
-          eventCount: project.soundDesign.resolution?.events?.length || 0,
-          pending: project.soundDesign.pending,
-        },
-        video: {
-          status: videoRowStatus,
-          videoUrl: project.video.videoUrl,
-          pending: project.video.pending,
-        },
-      };
-    })
+    .map((dir) => getShortFormProjectRow(dir))
     .filter((project): project is ShortFormProjectRow => Boolean(project));
 
   return projects.sort(

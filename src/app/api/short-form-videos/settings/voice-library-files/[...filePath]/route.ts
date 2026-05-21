@@ -1,6 +1,5 @@
 import fs from "fs";
 import path from "path";
-import { Readable } from "stream";
 import { NextRequest, NextResponse } from "next/server";
 import { getShortFormVoiceLibraryDir } from "@/lib/short-form-video-render-settings";
 
@@ -89,9 +88,9 @@ export async function GET(
 
       const { start, end } = parsedRange;
       const chunkSize = end - start + 1;
-      const stream = fs.createReadStream(resolvedPath, { start, end });
+      const body = (await fs.promises.readFile(resolvedPath)).subarray(start, end + 1);
 
-      return new NextResponse(Readable.toWeb(stream) as unknown as ReadableStream, {
+      return new NextResponse(body, {
         status: 206,
         headers: new Headers({
           ...Object.fromEntries(baseHeaders.entries()),
@@ -101,8 +100,8 @@ export async function GET(
       });
     }
 
-    const stream = fs.createReadStream(resolvedPath);
-    return new NextResponse(Readable.toWeb(stream) as unknown as ReadableStream, {
+    const body = await fs.promises.readFile(resolvedPath);
+    return new NextResponse(body, {
       headers: new Headers({
         ...Object.fromEntries(baseHeaders.entries()),
         "Content-Length": String(stat.size),

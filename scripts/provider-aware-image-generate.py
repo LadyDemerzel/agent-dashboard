@@ -589,6 +589,24 @@ def openclaw_edit_rejected_reference_images(result: subprocess.CompletedProcess[
     )
 
 
+def openclaw_edit_transport_failed(result: subprocess.CompletedProcess[str]) -> bool:
+    combined = f"{result.stdout or ''}\n{result.stderr or ''}".lower()
+    retryable_markers = [
+        "fetch failed",
+        "write epipe",
+        "econnreset",
+        "connection reset",
+        "connection aborted",
+        "socket hang up",
+        "stream disconnected",
+    ]
+    return any(marker in combined for marker in retryable_markers)
+
+
+def should_fallback_openclaw_edit_to_generate(result: subprocess.CompletedProcess[str]) -> bool:
+    return openclaw_edit_rejected_reference_images(result) or openclaw_edit_transport_failed(result)
+
+
 def build_openclaw_command(
     args: argparse.Namespace,
     requested_output: Path,
@@ -701,11 +719,11 @@ def run_openclaw_infer(args: argparse.Namespace) -> int:
             result.returncode != 0
             and args.input_images
             and is_codex_oauth_only_openai_model(args.model)
-            and openclaw_edit_rejected_reference_images(result)
+            and should_fallback_openclaw_edit_to_generate(result)
         ):
             emit_failed_openclaw_result(result)
             print(
-                "WARN: OpenClaw Codex image edit rejected reference image data; retrying once without --file attachments.",
+                "WARN: OpenClaw Codex image edit failed with attached reference images; retrying once without --file attachments.",
                 file=sys.stderr,
             )
             command = build_openclaw_command(

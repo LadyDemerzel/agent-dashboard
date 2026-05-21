@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import { Readable } from "stream";
 import { getShortFormBackgroundVideosDir } from "@/lib/short-form-background-videos";
 
 export const dynamic = "force-dynamic";
@@ -37,9 +36,9 @@ export async function GET(
   const ext = path.extname(absolutePath).toLowerCase();
   const contentType = CONTENT_TYPES[ext] || "application/octet-stream";
   const stat = fs.statSync(absolutePath);
-  const stream = fs.createReadStream(absolutePath);
+  const body = await fs.promises.readFile(absolutePath);
 
-  return new NextResponse(Readable.toWeb(stream) as unknown as ReadableStream, {
+  return new NextResponse(body, {
     headers: {
       "Content-Type": contentType,
       "Content-Length": String(stat.size),

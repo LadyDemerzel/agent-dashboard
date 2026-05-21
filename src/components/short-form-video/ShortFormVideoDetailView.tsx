@@ -6691,7 +6691,9 @@ export function ShortFormVideoDetailView({
       project?.autoRun?.status === "active" ||
       savingTopic),
   );
-  const projectKey = projectId ? `/api/short-form-videos/${projectId}` : null;
+  const projectKey = projectId
+    ? `/api/short-form-videos/${projectId}?section=${encodeURIComponent(activeSection)}`
+    : null;
   const {
     data: projectPayload,
     error: pollingError,

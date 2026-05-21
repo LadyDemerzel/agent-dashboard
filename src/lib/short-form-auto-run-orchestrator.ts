@@ -6,6 +6,7 @@ import {
   getShortFormAutoRunStepLabel,
   getShortFormAutoRunSubsequentSteps,
   SHORT_FORM_AUTO_RUN_STEPS,
+  summarizeShortFormAutoRunError,
   type ShortFormAutoRunState,
   type ShortFormAutoRunStepDefinition,
   type ShortFormAutoRunStepId,
@@ -1905,7 +1906,7 @@ async function runAutoRun(
     updateAutoRun(projectId, autoRun, {
       status: "failed",
       failedStep: autoRun.currentStep,
-      error: error instanceof Error ? error.message : "Auto-run failed",
+      error: summarizeShortFormAutoRunError(error instanceof Error ? error.message : String(error)) || "Auto-run failed",
       currentStep: undefined,
       finishedAt: nowIso(),
     });

@@ -181,7 +181,7 @@ function AutoRunSidebarCallout({ autoRun }: { autoRun?: ShortFormAutoRunState })
             })}
           </div>
           {autoRun.error ? (
-            <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            <p className="mt-3 whitespace-pre-wrap rounded-md border border-destructive/40 bg-destructive/10 p-4 text-base font-semibold leading-relaxed text-destructive">
               {autoRun.error}
             </p>
           ) : null}
@@ -246,7 +246,7 @@ function SecondarySidebarBody({
 
                   return (
                     <SidebarMenuItem key={item.href}>
-                      <SidebarMenuLink href={item.href} isActive={active} onClick={onNavigate} className="h-auto items-center py-3">
+                      <SidebarMenuLink href={item.href} prefetch={false} isActive={active} onClick={onNavigate} className="h-auto items-center py-3">
                         {itemContent}
                       </SidebarMenuLink>
                     </SidebarMenuItem>

@@ -139,6 +139,35 @@ function asOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+export function summarizeShortFormAutoRunError(value: unknown, maxLength = 1200) {
+  const raw = asOptionalString(value);
+  if (!raw) return undefined;
+
+  const clean = raw
+    .replace(/\x1b\[[0-9;]*m/g, "")
+    .replace(/\r/g, "")
+    .trim();
+  const runtimeMatch = clean.match(/RuntimeError:\s*([^\n]+)/);
+  const candidateMatch = clean.match(/candidate failed:\s*([^\n]+)/);
+  const typeMatch = clean.match(/TypeError:\s*([^\n]+)/);
+
+  const parts = [
+    runtimeMatch?.[1],
+    candidateMatch?.[1] ? `Provider error: ${candidateMatch[1]}` : undefined,
+    !candidateMatch?.[1] && typeMatch?.[1] ? `Provider error: ${typeMatch[1]}` : undefined,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .map((part) => part.replace(/\s+/g, " ").trim());
+
+  const summary = parts.length > 0
+    ? Array.from(new Set(parts)).join(" ")
+    : clean.replace(/\s+/g, " ");
+
+  return summary.length > maxLength
+    ? `${summary.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`
+    : summary;
+}
+
 function asRequiredString(value: unknown, fallback: string) {
   return asOptionalString(value) || fallback;
 }
@@ -179,7 +208,7 @@ export function normalizeShortFormAutoRunState(
     waitingSteps: asStepIds(obj.waitingSteps),
     currentStep: asStepId(obj.currentStep),
     failedStep: asStepId(obj.failedStep),
-    error: asOptionalString(obj.error),
+    error: summarizeShortFormAutoRunError(obj.error),
     startedAt: asIsoString(obj.startedAt, now),
     updatedAt: asIsoString(obj.updatedAt, now),
     finishedAt: asOptionalIsoString(obj.finishedAt),

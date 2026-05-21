@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getShortFormProject, updateProjectMeta } from "@/lib/short-form-videos";
+import { getShortFormProject, selectShortFormProjectPayload, updateProjectMeta } from "@/lib/short-form-videos";
 import { resolveShortFormImageStyle } from "@/lib/short-form-image-styles";
 import { getShortFormVideoRenderSettings } from "@/lib/short-form-video-render-settings";
 import { getShortFormBackgroundVideoSettings } from "@/lib/short-form-background-videos";
@@ -11,7 +11,7 @@ import { reconcileStaleShortFormAutoRun } from "@/lib/short-form-auto-run-orches
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
@@ -20,7 +20,11 @@ export async function GET(
     return NextResponse.json({ success: false, error: "Project not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ success: true, data: project });
+  const view = request.nextUrl.searchParams.get("view") || request.nextUrl.searchParams.get("section");
+  return NextResponse.json({
+    success: true,
+    data: selectShortFormProjectPayload(project, view),
+  });
 }
 
 export async function PATCH(

@@ -65,6 +65,7 @@ export function SecondaryNavRail({
                 <Link
                   key={item.href}
                   href={item.href}
+                  prefetch={false}
                   className={cn(
                     'block rounded-lg px-3 py-2.5 transition-colors',
                     active
@@ -99,6 +100,7 @@ export function SecondaryNavRail({
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={false}
                 className={cn(
                   'shrink-0 rounded-full border px-3 py-2 text-xs font-medium transition-colors',
                   active

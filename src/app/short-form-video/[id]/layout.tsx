@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { ShortFormVideoDetailShell } from "@/components/short-form-video/ShortFormVideoDetailShell";
 import { createEntityPageTitle, createPageMetadata } from "@/lib/metadata";
 import { normalizeShortFormProject } from "@/lib/short-form-video-client";
-import { getShortFormProject } from "@/lib/short-form-videos";
+import { getShortFormProject, selectShortFormProjectPayload } from "@/lib/short-form-videos";
 
 export const dynamic = "force-dynamic";
 
@@ -31,11 +31,12 @@ export default async function ShortFormVideoDetailLayout({
 }) {
   const { id } = await params;
   const project = getShortFormProject(id);
+  const navProject = project ? selectShortFormProjectPayload(project, "nav") : null;
 
   return (
     <ShortFormVideoDetailShell
       projectId={id}
-      initialProject={project ? normalizeShortFormProject(project) : null}
+      initialProject={navProject ? normalizeShortFormProject(navProject) : null}
     >
       {children}
     </ShortFormVideoDetailShell>

@@ -548,6 +548,25 @@ assert.equal(finalGoodIndicatorRuleY, 1040, "good/bad indicator short text shoul
 assert.ok(overlayInputs.some((overlay) => overlay.filePath.includes("circleCheck")), "Good indicator should use the lucide circle-check SVG overlay");
 assert.equal(overlayInputs.find((overlay) => overlay.filePath.includes("circleCheck"))?.height, Math.round(144 * 1.3), "Good indicator icon should be 30% larger than the previous 144px size");
 
+const timedGoodOverlayInputs = [];
+timedGoodOverlayInputs.tempDir = process.cwd();
+timedGoodOverlayInputs.duration = 5;
+const timedGoodIndicatorFilters = await goodBadIndicator(
+  { indicatorType: "good", text: "Timed indicator", animationTimings: { icon: 0.1, text: 1.4, rule: 2.2, underline: 2.3 } },
+  "dark-pastel-watercolor",
+  timedGoodOverlayInputs,
+);
+assert.equal(timedGoodOverlayInputs.find((overlay) => overlay.filePath.includes("circleCheck"))?.start, 1.4, "good/bad indicator icon should animate with indicator text timing, not separate icon timing");
+assert.ok(hasEscapedTextAt(timedGoodIndicatorFilters, "Timed indicator", 1.4), "good/bad indicator text should honor explicit text animation timing");
+assert.ok(
+  timedGoodIndicatorFilters.some((filter) => filter.includes(":h=4") && filter.includes("between(t\\,1.400")),
+  "good/bad indicator underline should animate with indicator text timing, not separate rule/underline timing",
+);
+assert.ok(
+  !timedGoodIndicatorFilters.some((filter) => filter.includes(":h=4") && (filter.includes("between(t\\,2.200") || filter.includes("between(t\\,2.300"))),
+  "good/bad indicator underline should ignore separate rule/underline timings",
+);
+
 const longGoodOverlayInputs = [];
 longGoodOverlayInputs.tempDir = process.cwd();
 longGoodOverlayInputs.duration = 5;
