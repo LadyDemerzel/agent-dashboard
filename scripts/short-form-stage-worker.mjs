@@ -1382,6 +1382,13 @@ function escapeXmlText(value) {
     .replace(/>/g, "&gt;");
 }
 
+function renderXmlAttributes(attributes) {
+  return Object.entries(attributes || {})
+    .filter(([key, value]) => key && value !== undefined && value !== null && String(value).trim() !== "")
+    .map(([key, value]) => `${key}="${escapeXmlAttribute(value)}"`)
+    .join(" ");
+}
+
 function decodeXmlText(value) {
   return String(value || "")
     .replace(/&lt;/g, "<")
@@ -1495,6 +1502,13 @@ function getXmlElementInnerText(xml, node) {
   return decodeXmlText(xml.slice(node.openEnd, node.closeStart));
 }
 
+function getXmlElementOuterXml(xml, node) {
+  if (!node || !Number.isInteger(node.start) || !Number.isInteger(node.end)) {
+    return "";
+  }
+  return xml.slice(node.start, node.end);
+}
+
 function replaceXmlElementInnerText(xml, node, nextText) {
   if (!node || !Number.isInteger(node.openEnd) || !Number.isInteger(node.closeStart)) {
     throw new Error(`Cannot serialize XML: <${node?.tagName || "unknown"}> is not a normal element.`);
@@ -1504,6 +1518,175 @@ function replaceXmlElementInnerText(xml, node, nextText) {
 
 function collapseWhitespace(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function isMotionGraphicVisualNode(visual) {
+  const visualType = collapseWhitespace(getXmlAttribute(visual, "visualType") || getXmlAttribute(visual, "type"));
+  return visualType === "motion_graphic"
+    || Boolean(collapseWhitespace(getXmlAttribute(visual, "motionGraphicId") || getXmlAttribute(visual, "motionId") || getXmlAttribute(visual, "motionGraphic")))
+    || Boolean(getFirstDirectXmlChild(visual, "motionGraphic"));
+}
+
+function normalizeInlineImageId(value, fallback) {
+  const raw = collapseWhitespace(value) || collapseWhitespace(fallback);
+  return raw.replace(/[^A-Za-z0-9._:-]+/g, "-").replace(/^-+|-+$/g, "") || "image";
+}
+
+function buildTimelineImageRuntimeXml(xml) {
+  const document = parseXmlDocument(xml);
+  const root = getXmlRoot(document);
+  const assets = getFirstDirectXmlChild(root, "assets");
+  const timeline = getFirstDirectXmlChild(root, "timeline");
+  if (!timeline) return { xml, transformed: false, imageAssets: [], visuals: [], assetDependencies: new Map() };
+
+  const legacyAssetXmlById = new Map();
+  const assetDependencies = new Map();
+  const referenceToImage = new Map();
+  for (const image of getDirectXmlChildren(assets, "image")) {
+    const imageId = getXmlAttribute(image, "id");
+    if (!imageId) continue;
+    legacyAssetXmlById.set(imageId, getXmlElementOuterXml(xml, image));
+    assetDependencies.set(imageId, getXmlAttribute(image, "basedOn") || undefined);
+    referenceToImage.set(imageId, { imageId, firstVisualIndex: 0 });
+  }
+
+  const inlineAssetXmlById = new Map();
+  const visuals = [];
+  let transformed = false;
+  const visualReplacements = [];
+  const visualNodes = getDirectXmlChildren(timeline, "visual");
+
+  for (let index = 0; index < visualNodes.length; index += 1) {
+    const visual = visualNodes[index];
+    const visualIndex = index + 1;
+    const visualId = getXmlAttribute(visual, "id") || `visual-${visualIndex}`;
+    const inlineImage = getFirstDirectXmlChild(visual, "image");
+    const motionGraphic = isMotionGraphicVisualNode(visual);
+    const visualAttrs = { ...visual.attributes };
+
+    if (inlineImage) {
+      if (motionGraphic) {
+        throw new Error(`Visual ${visualId} cannot contain both inline <image> and motion graphic definitions.`);
+      }
+      const imageId = normalizeInlineImageId(getXmlAttribute(inlineImage, "id"), visualId);
+      if ((legacyAssetXmlById.has(imageId) || inlineAssetXmlById.has(imageId)) && referenceToImage.get(imageId)?.firstVisualIndex !== visualIndex) {
+        throw new Error(`Inline image id "${imageId}" is defined more than once. Use imageId="${imageId}" on later visuals to reuse it.`);
+      }
+
+      const imageAttrs = { ...inlineImage.attributes, id: imageId };
+      const basedOnRaw = getXmlAttribute(inlineImage, "basedOn");
+      if (basedOnRaw) {
+        const parent = referenceToImage.get(basedOnRaw);
+        if (!parent || !parent.imageId || parent.firstVisualIndex >= visualIndex) {
+          throw new Error(`Inline image ${imageId} in visual ${visualId} has basedOn="${basedOnRaw}", but image references may only point to an image visual earlier in the timeline.`);
+        }
+        imageAttrs.basedOn = parent.imageId;
+        assetDependencies.set(imageId, parent.imageId);
+      } else {
+        delete imageAttrs.basedOn;
+        assetDependencies.set(imageId, undefined);
+      }
+
+      const imageBody = Number.isInteger(inlineImage.openEnd) && Number.isInteger(inlineImage.closeStart)
+        ? xml.slice(inlineImage.openEnd, inlineImage.closeStart).trim()
+        : "";
+      const renderedAttrs = renderXmlAttributes(imageAttrs);
+      inlineAssetXmlById.set(imageId, `<image ${renderedAttrs}>${imageBody ? `\n${imageBody}\n    ` : ""}</image>`);
+      referenceToImage.set(imageId, { imageId, firstVisualIndex: visualIndex });
+      referenceToImage.set(visualId, { imageId, firstVisualIndex: visualIndex });
+      visualAttrs.imageId = imageId;
+      delete visualAttrs.reuseImageId;
+      delete visualAttrs.imageRef;
+
+      const visualBodyWithoutImage = xml
+        .slice(visual.openEnd, visual.closeStart ?? visual.openEnd)
+        .replace(getXmlElementOuterXml(xml, inlineImage), "")
+        .trim();
+      const visualAttrText = renderXmlAttributes(visualAttrs);
+      const nextVisualXml = visualBodyWithoutImage
+        ? `<visual ${visualAttrText}>\n${visualBodyWithoutImage}\n    </visual>`
+        : `<visual ${visualAttrText} />`;
+      visualReplacements.push({ start: visual.start, end: visual.end, value: nextVisualXml });
+      visuals.push({ index: visualIndex, visualId, imageId });
+      transformed = true;
+      continue;
+    }
+
+    const imageReference = collapseWhitespace(visualAttrs.imageId || visualAttrs.reuseImageId || visualAttrs.imageRef);
+    if (imageReference && !motionGraphic) {
+      const referenced = referenceToImage.get(imageReference);
+      if (referenced?.imageId) {
+        if (referenced.firstVisualIndex >= visualIndex) {
+          throw new Error(`Visual ${visualId} reuses image "${imageReference}", but image visuals may only reuse image visuals that came earlier in the timeline.`);
+        }
+        visualAttrs.imageId = referenced.imageId;
+        delete visualAttrs.reuseImageId;
+        delete visualAttrs.imageRef;
+        if (visualAttrs.imageId !== visual.attributes.imageId || visual.attributes.reuseImageId || visual.attributes.imageRef) {
+          const visualBody = Number.isInteger(visual.openEnd) && Number.isInteger(visual.closeStart)
+            ? xml.slice(visual.openEnd, visual.closeStart).trim()
+            : "";
+          const visualAttrText = renderXmlAttributes(visualAttrs);
+          visualReplacements.push({
+            start: visual.start,
+            end: visual.end,
+            value: visualBody ? `<visual ${visualAttrText}>${visualBody}</visual>` : `<visual ${visualAttrText} />`,
+          });
+          transformed = true;
+        }
+        visuals.push({ index: visualIndex, visualId, imageId: referenced.imageId });
+      } else {
+        throw new Error(`Visual ${visualId} references image "${imageReference}", but no earlier inline image visual or <assets><image> with that id exists.`);
+      }
+    } else {
+      visuals.push({ index: visualIndex, visualId, imageId: motionGraphic ? undefined : getXmlAttribute(visual, "imageId") || undefined });
+    }
+  }
+
+  if (!transformed) {
+    return { xml, transformed: false, imageAssets: [...legacyAssetXmlById.keys()], visuals, assetDependencies };
+  }
+
+  let nextXml = xml;
+  for (const replacement of [...visualReplacements].sort((a, b) => b.start - a.start)) {
+    nextXml = `${nextXml.slice(0, replacement.start)}${replacement.value}${nextXml.slice(replacement.end)}`;
+  }
+
+  const inlineAssetXml = [...inlineAssetXmlById.values()]
+    .map((assetXml) => `    ${assetXml.replace(/\n/g, "\n    ")}`)
+    .join("\n");
+  if (inlineAssetXml) {
+    if (/<assets\b[^>]*\/>/i.test(nextXml)) {
+      nextXml = nextXml.replace(/<assets\b([^>]*)\/>/i, (_match, rawAttributes) => {
+        const attributes = collapseWhitespace(rawAttributes);
+        return `<assets${attributes ? ` ${attributes}` : ""}>\n${inlineAssetXml}\n  </assets>`;
+      });
+    } else if (/<assets\b[^>]*>[\s\S]*?<\/assets>/i.test(nextXml)) {
+      nextXml = nextXml.replace(/<\/assets>/i, `${inlineAssetXml}\n  </assets>`);
+    } else {
+      nextXml = nextXml.replace(/<timeline\b/i, `<assets>\n${inlineAssetXml}\n  </assets>\n  <timeline`);
+    }
+  }
+
+  return {
+    xml: `${nextXml.trim()}\n`,
+    transformed: true,
+    imageAssets: [...legacyAssetXmlById.keys(), ...inlineAssetXmlById.keys()],
+    visuals,
+    assetDependencies,
+  };
+}
+
+function normalizeTimelineImageRuntimeXmlFile(xmlPath) {
+  if (!xmlPath || !fs.existsSync(xmlPath)) {
+    return { transformed: false, imageAssets: [], visuals: [], assetDependencies: new Map() };
+  }
+  const raw = fs.readFileSync(xmlPath, "utf-8");
+  const result = buildTimelineImageRuntimeXml(raw);
+  if (result.transformed && result.xml !== raw) {
+    fs.writeFileSync(xmlPath, result.xml, "utf-8");
+  }
+  return result;
 }
 
 function parseBooleanAttribute(value) {
@@ -1949,6 +2132,14 @@ function parseVisualRuntimeSpec(xmlPath) {
     return { visuals: [], assetDependencies: new Map() };
   }
 
+  const normalized = normalizeTimelineImageRuntimeXmlFile(xmlPath);
+  if (normalized.transformed) {
+    return {
+      visuals: normalized.visuals,
+      assetDependencies: normalized.assetDependencies,
+    };
+  }
+
   const { document } = readXmlScriptDocument(xmlPath);
   const root = getXmlRoot(document);
   const rawAssetDependencies = new Map();
@@ -2014,22 +2205,26 @@ function updateXmlImagePromptForScene(scriptPath, sceneIndex, nextPrompt, identi
   }
   const targetVisualId = getXmlAttribute(targetVisual, "id") || undefined;
   const targetImageId = getXmlAttribute(targetVisual, "imageId");
+  const inlineImage = getFirstDirectXmlChild(targetVisual, "image");
   if (!targetImageId) {
-    throw new Error(`Cannot update XML prompt for scene-${sceneIndex}: the target visual has no imageId.`);
+    if (!inlineImage) {
+      throw new Error(`Cannot update XML prompt for scene-${sceneIndex}: the target visual has no imageId or inline <image>.`);
+    }
   }
-  if (requestedImageId && targetImageId !== requestedImageId) {
+  const inlineImageId = inlineImage ? (getXmlAttribute(inlineImage, "id") || targetVisualId) : "";
+  if (requestedImageId && targetImageId !== requestedImageId && inlineImageId !== requestedImageId) {
     throw new Error(`Cannot update XML prompt for scene-${sceneIndex}: visual ${targetVisualId || sceneIndex} points to image ${targetImageId}, not requested image ${requestedImageId}.`);
   }
 
-  const targetImage = getDirectXmlChildren(assets, "image")
+  const targetImage = inlineImage || getDirectXmlChildren(assets, "image")
     .find((image) => getXmlAttribute(image, "id") === targetImageId);
   if (!targetImage) {
-    throw new Error(`Cannot update XML prompt for scene-${sceneIndex}: image asset ${targetImageId} was not found.`);
+    throw new Error(`Cannot update XML prompt for scene-${sceneIndex}: image asset ${targetImageId || inlineImageId} was not found.`);
   }
 
   const promptElement = getFirstDirectXmlChild(targetImage, "prompt");
   if (!promptElement) {
-    throw new Error(`Cannot update XML prompt for scene-${sceneIndex}: image asset ${targetImageId} has no <prompt>.`);
+    throw new Error(`Cannot update XML prompt for scene-${sceneIndex}: image asset ${targetImageId || inlineImageId} has no <prompt>.`);
   }
 
   const previousPrompt = getXmlElementInnerText(body, promptElement).trim();
@@ -2043,7 +2238,7 @@ function updateXmlImagePromptForScene(scriptPath, sceneIndex, nextPrompt, identi
   return {
     changed,
     visualId: targetVisualId,
-    imageId: targetImageId,
+    imageId: targetImageId || inlineImageId,
     previousPrompt,
     nextPrompt: cleanedPrompt,
   };
@@ -4501,6 +4696,7 @@ function runDirectSceneImages(job) {
   }
 
   const runtimeXmlPath = resolveXmlRuntimePath(config.scriptPath, runDir, "scene-images-runtime.xml");
+  const timelineImageRuntime = normalizeTimelineImageRuntimeXmlFile(runtimeXmlPath);
   const xmlWorkDir = path.join(getProjectDir(job.projectId), "output", "xml-script-work");
   const existingAlignmentPath = path.join(xmlWorkDir, "alignment", "word-timestamps.json");
   const preMotionSceneIndexes = requestedSceneIndexes.length > 0
@@ -4608,6 +4804,7 @@ function runDirectSceneImages(job) {
     visualGenerationModelId,
     visualGenerationModelLabel: config.visualGenerationModelLabel,
     visualGenerationModelRef,
+    timelineImagesTransformed: timelineImageRuntime.transformed,
     xmlPromptEdit: xmlPromptEditResult,
     motionGraphicsRendered: motionGraphics.rendered.length,
     stdout: result.stdout.trim(),
@@ -4684,6 +4881,7 @@ function runDirectVideo(job) {
     runDir,
     "video-runtime.xml",
   );
+  normalizeTimelineImageRuntimeXmlFile(runtimeXmlPath);
   if (sceneImagesRuntimeXmlPath) {
     preserveRuntimeMotionGraphicRendererMetadata(runtimeXmlPath, getSceneGeneratorManifestPath(job.projectId));
     restoreMissingMotionGraphicVideosFromSceneImageRun(job.projectId, config.sceneImagesDir);
@@ -4987,6 +5185,19 @@ if (process.env.SHORT_FORM_STAGE_WORKER_DEPENDENCY_EXPANSION_TEST === "1") {
     .filter((value) => Number.isInteger(value) && value > 0);
   const result = expandSceneIndexesForDependencies(jobPath, requestedIndexes);
   console.log(JSON.stringify(result));
+  process.exit(0);
+}
+
+if (process.env.SHORT_FORM_STAGE_WORKER_TIMELINE_IMAGE_RUNTIME_TEST === "1") {
+  const xml = fs.readFileSync(jobPath, "utf-8");
+  const result = buildTimelineImageRuntimeXml(xml);
+  console.log(JSON.stringify({
+    transformed: result.transformed,
+    imageAssets: result.imageAssets,
+    visuals: result.visuals,
+    assetDependencies: [...result.assetDependencies.entries()],
+    xml: result.xml,
+  }, null, 2));
   process.exit(0);
 }
 

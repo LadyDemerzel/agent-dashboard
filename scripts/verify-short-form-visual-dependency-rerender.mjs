@@ -99,4 +99,24 @@ assert(
 );
 assert(!childExpansion.includes(1) && !childExpansion.includes(4) && !childExpansion.includes(5), "child rerender should not include ancestors or unrelated visuals");
 
+const timelineImageXml = `
+<video version="2">
+  <assets></assets>
+  <timeline>
+    <visual id="parent-visual"><image id="parent-img"><prompt>Parent</prompt></image></visual>
+    <visual id="reuse-visual" imageId="parent-visual"><label>Reuse parent</label></visual>
+    <visual id="child-visual"><image id="child-img" basedOn="parent-visual"><prompt>Child</prompt></image></visual>
+    <visual id="grandchild-visual"><image id="grandchild-img" basedOn="child-visual"><prompt>Grandchild</prompt></image></visual>
+    <visual id="sibling-visual"><image id="sibling-img"><prompt>Sibling</prompt></image></visual>
+  </timeline>
+</video>
+`;
+
+const timelineParentExpansion = runExpansion(timelineImageXml, [1]);
+assert(
+  JSON.stringify(timelineParentExpansion) === JSON.stringify([1, 2, 3, 4]),
+  `timeline inline image expansion should include reuse and recursive descendants, got ${JSON.stringify(timelineParentExpansion)}`,
+);
+assert(!timelineParentExpansion.includes(5), "timeline inline sibling visual must not be reset by parent rerender");
+
 console.log("Short-form visual dependency rerender verification passed.");

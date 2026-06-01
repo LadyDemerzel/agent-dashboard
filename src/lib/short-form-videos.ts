@@ -1799,14 +1799,29 @@ function readExpectedScriptVisualSpec(projectId: string) {
       rawAssetDependencies.set(imageId, basedOnImageId || undefined);
     }
 
-    const scenes = Array.from(timelineBody.matchAll(/<visual\b([^>]*?)(?:\/>|>([\s\S]*?)<\/visual>)/gi)).map((match, index) => {
+    const visualMatches = Array.from(timelineBody.matchAll(/<visual\b([^>]*?)(?:\/>|>([\s\S]*?)<\/visual>)/gi));
+    const referenceToImageId = new Map<string, string>();
+    for (const imageId of rawAssetDependencies.keys()) {
+      referenceToImageId.set(imageId, imageId);
+    }
+
+    const scenes = visualMatches.map((match, index) => {
       const number = index + 1;
       const attributes = parseXmlAttributes(match[1] || "");
       const visualBody = match[2] || "";
       const labelFromBody = visualBody.match(/<label>([\s\S]*?)<\/label>/i)?.[1] || "";
       const caption = normalizeXmlText(attributes.label || labelFromBody) || `Scene ${number}`;
-      const imageId = attributes.imageId?.trim();
       const visualId = attributes.id?.trim();
+      const inlineImage = visualBody.match(/<image\b([^>]*?)(?:\/>|>([\s\S]*?)<\/image>)/i);
+      const inlineImageAttributes = inlineImage ? parseXmlAttributes(inlineImage[1] || "") : {};
+      const inlineImageId = inlineImage ? (inlineImageAttributes.id?.trim() || visualId || `visual-${number}`) : "";
+      if (inlineImageId) {
+        rawAssetDependencies.set(inlineImageId, inlineImageAttributes.basedOn?.trim() || undefined);
+        referenceToImageId.set(inlineImageId, inlineImageId);
+        if (visualId) referenceToImageId.set(visualId, inlineImageId);
+      }
+      const rawImageReference = attributes.imageId?.trim();
+      const imageId = inlineImageId || (rawImageReference ? referenceToImageId.get(rawImageReference) || rawImageReference : "");
       return {
         id: `scene-${number}`,
         number,
@@ -1815,17 +1830,13 @@ function readExpectedScriptVisualSpec(projectId: string) {
         ...(visualId ? { visualId } : {}),
       };
     });
-    const imageIdByReference = new Map<string, string>();
-    for (const imageId of rawAssetDependencies.keys()) {
-      imageIdByReference.set(imageId, imageId);
-    }
     for (const scene of scenes) {
-      if (scene.imageId) imageIdByReference.set(scene.imageId, scene.imageId);
-      if (scene.visualId && scene.imageId) imageIdByReference.set(scene.visualId, scene.imageId);
+      if (scene.imageId) referenceToImageId.set(scene.imageId, scene.imageId);
+      if (scene.visualId && scene.imageId) referenceToImageId.set(scene.visualId, scene.imageId);
     }
     const assetDependencies = new Map<string, string | undefined>();
     for (const [imageId, basedOnReference] of rawAssetDependencies.entries()) {
-      const normalizedReference = basedOnReference ? imageIdByReference.get(basedOnReference) || basedOnReference : undefined;
+      const normalizedReference = basedOnReference ? referenceToImageId.get(basedOnReference) || basedOnReference : undefined;
       assetDependencies.set(imageId, normalizedReference);
     }
 

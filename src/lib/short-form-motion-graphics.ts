@@ -1065,7 +1065,7 @@ export function renderMotionGraphicTemplatePromptInjection(settings = getShortFo
     "- For captionWordWallLines fields, use ordered <line size=\"regular\">spoken words for this row</line>, <line size=\"large\">intermediate emphasis row</line>, <line size=\"extra_large\">largest emphasis row</line>, and <blankLine /> entries inside the motionGraphic. Size is whole-line only; do not size individual inline words. Legacy <line emphasized=\"true\"> still maps to size=\"extra_large\".",
     "- For caption_word_wall specifically, line text must be exact spoken narration words in order from that visual's time range. The renderer uses forced-alignment word timestamps directly and does not use the deterministic caption JSON max-word chunks.",
     "- Motion graphics are normal visuals; they must not include captions/subtitles/transcript text unless a configured field explicitly represents ordinary on-slide text. The caption_word_wall template is the only full-screen caption replacement and should not be paired with ordinary bottom captions.",
-    "- Use imageId for image visuals. For motion_graphic visuals, do not set imageId or motionGraphicId; put the inline <motionGraphic> element inside the visual instead.",
+    "- For image visuals, put an inline <image> inside the first <visual> that uses that image, then use imageId only on later visuals that reuse an earlier image visual. For motion_graphic visuals, do not set imageId or motionGraphicId; put the inline <motionGraphic> element inside the visual instead.",
   ].join("\n");
 }
 

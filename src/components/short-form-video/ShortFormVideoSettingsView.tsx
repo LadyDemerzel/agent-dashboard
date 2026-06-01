@@ -297,7 +297,7 @@ const XML_VISUAL_PLANNING_PLACEHOLDER_ROWS = [
     placeholder: "{{revisionNotes}}",
     explanation:
       "The raw rerun revision notes text. This is only populated in the Full revise prompt template because that template is selected only when notes exist.",
-    example: "Make the asset reuse more explicit and reduce camera motion.",
+    example: "Make backward image reuse more explicit and reduce camera motion.",
   },
   {
     placeholder: "{{textScriptPath}}",

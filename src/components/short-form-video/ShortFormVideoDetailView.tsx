@@ -302,7 +302,7 @@ const DETAIL_PAGE_META: Record<
   "generate-visuals": {
     title: "Generate Visuals",
     description:
-      "Once the XML script is approved, the dashboard runs the visuals workflow directly to generate or reuse the needed green-screen visual plates from the XML asset/timeline model. Exact asset reuse never regenerates the image unnecessarily; reference-derived new assets remain explicit in the XML and manifest for debugging. Captions are overlaid separately and the selected background video is composited behind each visual in preview and final render.",
+      "Once the XML script is approved, the dashboard runs the visuals workflow directly to generate or reuse the needed green-screen visual plates from inline timeline image definitions. Exact backward-only image reuse never regenerates the image unnecessarily; reference-derived new images remain explicit in the XML and manifest for debugging. Captions are overlaid separately and the selected background video is composited behind each visual in preview and final render.",
   },
   "plan-sound-design": {
     title: "Plan Sound Design",
@@ -3907,7 +3907,7 @@ function SceneImagesSection({
       projectId={project.id}
       title="Generate Visuals"
       stage="scene-images"
-      description="Once the XML script is approved, the dashboard runs the visuals workflow directly to generate or reuse the needed green-screen visual plates from the XML asset/timeline model. Exact asset reuse never regenerates the image unnecessarily; reference-derived new assets remain explicit in the XML and manifest for debugging. Captions are overlaid separately and the selected background video is composited behind each visual in preview/final render."
+      description="Once the XML script is approved, the dashboard runs the visuals workflow directly to generate or reuse the needed green-screen visual plates from inline timeline image definitions. Exact backward-only image reuse never regenerates the image unnecessarily; reference-derived new images remain explicit in the XML and manifest for debugging. Captions are overlaid separately and the selected background video is composited behind each visual in preview/final render."
       doc={project.sceneImages}
       mode="markdown"
       emptyText="No generated visuals yet. Generate them after approving the XML script."

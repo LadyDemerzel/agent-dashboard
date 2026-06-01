@@ -194,7 +194,17 @@ function findVisual(root: XmlNode, sceneIndex: number, visualId?: string) {
 
 function findImageAsset(root: XmlNode, imageId: string) {
   const assets = getFirstDirectChild(root, "assets");
-  return getDirectChildren(assets, "image").find((image) => image.attributes.id === imageId);
+  const assetImage = getDirectChildren(assets, "image").find((image) => image.attributes.id === imageId);
+  if (assetImage) return assetImage;
+
+  const timeline = getFirstDirectChild(root, "timeline");
+  for (const visual of getDirectChildren(timeline, "visual")) {
+    const inlineImage = getFirstDirectChild(visual, "image");
+    if (!inlineImage) continue;
+    const inlineImageId = inlineImage.attributes.id?.trim() || visual.attributes.id?.trim();
+    if (inlineImageId === imageId || visual.attributes.id?.trim() === imageId) return inlineImage;
+  }
+  return undefined;
 }
 
 function validateMotionGraphicXml(value: string) {
@@ -222,13 +232,21 @@ export function readXmlVisualEditStates(scriptPath: string): XmlVisualEditState[
   }
 
   return getDirectChildren(timeline, "visual").map((visual, index) => {
-    const imageId = visual.attributes.imageId?.trim();
+    const inlineImage = getFirstDirectChild(visual, "image");
+    const visualId = visual.attributes.id?.trim() || undefined;
+    const inlineImageId = inlineImage ? (inlineImage.attributes.id?.trim() || visualId) : undefined;
+    if (inlineImage && inlineImageId) {
+      imageAssets.set(inlineImageId, inlineImage);
+      if (visualId) imageAssets.set(visualId, inlineImage);
+    }
+    const rawImageId = visual.attributes.imageId?.trim();
+    const imageId = inlineImageId || rawImageId;
     const image = imageId ? imageAssets.get(imageId) : undefined;
     const prompt = image ? getInnerText(body, getFirstDirectChild(image, "prompt")).trim() : undefined;
     const motionGraphic = getFirstDirectChild(visual, "motionGraphic");
     return {
       number: index + 1,
-      visualId: visual.attributes.id?.trim() || undefined,
+      visualId,
       imageId: imageId || undefined,
       prompt,
       basedOn: image?.attributes.basedOn?.trim() || "",
@@ -253,8 +271,10 @@ export function saveXmlVisualEdits(scriptPath: string, input: SaveXmlVisualEdits
   if (!visual) throw new Error(`Visual ${input.visualId || input.sceneIndex} was not found in the XML plan.`);
 
   const visualId = visual.attributes.id?.trim() || undefined;
-  const imageId = visual.attributes.imageId?.trim();
-  if (input.imageId?.trim() && imageId !== input.imageId.trim()) {
+  const inlineImage = getFirstDirectChild(visual, "image");
+  const inlineImageId = inlineImage ? (inlineImage.attributes.id?.trim() || visualId) : undefined;
+  const imageId = inlineImageId || visual.attributes.imageId?.trim();
+  if (input.imageId?.trim() && imageId !== input.imageId.trim() && visual.attributes.imageId?.trim() !== input.imageId.trim()) {
     throw new Error(`Visual ${visualId || input.sceneIndex} points to image ${imageId || "(none)"}, not requested image ${input.imageId}.`);
   }
 
@@ -262,7 +282,7 @@ export function saveXmlVisualEdits(scriptPath: string, input: SaveXmlVisualEdits
 
   if (input.prompt !== undefined || input.basedOn !== undefined) {
     if (!imageId) throw new Error(`Visual ${visualId || input.sceneIndex} has no imageId.`);
-    const image = findImageAsset(root, imageId);
+    const image = inlineImage || findImageAsset(root, imageId);
     if (!image) throw new Error(`Image asset ${imageId} was not found in the XML plan.`);
 
     if (input.prompt !== undefined) {
@@ -279,8 +299,11 @@ export function saveXmlVisualEdits(scriptPath: string, input: SaveXmlVisualEdits
     if (input.basedOn !== undefined) {
       ({ body, root } = parsePlan(`${prefix}${body}`));
       const refreshedVisual = findVisual(root, input.sceneIndex, input.visualId);
-      const refreshedImageId = refreshedVisual?.attributes.imageId?.trim();
-      const refreshedImage = refreshedImageId ? findImageAsset(root, refreshedImageId) : undefined;
+      const refreshedInlineImage = refreshedVisual ? getFirstDirectChild(refreshedVisual, "image") : undefined;
+      const refreshedImageId = refreshedInlineImage
+        ? (refreshedInlineImage.attributes.id?.trim() || refreshedVisual?.attributes.id?.trim())
+        : refreshedVisual?.attributes.imageId?.trim();
+      const refreshedImage = refreshedInlineImage || (refreshedImageId ? findImageAsset(root, refreshedImageId) : undefined);
       if (!refreshedImage) throw new Error(`Image asset ${imageId} was not found after prompt update.`);
       const nextBasedOn = input.basedOn.trim();
       if ((refreshedImage.attributes.basedOn || "").trim() !== nextBasedOn) {
