@@ -34,7 +34,6 @@ const DEFAULT_IMAGE_RESOLUTION = "1K";
 const DEFAULT_IMAGE_ASPECT_RATIO = "9:16";
 const DEFAULT_IMAGE_HEADER_PERCENT = "28";
 const DEFAULT_IMAGE_STYLE_PRESET = "dark-charcoal-natural-header";
-const DEFAULT_IMAGE_SUBJECT = "same androgynous high-fashion model across all scenes, sharp eye area, defined cheekbones, elegant neutral styling";
 const DEFAULT_IMAGE_STYLE_PROMPT = "Clean dramatic high-contrast pencil-and-charcoal illustration, premium modern TikTok aesthetic, dark smoky atmospheric background, restrained vivid red accents only on the key focal area, minimal clutter.";
 const DEFAULT_VOICE_SPEAKER = "Aiden";
 const DEFAULT_VOICE_INSTRUCT = "Educated American male narrator, slightly deeper and lower-pitched, polished and confident, calm authority, crisp social-video pacing, speak only English, no other languages or non-speech sounds.";
@@ -1224,6 +1223,18 @@ function stripFrontMatter(content) {
   return (match ? match[1] : content).trim();
 }
 
+function splitFrontMatter(content) {
+  if (!content.startsWith("---")) {
+    return { prefix: "", body: content.trim(), suffix: "" };
+  }
+
+  const match = content.match(/^(---\s*\n[\s\S]*?\n---\s*\n?)([\s\S]*)$/);
+  if (!match) {
+    return { prefix: "", body: content.trim(), suffix: "" };
+  }
+  return { prefix: match[1] || "", body: (match[2] || "").trim(), suffix: "" };
+}
+
 function resolveXmlRuntimePath(scriptPath, runDir, name) {
   const raw = fs.readFileSync(scriptPath, "utf-8");
   const xml = stripFrontMatter(raw);
@@ -1364,6 +1375,13 @@ function escapeXmlAttribute(value) {
     .replace(/>/g, "&gt;");
 }
 
+function escapeXmlText(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 function decodeXmlText(value) {
   return String(value || "")
     .replace(/&lt;/g, "<")
@@ -1371,6 +1389,117 @@ function decodeXmlText(value) {
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, "&");
+}
+
+function parseXmlElementName(rawTag) {
+  const match = String(rawTag || "").match(/^<\s*\/?\s*([A-Za-z_:][\w:.-]*)/);
+  return match?.[1] || "";
+}
+
+function parseXmlDocument(xml) {
+  const document = { type: "document", tagName: "#document", children: [] };
+  const stack = [document];
+  const tagPattern = /<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<!\[CDATA\[[\s\S]*?\]\]>|<![^>]*>|<[^>]+>/g;
+
+  for (const match of xml.matchAll(tagPattern)) {
+    const rawTag = match[0];
+    const start = match.index || 0;
+    if (
+      rawTag.startsWith("<!--")
+      || rawTag.startsWith("<?")
+      || rawTag.startsWith("<![CDATA[")
+      || rawTag.startsWith("<!")
+    ) {
+      continue;
+    }
+
+    if (/^<\s*\//.test(rawTag)) {
+      const tagName = parseXmlElementName(rawTag);
+      const node = stack.pop();
+      if (!node || node === document || node.tagName !== tagName) {
+        throw new Error(`Invalid XML: unexpected closing tag </${tagName}>.`);
+      }
+      node.closeStart = start;
+      node.end = start + rawTag.length;
+      continue;
+    }
+
+    const tagName = parseXmlElementName(rawTag);
+    if (!tagName) {
+      throw new Error(`Invalid XML: could not parse tag at offset ${start}.`);
+    }
+
+    const isSelfClosing = /\/\s*>$/.test(rawTag);
+    const attrSource = rawTag
+      .replace(/^<\s*[A-Za-z_:][\w:.-]*/, "")
+      .replace(/\/?\s*>$/, "");
+    const node = {
+      type: "element",
+      tagName,
+      attributes: parseXmlAttributes(attrSource),
+      children: [],
+      start,
+      openEnd: start + rawTag.length,
+      closeStart: isSelfClosing ? start + rawTag.length : undefined,
+      end: isSelfClosing ? start + rawTag.length : undefined,
+    };
+    stack[stack.length - 1].children.push(node);
+    if (!isSelfClosing) {
+      stack.push(node);
+    }
+  }
+
+  if (stack.length !== 1) {
+    const unclosed = stack[stack.length - 1];
+    throw new Error(`Invalid XML: unclosed <${unclosed.tagName}> element.`);
+  }
+
+  return document;
+}
+
+function getXmlAttribute(node, name) {
+  const value = node?.attributes?.[name];
+  return typeof value === "string" ? decodeXmlText(value).trim() : "";
+}
+
+function getDirectXmlChildren(node, tagName) {
+  return (node?.children || []).filter((child) => tagName === undefined || child.tagName === tagName);
+}
+
+function getFirstDirectXmlChild(node, tagName) {
+  return getDirectXmlChildren(node, tagName)[0];
+}
+
+function getXmlRoot(xmlDocument) {
+  const roots = getDirectXmlChildren(xmlDocument).filter((child) => child.tagName !== "");
+  if (roots.length !== 1 || roots[0].tagName !== "video") {
+    throw new Error("XML script must have a single <video> root element.");
+  }
+  return roots[0];
+}
+
+function readXmlScriptDocument(scriptPath) {
+  const raw = fs.readFileSync(scriptPath, "utf-8");
+  const { prefix, body } = splitFrontMatter(raw);
+  return {
+    prefix,
+    body,
+    document: parseXmlDocument(body),
+  };
+}
+
+function getXmlElementInnerText(xml, node) {
+  if (!node || !Number.isInteger(node.openEnd) || !Number.isInteger(node.closeStart)) {
+    return "";
+  }
+  return decodeXmlText(xml.slice(node.openEnd, node.closeStart));
+}
+
+function replaceXmlElementInnerText(xml, node, nextText) {
+  if (!node || !Number.isInteger(node.openEnd) || !Number.isInteger(node.closeStart)) {
+    throw new Error(`Cannot serialize XML: <${node?.tagName || "unknown"}> is not a normal element.`);
+  }
+  return `${xml.slice(0, node.openEnd)}${escapeXmlText(nextText)}${xml.slice(node.closeStart)}`;
 }
 
 function collapseWhitespace(value) {
@@ -1820,29 +1949,104 @@ function parseVisualRuntimeSpec(xmlPath) {
     return { visuals: [], assetDependencies: new Map() };
   }
 
-  const xml = fs.readFileSync(xmlPath, "utf-8");
-  const assetDependencies = new Map();
-  const assetsBody = xml.match(/<assets\b[^>]*>([\s\S]*?)<\/assets>/i)?.[1] || "";
-  const timelineBody = xml.match(/<timeline\b[^>]*>([\s\S]*?)<\/timeline>/i)?.[1] || "";
+  const { document } = readXmlScriptDocument(xmlPath);
+  const root = getXmlRoot(document);
+  const rawAssetDependencies = new Map();
+  const assets = getFirstDirectXmlChild(root, "assets");
+  const timeline = getFirstDirectXmlChild(root, "timeline");
 
-  for (const match of assetsBody.matchAll(/<image\b([^>]*)>([\s\S]*?)<\/image>/gi)) {
-    const attributes = parseXmlAttributes(match[1] || "");
-    const imageId = typeof attributes.id === "string" ? attributes.id.trim() : "";
+  for (const image of getDirectXmlChildren(assets, "image")) {
+    const imageId = getXmlAttribute(image, "id");
     if (!imageId) continue;
-    const basedOnImageId = typeof attributes.basedOn === "string" ? attributes.basedOn.trim() : "";
-    assetDependencies.set(imageId, basedOnImageId || undefined);
+    const basedOnImageId = getXmlAttribute(image, "basedOn");
+    rawAssetDependencies.set(imageId, basedOnImageId || undefined);
   }
 
-  const visuals = [...timelineBody.matchAll(/<visual\b([^>]*?)(?:\/>|>([\s\S]*?)<\/visual>)/gi)].map((match, index) => {
-    const attributes = parseXmlAttributes(match[1] || "");
-    const imageId = typeof attributes.imageId === "string" ? attributes.imageId.trim() : "";
+  const visuals = getDirectXmlChildren(timeline, "visual").map((visual, index) => {
+    const imageId = getXmlAttribute(visual, "imageId");
     return {
       index: index + 1,
+      visualId: getXmlAttribute(visual, "id") || undefined,
       imageId: imageId || undefined,
     };
   });
+  const imageIdByReference = new Map();
+  for (const imageId of rawAssetDependencies.keys()) {
+    imageIdByReference.set(imageId, imageId);
+  }
+  for (const visual of visuals) {
+    if (visual.imageId) imageIdByReference.set(visual.imageId, visual.imageId);
+    if (visual.visualId && visual.imageId) imageIdByReference.set(visual.visualId, visual.imageId);
+  }
+  const assetDependencies = new Map();
+  for (const [imageId, basedOnReference] of rawAssetDependencies.entries()) {
+    assetDependencies.set(
+      imageId,
+      basedOnReference ? imageIdByReference.get(basedOnReference) || basedOnReference : undefined,
+    );
+  }
 
   return { visuals, assetDependencies };
+}
+
+function updateXmlImagePromptForScene(scriptPath, sceneIndex, nextPrompt, identifiers = {}) {
+  const cleanedPrompt = typeof nextPrompt === "string" ? nextPrompt.trim() : "";
+  if (!cleanedPrompt || !Number.isInteger(sceneIndex) || sceneIndex <= 0) {
+    return { changed: false, reason: "empty-prompt" };
+  }
+
+  const { prefix, body, document } = readXmlScriptDocument(scriptPath);
+  const root = getXmlRoot(document);
+  const timeline = getFirstDirectXmlChild(root, "timeline");
+  const assets = getFirstDirectXmlChild(root, "assets");
+  const requestedVisualId = typeof identifiers.visualId === "string" ? identifiers.visualId.trim() : "";
+  const requestedImageId = typeof identifiers.imageId === "string" ? identifiers.imageId.trim() : "";
+  const visuals = getDirectXmlChildren(timeline, "visual");
+  const targetVisual = requestedVisualId
+    ? visuals.find((visual) => getXmlAttribute(visual, "id") === requestedVisualId)
+    : visuals[sceneIndex - 1];
+  if (!targetVisual) {
+    throw new Error(
+      requestedVisualId
+        ? `Cannot update XML prompt for scene-${sceneIndex}: visual ${requestedVisualId} was not found.`
+        : `Cannot update XML prompt for scene-${sceneIndex}: the target visual was not found.`,
+    );
+  }
+  const targetVisualId = getXmlAttribute(targetVisual, "id") || undefined;
+  const targetImageId = getXmlAttribute(targetVisual, "imageId");
+  if (!targetImageId) {
+    throw new Error(`Cannot update XML prompt for scene-${sceneIndex}: the target visual has no imageId.`);
+  }
+  if (requestedImageId && targetImageId !== requestedImageId) {
+    throw new Error(`Cannot update XML prompt for scene-${sceneIndex}: visual ${targetVisualId || sceneIndex} points to image ${targetImageId}, not requested image ${requestedImageId}.`);
+  }
+
+  const targetImage = getDirectXmlChildren(assets, "image")
+    .find((image) => getXmlAttribute(image, "id") === targetImageId);
+  if (!targetImage) {
+    throw new Error(`Cannot update XML prompt for scene-${sceneIndex}: image asset ${targetImageId} was not found.`);
+  }
+
+  const promptElement = getFirstDirectXmlChild(targetImage, "prompt");
+  if (!promptElement) {
+    throw new Error(`Cannot update XML prompt for scene-${sceneIndex}: image asset ${targetImageId} has no <prompt>.`);
+  }
+
+  const previousPrompt = getXmlElementInnerText(body, promptElement).trim();
+  const changed = collapseWhitespace(previousPrompt) !== collapseWhitespace(cleanedPrompt);
+  const nextXml = changed ? replaceXmlElementInnerText(body, promptElement, cleanedPrompt) : body;
+
+  if (changed) {
+    fs.writeFileSync(scriptPath, `${prefix}${nextXml.trim()}\n`, "utf-8");
+  }
+
+  return {
+    changed,
+    visualId: targetVisualId,
+    imageId: targetImageId,
+    previousPrompt,
+    nextPrompt: cleanedPrompt,
+  };
 }
 
 function collectDependentAssetIds(assetDependencies, rootAssetIds) {
@@ -1899,7 +2103,25 @@ function expandSceneIndexesForDependencies(xmlPath, requestedIndexes) {
     }
   }
 
-  return [...expanded].sort((a, b) => a - b);
+  const dependencyDepthByImageId = new Map();
+  function dependencyDepth(imageId, seen = new Set()) {
+    if (!imageId) return 0;
+    if (dependencyDepthByImageId.has(imageId)) {
+      return dependencyDepthByImageId.get(imageId);
+    }
+    if (seen.has(imageId)) return 0;
+    seen.add(imageId);
+    const parentId = assetDependencies.get(imageId);
+    const depth = parentId ? dependencyDepth(parentId, seen) + 1 : 0;
+    dependencyDepthByImageId.set(imageId, depth);
+    return depth;
+  }
+
+  return [...expanded].sort((a, b) => {
+    const aDepth = dependencyDepth(visuals[a - 1]?.imageId);
+    const bDepth = dependencyDepth(visuals[b - 1]?.imageId);
+    return aDepth === bDepth ? a - b : aDepth - bDepth;
+  });
 }
 
 function resolveStyleReferenceAbsolutePath(relativePath) {
@@ -2772,6 +2994,10 @@ function syncSceneImageArtifacts(job) {
     motionGraphicTemplateId: typeof scene?.motion_graphic_template_id === "string" && scene.motion_graphic_template_id.trim() ? scene.motion_graphic_template_id.trim() : undefined,
     motionGraphicRendererId: typeof scene?.motion_graphic_renderer_id === "string" && scene.motion_graphic_renderer_id.trim() ? scene.motion_graphic_renderer_id.trim() : undefined,
     notes: typeof scene?.image_prompt === "string" && scene.image_prompt.trim() ? scene.image_prompt.trim() : undefined,
+    imageId: typeof scene?.image_id === "string" && scene.image_id.trim() ? scene.image_id.trim() : undefined,
+    basedOnImageId: typeof scene?.based_on_image_id === "string" && scene.based_on_image_id.trim() ? scene.based_on_image_id.trim() : undefined,
+    reusedExistingAsset: typeof scene?.reused_existing_asset === "boolean" ? scene.reused_existing_asset : undefined,
+    visualId: typeof scene?.visual_id === "string" && scene.visual_id.trim() ? scene.visual_id.trim() : undefined,
     duration: typeof scene?.duration === "string" && scene.duration.trim() ? scene.duration.trim() : undefined,
   })).filter((scene) => scene.caption && (scene.image || scene.previewImage || scene.previewVideo));
 
@@ -2780,7 +3006,7 @@ function syncSceneImageArtifacts(job) {
   fs.writeFileSync(
     path.join(projectDir, "scene-images.json"),
     JSON.stringify({
-      scenes: scenes.map(({ id, number, caption, startTime, endTime, image, previewImage, previewVideo, previewVideoBackgroundId, visualType, motionGraphicId, motionGraphicTemplateId, motionGraphicRendererId, notes }) => ({
+      scenes: scenes.map(({ id, number, caption, startTime, endTime, image, previewImage, previewVideo, previewVideoBackgroundId, visualType, motionGraphicId, motionGraphicTemplateId, motionGraphicRendererId, notes, imageId, basedOnImageId, reusedExistingAsset, visualId }) => ({
         id,
         number,
         caption,
@@ -2795,6 +3021,10 @@ function syncSceneImageArtifacts(job) {
         ...(motionGraphicTemplateId ? { motionGraphicTemplateId } : {}),
         ...(motionGraphicRendererId ? { motionGraphicRendererId } : {}),
         ...(notes ? { notes } : {}),
+        ...(imageId ? { imageId } : {}),
+        ...(basedOnImageId ? { basedOnImageId } : {}),
+        ...(typeof reusedExistingAsset === "boolean" ? { reusedExistingAsset } : {}),
+        ...(visualId ? { visualId } : {}),
       })),
     }, null, 2),
     "utf-8",
@@ -4256,10 +4486,23 @@ function runDirectSceneImages(job) {
   ensureDir(runDir);
   ensureDir(config.outputDir);
 
+  const requestedSceneIndexes = [parseSceneIdToIndex(config.sceneId)].filter(Boolean);
+  let xmlPromptEditResult = null;
+  if (requestedSceneIndexes.length > 0 && typeof config.notes === "string" && config.notes.trim()) {
+    xmlPromptEditResult = updateXmlImagePromptForScene(
+      config.scriptPath,
+      requestedSceneIndexes[0],
+      config.notes,
+      {
+        imageId: config.imageId,
+        visualId: config.visualId,
+      },
+    );
+  }
+
   const runtimeXmlPath = resolveXmlRuntimePath(config.scriptPath, runDir, "scene-images-runtime.xml");
   const xmlWorkDir = path.join(getProjectDir(job.projectId), "output", "xml-script-work");
   const existingAlignmentPath = path.join(xmlWorkDir, "alignment", "word-timestamps.json");
-  const requestedSceneIndexes = [parseSceneIdToIndex(config.sceneId)].filter(Boolean);
   const preMotionSceneIndexes = requestedSceneIndexes.length > 0
     ? requestedSceneIndexes
     : [];
@@ -4278,9 +4521,8 @@ function runDirectSceneImages(job) {
     fs.writeFileSync(runtimeXmlPath, `${motionGraphics.sanitizedXml.trim()}\n`, "utf-8");
   }
   const styleReferences = Array.isArray(config.imageStyleReferences) ? config.imageStyleReferences : [];
-  const primaryCharacterReference = styleReferences.find((reference) => reference?.usageType === "character");
   const extraReferencesPayload = styleReferences
-    .filter((reference) => reference && reference.id !== primaryCharacterReference?.id)
+    .filter((reference) => reference?.imageRelativePath)
     .map((reference) => ({
       path: resolveStyleReferenceAbsolutePath(reference.imageRelativePath),
       label: reference.label,
@@ -4320,8 +4562,6 @@ function runDirectSceneImages(job) {
     String(config.imageStyleHeaderPercent || DEFAULT_IMAGE_HEADER_PERCENT),
     "--style-preset",
     DEFAULT_IMAGE_STYLE_PRESET,
-    "--subject",
-    config.imageStyleSubject || DEFAULT_IMAGE_SUBJECT,
     "--style-extra",
     config.imageStylePrompt || DEFAULT_IMAGE_STYLE_PROMPT,
     "--extra-references-json",
@@ -4331,15 +4571,6 @@ function runDirectSceneImages(job) {
 
   if (fs.existsSync(promptTemplatesJsonPath)) {
     args.push("--prompt-templates-json", promptTemplatesJsonPath);
-  }
-
-  if (primaryCharacterReference?.imageRelativePath) {
-    args.push("--character-reference", resolveStyleReferenceAbsolutePath(primaryCharacterReference.imageRelativePath));
-  } else {
-    const existingReference = path.join(config.outputDir, "character-reference.png");
-    if (fs.existsSync(existingReference)) {
-      args.push("--character-reference", existingReference);
-    }
   }
 
   const sceneIndexes = expandSceneIndexesForDependencies(runtimeXmlPath, requestedSceneIndexes);
@@ -4353,10 +4584,11 @@ function runDirectSceneImages(job) {
     args.push("--only-scenes", ...imageSceneIndexes.map((index) => String(index)));
     config.sceneIndexes = imageSceneIndexes;
   }
-  if (config.notes && config.notes.trim()) {
+  if (config.notes && config.notes.trim() && requestedSceneIndexes.length === 0) {
     const primarySceneIndex = sceneIndexes[0];
     if (primarySceneIndex) {
       args.push("--scene-extra-direction", `${primarySceneIndex}::${config.notes.trim()}`);
+      args.push("--revision-scenes", String(primarySceneIndex));
     } else {
       args.push("--extra-direction", config.notes.trim());
     }
@@ -4376,6 +4608,7 @@ function runDirectSceneImages(job) {
     visualGenerationModelId,
     visualGenerationModelLabel: config.visualGenerationModelLabel,
     visualGenerationModelRef,
+    xmlPromptEdit: xmlPromptEditResult,
     motionGraphicsRendered: motionGraphics.rendered.length,
     stdout: result.stdout.trim(),
     stderr: result.stderr.trim(),
@@ -4733,6 +4966,27 @@ process.on("SIGINT", () => handleTerminationSignal("SIGINT"));
 if (process.env.SHORT_FORM_STAGE_WORKER_PARSE_MOTION_GRAPHICS_TEST === "1") {
   const xml = fs.readFileSync(jobPath, "utf-8");
   console.log(JSON.stringify(parseMotionGraphicVisuals(xml).map((visual) => visual.asset), null, 2));
+  process.exit(0);
+}
+
+if (process.env.SHORT_FORM_STAGE_WORKER_XML_PROMPT_UPDATE_TEST === "1") {
+  const sceneIndex = Number.parseInt(process.env.SCENE_INDEX || "2", 10);
+  const nextPrompt = process.env.NEXT_IMAGE_PROMPT || "Updated prompt from rerender field.";
+  const result = updateXmlImagePromptForScene(jobPath, sceneIndex, nextPrompt, {
+    imageId: process.env.IMAGE_ID,
+    visualId: process.env.VISUAL_ID,
+  });
+  console.log(JSON.stringify(result, null, 2));
+  process.exit(0);
+}
+
+if (process.env.SHORT_FORM_STAGE_WORKER_DEPENDENCY_EXPANSION_TEST === "1") {
+  const requestedIndexes = (process.env.REQUESTED_SCENE_INDEXES || "1")
+    .split(",")
+    .map((value) => Number.parseInt(value.trim(), 10))
+    .filter((value) => Number.isInteger(value) && value > 0);
+  const result = expandSceneIndexesForDependencies(jobPath, requestedIndexes);
+  console.log(JSON.stringify(result));
   process.exit(0);
 }
 

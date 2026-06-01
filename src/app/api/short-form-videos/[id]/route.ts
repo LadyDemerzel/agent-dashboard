@@ -39,7 +39,11 @@ export async function PATCH(
 
   const body = await request.json().catch(() => ({}));
   const topic = typeof body.topic === "string" ? body.topic.trim() : undefined;
-  const title = typeof body.title === "string" ? body.title.trim() : undefined;
+  const title = typeof body.title === "string"
+    ? body.title.trim()
+    : typeof body.name === "string"
+      ? body.name.trim()
+      : undefined;
   const selectedImageStyleId = typeof body.selectedImageStyleId === "string" ? body.selectedImageStyleId.trim() : undefined;
   const visualGenerationModelIdOverride = body.visualGenerationModelIdOverride === null
     ? null
@@ -78,7 +82,7 @@ export async function PATCH(
   const pauseRemovalMinSilenceDurationSecondsOverride = body.pauseRemovalMinSilenceDurationSecondsOverride === null
     ? null
     : typeof body.pauseRemovalMinSilenceDurationSecondsOverride === "number" && Number.isFinite(body.pauseRemovalMinSilenceDurationSecondsOverride)
-      ? Math.min(2.5, Math.max(0.1, Math.round(body.pauseRemovalMinSilenceDurationSecondsOverride * 100) / 100))
+      ? Math.min(2.5, Math.max(0.01, Math.round(body.pauseRemovalMinSilenceDurationSecondsOverride * 100) / 100))
       : undefined;
   const pauseRemovalSilenceThresholdDbOverride = body.pauseRemovalSilenceThresholdDbOverride === null
     ? null
@@ -137,6 +141,10 @@ export async function PATCH(
     return NextResponse.json({ success: false, error: "Add a brief reason before skipping sound design" }, { status: 400 });
   }
 
+  if (title !== undefined && !title) {
+    return NextResponse.json({ success: false, error: "Video name cannot be empty" }, { status: 400 });
+  }
+
   if (soundDesignDecision === "approved") {
     const handoff = getSoundDesignHandoffState({
       soundDesignDecision,
@@ -161,7 +169,7 @@ export async function PATCH(
 
   const updated = updateProjectMeta(id, {
     ...(topic !== undefined ? { topic } : {}),
-    ...(title !== undefined ? { title } : topic ? { title: topic } : {}),
+    ...(title !== undefined ? { name: title, title } : topic ? { name: topic, title: topic } : {}),
     ...(selectedImageStyleId !== undefined ? { selectedImageStyleId } : {}),
     ...(visualGenerationModelIdOverride !== undefined
       ? {

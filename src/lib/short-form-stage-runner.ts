@@ -17,12 +17,13 @@ export interface DirectSceneImagesConfig {
   mode: "generate" | "revise";
   notes?: string;
   sceneId?: string;
+  imageId?: string;
+  visualId?: string;
   imageStyleId: string;
   imageStyleName: string;
   visualGenerationModelId: ShortFormVisualGenerationModelId;
   visualGenerationModelLabel: string;
   visualGenerationModelRef: string;
-  imageStyleSubject: string;
   imageStylePrompt: string;
   imageStyleHeaderPercent: number;
   imageStyleReferences?: ShortFormStyleReferenceImage[];

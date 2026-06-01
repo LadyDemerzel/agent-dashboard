@@ -15,8 +15,10 @@ try {
   const callsPath = path.join(tempDir, "calls.jsonl");
   const fakeGeneratorPath = path.join(tempDir, "fake-generate.py");
   const characterReferencePath = path.join(tempDir, "character-reference.png");
+  const characterExtraReferencePath = path.join(tempDir, "character-extra-reference.png");
   const styleReferencePath = path.join(tempDir, "style-reference.png");
   writeFileSync(characterReferencePath, Buffer.from(ONE_BY_ONE_PNG_BASE64, "base64"));
+  writeFileSync(characterExtraReferencePath, Buffer.from(ONE_BY_ONE_PNG_BASE64, "base64"));
   writeFileSync(styleReferencePath, Buffer.from(ONE_BY_ONE_PNG_BASE64, "base64"));
 
   writeFileSync(fakeGeneratorPath, `#!/usr/bin/env python3
@@ -43,6 +45,12 @@ with open(args.filename, 'wb') as fh:
       label: "Watercolor style swatch",
       usageType: "style",
       usageInstructions: "Use this reference for watercolor texture and muted operating-room lighting. STYLE_REFERENCE_SENTINEL.",
+    },
+    {
+      path: characterExtraReferencePath,
+      label: "Presenter character reference",
+      usageType: "character-reference",
+      usageInstructions: "Use this as the canonical recurring presenter character reference. CHARACTER_EXTRA_REFERENCE_SENTINEL.",
     },
   ], null, 2));
 
@@ -75,14 +83,10 @@ with open(args.filename, 'wb') as fh:
     outputDir,
     "--generator-script",
     fakeGeneratorPath,
-    "--character-reference",
-    characterReferencePath,
     "--extra-references-json",
     extraReferencesPath,
-    "--subject",
-    "RECURRING_CHARACTER_PROMPT_SENTINEL",
     "--style-extra",
-    "Watercolor wash, soft pigment blooms, clean medical-industrial lighting. STYLE_EXTRA_SENTINEL. Use the attached references as the source of truth for this watercolor look, and treat the primary character reference as canonical for the recurring woman: preserve her face, hair, and outfit across every scene unless a scene explicitly requests a different outfit.",
+    "Watercolor wash, soft pigment blooms, clean medical-industrial lighting. STYLE_EXTRA_SENTINEL. Use the attached references as the source of truth for this watercolor look.",
     "--force",
     "--skip-caption-overlay",
   ], {
@@ -109,11 +113,15 @@ with open(args.filename, 'wb') as fh:
   assert.ok(scene2, "characterDriven=false scene should be generated");
   assert.ok(scene3, "missing characterDriven scene should be generated");
 
-  assert.ok(scene1.input_images.includes(characterReferencePath), "true scene should include the character reference image");
-  assert.match(scene1.prompt, /RECURRING_CHARACTER_PROMPT_SENTINEL/, "true scene should include the subject/character prompt text");
+  assert.ok(!scene1.input_images.includes(characterReferencePath), "true scene should not use the deprecated separate character-reference argument");
+  assert.ok(scene1.input_images.includes(characterExtraReferencePath), "true scene should include character references from extraReferences JSON");
+  assert.match(scene1.prompt, /CHARACTER_EXTRA_REFERENCE_SENTINEL/, "true scene should include character extra-reference prompt text");
+  assert.doesNotMatch(scene1.prompt, /RECURRING_CHARACTER_PROMPT_SENTINEL/, "true scene should not include generic subject prompt text");
 
   for (const [label, scene] of [["false", scene2], ["missing", scene3]]) {
     assert.ok(!scene.input_images.includes(characterReferencePath), `${label} scene must not include the character reference image`);
+    assert.ok(!scene.input_images.includes(characterExtraReferencePath), `${label} scene must not include character references from extraReferences JSON`);
+    assert.doesNotMatch(scene.prompt, /CHARACTER_EXTRA_REFERENCE_SENTINEL/, `${label} scene must not include character extra-reference prompt text`);
     assert.doesNotMatch(scene.prompt, /RECURRING_CHARACTER_PROMPT_SENTINEL/, `${label} scene must not include subject/character prompt text`);
     assert.doesNotMatch(scene.prompt, /primary character reference/i, `${label} scene must not include primary character-reference prompt text`);
     assert.doesNotMatch(scene.prompt, /recurring woman|preserve her face|same outfit|wardrobe|same clothing/i, `${label} scene must not include character outfit/wardrobe prompt text`);
@@ -128,7 +136,50 @@ with open(args.filename, 'wb') as fh:
   assert.equal(manifest.scenes[1].character_driven, false, "manifest should record false character_driven");
   assert.equal(manifest.scenes[2].character_driven, false, "manifest should default missing characterDriven to false");
 
-  console.log("Verified characterDriven routing: true includes character reference + subject prompt; false and missing suppress character reference + subject prompt while preserving style refs/instructions.");
+  const noCharacterOutputDir = path.join(tempDir, "out-no-character-reference");
+  mkdirSync(noCharacterOutputDir);
+  const noCharacterCallsPath = path.join(tempDir, "calls-no-character-reference.jsonl");
+  const noCharacterReferencesPath = path.join(tempDir, "style-references-no-character.json");
+  writeFileSync(noCharacterReferencesPath, JSON.stringify([
+    {
+      path: styleReferencePath,
+      label: "Watercolor style swatch",
+      usageType: "style",
+      usageInstructions: "Use this reference for watercolor texture and muted operating-room lighting. STYLE_REFERENCE_SENTINEL.",
+    },
+  ], null, 2));
+  const noCharacterResult = spawnSync("uv", [
+    "run",
+    "--with",
+    "pillow",
+    "python3",
+    GENERATE_FROM_XML,
+    xmlPath,
+    "--output-dir",
+    noCharacterOutputDir,
+    "--generator-script",
+    fakeGeneratorPath,
+    "--extra-references-json",
+    noCharacterReferencesPath,
+    "--style-extra",
+    "Watercolor wash, soft pigment blooms, clean medical-industrial lighting. STYLE_EXTRA_SENTINEL.",
+    "--only-scenes",
+    "1",
+    "--force",
+    "--skip-caption-overlay",
+  ], {
+    cwd: path.dirname(GENERATE_FROM_XML),
+    env: { ...process.env, CALLS_JSONL: noCharacterCallsPath },
+    encoding: "utf-8",
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  assert.equal(noCharacterResult.status, 0, `generate_from_xml without character reference failed\nstdout:\n${noCharacterResult.stdout}\nstderr:\n${noCharacterResult.stderr}`);
+  const noCharacterScene = JSON.parse(readFileSync(noCharacterCallsPath, "utf-8").trim());
+  assert.ok(noCharacterScene.input_images.includes(styleReferencePath), "characterDriven=true without a character reference should keep non-character style references");
+  assert.ok(!noCharacterScene.input_images.includes(characterExtraReferencePath), "characterDriven=true without a character reference must not invent a character reference");
+  assert.doesNotMatch(noCharacterScene.prompt, /CHARACTER_EXTRA_REFERENCE_SENTINEL|primary character reference|subject identity/i, "characterDriven=true without a character reference must not include character prompt text");
+
+  console.log("Verified characterDriven routing: true includes character extraReferences; false and missing suppress character references + subject prompt while preserving style refs/instructions.");
 } finally {
   rmSync(tempDir, { recursive: true, force: true });
 }

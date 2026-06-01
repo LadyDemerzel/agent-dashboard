@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import { apiEnvelopeFetcher, realtimeSWRConfig } from '@/lib/swr-fetcher';
 import { ShortFormSecondaryShell } from '@/components/short-form-video/ShortFormSecondaryShell';
@@ -91,22 +91,35 @@ export function ShortFormVideoDetailShell({
   );
 
   const breadcrumbLabel = useMemo(() => {
-    const hookText = project?.hooks?.selectedHookText?.trim();
-    if (hookText) return hookText;
+    const titleText = project?.title?.trim();
+    if (titleText) return titleText;
 
     const topicText = project?.topic?.trim();
     if (topicText) return topicText;
 
-    const titleText = project?.title?.trim();
-    return titleText || 'Project';
+    return 'Project';
   }, [project]);
+
+  const handleProjectRenamed = useCallback((nextName: string) => {
+    setProject((current) =>
+      current
+        ? {
+            ...current,
+            title: nextName,
+            updatedAt: new Date().toISOString(),
+          }
+        : current
+    );
+  }, []);
 
   return (
     <ShortFormSecondaryShell
       title={breadcrumbLabel}
       items={detailItems}
       breadcrumbLabel={breadcrumbLabel}
+      projectId={projectId}
       autoRun={project?.autoRun}
+      onProjectRenamed={handleProjectRenamed}
     >
       {children}
     </ShortFormSecondaryShell>

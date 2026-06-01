@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { Badge } from "@/components/ui/badge";
@@ -64,9 +71,11 @@ type SoundDesignPromptTemplateKey =
   | "revisionPromptTemplate";
 
 type ImagePromptTemplateKey =
-  | "styleInstructionsTemplate"
-  | "characterReferenceTemplate"
-  | "sceneTemplate";
+  | "imageGenerationTemplate"
+  | "basedOnReferenceTemplate"
+  | "continuityWithReferenceTemplate"
+  | "extraReferencesTemplate"
+  | "individualExtraReferenceTemplate";
 
 type PromptTemplateId =
   | PromptKey
@@ -129,7 +138,6 @@ interface ImageStyle {
   id: string;
   name: string;
   description?: string;
-  subjectPrompt: string;
   stylePrompt: string;
   headerPercent: number;
   testTopic: string;
@@ -140,9 +148,11 @@ interface ImageStyle {
 }
 
 interface NanoBananaPromptTemplates {
-  styleInstructionsTemplate: string;
-  characterReferenceTemplate: string;
-  sceneTemplate: string;
+  imageGenerationTemplate: string;
+  basedOnReferenceTemplate: string;
+  continuityWithReferenceTemplate: string;
+  extraReferencesTemplate: string;
+  individualExtraReferenceTemplate: string;
 }
 
 interface ImageStyleSettings {
@@ -165,10 +175,62 @@ const MOTION_TEMPLATE_QUERY_PARAM = "motionTemplate";
 
 const NANO_BANANA_PLACEHOLDER_ROWS = [
   {
-    placeholder: "{{topic}}",
+    placeholder: "{{attachmentIndex}}",
     explanation:
-      "The project topic from the short-form video metadata. This comes from the XML video topic or dashboard project topic field.",
-    example: "Facial posture reset",
+      "Extra reference template only. The 1-based attachment number for this individual reference image.",
+    example: "2",
+  },
+  {
+    placeholder: "{{basedOnAttachmentIndex}}",
+    explanation:
+      "Based-on reference template only. The 1-based attachment number for the XML basedOn parent/base image.",
+    example: "3",
+  },
+  {
+    placeholder: "{{basedOnImageId}}",
+    explanation:
+      "Based-on reference template only. The XML image id referenced by the current asset's basedOn attribute.",
+    example: "source-profile",
+  },
+  {
+    placeholder: "{{basedOnReferenceInstructions}}",
+    explanation:
+      "The rendered Based-on reference template. Empty unless the current XML v2 asset has a basedOn parent/base image attached.",
+    example:
+      "Attached reference image 3 is the parent/base image for this XML basedOn asset...",
+  },
+  {
+    placeholder: "{{extraReferencesInstructions}}",
+    explanation:
+      "The rendered Extra references template. Empty when there are no active extra references. Character references render only for characterDriven XML images.",
+    example:
+      "Additional attached reference images are provided. Use each one only for the role described below...",
+  },
+  {
+    placeholder: "{{headerPercent}}",
+    explanation:
+      "The selected style's caption-safe top-area percentage from the style library.",
+    example: "28",
+  },
+  {
+    placeholder: "{{imageDescription}}",
+    explanation:
+      "The current image description for the scene image. This is the main per-asset visual instruction from the XML asset prompt or legacy scene prompt.",
+    example:
+      "Single full-frame side-profile portrait showing improved neck alignment and a cleaner jawline silhouette.",
+  },
+  {
+    placeholder: "{{individualExtraReferences}}",
+    explanation:
+      "Extra references template only. The rendered Individual extra reference template for each active reference image, joined with newlines. Character references render only for characterDriven XML images.",
+    example:
+      "- Attached reference image 2 (Lighting ref): usage type 'lighting'. Use this reference for soft rim lighting and subtle studio falloff.",
+  },
+  {
+    placeholder: "{{label}}",
+    explanation:
+      "Extra reference template only. The reference image label from the selected style.",
+    example: "Lighting ref",
   },
   {
     placeholder: "{{script}}",
@@ -178,70 +240,29 @@ const NANO_BANANA_PLACEHOLDER_ROWS = [
       "Your jawline changes when posture changes, because your neck position affects the tissue under your chin.",
   },
   {
-    placeholder: "{{assetId}}",
+    placeholder: "{{styleInstructions}}",
     explanation:
-      'The current XML image asset id being rendered for this scene. It usually comes from <assets><image id="...">.',
-    example: "jawline-side-profile",
-  },
-  {
-    placeholder: "{{assetPrompt}}",
-    explanation:
-      "The current asset prompt text for the scene image. This is the main per-asset visual instruction from the XML asset or legacy scene prompt.",
-    example:
-      "Single full-frame side-profile portrait showing improved neck alignment and a cleaner jawline silhouette.",
-  },
-  {
-    placeholder: "{{assetDerivedFromId}}",
-    explanation:
-      "The source asset id when the current XML asset uses basedOn for continuity or variation reuse.",
-    example: "character-base-profile",
-  },
-  {
-    placeholder: "{{extraDirection}}",
-    explanation:
-      "Optional revision notes entered during a rerender or style test. Comes from the dashboard request note field.",
-    example: "Make the chin tuck clearer and simplify the shoulder line.",
-  },
-  {
-    placeholder: "{{continuityInstructions}}",
-    explanation:
-      "Auto-generated continuity guidance when a scene references the previous frame or a derived asset. The generator composes this from scene linkage data.",
-    example:
-      "Attached reference image 2 shows the actual previous generated scene. Treat that image as the primary continuity anchor for this frame.",
-  },
-  {
-    placeholder: "{{styleInstructionsBlock}}",
-    explanation:
-      "The fully rendered output of the Style instructions template below. The scene and character templates both inject this full block.",
-    example:
-      "Keep the same subject identity and overall look: same androgynous high-fashion model across all scenes...",
-  },
-  {
-    placeholder: "{{subjectPrompt}}",
-    explanation:
-      "The selected image style subject prompt from the style library. This defines the recurring subject identity.",
-    example:
-      "same androgynous high-fashion model across all scenes, sharp eye area, defined cheekbones, elegant neutral styling",
-  },
-  {
-    placeholder: "{{headerPercent}}",
-    explanation:
-      "The selected style's caption-safe top-area percentage from the style library.",
-    example: "28",
-  },
-  {
-    placeholder: "{{perStyleInstructions}}",
-    explanation:
-      "The effective per-style art direction text from the selected style. This includes the style prompt plus any reference-driven guidance added by the runtime.",
+      "The effective style art direction text from the selected style. This includes the style prompt plus any reference-driven guidance added by the runtime.",
     example:
       "Clean dramatic high-contrast pencil-and-charcoal illustration, premium modern TikTok aesthetic, restrained vivid red accents only on the key focal area.",
   },
   {
-    placeholder: "{{extraReferences}}",
+    placeholder: "{{topic}}",
     explanation:
-      "A bullet list describing every non-character reference image attached to the selected style, including label, usage type, and usage instructions.",
-    example:
-      "- Attached reference image 2 (Lighting ref): usage type 'lighting'. Use this reference for soft rim lighting and subtle studio falloff.",
+      "The project topic from the short-form video metadata. This comes from the XML video topic or dashboard project topic field.",
+    example: "Facial posture reset",
+  },
+  {
+    placeholder: "{{usageInstructions}}",
+    explanation:
+      "Extra reference template only. The selected style's instructions for how to use this reference image.",
+    example: "Use this reference for soft rim lighting and subtle studio falloff.",
+  },
+  {
+    placeholder: "{{usageType}}",
+    explanation:
+      "Extra reference template only. The selected role for this reference image.",
+    example: "lighting",
   },
 ] as const;
 
@@ -336,7 +357,7 @@ function PromptPlaceholderTable({
   rows: readonly PromptPlaceholderRow[];
 }) {
   return (
-    <div className="rounded-lg border border-border/70 bg-background/40 p-3 text-xs text-muted-foreground">
+    <div className="text-xs text-muted-foreground">
       <p className="font-medium text-foreground">{title}</p>
       <div className="mt-2 overflow-x-auto">
         <table className="min-w-full border-collapse text-left text-xs text-muted-foreground">
@@ -348,24 +369,40 @@ function PromptPlaceholderTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr
-                key={row.placeholder}
-                className="border-b border-border/50 align-top last:border-b-0"
-              >
-                <td className="px-2 py-2 font-mono text-[11px] text-foreground">
-                  {row.placeholder}
-                </td>
-                <td className="px-2 py-2 leading-5">{row.explanation}</td>
-                <td className="whitespace-pre-wrap px-2 py-2 leading-5 text-foreground/80">
-                  {row.example}
-                </td>
-              </tr>
-            ))}
+            {[...rows]
+              .sort((a, b) => a.placeholder.localeCompare(b.placeholder))
+              .map((row) => (
+                <tr
+                  key={row.placeholder}
+                  className="border-b border-border/50 align-top last:border-b-0"
+                >
+                  <td className="px-2 py-2 font-mono text-[11px] text-foreground">
+                    {row.placeholder}
+                  </td>
+                  <td className="px-2 py-2 leading-5">{row.explanation}</td>
+                  <td className="whitespace-pre-wrap px-2 py-2 leading-5 text-foreground/80">
+                    {row.example}
+                  </td>
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>
     </div>
+  );
+}
+
+function PromptPlaceholderCard({
+  title,
+  rows,
+}: {
+  title: string;
+  rows: readonly PromptPlaceholderRow[];
+}) {
+  return (
+    <Card className="p-5">
+      <PromptPlaceholderTable title={title} rows={rows} />
+    </Card>
   );
 }
 
@@ -792,6 +829,68 @@ interface SectionFeedback {
   message: string | null;
 }
 
+function PromptTemplateEditorCard({
+  title,
+  description,
+  value,
+  onChange,
+  onFocus,
+  onBlur,
+  feedback,
+  dirty,
+  saving,
+  onSave,
+  onReset,
+  minHeightClassName = "min-h-[280px]",
+  children,
+}: {
+  title: string;
+  description?: string;
+  value: string;
+  onChange: (value: string) => void;
+  onFocus?: () => void;
+  onBlur?: () => void;
+  feedback: SectionFeedback;
+  dirty: boolean;
+  saving: boolean;
+  onSave: () => void;
+  onReset: () => void;
+  minHeightClassName?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <Card className="space-y-3 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-medium text-foreground">{title}</h3>
+          {description ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {description}
+            </p>
+          ) : null}
+        </div>
+        <SectionActions
+          dirty={dirty}
+          saving={saving}
+          saveLabel="Save template"
+          resetLabel="Restore"
+          onSave={onSave}
+          onReset={onReset}
+        />
+      </div>
+      <Textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        className={`${minHeightClassName} font-mono text-xs`}
+      />
+      <SectionFeedbackNotice feedback={feedback} />
+      {children ? <div className="space-y-1 text-xs text-muted-foreground">{children}</div> : null}
+    </Card>
+  );
+}
+
 const STYLE_REFERENCE_USAGE_OPTIONS: {
   value: StyleReferenceUsageType;
   label: string;
@@ -1180,9 +1279,10 @@ const PROMPT_TEMPLATE_IDS = [
   "xmlVisualPlanning.revisePromptTemplate",
   "soundDesign.promptTemplate",
   "soundDesign.revisionPromptTemplate",
-  "imageStyles.styleInstructionsTemplate",
-  "imageStyles.characterReferenceTemplate",
-  "imageStyles.sceneTemplate",
+  "imageStyles.imageGenerationTemplate",
+  "imageStyles.basedOnReferenceTemplate",
+  "imageStyles.extraReferencesTemplate",
+  "imageStyles.individualExtraReferenceTemplate",
 ] as const satisfies PromptTemplateId[];
 
 const SETTINGS_PAGE_META: Record<
@@ -1253,13 +1353,31 @@ const SETTINGS_PAGE_META: Record<
     summaryLabel: "Full XML planning prompt",
     sectionIds: ["xml-visual-planning"],
   },
-  "generate-visuals": {
-    eyebrow: "Short-form workflow settings",
-    title: "Generate Visuals",
+  "generate-visuals-motion-graphics": {
+    eyebrow: "Generate Visuals Settings",
+    title: "Motion Graphics",
     description:
-      "Maintain deterministic motion graphics, Nano Banana prompt templates, and the reusable image-style library that feeds scene generation.",
-    summaryLabel: "3 editable sections",
-    sectionIds: ["motion-graphics", "image-templates", "image-styles"],
+      "Maintain deterministic animated slides, charts, lists, and caption-wall templates available to Scribe during Plan Visuals.",
+    summaryLabel: "Template library",
+    sectionIds: ["motion-graphics"],
+    pageActionSectionId: "motion-graphics",
+  },
+  "generate-visuals-image-generation-prompts": {
+    eyebrow: "Generate Visuals Settings",
+    title: "Image Generation Prompts",
+    description:
+      "Edit the real prompt templates used by direct dashboard scene-image generation.",
+    summaryLabel: "Prompt templates",
+    sectionIds: ["image-templates"],
+  },
+  "generate-visuals-image-styles": {
+    eyebrow: "Generate Visuals Settings",
+    title: "Image Styles",
+    description:
+      "Maintain reusable image styles, reference images, and the global image-generation provider/model default.",
+    summaryLabel: "Style library",
+    sectionIds: ["image-styles"],
+    pageActionSectionId: "image-styles",
   },
   "plan-sound-design": {
     eyebrow: "Short-form workflow settings",
@@ -1286,6 +1404,36 @@ const SETTINGS_PAGE_META: Record<
     sectionIds: ["final-video-render", "background-videos", "music-library"],
   },
 };
+
+function getSettingsSectionSaveLabel(sectionId: SettingsSectionId) {
+  switch (sectionId) {
+    case "tts-voice":
+      return "Save voice library";
+    case "pause-removal":
+      return "Save pause-removal defaults";
+    case "final-video-render":
+      return "Save final-render defaults";
+    case "music-library":
+      return "Save music library";
+    case "sound-library":
+      return "Save sound library settings";
+    case "caption-styles":
+      return "Save caption styles";
+    case "background-videos":
+      return "Save background library";
+    case "image-styles":
+      return "Save style library";
+    case "motion-graphics":
+      return "Save motion templates";
+    case "image-templates":
+      return "Save image prompt templates";
+    case "prompt-hooks":
+    case "prompt-research":
+    case "text-script-prompts":
+    case "xml-visual-planning":
+      return "Save settings";
+  }
+}
 
 function buildStyleTestsById(
   styles: ImageStyle[],
@@ -1383,8 +1531,6 @@ function createStyleDraft(index: number): ImageStyle {
     id: `style-${Date.now()}-${index}`,
     name: `New style ${index}`,
     description: "",
-    subjectPrompt:
-      "same androgynous high-fashion model across all scenes, sharp eye area, defined cheekbones, elegant neutral styling",
     stylePrompt:
       "Premium modern social-video aesthetic, cohesive full-frame composition, dramatic but tasteful lighting, minimal clutter.",
     headerPercent: 28,
@@ -2998,7 +3144,7 @@ function MotionDefaultArgsEditor({
   };
 
   return (
-    <div className="space-y-4 rounded-lg border border-border bg-background/60 p-4">
+    <Card className="space-y-4 p-5">
       <div>
         <h3 className="text-sm font-medium text-foreground">Default args</h3>
         <p className="mt-1 text-xs text-muted-foreground">
@@ -3028,7 +3174,7 @@ function MotionDefaultArgsEditor({
           </div>
         ) : null}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -3044,7 +3190,7 @@ function MotionConfigurableFieldsSummary({
   const timingFields = new Set(timingConfig.fields);
   const extraTargets = timingConfig.extraTargets || [];
   return (
-    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+    <Card className="space-y-3 p-5">
       <div>
         <h3 className="text-sm font-medium text-foreground">
           Configurable fields Scribe sees
@@ -3054,7 +3200,7 @@ function MotionConfigurableFieldsSummary({
           Fields with timing support can receive an exact animation-in timestamp.
         </p>
       </div>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="space-y-3">
         {template.fields.map((field) => {
           const timingControllable = timingFields.has(field.name);
           const parameters = getMotionFieldParameters(field, timingControllable);
@@ -3147,7 +3293,7 @@ function MotionConfigurableFieldsSummary({
           </div>
         </div>
       ) : null}
-    </div>
+    </Card>
   );
 }
 
@@ -3351,7 +3497,7 @@ export function ShortFormVideoSettingsView({
             templates: initialSettings.motionGraphics.templates,
             currentId: null,
             requestedId:
-              activeSection === "generate-visuals"
+              activeSection === "generate-visuals-motion-graphics"
                 ? requestedMotionTemplateId
                 : null,
           })
@@ -3440,6 +3586,10 @@ export function ShortFormVideoSettingsView({
   const [promptTemplateFeedback, setPromptTemplateFeedback] = useState<
     Record<PromptTemplateId, SectionFeedback>
   >(createEmptyPromptTemplateFeedback());
+  const [focusedPromptTemplateId, setFocusedPromptTemplateId] =
+    useState<PromptTemplateId | null>(null);
+  const focusedPromptTemplateIdRef = useRef<PromptTemplateId | null>(null);
+  const localSettingsDirtyRef = useRef(false);
   const [ttsPreview, setTtsPreview] = useState<TtsPreviewState>({
     isLoading: false,
     error: null,
@@ -3455,7 +3605,7 @@ export function ShortFormVideoSettingsView({
 
   const updateSelectedMotionTemplateInUrl = useCallback(
     (templateId: string | null) => {
-      if (activeSection !== "generate-visuals") return;
+      if (activeSection !== "generate-visuals-motion-graphics") return;
       const params = new URLSearchParams(searchParams.toString());
       if (templateId) {
         params.set(MOTION_TEMPLATE_QUERY_PARAM, templateId);
@@ -3583,7 +3733,7 @@ export function ShortFormVideoSettingsView({
 
   useEffect(() => {
     if (
-      activeSection !== "generate-visuals" ||
+      activeSection !== "generate-visuals-motion-graphics" ||
       !motionGraphicsSettings ||
       !selectedMotionTemplateId
     ) {
@@ -3617,7 +3767,7 @@ export function ShortFormVideoSettingsView({
   }, [activeSection, motionGraphicsSettings, requestMotionTemplatePreview, selectedMotionTemplateId]);
 
   useEffect(() => {
-    if (activeSection !== "generate-visuals" || !motionGraphicsSettings) return;
+    if (activeSection !== "generate-visuals-motion-graphics" || !motionGraphicsSettings) return;
 
     const pendingUrlSelection = pendingMotionTemplateUrlIdRef.current;
     if (
@@ -3739,6 +3889,14 @@ export function ShortFormVideoSettingsView({
   const hasAppliedSettingsRef = useRef(Boolean(initialSettings));
   const applySettings = useCallback(
     (data: SettingsData, options?: { background?: boolean }) => {
+      if (
+        options?.background &&
+        (focusedPromptTemplateIdRef.current || localSettingsDirtyRef.current)
+      ) {
+        setError(null);
+        return;
+      }
+
       setDefinitions(data.definitions);
       setPrompts(data.prompts);
       setInitialPrompts(data.prompts);
@@ -3761,7 +3919,7 @@ export function ShortFormVideoSettingsView({
             templates: data.motionGraphics.templates,
             currentId: current,
             requestedId:
-              activeSectionRef.current === "generate-visuals"
+              activeSectionRef.current === "generate-visuals-motion-graphics"
                 ? requestedMotionTemplateIdRef.current
                 : null,
           }),
@@ -4446,6 +4604,37 @@ export function ShortFormVideoSettingsView({
     xmlVisualPlanningSettings,
   ]);
 
+  useEffect(() => {
+    localSettingsDirtyRef.current = Object.values(dirtyBySection).some(Boolean);
+  }, [dirtyBySection]);
+
+  const handlePromptTemplateFocus = useCallback(
+    (templateId: PromptTemplateId) => {
+      focusedPromptTemplateIdRef.current = templateId;
+      setFocusedPromptTemplateId(templateId);
+    },
+    [],
+  );
+
+  const handlePromptTemplateBlur = useCallback(
+    (templateId: PromptTemplateId) => {
+      if (focusedPromptTemplateIdRef.current !== templateId) return;
+      focusedPromptTemplateIdRef.current = null;
+      setFocusedPromptTemplateId((current) =>
+        current === templateId ? null : current,
+      );
+    },
+    [],
+  );
+
+  const getPromptTemplateFocusHandlers = useCallback(
+    (templateId: PromptTemplateId) => ({
+      onFocus: () => handlePromptTemplateFocus(templateId),
+      onBlur: () => handlePromptTemplateBlur(templateId),
+    }),
+    [handlePromptTemplateBlur, handlePromptTemplateFocus],
+  );
+
   const anyDirty = useMemo(
     () => Object.values(dirtyBySection).some(Boolean),
     [dirtyBySection],
@@ -4456,6 +4645,7 @@ export function ShortFormVideoSettingsView({
     anySectionSaving ||
     anyPromptTemplateSaving ||
     anyStyleTesting ||
+    Boolean(focusedPromptTemplateId) ||
     ttsPreview.isLoading ||
     musicPreview.isLoading ||
     Boolean(selectedStyleUpload?.isUploading) ||
@@ -4533,35 +4723,14 @@ export function ShortFormVideoSettingsView({
   );
   const pageMeta = SETTINGS_PAGE_META[activeSection];
   const pageActionSectionId = pageMeta.pageActionSectionId;
-  const pageHasDirtySections = pageMeta.sectionIds.some(
-    (sectionId) => dirtyBySection[sectionId],
-  );
-  const pageHasSectionError = pageMeta.sectionIds.some((sectionId) =>
-    Boolean(sectionFeedback[sectionId].error),
-  );
-  const pageHasSectionSaving = pageMeta.sectionIds.some(
-    (sectionId) => sectionFeedback[sectionId].saving,
-  );
-  const pageHasTransientWork =
-    pageHasSectionSaving ||
-    anyPromptTemplateSaving ||
-    (activeSection === "generate-narration-audio" &&
-      (ttsPreview.isLoading || Boolean(selectedVoiceUpload?.isUploading))) ||
-    ((activeSection === "plan-sound-design" ||
-      activeSection === "generate-sound-design") &&
-      Boolean(selectedSoundUpload?.isUploading)) ||
-    (activeSection === "generate-visuals" &&
-      (anyStyleTesting || Boolean(selectedStyleUpload?.isUploading))) ||
-    (activeSection === "final-video" &&
-      (backgroundVideoUpload.isUploading || musicPreview.isLoading));
-  const pageStatus =
-    error || pageHasSectionError
-      ? "failed"
-      : pageHasTransientWork
-        ? "working"
-        : pageHasDirtySections
-          ? "needs review"
-          : "approved";
+  const pageActionSectionIds: SettingsSectionId[] =
+    activeSection === "generate-narration-audio"
+      ? ["pause-removal", "tts-voice"]
+      : activeSection === "final-video"
+        ? ["final-video-render", "background-videos", "music-library"]
+        : pageActionSectionId
+          ? [pageActionSectionId]
+          : [];
   const pageReloadDisabled =
     loading ||
     anySectionSaving ||
@@ -4610,68 +4779,38 @@ export function ShortFormVideoSettingsView({
   ]);
 
   const promptSections = PROMPT_GROUPS.map((group) => {
-    const dirty = dirtyBySection[group.id];
     return (
       <section key={group.id} id={group.id} className="scroll-mt-24">
-        <Card className="space-y-5 p-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <WorkflowSectionHeader
-              title={group.title}
-              description={group.description}
-              status={dirty ? "needs review" : "approved"}
-            />
-          </div>
+        <div className="space-y-6">
+          {group.keys.map((key) => {
+            const definition = promptDefinitionsByKey[key];
+            const templateId = key as PromptTemplateId;
+            const templateFeedback = promptTemplateFeedback[templateId];
+            return (
+              <PromptTemplateEditorCard
+                key={key}
+                title={definition?.title || key}
+                description={definition?.description}
+                value={prompts[key] || ""}
+                onChange={(value) => setPromptTemplateValue(templateId, value)}
+                {...getPromptTemplateFocusHandlers(templateId)}
+                feedback={templateFeedback}
+                dirty={isPromptTemplateDirty(templateId)}
+                saving={templateFeedback.saving}
+                onSave={() => void savePromptTemplate(templateId)}
+                onReset={() => resetPromptTemplate(templateId)}
+                minHeightClassName="min-h-[220px]"
+              >
+                {definition?.stage ? (
+                  <span className="rounded-full border border-border px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+                    {definition.stage}
+                  </span>
+                ) : null}
+              </PromptTemplateEditorCard>
+            );
+          })}
 
-          <div className="space-y-6">
-            {group.keys.map((key) => {
-              const definition = promptDefinitionsByKey[key];
-              const templateId = key as PromptTemplateId;
-              const templateFeedback = promptTemplateFeedback[templateId];
-              const templateDirty = isPromptTemplateDirty(templateId);
-              return (
-                <div
-                  key={key}
-                  className="space-y-2 border-t border-border pt-4 first:border-t-0 first:pt-0"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-sm font-medium text-foreground">
-                        {definition?.title || key}
-                      </h3>
-                      {definition?.stage ? (
-                        <span className="rounded-full border border-border px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
-                          {definition.stage}
-                        </span>
-                      ) : null}
-                    </div>
-                    <SectionActions
-                      dirty={templateDirty}
-                      saving={templateFeedback.saving}
-                      saveLabel="Save template"
-                      resetLabel="Restore"
-                      onSave={() => void savePromptTemplate(templateId)}
-                      onReset={() => resetPromptTemplate(templateId)}
-                    />
-                  </div>
-                  {definition?.description ? (
-                    <p className="text-sm text-muted-foreground">
-                      {definition.description}
-                    </p>
-                  ) : null}
-                  <Textarea
-                    value={prompts[key] || ""}
-                    onChange={(event) =>
-                      setPromptTemplateValue(templateId, event.target.value)
-                    }
-                    className="min-h-[220px] font-mono text-xs"
-                  />
-                  <SectionFeedbackNotice feedback={templateFeedback} />
-                </div>
-              );
-            })}
-          </div>
-
-          <PromptPlaceholderTable
+          <PromptPlaceholderCard
             title="Prompt placeholders"
             rows={
               PROMPT_GROUP_PLACEHOLDER_ROWS[
@@ -4679,29 +4818,17 @@ export function ShortFormVideoSettingsView({
               ]
             }
           />
-        </Card>
+        </div>
       </section>
     );
   });
 
   const textScriptPromptSection = (
     <section id="text-script-prompts" className="scroll-mt-24">
-      <Card className="space-y-5 p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <WorkflowSectionHeader
-            title="Text-script Scribe prompts"
-            description="These are the actual full top-level prompt templates the dashboard sends to Scribe during the Text Script loop: generate, revise, and review. Runtime placeholders stay in the template because the settings are global, but there is no second hidden wrapper prompt anymore."
-            status={
-              dirtyBySection["text-script-prompts"]
-                ? "needs review"
-                : "approved"
-            }
-          />
-        </div>
-
+      <div className="space-y-6">
         {textScriptSettings ? (
           <div className="space-y-6">
-            <div className="space-y-4 rounded-lg border border-border/70 bg-background/40 p-4">
+            <Card className="space-y-4 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-medium text-foreground">
@@ -4811,186 +4938,105 @@ export function ShortFormVideoSettingsView({
               <SectionFeedbackNotice
                 feedback={sectionFeedback["text-script-prompts"]}
               />
-            </div>
+            </Card>
 
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Full generate prompt template
-                </label>
-                <SectionActions
-                  dirty={isPromptTemplateDirty("textScript.generatePrompt")}
-                  saving={
-                    promptTemplateFeedback["textScript.generatePrompt"].saving
-                  }
-                  saveLabel="Save template"
-                  resetLabel="Restore"
-                  onSave={() =>
-                    void savePromptTemplate("textScript.generatePrompt")
-                  }
-                  onReset={() =>
-                    resetPromptTemplate("textScript.generatePrompt")
-                  }
-                />
-              </div>
-              <Textarea
-                value={textScriptSettings.generatePrompt}
-                onChange={(event) =>
-                  setPromptTemplateValue(
-                    "textScript.generatePrompt",
-                    event.target.value,
-                  )
-                }
-                className="min-h-[280px] font-mono text-xs"
-              />
-              <SectionFeedbackNotice
-                feedback={promptTemplateFeedback["textScript.generatePrompt"]}
-              />
-            </div>
+            <PromptTemplateEditorCard
+              title="Full generate prompt template"
+              value={textScriptSettings.generatePrompt}
+              onChange={(value) =>
+                setPromptTemplateValue("textScript.generatePrompt", value)
+              }
+              {...getPromptTemplateFocusHandlers("textScript.generatePrompt")}
+              feedback={promptTemplateFeedback["textScript.generatePrompt"]}
+              dirty={isPromptTemplateDirty("textScript.generatePrompt")}
+              saving={promptTemplateFeedback["textScript.generatePrompt"].saving}
+              onSave={() => void savePromptTemplate("textScript.generatePrompt")}
+              onReset={() => resetPromptTemplate("textScript.generatePrompt")}
+              minHeightClassName="min-h-[280px]"
+            />
 
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Full revise prompt template
-                </label>
-                <SectionActions
-                  dirty={isPromptTemplateDirty("textScript.revisePrompt")}
-                  saving={
-                    promptTemplateFeedback["textScript.revisePrompt"].saving
-                  }
-                  saveLabel="Save template"
-                  resetLabel="Restore"
-                  onSave={() =>
-                    void savePromptTemplate("textScript.revisePrompt")
-                  }
-                  onReset={() =>
-                    resetPromptTemplate("textScript.revisePrompt")
-                  }
-                />
-              </div>
-              <Textarea
-                value={textScriptSettings.revisePrompt}
-                onChange={(event) =>
-                  setPromptTemplateValue(
-                    "textScript.revisePrompt",
-                    event.target.value,
-                  )
-                }
-                className="min-h-[320px] font-mono text-xs"
-              />
-              <SectionFeedbackNotice
-                feedback={promptTemplateFeedback["textScript.revisePrompt"]}
-              />
-            </div>
+            <PromptTemplateEditorCard
+              title="Full revise prompt template"
+              value={textScriptSettings.revisePrompt}
+              onChange={(value) =>
+                setPromptTemplateValue("textScript.revisePrompt", value)
+              }
+              {...getPromptTemplateFocusHandlers("textScript.revisePrompt")}
+              feedback={promptTemplateFeedback["textScript.revisePrompt"]}
+              dirty={isPromptTemplateDirty("textScript.revisePrompt")}
+              saving={promptTemplateFeedback["textScript.revisePrompt"].saving}
+              onSave={() => void savePromptTemplate("textScript.revisePrompt")}
+              onReset={() => resetPromptTemplate("textScript.revisePrompt")}
+              minHeightClassName="min-h-[320px]"
+            />
 
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Full review prompt template
-                </label>
-                <SectionActions
-                  dirty={isPromptTemplateDirty("textScript.reviewPrompt")}
-                  saving={
-                    promptTemplateFeedback["textScript.reviewPrompt"].saving
-                  }
-                  saveLabel="Save template"
-                  resetLabel="Restore"
-                  onSave={() =>
-                    void savePromptTemplate("textScript.reviewPrompt")
-                  }
-                  onReset={() =>
-                    resetPromptTemplate("textScript.reviewPrompt")
-                  }
-                />
-              </div>
-              <Textarea
-                value={textScriptSettings.reviewPrompt}
-                onChange={(event) =>
-                  setPromptTemplateValue(
-                    "textScript.reviewPrompt",
-                    event.target.value,
-                  )
-                }
-                className="min-h-[300px] font-mono text-xs"
-              />
-              <SectionFeedbackNotice
-                feedback={promptTemplateFeedback["textScript.reviewPrompt"]}
-              />
-            </div>
+            <PromptTemplateEditorCard
+              title="Full review prompt template"
+              value={textScriptSettings.reviewPrompt}
+              onChange={(value) =>
+                setPromptTemplateValue("textScript.reviewPrompt", value)
+              }
+              {...getPromptTemplateFocusHandlers("textScript.reviewPrompt")}
+              feedback={promptTemplateFeedback["textScript.reviewPrompt"]}
+              dirty={isPromptTemplateDirty("textScript.reviewPrompt")}
+              saving={promptTemplateFeedback["textScript.reviewPrompt"].saving}
+              onSave={() => void savePromptTemplate("textScript.reviewPrompt")}
+              onReset={() => resetPromptTemplate("textScript.reviewPrompt")}
+              minHeightClassName="min-h-[300px]"
+            />
 
-            <PromptPlaceholderTable
+            <PromptPlaceholderCard
               title="Text Script prompt placeholders"
               rows={TEXT_SCRIPT_PLACEHOLDER_ROWS}
             />
           </div>
         ) : null}
-      </Card>
+      </div>
     </section>
   );
 
   const xmlVisualPlanningPromptSection = (
     <section id="xml-visual-planning" className="scroll-mt-24">
-      <Card className="space-y-5 p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <WorkflowSectionHeader
-            title="Visual-planning Scribe prompt"
-            description="These are the actual full top-level prompt templates the dashboard sends to Scribe when Plan Visuals writes or revises the XML script. The generate template is used for new/no-notes runs; the revise template is used only when revision notes exist."
-            status={
-              dirtyBySection["xml-visual-planning"]
-                ? "needs review"
-                : "approved"
-            }
-          />
-        </div>
-
+      <div className="space-y-6">
         {xmlVisualPlanningSettings ? (
           <div className="space-y-6">
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Guidelines for planning visuals template
-                </label>
-                <SectionActions
-                  dirty={isPromptTemplateDirty(
-                    "xmlVisualPlanning.planningGuidelinesTemplate",
-                  )}
-                  saving={
-                    promptTemplateFeedback[
-                      "xmlVisualPlanning.planningGuidelinesTemplate"
-                    ].saving
-                  }
-                  saveLabel="Save template"
-                  resetLabel="Restore"
-                  onSave={() =>
-                    void savePromptTemplate(
-                      "xmlVisualPlanning.planningGuidelinesTemplate",
-                    )
-                  }
-                  onReset={() =>
-                    resetPromptTemplate(
-                      "xmlVisualPlanning.planningGuidelinesTemplate",
-                    )
-                  }
-                />
-              </div>
-              <Textarea
-                value={xmlVisualPlanningSettings.planningGuidelinesTemplate}
-                onChange={(event) =>
-                  setPromptTemplateValue(
-                    "xmlVisualPlanning.planningGuidelinesTemplate",
-                    event.target.value,
-                  )
-                }
-                className="min-h-[560px] font-mono text-xs"
-              />
-              <SectionFeedbackNotice
-                feedback={
-                  promptTemplateFeedback[
-                    "xmlVisualPlanning.planningGuidelinesTemplate"
-                  ]
-                }
-              />
-              <div className="space-y-1 text-xs text-muted-foreground">
+            <PromptTemplateEditorCard
+              title="Guidelines for planning visuals template"
+              value={xmlVisualPlanningSettings.planningGuidelinesTemplate}
+              onChange={(value) =>
+                setPromptTemplateValue(
+                  "xmlVisualPlanning.planningGuidelinesTemplate",
+                  value,
+                )
+              }
+              {...getPromptTemplateFocusHandlers(
+                "xmlVisualPlanning.planningGuidelinesTemplate",
+              )}
+              feedback={
+                promptTemplateFeedback[
+                  "xmlVisualPlanning.planningGuidelinesTemplate"
+                ]
+              }
+              dirty={isPromptTemplateDirty(
+                "xmlVisualPlanning.planningGuidelinesTemplate",
+              )}
+              saving={
+                promptTemplateFeedback[
+                  "xmlVisualPlanning.planningGuidelinesTemplate"
+                ].saving
+              }
+              onSave={() =>
+                void savePromptTemplate(
+                  "xmlVisualPlanning.planningGuidelinesTemplate",
+                )
+              }
+              onReset={() =>
+                resetPromptTemplate(
+                  "xmlVisualPlanning.planningGuidelinesTemplate",
+                )
+              }
+              minHeightClassName="min-h-[560px]"
+            >
                 <p>
                   This shared template is rendered first, then injected into
                   the full generate/revise prompts wherever{" "}
@@ -5001,51 +5047,34 @@ export function ShortFormVideoSettingsView({
                   semantics, and other guidance that should stay synchronized
                   between generate and revise runs.
                 </p>
-              </div>
-            </div>
+            </PromptTemplateEditorCard>
 
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Full generate prompt template
-                </label>
-                <SectionActions
-                  dirty={isPromptTemplateDirty(
-                    "xmlVisualPlanning.promptTemplate",
-                  )}
-                  saving={
-                    promptTemplateFeedback[
-                      "xmlVisualPlanning.promptTemplate"
-                    ].saving
-                  }
-                  saveLabel="Save template"
-                  resetLabel="Restore"
-                  onSave={() =>
-                    void savePromptTemplate(
-                      "xmlVisualPlanning.promptTemplate",
-                    )
-                  }
-                  onReset={() =>
-                    resetPromptTemplate("xmlVisualPlanning.promptTemplate")
-                  }
-                />
-              </div>
-              <Textarea
-                value={xmlVisualPlanningSettings.promptTemplate}
-                onChange={(event) =>
-                  setPromptTemplateValue(
-                    "xmlVisualPlanning.promptTemplate",
-                    event.target.value,
-                  )
-                }
-                className="min-h-[560px] font-mono text-xs"
-              />
-              <SectionFeedbackNotice
-                feedback={
-                  promptTemplateFeedback["xmlVisualPlanning.promptTemplate"]
-                }
-              />
-              <div className="space-y-1 text-xs text-muted-foreground">
+            <PromptTemplateEditorCard
+              title="Full generate prompt template"
+              value={xmlVisualPlanningSettings.promptTemplate}
+              onChange={(value) =>
+                setPromptTemplateValue(
+                  "xmlVisualPlanning.promptTemplate",
+                  value,
+                )
+              }
+              {...getPromptTemplateFocusHandlers(
+                "xmlVisualPlanning.promptTemplate",
+              )}
+              feedback={promptTemplateFeedback["xmlVisualPlanning.promptTemplate"]}
+              dirty={isPromptTemplateDirty("xmlVisualPlanning.promptTemplate")}
+              saving={
+                promptTemplateFeedback["xmlVisualPlanning.promptTemplate"]
+                  .saving
+              }
+              onSave={() =>
+                void savePromptTemplate("xmlVisualPlanning.promptTemplate")
+              }
+              onReset={() =>
+                resetPromptTemplate("xmlVisualPlanning.promptTemplate")
+              }
+              minHeightClassName="min-h-[560px]"
+            >
                 <p>
                   Runtime placeholders stay in this template because the setting
                   is global, but this field is the real prompt surface used at
@@ -5058,55 +5087,45 @@ export function ShortFormVideoSettingsView({
                   change artifact instructions or placeholder names here, the
                   Plan Visuals runtime behavior will change immediately.
                 </p>
-              </div>
-            </div>
+            </PromptTemplateEditorCard>
 
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Full revise prompt template
-                </label>
-                <SectionActions
-                  dirty={isPromptTemplateDirty(
-                    "xmlVisualPlanning.revisePromptTemplate",
-                  )}
-                  saving={
-                    promptTemplateFeedback[
-                      "xmlVisualPlanning.revisePromptTemplate"
-                    ].saving
-                  }
-                  saveLabel="Save template"
-                  resetLabel="Restore"
-                  onSave={() =>
-                    void savePromptTemplate(
-                      "xmlVisualPlanning.revisePromptTemplate",
-                    )
-                  }
-                  onReset={() =>
-                    resetPromptTemplate(
-                      "xmlVisualPlanning.revisePromptTemplate",
-                    )
-                  }
-                />
-              </div>
-              <Textarea
-                value={xmlVisualPlanningSettings.revisePromptTemplate}
-                onChange={(event) =>
-                  setPromptTemplateValue(
-                    "xmlVisualPlanning.revisePromptTemplate",
-                    event.target.value,
-                  )
-                }
-                className="min-h-[560px] font-mono text-xs"
-              />
-              <SectionFeedbackNotice
-                feedback={
-                  promptTemplateFeedback[
-                    "xmlVisualPlanning.revisePromptTemplate"
-                  ]
-                }
-              />
-              <div className="space-y-1 text-xs text-muted-foreground">
+            <PromptTemplateEditorCard
+              title="Full revise prompt template"
+              value={xmlVisualPlanningSettings.revisePromptTemplate}
+              onChange={(value) =>
+                setPromptTemplateValue(
+                  "xmlVisualPlanning.revisePromptTemplate",
+                  value,
+                )
+              }
+              {...getPromptTemplateFocusHandlers(
+                "xmlVisualPlanning.revisePromptTemplate",
+              )}
+              feedback={
+                promptTemplateFeedback[
+                  "xmlVisualPlanning.revisePromptTemplate"
+                ]
+              }
+              dirty={isPromptTemplateDirty(
+                "xmlVisualPlanning.revisePromptTemplate",
+              )}
+              saving={
+                promptTemplateFeedback[
+                  "xmlVisualPlanning.revisePromptTemplate"
+                ].saving
+              }
+              onSave={() =>
+                void savePromptTemplate(
+                  "xmlVisualPlanning.revisePromptTemplate",
+                )
+              }
+              onReset={() =>
+                resetPromptTemplate(
+                  "xmlVisualPlanning.revisePromptTemplate",
+                )
+              }
+              minHeightClassName="min-h-[560px]"
+            >
                 <p>
                   This is the complete top-level prompt used when Plan Visuals
                   revises an existing XML plan. Put the revision-notes label
@@ -5118,72 +5137,25 @@ export function ShortFormVideoSettingsView({
                   instructions after this template. Runtime data must appear as
                   placeholders in this field or the generate field above.
                 </p>
-              </div>
-            </div>
+            </PromptTemplateEditorCard>
 
-            <div className="rounded-lg border border-border/70 bg-background/40 p-3 text-xs text-muted-foreground">
-              <p className="font-medium text-foreground">
-                Generate/revise prompt placeholders
-              </p>
-              <div className="mt-2 overflow-x-auto">
-                <table className="min-w-full border-collapse text-left text-xs text-muted-foreground">
-                  <thead>
-                    <tr className="border-b border-border/70 text-[11px] uppercase tracking-wide text-muted-foreground">
-                      <th className="px-2 py-2 font-medium">Placeholder</th>
-                      <th className="px-2 py-2 font-medium">
-                        What it represents
-                      </th>
-                      <th className="px-2 py-2 font-medium">Example value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {XML_VISUAL_PLANNING_PLACEHOLDER_ROWS.map((row) => (
-                      <tr
-                        key={row.placeholder}
-                        className="border-b border-border/50 align-top last:border-b-0"
-                      >
-                        <td className="px-2 py-2 font-mono text-[11px] text-foreground">
-                          {row.placeholder}
-                        </td>
-                        <td className="px-2 py-2 leading-5">
-                          {row.explanation}
-                        </td>
-                        <td className="px-2 py-2 leading-5 text-foreground/80">
-                          {row.example}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <PromptPlaceholderCard
+              title="Generate/revise prompt placeholders"
+              rows={XML_VISUAL_PLANNING_PLACEHOLDER_ROWS}
+            />
           </div>
         ) : null}
-      </Card>
+      </div>
     </section>
   );
 
   const finalVideoRenderSection = (
     <section id="final-video-render" className="scroll-mt-24">
       <Card className="space-y-5 p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <WorkflowSectionHeader
-            title="Final-render defaults"
-            description="Set global render defaults used by the Final Video workflow page. Individual projects can still override these values from their project page."
-            status={
-              dirtyBySection["final-video-render"]
-                ? "needs review"
-                : "approved"
-            }
-          />
-          <SectionActions
-            dirty={dirtyBySection["final-video-render"]}
-            saving={sectionFeedback["final-video-render"].saving}
-            saveLabel="Save final-render defaults"
-            onSave={() => void saveSection("final-video-render")}
-            onReset={() => resetSection("final-video-render")}
-          />
-        </div>
+        <WorkflowSectionHeader
+          title="Final-render defaults"
+          description="Set global render defaults used by the Final Video workflow page. Individual projects can still override these values from their project page."
+        />
 
         {videoRender ? (
           <div className="space-y-2">
@@ -5231,7 +5203,7 @@ export function ShortFormVideoSettingsView({
         {soundDesignSettings ? (
           <div className="space-y-6">
             {activeSection === "plan-sound-design" ? (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="space-y-6">
               <Card className="space-y-2 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -5333,18 +5305,14 @@ export function ShortFormVideoSettingsView({
                   </p>
                 </div>
               </Card>
-              <div className="lg:col-span-2">
-                <PromptPlaceholderTable
-                  title="Plan Sound Design prompt placeholders"
-                  rows={SOUND_DESIGN_PLACEHOLDER_ROWS}
-                />
-              </div>
-              <div className="lg:col-span-2">
-                <PromptPlaceholderTable
-                  title="Plan Sound Design revision-notes placeholders"
-                  rows={SOUND_DESIGN_REVISION_PLACEHOLDER_ROWS}
-                />
-              </div>
+              <PromptPlaceholderCard
+                title="Plan Sound Design prompt placeholders"
+                rows={SOUND_DESIGN_PLACEHOLDER_ROWS}
+              />
+              <PromptPlaceholderCard
+                title="Plan Sound Design revision-notes placeholders"
+                rows={SOUND_DESIGN_REVISION_PLACEHOLDER_ROWS}
+              />
             </div>
             ) : (
               <Card className="space-y-4 p-4">
@@ -9292,7 +9260,6 @@ export function ShortFormVideoSettingsView({
       eyebrow={pageMeta.eyebrow}
       title={pageMeta.title}
       description={pageMeta.description}
-      status={pageStatus}
       actions={
         <>
           <RefreshIconButton
@@ -9319,23 +9286,16 @@ export function ShortFormVideoSettingsView({
               onReset={resetGenerateSoundDesignSettings}
             />
           ) : null}
-          {pageActionSectionId ? (
+          {pageActionSectionIds.map((sectionId) => (
             <SectionActions
-              dirty={dirtyBySection[pageActionSectionId]}
-              saving={sectionFeedback[pageActionSectionId].saving}
-              saveLabel={
-                pageActionSectionId === "sound-library"
-                  ? "Save sound library settings"
-                  : pageActionSectionId === "caption-styles"
-                    ? "Save caption styles"
-                    : pageActionSectionId === "background-videos"
-                      ? "Save background library"
-                      : "Save music library"
-              }
-              onSave={() => void saveSection(pageActionSectionId)}
-              onReset={() => resetSection(pageActionSectionId)}
+              key={sectionId}
+              dirty={dirtyBySection[sectionId]}
+              saving={sectionFeedback[sectionId].saving}
+              saveLabel={getSettingsSectionSaveLabel(sectionId)}
+              onSave={() => void saveSection(sectionId)}
+              onReset={() => resetSection(sectionId)}
             />
-          ) : null}
+          ))}
         </>
       }
       preContent={
@@ -9349,7 +9309,6 @@ export function ShortFormVideoSettingsView({
           <WorkflowSectionHeader
             title="No global Topic settings"
             description="Topic capture is project-specific. The settings sidebar mirrors the workflow exactly, so this page is intentionally present even though there is nothing global to configure here yet."
-            status="approved"
           />
         </Card>
       ) : null}
@@ -9379,24 +9338,10 @@ export function ShortFormVideoSettingsView({
         <div className="space-y-6">
           <section id="pause-removal" className="scroll-mt-24">
             <Card className="space-y-5 p-5">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <WorkflowSectionHeader
-                  title="Pause-removal defaults"
-                  description="Set the global silence-trimming defaults for the narration pipeline. The silence-trimming ffmpeg pass runs after original narration generation and before forced alignment. Individual projects can override these values from their project page."
-                  status={
-                    dirtyBySection["pause-removal"]
-                      ? "needs review"
-                      : "approved"
-                  }
-                />
-                <SectionActions
-                  dirty={dirtyBySection["pause-removal"]}
-                  saving={sectionFeedback["pause-removal"].saving}
-                  saveLabel="Save pause-removal defaults"
-                  onSave={() => void saveSection("pause-removal")}
-                  onReset={() => resetSection("pause-removal")}
-                />
-              </div>
+              <WorkflowSectionHeader
+                title="Pause-removal defaults"
+                description="Set the global silence-trimming defaults for the narration pipeline. The silence-trimming ffmpeg pass runs after original narration generation and before forced alignment. Individual projects can override these values from their project page."
+              />
 
               {videoRender ? (
                 <div className="grid gap-4 md:grid-cols-2">
@@ -9406,7 +9351,7 @@ export function ShortFormVideoSettingsView({
                     </label>
                     <Input
                       type="number"
-                      min={0.1}
+                      min={0.01}
                       max={2.5}
                       step={0.01}
                       value={videoRender.pauseRemoval.minSilenceDurationSeconds}
@@ -9422,7 +9367,7 @@ export function ShortFormVideoSettingsView({
                             minSilenceDurationSeconds: Math.min(
                               2.5,
                               Math.max(
-                                0.1,
+                                0.01,
                                 Math.round(
                                   (Number(event.target.value) || 0.35) * 100,
                                 ) / 100,
@@ -9497,22 +9442,10 @@ export function ShortFormVideoSettingsView({
 
           <section id="tts-voice" className="scroll-mt-24">
             <Card className="space-y-5 p-5">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <WorkflowSectionHeader
-                  title="Qwen voice library"
-                  description="Manage the reusable voice library that the dashboard really uses for final-video narration. VoiceDesign entries are the new primary path. Legacy/custom entries remain supported only for migrated speaker-based voices and fallback compatibility."
-                  status={
-                    dirtyBySection["tts-voice"] ? "needs review" : "approved"
-                  }
-                />
-                <SectionActions
-                  dirty={dirtyBySection["tts-voice"]}
-                  saving={sectionFeedback["tts-voice"].saving}
-                  saveLabel="Save voice library"
-                  onSave={() => void saveSection("tts-voice")}
-                  onReset={() => resetSection("tts-voice")}
-                />
-              </div>
+              <WorkflowSectionHeader
+                title="Qwen voice library"
+                description="Manage the reusable voice library that the dashboard really uses for final-video narration. VoiceDesign entries are the new primary path. Legacy/custom entries remain supported only for migrated speaker-based voices and fallback compatibility."
+              />
 
               {videoRender ? (
                 <div className="space-y-5">
@@ -10059,28 +9992,14 @@ export function ShortFormVideoSettingsView({
         </div>
       ) : null}
 
-      {activeSection === "generate-visuals" ? (
+      {activeSection === "generate-visuals-motion-graphics" ? (
         <div className="space-y-6">
           <section id="motion-graphics" className="scroll-mt-24">
-            <Card className="space-y-5 p-5">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <WorkflowSectionHeader
-                  title="Motion graphics templates"
-                  description="Deterministic animated slides, bar/pie/line charts, ranked lists, checklists, scorecards, research cards, and good/bad indicator visuals available to Scribe during Plan Visuals. The UI can add configured template metadata, but renderer ids stay constrained to supported deterministic renderers."
-                  status={dirtyBySection["motion-graphics"] ? "needs review" : "approved"}
-                />
-                <SectionActions
-                  dirty={dirtyBySection["motion-graphics"]}
-                  saving={sectionFeedback["motion-graphics"].saving}
-                  saveLabel="Save motion templates"
-                  onSave={() => void saveSection("motion-graphics")}
-                  onReset={() => resetSection("motion-graphics")}
-                />
-              </div>
-
+            <div className="space-y-6">
               {motionGraphicsSettings ? (
-                <div className="grid gap-5 lg:grid-cols-[18rem_1fr]">
-                  <div className="space-y-4">
+                <div className="space-y-5">
+                  <Card className="space-y-4 p-5">
+                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.7fr)_auto] lg:items-end">
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-foreground">
                         Default style preset
@@ -10120,9 +10039,11 @@ export function ShortFormVideoSettingsView({
                       Add configured template
                     </Button>
                   </div>
+                  </Card>
 
                   {selectedMotionTemplate ? (
                     <div className="space-y-4">
+                      <Card className="space-y-4 p-5">
                       <div className="grid gap-4 lg:grid-cols-[minmax(15rem,0.9fr)_1.4fr]">
                         <div className="overflow-hidden rounded-lg border bg-background">
                           <div className="aspect-[9/16] bg-muted">
@@ -10204,7 +10125,9 @@ export function ShortFormVideoSettingsView({
                           </p>
                         </div>
                       </div>
+                      </Card>
 
+                      <Card className="space-y-4 p-5">
                       <div className="grid gap-4 md:grid-cols-2">
                         <div className="space-y-2">
                           <label className="text-sm font-medium text-foreground">Template id</label>
@@ -10279,7 +10202,9 @@ export function ShortFormVideoSettingsView({
                           />
                         </div>
                       </div>
+                      </Card>
 
+                      <Card className="space-y-4 p-5">
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-foreground">Description</label>
                         <Textarea
@@ -10322,6 +10247,9 @@ export function ShortFormVideoSettingsView({
                           If filled out, this text is injected into Scribe’s Plan Visuals prompt inside this template’s motion-graphic reference. Blank values are omitted entirely.
                         </p>
                       </div>
+                      </Card>
+
+                      <Card className="space-y-4 p-5">
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-foreground">Duration guidance</label>
                         <Textarea
@@ -10334,6 +10262,7 @@ export function ShortFormVideoSettingsView({
                           }
                         />
                       </div>
+                      </Card>
                       <MotionDefaultArgsEditor
                         template={selectedMotionTemplate}
                         onChangeArg={updateSelectedMotionTemplateDefaultArg}
@@ -10343,7 +10272,8 @@ export function ShortFormVideoSettingsView({
                         template={selectedMotionTemplate}
                       />
 
-                      <details className="rounded-lg border border-border bg-background/60 p-4">
+                      <Card className="p-5">
+                      <details>
                         <summary className="cursor-pointer text-sm font-medium text-foreground">
                           Advanced JSON editors
                         </summary>
@@ -10390,7 +10320,9 @@ export function ShortFormVideoSettingsView({
                           </div>
                         </div>
                       </details>
-                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+                      </Card>
+                      <Card className="p-5">
+                      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
                         <span>
                           Enabled templates are auto-injected into Scribe’s Plan Visuals prompt via {"{{motionGraphicTemplates}}"}.
                         </span>
@@ -10433,332 +10365,185 @@ export function ShortFormVideoSettingsView({
                           </Button>
                         </div>
                       </div>
+                      </Card>
                     </div>
                   ) : null}
 
-                  <div className="space-y-3 lg:col-span-2">
-                    <div className="flex flex-wrap items-end justify-between gap-3">
-                      <div>
-                        <h3 className="text-sm font-medium text-foreground">
-                          Template preview gallery
-                        </h3>
-                        <p className="text-xs text-muted-foreground">
-                          Cached poster frames are rendered for every motion
-                          graphics template so you can compare the visual style
-                          at a glance.
-                        </p>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {motionGraphicsSettings.templates.length} templates
-                      </p>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-                      {motionGraphicsSettings.templates.map((template) => {
-                        const preview = motionTemplatePreviewsById[template.id];
-                        return (
-                          <div
-                            key={template.id}
-                            className={`overflow-hidden rounded-lg border bg-background ${
-                              selectedMotionTemplateId === template.id
-                                ? "border-primary"
-                                : "border-border"
-                            }`}
-                          >
-                            <div className="aspect-[9/16] bg-muted">
-                              {preview?.posterUrl ? (
-                                <video
-                                  className="h-full w-full object-cover"
-                                  src={preview.videoUrl || undefined}
-                                  poster={preview.posterUrl}
-                                  muted
-                                  playsInline
-                                  preload="metadata"
-                                />
-                              ) : preview?.isLoading ? (
-                                <div className="flex h-full items-center justify-center p-3">
-                                  <Skeleton className="h-full w-full" />
-                                </div>
-                              ) : (
-                                <div className="flex h-full items-center justify-center p-3 text-center text-xs text-muted-foreground">
-                                  Preview pending
-                                </div>
-                              )}
-                            </div>
-                            <div className="space-y-1 p-3">
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="line-clamp-2 text-sm font-medium text-foreground">
-                                  {template.displayName}
-                                </p>
-                                <Badge
-                                  variant={template.enabled ? "success" : "outline"}
-                                  className="shrink-0"
-                                >
-                                  {template.enabled ? "On" : "Off"}
-                                </Badge>
-                              </div>
-                              <p className="truncate text-xs text-muted-foreground">
-                                {template.rendererId}
-                              </p>
-                              {preview?.error ? (
-                                <p className="line-clamp-2 text-xs text-destructive">
-                                  {preview.error}
-                                </p>
-                              ) : null}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <Card className="space-y-3 p-5">
                   <Skeleton className="h-10 w-64" />
                   <Skeleton className="h-48 w-full" />
-                </div>
+                </Card>
               )}
 
               <SectionFeedbackNotice feedback={sectionFeedback["motion-graphics"]} />
-            </Card>
+            </div>
           </section>
+        </div>
+      ) : null}
 
+      {activeSection === "generate-visuals-image-generation-prompts" ? (
+        <div className="space-y-6">
           <section id="image-templates" className="scroll-mt-24">
-            <Card className="space-y-5 p-5">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <WorkflowSectionHeader
-                  title="Image prompt templates"
-                  description="These are the real editable templates used by the direct dashboard scene-image path. Shared visual rules and greenscreen requirements now live inside the style-instructions template itself, so what you edit here is what the selected image-generation provider receives."
-                  status={
-                    dirtyBySection["image-templates"]
-                      ? "needs review"
-                      : "approved"
+            {imageStyles ? (
+              <div className="space-y-6">
+                <PromptTemplateEditorCard
+                  title="Image generation template"
+                  description="Used for per-image generation and rerenders. Edit shared style, composition, based-on, and extra-reference guidance directly here."
+                  value={imageStyles.promptTemplates.imageGenerationTemplate}
+                  onChange={(value) =>
+                    setPromptTemplateValue("imageStyles.imageGenerationTemplate", value)
                   }
+                  {...getPromptTemplateFocusHandlers(
+                    "imageStyles.imageGenerationTemplate",
+                  )}
+                  feedback={promptTemplateFeedback["imageStyles.imageGenerationTemplate"]}
+                  dirty={isPromptTemplateDirty("imageStyles.imageGenerationTemplate")}
+                  saving={promptTemplateFeedback["imageStyles.imageGenerationTemplate"].saving}
+                  onSave={() =>
+                    void savePromptTemplate("imageStyles.imageGenerationTemplate")
+                  }
+                  onReset={() =>
+                    resetPromptTemplate("imageStyles.imageGenerationTemplate")
+                  }
+                  minHeightClassName="min-h-[480px]"
+                />
+
+                <PromptTemplateEditorCard
+                  title="Based-on reference template"
+                  description="Rendered only when an XML v2 asset has basedOn and the parent/base image is attached, then inserted wherever {{basedOnReferenceInstructions}} appears."
+                  value={imageStyles.promptTemplates.basedOnReferenceTemplate}
+                  onChange={(value) =>
+                    setPromptTemplateValue(
+                      "imageStyles.basedOnReferenceTemplate",
+                      value,
+                    )
+                  }
+                  {...getPromptTemplateFocusHandlers(
+                    "imageStyles.basedOnReferenceTemplate",
+                  )}
+                  feedback={
+                    promptTemplateFeedback[
+                      "imageStyles.basedOnReferenceTemplate"
+                    ]
+                  }
+                  dirty={isPromptTemplateDirty(
+                    "imageStyles.basedOnReferenceTemplate",
+                  )}
+                  saving={
+                    promptTemplateFeedback[
+                      "imageStyles.basedOnReferenceTemplate"
+                    ].saving
+                  }
+                  onSave={() =>
+                    void savePromptTemplate(
+                      "imageStyles.basedOnReferenceTemplate",
+                    )
+                  }
+                  onReset={() =>
+                    resetPromptTemplate(
+                      "imageStyles.basedOnReferenceTemplate",
+                    )
+                  }
+                  minHeightClassName="min-h-[200px]"
+                />
+
+                <PromptTemplateEditorCard
+                  title="Extra references template"
+                  description="Rendered only when active extra references exist, then inserted into top-level templates with {{extraReferencesInstructions}}. Character references are active only for characterDriven XML images. Use {{individualExtraReferences}} where the per-reference lines should appear."
+                  value={imageStyles.promptTemplates.extraReferencesTemplate}
+                  onChange={(value) =>
+                    setPromptTemplateValue(
+                      "imageStyles.extraReferencesTemplate",
+                      value,
+                    )
+                  }
+                  {...getPromptTemplateFocusHandlers(
+                    "imageStyles.extraReferencesTemplate",
+                  )}
+                  feedback={
+                    promptTemplateFeedback[
+                      "imageStyles.extraReferencesTemplate"
+                    ]
+                  }
+                  dirty={isPromptTemplateDirty(
+                    "imageStyles.extraReferencesTemplate",
+                  )}
+                  saving={
+                    promptTemplateFeedback[
+                      "imageStyles.extraReferencesTemplate"
+                    ].saving
+                  }
+                  onSave={() =>
+                    void savePromptTemplate(
+                      "imageStyles.extraReferencesTemplate",
+                    )
+                  }
+                  onReset={() =>
+                    resetPromptTemplate(
+                      "imageStyles.extraReferencesTemplate",
+                    )
+                  }
+                  minHeightClassName="min-h-[240px]"
+                />
+
+                <PromptTemplateEditorCard
+                  title="Individual extra reference template"
+                  description="Rendered once for each active style reference, then inserted into the Extra references template with {{individualExtraReferences}}. Character references are active only for characterDriven XML images."
+                  value={imageStyles.promptTemplates.individualExtraReferenceTemplate}
+                  onChange={(value) =>
+                    setPromptTemplateValue(
+                      "imageStyles.individualExtraReferenceTemplate",
+                      value,
+                    )
+                  }
+                  {...getPromptTemplateFocusHandlers(
+                    "imageStyles.individualExtraReferenceTemplate",
+                  )}
+                  feedback={
+                    promptTemplateFeedback[
+                      "imageStyles.individualExtraReferenceTemplate"
+                    ]
+                  }
+                  dirty={isPromptTemplateDirty(
+                    "imageStyles.individualExtraReferenceTemplate",
+                  )}
+                  saving={
+                    promptTemplateFeedback[
+                      "imageStyles.individualExtraReferenceTemplate"
+                    ].saving
+                  }
+                  onSave={() =>
+                    void savePromptTemplate(
+                      "imageStyles.individualExtraReferenceTemplate",
+                    )
+                  }
+                  onReset={() =>
+                    resetPromptTemplate(
+                      "imageStyles.individualExtraReferenceTemplate",
+                    )
+                  }
+                  minHeightClassName="min-h-[200px]"
+                />
+
+                <PromptPlaceholderCard
+                  title="Useful placeholders"
+                  rows={NANO_BANANA_PLACEHOLDER_ROWS}
                 />
               </div>
-
-              {imageStyles ? (
-                <div className="space-y-4">
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <h3 className="text-sm font-medium text-foreground">
-                          Scene generation template
-                        </h3>
-                        <SectionActions
-                          dirty={isPromptTemplateDirty(
-                            "imageStyles.sceneTemplate",
-                          )}
-                          saving={
-                            promptTemplateFeedback[
-                              "imageStyles.sceneTemplate"
-                            ].saving
-                          }
-                          saveLabel="Save template"
-                          resetLabel="Restore"
-                          onSave={() =>
-                            void savePromptTemplate(
-                              "imageStyles.sceneTemplate",
-                            )
-                          }
-                          onReset={() =>
-                            resetPromptTemplate("imageStyles.sceneTemplate")
-                          }
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Used as the real per-scene Nano Banana prompt surface.
-                      </p>
-                      <Textarea
-                        value={imageStyles.promptTemplates.sceneTemplate}
-                        onChange={(event) =>
-                          setPromptTemplateValue(
-                            "imageStyles.sceneTemplate",
-                            event.target.value,
-                          )
-                        }
-                        className="min-h-[240px] font-mono text-xs"
-                      />
-                      <SectionFeedbackNotice
-                        feedback={
-                          promptTemplateFeedback["imageStyles.sceneTemplate"]
-                        }
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <h3 className="text-sm font-medium text-foreground">
-                          Style instructions template
-                        </h3>
-                        <SectionActions
-                          dirty={isPromptTemplateDirty(
-                            "imageStyles.styleInstructionsTemplate",
-                          )}
-                          saving={
-                            promptTemplateFeedback[
-                              "imageStyles.styleInstructionsTemplate"
-                            ].saving
-                          }
-                          saveLabel="Save template"
-                          resetLabel="Restore"
-                          onSave={() =>
-                            void savePromptTemplate(
-                              "imageStyles.styleInstructionsTemplate",
-                            )
-                          }
-                          onReset={() =>
-                            resetPromptTemplate(
-                              "imageStyles.styleInstructionsTemplate",
-                            )
-                          }
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Rendered first, then injected into the scene and
-                        character templates.
-                      </p>
-                      <Textarea
-                        value={
-                          imageStyles.promptTemplates.styleInstructionsTemplate
-                        }
-                        onChange={(event) =>
-                          setPromptTemplateValue(
-                            "imageStyles.styleInstructionsTemplate",
-                            event.target.value,
-                          )
-                        }
-                        className="min-h-[240px] font-mono text-xs"
-                      />
-                      <SectionFeedbackNotice
-                        feedback={
-                          promptTemplateFeedback[
-                            "imageStyles.styleInstructionsTemplate"
-                          ]
-                        }
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <h3 className="text-sm font-medium text-foreground">
-                          Character reference template
-                        </h3>
-                        <SectionActions
-                          dirty={isPromptTemplateDirty(
-                            "imageStyles.characterReferenceTemplate",
-                          )}
-                          saving={
-                            promptTemplateFeedback[
-                              "imageStyles.characterReferenceTemplate"
-                            ].saving
-                          }
-                          saveLabel="Save template"
-                          resetLabel="Restore"
-                          onSave={() =>
-                            void savePromptTemplate(
-                              "imageStyles.characterReferenceTemplate",
-                            )
-                          }
-                          onReset={() =>
-                            resetPromptTemplate(
-                              "imageStyles.characterReferenceTemplate",
-                            )
-                          }
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Used only when no primary character reference image is
-                        supplied.
-                      </p>
-                      <Textarea
-                        value={
-                          imageStyles.promptTemplates.characterReferenceTemplate
-                        }
-                        onChange={(event) =>
-                          setPromptTemplateValue(
-                            "imageStyles.characterReferenceTemplate",
-                            event.target.value,
-                          )
-                        }
-                        className="min-h-[240px] font-mono text-xs"
-                      />
-                      <SectionFeedbackNotice
-                        feedback={
-                          promptTemplateFeedback[
-                            "imageStyles.characterReferenceTemplate"
-                          ]
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border border-border/70 bg-background/40 p-3 text-xs text-muted-foreground">
-                    <p className="font-medium text-foreground">
-                      Useful placeholders
-                    </p>
-                    <div className="mt-2 overflow-x-auto">
-                      <table className="min-w-full border-collapse text-left text-xs text-muted-foreground">
-                        <thead>
-                          <tr className="border-b border-border/70 text-[11px] uppercase tracking-wide text-muted-foreground">
-                            <th className="px-2 py-2 font-medium">
-                              Placeholder
-                            </th>
-                            <th className="px-2 py-2 font-medium">
-                              What it represents
-                            </th>
-                            <th className="px-2 py-2 font-medium">
-                              Example value
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {NANO_BANANA_PLACEHOLDER_ROWS.map((row) => (
-                            <tr
-                              key={row.placeholder}
-                              className="border-b border-border/50 align-top last:border-b-0"
-                            >
-                              <td className="px-2 py-2 font-mono text-[11px] text-foreground">
-                                {row.placeholder}
-                              </td>
-                              <td className="px-2 py-2 leading-5">
-                                {row.explanation}
-                              </td>
-                              <td className="px-2 py-2 leading-5 text-foreground/80">
-                                {row.example}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </Card>
+            ) : null}
           </section>
+        </div>
+      ) : null}
 
+      {activeSection === "generate-visuals-image-styles" ? (
+        <div className="space-y-6">
           <section id="image-styles" className="scroll-mt-24">
-            <Card className="space-y-5 p-5">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <WorkflowSectionHeader
-                  title="Image style library"
-                  description="Maintain per-style instructions, reusable references, and the built-in one-scene style test. The selected project style feeds directly into live scene-image generation."
-                  status={
-                    dirtyBySection["image-styles"] ? "needs review" : "approved"
-                  }
-                />
-                <SectionActions
-                  dirty={dirtyBySection["image-styles"]}
-                  saving={sectionFeedback["image-styles"].saving}
-                  saveLabel="Save style library"
-                  onSave={() => void saveSection("image-styles")}
-                  onReset={() => resetSection("image-styles")}
-                />
-              </div>
-
+            <div className="space-y-6">
               {imageStyles ? (
                 <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
-                  <div className="xl:col-span-2 rounded-lg border border-border bg-background/40 p-4">
+                  <Card className="xl:col-span-2 p-5">
                     <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-end">
                       <div className="space-y-1">
                         <h2 className="text-sm font-medium text-foreground">
@@ -10806,9 +10591,9 @@ export function ShortFormVideoSettingsView({
                         )?.description
                       }
                     </p>
-                  </div>
+                  </Card>
 
-                  <div className="space-y-3 rounded-lg border border-border bg-background/40 p-3">
+                  <Card className="space-y-3 p-5">
                     <div className="flex items-center justify-between gap-2">
                       <h2 className="text-sm font-medium text-foreground">
                         Styles
@@ -10850,10 +10635,10 @@ export function ShortFormVideoSettingsView({
                         );
                       })}
                     </div>
-                  </div>
+                  </Card>
 
                   {selectedStyle ? (
-                    <div className="space-y-5 rounded-lg border border-border bg-background/40 p-4">
+                    <Card className="space-y-5 p-5">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <h2 className="text-sm font-medium text-foreground">
@@ -10957,22 +10742,6 @@ export function ShortFormVideoSettingsView({
 
                       <div className="space-y-2">
                         <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Subject / character prompt
-                        </label>
-                        <Textarea
-                          value={selectedStyle.subjectPrompt}
-                          onChange={(event) =>
-                            updateSelectedStyle((style) => ({
-                              ...style,
-                              subjectPrompt: event.target.value,
-                            }))
-                          }
-                          className="min-h-[90px] font-mono text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                           Per-style visual instructions
                         </label>
                         <Textarea
@@ -11000,8 +10769,7 @@ export function ShortFormVideoSettingsView({
                                 Primary character
                               </span>
                               , the generator uses it as the main identity
-                              anchor instead of the built-in generated character
-                              reference.
+                              anchor for character-driven XML images.
                             </p>
                           </div>
                           <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-accent">
@@ -11322,7 +11090,7 @@ export function ShortFormVideoSettingsView({
                           </div>
                         ) : null}
                       </div>
-                    </div>
+                    </Card>
                   ) : null}
                 </div>
               ) : null}
@@ -11330,7 +11098,7 @@ export function ShortFormVideoSettingsView({
               <SectionFeedbackNotice
                 feedback={sectionFeedback["image-styles"]}
               />
-            </Card>
+            </div>
           </section>
         </div>
       ) : null}
@@ -11338,10 +11106,10 @@ export function ShortFormVideoSettingsView({
       {activeSection === "plan-captions" ? (
         <div className="space-y-6">
           <section id="caption-styles" className="scroll-mt-24">
-            <Card className="space-y-5 p-5">
+            <div className="space-y-6">
               {videoRender ? (
                 <div className="space-y-5">
-                  <div className="rounded-lg border border-border bg-background/60 p-4">
+                  <Card className="p-5">
                     <div className="space-y-2">
                       <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                         Caption max words
@@ -11372,9 +11140,9 @@ export function ShortFormVideoSettingsView({
                         this per video.
                       </p>
                     </div>
-                  </div>
+                  </Card>
 
-                  <div className="rounded-lg border border-border bg-background/60 p-4">
+                  <Card className="space-y-4 p-5">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <h3 className="text-sm font-medium text-foreground">
@@ -12465,14 +12233,14 @@ export function ShortFormVideoSettingsView({
                         </div>
                       ) : null}
                     </div>
-                  </div>
+                  </Card>
                 </div>
               ) : null}
 
               <SectionFeedbackNotice
                 feedback={sectionFeedback["caption-styles"]}
               />
-            </Card>
+            </div>
           </section>
         </div>
       ) : null}

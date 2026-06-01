@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import Link from 'next/link';
-import { MoreVertical } from 'lucide-react';
+import { Loader2, MoreVertical } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
@@ -13,6 +13,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogOverlay,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { OrbitLoader, Skeleton } from '@/components/ui/loading';
@@ -69,11 +77,12 @@ function stageLabel(project: ProjectRow) {
 }
 
 function primaryProjectText(project: ProjectRow) {
-  return project.hooks.selectedHookText || project.topic || project.title || 'Untitled short-form video';
+  return project.title || project.topic || 'Untitled short-form video';
 }
 
 function secondaryProjectText(project: ProjectRow) {
-  return project.hooks.selectedHookText ? project.topic || undefined : undefined;
+  if (project.hooks.selectedHookText && project.topic) return project.topic;
+  return project.hooks.selectedHookText || project.topic || undefined;
 }
 
 function tableStatus(project: ProjectRow) {
@@ -109,10 +118,12 @@ function ProjectActionsMenu({
   project,
   isDuplicating,
   onDuplicate,
+  onRename,
 }: {
   project: ProjectRow;
   isDuplicating: boolean;
   onDuplicate: (project: ProjectRow) => void;
+  onRename: (project: ProjectRow) => void;
 }) {
   return (
     <DropdownMenu>
@@ -126,15 +137,25 @@ function ProjectActionsMenu({
           disabled={isDuplicating}
           className="h-8 w-8 rounded-full bg-transparent p-0 shadow-none hover:border hover:border-border hover:bg-accent focus-visible:ring-1"
         >
-          <MoreVertical aria-hidden="true" className={`h-4 w-4 ${isDuplicating ? 'animate-pulse' : ''}`} />
+          {isDuplicating ? (
+            <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+          ) : (
+            <MoreVertical aria-hidden="true" className="h-4 w-4" />
+          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-44">
         <DropdownMenuItem
           disabled={isDuplicating}
+          onSelect={() => onRename(project)}
+        >
+          Rename video
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={isDuplicating}
           onSelect={() => onDuplicate(project)}
         >
-          Duplicate video
+          {isDuplicating ? 'Duplicating…' : 'Duplicate video'}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -146,6 +167,10 @@ export default function ShortFormVideoPage() {
   const [creating, setCreating] = useState(false);
   const [duplicatingProjectId, setDuplicatingProjectId] = useState<string | null>(null);
   const [duplicateError, setDuplicateError] = useState<string | null>(null);
+  const [renamingProject, setRenamingProject] = useState<ProjectRow | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
   const [topic, setTopic] = useState('');
   const {
     data: projectsPayload,
@@ -184,10 +209,6 @@ export default function ShortFormVideoPage() {
     try {
       const res = await fetch(`/api/short-form-videos/${project.id}/duplicate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: `${project.title || project.topic || 'Untitled short-form video'} copy`,
-        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success || !data.data?.id) {
@@ -200,6 +221,42 @@ export default function ShortFormVideoPage() {
       setDuplicateError(error instanceof Error ? error.message : 'Failed to duplicate video');
     } finally {
       setDuplicatingProjectId(null);
+    }
+  }
+
+  function openRenameDialog(project: ProjectRow) {
+    setRenamingProject(project);
+    setRenameDraft(primaryProjectText(project));
+    setRenameError(null);
+  }
+
+  async function handleRename(e: React.FormEvent) {
+    e.preventDefault();
+    if (!renamingProject) return;
+    const nextName = renameDraft.trim();
+    if (!nextName) {
+      setRenameError('Video name cannot be empty');
+      return;
+    }
+
+    setRenaming(true);
+    setRenameError(null);
+    try {
+      const res = await fetch(`/api/short-form-videos/${renamingProject.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: nextName }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to rename video');
+      }
+      await refreshProjects();
+      setRenamingProject(null);
+    } catch (error) {
+      setRenameError(error instanceof Error ? error.message : 'Failed to rename video');
+    } finally {
+      setRenaming(false);
     }
   }
 
@@ -232,9 +289,9 @@ export default function ShortFormVideoPage() {
       </Card>
 
       <Card className="overflow-visible">
-        {duplicateError ? (
+        {duplicateError || renameError ? (
           <div className="border-b border-border bg-destructive/10 px-5 py-3 text-sm text-destructive">
-            {duplicateError}
+            {duplicateError || renameError}
           </div>
         ) : null}
         {loading ? (
@@ -283,6 +340,7 @@ export default function ShortFormVideoPage() {
                       project={project}
                       isDuplicating={duplicatingProjectId === project.id}
                       onDuplicate={(projectToDuplicate) => void handleDuplicate(projectToDuplicate)}
+                      onRename={openRenameDialog}
                     />
                   </TableCell>
                 </TableRow>
@@ -291,6 +349,41 @@ export default function ShortFormVideoPage() {
           </Table>
         )}
       </Card>
+      <DialogOverlay open={Boolean(renamingProject)} onClick={() => !renaming && setRenamingProject(null)}>
+        <DialogContent size="md" onClick={(event) => event.stopPropagation()}>
+          <DialogHeader>
+            <DialogTitle>Rename video</DialogTitle>
+            <DialogDescription>
+              This name is used in the video list and workflow navigation.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleRename} className="space-y-4">
+            <Input
+              value={renameDraft}
+              onChange={(event) => setRenameDraft(event.target.value)}
+              placeholder="Video name"
+              autoFocus
+              disabled={renaming}
+            />
+            {renameError ? (
+              <p className="text-sm text-destructive">{renameError}</p>
+            ) : null}
+            <DialogFooter>
+              <Button type="submit" disabled={renaming || !renameDraft.trim()}>
+                {renaming ? 'Saving…' : 'Save'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setRenamingProject(null)}
+                disabled={renaming}
+              >
+                Cancel
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </DialogOverlay>
     </div>
   );
 }

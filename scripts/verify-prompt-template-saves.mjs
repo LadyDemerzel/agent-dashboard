@@ -77,6 +77,35 @@ function assertNotContains(value, sentinel, label) {
   assert(!value.includes(sentinel), `${label} unexpectedly reintroduced ${sentinel}`);
 }
 
+function assertNoOwnProperty(value, property, label) {
+  assert(value && typeof value === "object", `${label} is not an object`);
+  assert(!Object.hasOwn(value, property), `${label} unexpectedly exposed ${property}`);
+}
+
+function assertImagePromptTemplatesDoNotExposeLegacyPlaceholders(promptTemplates, label) {
+  const legacyPlaceholders = [
+    "{{assetId}}",
+    "{{assetPrompt}}",
+    "{{assetDerivedFromId}}",
+    "{{extraDirection}}",
+    "{{continuityInstructions}}",
+    "{{basedOnImageInstructions}}",
+    "{{continuityAttachmentIndex}}",
+    "{{continuityAttachmentLabel}}",
+    "{{subjectPrompt}}",
+  ];
+  for (const [key, value] of Object.entries(promptTemplates)) {
+    if (key === "continuityWithReferenceTemplate") {
+      assert(value === "", `${label}.${key} should be hidden and empty`);
+      continue;
+    }
+    if (typeof value !== "string") continue;
+    for (const placeholder of legacyPlaceholders) {
+      assert(!value.includes(placeholder), `${label}.${key} unexpectedly exposed ${placeholder}`);
+    }
+  }
+}
+
 const visualRegenerationRule = [
   "Plan Visuals regeneration rule:",
   "- If xml-script.md already exists, read it first.",
@@ -95,6 +124,20 @@ function removeVisualRegenerationRule(value) {
 async function main() {
   const sentinelBase = `ralph-save-verify-${Date.now()}`;
   const initial = await getSettings();
+  assertNoOwnProperty(
+    initial.imageStyles.promptTemplates,
+    "extraDirectionTemplate",
+    "settings API image prompt templates",
+  );
+  assertNoOwnProperty(
+    initial.imageStyles.promptTemplates,
+    "continuityWithoutReferenceTemplate",
+    "settings API image prompt templates",
+  );
+  assertImagePromptTemplatesDoNotExposeLegacyPlaceholders(
+    initial.imageStyles.promptTemplates,
+    "initial settings API image prompt templates",
+  );
 
   const partialWorkflowSentinel = `${sentinelBase}: partial-workflow-template`;
   let data = await patchSettings({
@@ -231,22 +274,36 @@ async function main() {
   data = await patchSettings({
     imageStyles: {
       promptTemplates: {
-        sceneTemplate: appendSentinel(
-          initial.imageStyles.promptTemplates.sceneTemplate,
+        imageGenerationTemplate: appendSentinel(
+          initial.imageStyles.promptTemplates.imageGenerationTemplate,
           partialImageSentinel,
         ),
       },
     },
   });
   assertContains(
-    data.imageStyles.promptTemplates.sceneTemplate,
+    data.imageStyles.promptTemplates.imageGenerationTemplate,
     partialImageSentinel,
     "single image prompt template partial save",
   );
   assertEqual(
-    data.imageStyles.promptTemplates.styleInstructionsTemplate,
-    initial.imageStyles.promptTemplates.styleInstructionsTemplate,
+    data.imageStyles.promptTemplates.individualExtraReferenceTemplate,
+    initial.imageStyles.promptTemplates.individualExtraReferenceTemplate,
     "adjacent image prompt template after partial save",
+  );
+  assertNoOwnProperty(
+    data.imageStyles.promptTemplates,
+    "extraDirectionTemplate",
+    "image prompt templates after partial save",
+  );
+  assertNoOwnProperty(
+    data.imageStyles.promptTemplates,
+    "continuityWithoutReferenceTemplate",
+    "image prompt templates after partial save",
+  );
+  assertImagePromptTemplatesDoNotExposeLegacyPlaceholders(
+    data.imageStyles.promptTemplates,
+    "image prompt templates after partial save",
   );
 
   const workflowSentinel = `${sentinelBase}: help Scribe write a multi-scene vertical-video XML script`;
@@ -334,15 +391,107 @@ async function main() {
   data = await patchSettings({
     imageStyles: {
       promptTemplates: {
-        styleInstructionsTemplate: appendSentinel(initial.imageStyles.promptTemplates.styleInstructionsTemplate, imageSentinel),
-        characterReferenceTemplate: appendSentinel(initial.imageStyles.promptTemplates.characterReferenceTemplate, imageSentinel),
-        sceneTemplate: appendSentinel(initial.imageStyles.promptTemplates.sceneTemplate, imageSentinel),
+        imageGenerationTemplate: appendSentinel(initial.imageStyles.promptTemplates.imageGenerationTemplate, imageSentinel),
+        basedOnReferenceTemplate: appendSentinel(initial.imageStyles.promptTemplates.basedOnReferenceTemplate, imageSentinel),
+        extraReferencesTemplate: appendSentinel(initial.imageStyles.promptTemplates.extraReferencesTemplate, imageSentinel),
+        individualExtraReferenceTemplate: appendSentinel(initial.imageStyles.promptTemplates.individualExtraReferenceTemplate, imageSentinel),
       },
     },
   });
-  assertContains(data.imageStyles.promptTemplates.styleInstructionsTemplate, imageSentinel, "image style-instructions template");
-  assertContains(data.imageStyles.promptTemplates.characterReferenceTemplate, imageSentinel, "image character-reference template");
-  assertContains(data.imageStyles.promptTemplates.sceneTemplate, imageSentinel, "image scene template");
+  assertContains(data.imageStyles.promptTemplates.imageGenerationTemplate, imageSentinel, "image generation template");
+  assertNoOwnProperty(data.imageStyles.promptTemplates, "imageRevisionTemplate", "image prompt templates after full save");
+  assertNoOwnProperty(data.imageStyles.promptTemplates, "commonImageInstructionsTemplate", "image prompt templates after full save");
+  assertContains(data.imageStyles.promptTemplates.basedOnReferenceTemplate, imageSentinel, "image based-on reference template");
+  assertNoOwnProperty(data.imageStyles.promptTemplates, "extraDirectionTemplate", "image prompt templates after full save");
+  assertEqual(data.imageStyles.promptTemplates.continuityWithReferenceTemplate, "", "hidden continuity-with-reference template after full save");
+  assertNoOwnProperty(data.imageStyles.promptTemplates, "continuityWithoutReferenceTemplate", "image prompt templates after full save");
+  assertContains(data.imageStyles.promptTemplates.extraReferencesTemplate, imageSentinel, "image extra-references template");
+  assertContains(data.imageStyles.promptTemplates.individualExtraReferenceTemplate, imageSentinel, "image individual extra-reference template");
+  assertImagePromptTemplatesDoNotExposeLegacyPlaceholders(
+    data.imageStyles.promptTemplates,
+    "image prompt templates after full save",
+  );
+
+  data = await patchSettings({
+    imageStyles: {
+      promptTemplates: {
+        imageGenerationTemplate: data.imageStyles.promptTemplates.imageGenerationTemplate
+          .replaceAll("{{basedOnReferenceInstructions}}", "")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim(),
+      },
+    },
+  });
+  assertNotContains(
+    data.imageStyles.promptTemplates.imageGenerationTemplate,
+    "{{basedOnReferenceInstructions}}",
+    "image generation template after removing based-on reference placeholder",
+  );
+  data = await getSettings();
+  assertNotContains(
+    data.imageStyles.promptTemplates.imageGenerationTemplate,
+    "{{basedOnReferenceInstructions}}",
+    "image generation template after removing based-on reference placeholder after GET",
+  );
+
+  const legacyAssetPromptSentinel = `Image legacy description placeholder ${sentinelBase}: {{assetPrompt}}`;
+  data = await patchSettings({
+    imageStyles: {
+      promptTemplates: {
+        imageGenerationTemplate: appendSentinel(
+          data.imageStyles.promptTemplates.imageGenerationTemplate,
+          legacyAssetPromptSentinel,
+        ),
+      },
+    },
+  });
+  assertContains(
+    data.imageStyles.promptTemplates.imageGenerationTemplate,
+    "{{imageDescription}}",
+    "image generation template with normalized image description placeholder",
+  );
+  assertNotContains(
+    data.imageStyles.promptTemplates.imageGenerationTemplate,
+    "{{assetPrompt}}",
+    "image generation template with normalized image description placeholder",
+  );
+  data = await getSettings();
+  assertContains(
+    data.imageStyles.promptTemplates.imageGenerationTemplate,
+    "{{imageDescription}}",
+    "image generation template with normalized image description placeholder after GET",
+  );
+  assertNotContains(
+    data.imageStyles.promptTemplates.imageGenerationTemplate,
+    "{{assetPrompt}}",
+    "image generation template with normalized image description placeholder after GET",
+  );
+
+  data = await patchSettings({
+    imageStyles: {
+      promptTemplates: {
+        imageGenerationTemplate: "Image description: {{imageDescription}}.\n\n{{commonImageInstructions}}",
+        commonImageInstructionsTemplate: `Inlined legacy common ${sentinelBase}: {{extraReferencesInstructions}}`,
+      },
+    },
+  });
+  assertContains(
+    data.imageStyles.promptTemplates.imageGenerationTemplate,
+    `Inlined legacy common ${sentinelBase}`,
+    "legacy common image instructions inlined into image generation template",
+  );
+  assertContains(
+    data.imageStyles.promptTemplates.imageGenerationTemplate,
+    "{{extraReferencesInstructions}}",
+    "inlined legacy common extra references placeholder",
+  );
+  assertNoOwnProperty(data.imageStyles.promptTemplates, "commonImageInstructionsTemplate", "image prompt templates after common migration");
+  data = await getSettings();
+  assertContains(
+    data.imageStyles.promptTemplates.imageGenerationTemplate,
+    "{{extraReferencesInstructions}}",
+    "inlined legacy common extra references placeholder after GET",
+  );
 
   const soundSentinel = `${sentinelBase}: sound-design`;
   data = await patchSettings({

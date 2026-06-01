@@ -13,6 +13,7 @@ import {
   getPreferredModelsForStage,
   stopShortFormStageRun,
 } from "@/lib/short-form-stage-runner";
+import { stopShortFormAutoRun } from "@/lib/short-form-auto-run-orchestrator";
 import { ensureXmlScriptDocument, getXmlScriptPath } from "@/lib/short-form-xml-script";
 import {
   ensureStageDocument,
@@ -51,6 +52,7 @@ import {
 } from "@/lib/short-form-text-script-settings";
 import { getSoundDesignHandoffState } from "@/lib/short-form-sound-design-handoff";
 import { buildShortFormSoundDesignPrompt } from "@/lib/short-form-sound-design-settings";
+import { saveXmlVisualEdits } from "@/lib/short-form-xml-visual-editor";
 
 export const dynamic = "force-dynamic";
 
@@ -357,6 +359,8 @@ export async function POST(
   }
   const notes = typeof body.notes === "string" ? body.notes.trim() : "";
   const sceneId = typeof body.sceneId === "string" ? body.sceneId.trim() : "";
+  const imageId = typeof body.imageId === "string" ? body.imageId.trim() : "";
+  const visualId = typeof body.visualId === "string" ? body.visualId.trim() : "";
   const requestedChromaKeyOverride = body.chromaKeyEnabledOverride === null
     ? null
     : typeof body.chromaKeyEnabledOverride === "boolean"
@@ -369,6 +373,33 @@ export async function POST(
     return NextResponse.json({ success: false, error: "Scene changes only apply to scene-images" }, { status: 400 });
   }
 
+  if (requestedAction === "save-visual-xml") {
+    if (stage !== "scene-images") {
+      return NextResponse.json({ success: false, error: "Visual XML changes only apply to scene-images" }, { status: 400 });
+    }
+    const sceneIndex = Number.parseInt(sceneId.match(/scene-(\d+)/i)?.[1] || "", 10);
+    if (!Number.isInteger(sceneIndex) || sceneIndex <= 0) {
+      return NextResponse.json({ success: false, error: "A valid sceneId is required to save visual XML changes" }, { status: 400 });
+    }
+    try {
+      ensureXmlScriptDocument(id, project.topic);
+      const result = saveXmlVisualEdits(getXmlScriptPath(id), {
+        sceneIndex,
+        imageId,
+        visualId,
+        ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
+        ...(typeof body.basedOn === "string" ? { basedOn: body.basedOn } : {}),
+        ...(typeof body.motionGraphicXml === "string" ? { motionGraphicXml: body.motionGraphicXml } : {}),
+      });
+      return NextResponse.json({ success: true, data: result });
+    } catch (error) {
+      return NextResponse.json(
+        { success: false, error: error instanceof Error ? error.message : "Failed to save visual XML changes" },
+        { status: 400 },
+      );
+    }
+  }
+
   const previousRequest = requestedAction === "retry" ? getLatestStageRequest(id, stage) : undefined;
   if (requestedAction === "retry" && !previousRequest) {
     return NextResponse.json({ success: false, error: `No previous ${stage} request is available to retry` }, { status: 400 });
@@ -378,6 +409,8 @@ export async function POST(
     ? previousRequest?.action || (previousRequest?.mode === "generate" ? "generate" : "revise")
     : requestedAction;
   const effectiveSceneId = requestedAction === "retry" ? previousRequest?.sceneId || "" : sceneId;
+  const effectiveImageId = requestedAction === "retry" ? previousRequest?.imageId || "" : imageId;
+  const effectiveVisualId = requestedAction === "retry" ? previousRequest?.visualId || "" : visualId;
   const effectiveNotes = requestedAction === "retry" ? previousRequest?.notes || "" : notes;
   const mode = effectiveAction === "generate" ? "generate" : "revise";
   const requestNotes = effectiveAction === "request-scene-change" && effectiveSceneId
@@ -392,6 +425,7 @@ export async function POST(
     : mode === "revise"
       ? "Requested changes: none. Treat this as a clean rerun/regeneration for the current scope rather than a targeted textual revision."
       : "Run direction: none";
+  const latestRequestNotes = effectiveAction === "request-scene-change" ? effectiveNotes : requestNotes;
   // Every script trigger needs a fresh run id so regenerate/retry creates a new
   // iteration history instead of mutating or pointing at the previous run.
   const textScriptRunId = stage === "script"
@@ -465,13 +499,25 @@ export async function POST(
   });
   const requestedAt = new Date().toISOString();
 
+  if (stage === "scene-images" && effectiveAction === "request-scene-change") {
+    if (project.sceneImages.pending) {
+      const latestSceneImagesRequest = getLatestStageRequest(id, "scene-images");
+      stopShortFormStageRun(id, "scene-images", latestSceneImagesRequest?.runId);
+    }
+    if (project.autoRun?.status === "active") {
+      stopShortFormAutoRun(id);
+    }
+  }
+
   updatePendingStage(id, getPendingKey(stage), true);
   updateLatestStageRequest(id, stage, {
     requestedAt,
     action: effectiveAction === "request-scene-change" ? "request-scene-change" : mode,
     mode,
-    ...(requestNotes ? { notes: requestNotes } : {}),
+    ...(latestRequestNotes ? { notes: latestRequestNotes } : {}),
     ...(effectiveSceneId ? { sceneId: effectiveSceneId } : {}),
+    ...(effectiveImageId ? { imageId: effectiveImageId } : {}),
+    ...(effectiveVisualId ? { visualId: effectiveVisualId } : {}),
     ...(textScriptRunId ? { textScriptRunId } : {}),
   });
 
@@ -516,7 +562,6 @@ export async function POST(
                   resolvedVisualGeneration.option.label,
                 visualGenerationModelRef:
                   resolvedVisualGeneration.option.modelRef,
-                imageStyleSubject: resolvedImageStyle.style.subjectPrompt,
                 imageStylePrompt: resolvedImageStyle.effectiveStylePrompt,
                 imageStyleHeaderPercent: resolvedImageStyle.style.headerPercent,
                 imageStyleReferences: resolvedImageStyle.style.references || [],
@@ -531,8 +576,16 @@ export async function POST(
                       ),
                     }
                   : {}),
-                ...(requestNotes ? { notes: requestNotes } : {}),
+                ...(effectiveAction === "request-scene-change"
+                  ? effectiveNotes
+                    ? { notes: effectiveNotes }
+                    : {}
+                  : requestNotes
+                    ? { notes: requestNotes }
+                    : {}),
                 ...(effectiveSceneId ? { sceneId: effectiveSceneId } : {}),
+                ...(effectiveImageId ? { imageId: effectiveImageId } : {}),
+                ...(effectiveVisualId ? { visualId: effectiveVisualId } : {}),
               },
             }
           : stage === "video"
@@ -575,8 +628,10 @@ export async function POST(
       runId: run.runId,
       action: effectiveAction === "request-scene-change" ? "request-scene-change" : mode,
       mode,
-      ...(requestNotes ? { notes: requestNotes } : {}),
+      ...(latestRequestNotes ? { notes: latestRequestNotes } : {}),
       ...(effectiveSceneId ? { sceneId: effectiveSceneId } : {}),
+      ...(effectiveImageId ? { imageId: effectiveImageId } : {}),
+      ...(effectiveVisualId ? { visualId: effectiveVisualId } : {}),
       ...(textScriptRunId ? { textScriptRunId } : {}),
     });
 
@@ -670,6 +725,9 @@ export async function DELETE(
 
   const latestRequest = getLatestStageRequest(id, stage);
   const result = stopShortFormStageRun(id, stage, latestRequest?.runId);
+  if (stage === "scene-images" && project.autoRun?.status === "active") {
+    stopShortFormAutoRun(id);
+  }
   updatePendingStage(id, getPendingKey(stage), false);
   updateProjectMeta(id, {});
 

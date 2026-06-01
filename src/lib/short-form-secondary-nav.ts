@@ -42,6 +42,7 @@ export interface ShortFormSecondaryNavItem {
   meta?: string;
   locked?: boolean;
   dirty?: boolean;
+  children?: ShortFormSecondaryNavItem[];
 }
 
 type DetailSectionId = 'topic' | 'hook' | 'research' | 'script' | 'generate-narration-audio' | 'plan-captions' | 'plan-visuals' | 'scene-images' | 'plan-sound-design' | 'generate-sound-design' | 'video';
@@ -355,7 +356,6 @@ export function getShortFormSettingsNavItems(summary?: ShortFormSettingsNavSumma
       group,
       caption,
       meta,
-      status: isDirty ? 'needs review' : 'approved',
       dirty: isDirty,
     };
   };
@@ -368,7 +368,46 @@ export function getShortFormSettingsNavItems(summary?: ShortFormSettingsNavSumma
     buildItem('generate-narration-audio', 'Generate Narration Audio', 'narration', 'NARRATION', 'Narration voice library plus silence-trimming defaults.', `${summary?.voiceCount || 0} voices`, ['tts-voice', 'pause-removal']),
     buildItem('plan-captions', 'Plan Captions', 'captions', 'NARRATION', 'Reusable caption-style presets and animation definitions.', `${summary?.captionStyleCount || 0} caption styles`, ['caption-styles']),
     buildItem('plan-visuals', 'Plan Visuals', 'plan-visuals', 'VISUALS', 'Full Scribe prompt templates for XML visual planning.', 'Full prompt', ['xml-visual-planning']),
-    buildItem('generate-visuals', 'Generate Visuals', 'generate-visuals', 'VISUALS', 'Motion graphics, Nano Banana templates, and the reusable image-style library.', `${summary?.styleCount || 0} styles`, ['motion-graphics', 'image-templates', 'image-styles']),
+    {
+      ...buildItem(
+        'generate-visuals-motion-graphics',
+        'Generate Visuals',
+        'generate-visuals',
+        'VISUALS',
+        'Motion graphics, Nano Banana templates, and the reusable image-style library.',
+        `${summary?.styleCount || 0} styles`,
+        ['motion-graphics', 'image-templates', 'image-styles'],
+      ),
+      children: [
+        buildItem(
+          'generate-visuals-motion-graphics',
+          'Motion Graphics',
+          'generate-visuals',
+          'VISUALS',
+          'Deterministic animated visual templates available during visual planning.',
+          'Templates',
+          ['motion-graphics'],
+        ),
+        buildItem(
+          'generate-visuals-image-generation-prompts',
+          'Image Generation Prompts',
+          'generate-visuals',
+          'VISUALS',
+          'Prompt templates used by direct scene-image generation.',
+          'Prompts',
+          ['image-templates'],
+        ),
+        buildItem(
+          'generate-visuals-image-styles',
+          'Image Styles',
+          'generate-visuals',
+          'VISUALS',
+          'Reusable image styles and global image-generation defaults.',
+          `${summary?.styleCount || 0} styles`,
+          ['image-styles'],
+        ),
+      ],
+    },
     buildItem('plan-sound-design', 'Plan Sound Design', 'plan-sound-design', 'SOUND DESIGN', 'Full sound-design planning prompt templates and revision-note instructions.', '2 prompts', ['sound-library']),
     buildItem('generate-sound-design', 'Generate Sound Design', 'generate-sound-design', 'SOUND DESIGN', 'Saved SFX and music library plus mix defaults for sound-design generation.', `${summary?.soundCount || 0} sounds · ${summary?.musicTrackCount || 0} tracks`, ['sound-library']),
     buildItem('final-video', 'Final Video', 'final-video', 'RENDER', 'Background loops, music presets, and final-render defaults.', `${summary?.backgroundCount || 0} loops · ${summary?.musicTrackCount || 0} tracks`, ['background-videos', 'music-library', 'final-video-render']),

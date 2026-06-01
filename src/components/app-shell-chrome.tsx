@@ -8,7 +8,9 @@ export interface AppShellSecondarySidebarConfig {
   title: string;
   items: ShortFormSecondaryNavItem[];
   breadcrumbLabel?: string;
+  projectId?: string;
   autoRun?: ShortFormAutoRunState;
+  onProjectRenamed?: (nextName: string) => void;
 }
 
 export interface AppShellChromeContextValue {

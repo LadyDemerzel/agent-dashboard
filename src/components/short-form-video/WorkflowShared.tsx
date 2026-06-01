@@ -246,7 +246,7 @@ export function WorkflowSectionHeader({
 }: {
   title: string;
   description: string;
-  status: string;
+  status?: string;
 }) {
   return (
     <div className="flex items-start justify-between gap-4">
@@ -254,7 +254,7 @@ export function WorkflowSectionHeader({
         <h2 className="text-lg font-semibold text-foreground">{title}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{description}</p>
       </div>
-      <StatusBadge status={status} />
+      {status ? <StatusBadge status={status} /> : null}
     </div>
   );
 }

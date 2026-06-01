@@ -89,18 +89,16 @@ function validateStyle(value: unknown) {
   const style = value as Partial<ShortFormImageStyle>;
   const id = typeof style.id === "string" ? style.id.trim() : "";
   const name = typeof style.name === "string" ? style.name.trim() : "";
-  const subjectPrompt = typeof style.subjectPrompt === "string" ? style.subjectPrompt.trim() : "";
   const stylePrompt = typeof style.stylePrompt === "string" ? style.stylePrompt.trim() : "";
 
-  if (!id || !name || !subjectPrompt) {
-    throw new Error("style must include id, name, and subjectPrompt");
+  if (!id || !name) {
+    throw new Error("style must include id and name");
   }
 
   return {
     id,
     name,
     description: typeof style.description === "string" ? style.description.trim() : undefined,
-    subjectPrompt,
     stylePrompt,
     headerPercent: Number.isFinite(Number(style.headerPercent)) ? Math.max(15, Math.min(45, Math.round(Number(style.headerPercent)))) : 28,
     testTopic: typeof style.testTopic === "string" && style.testTopic.trim() ? style.testTopic.trim() : "Style test",
@@ -153,9 +151,7 @@ export async function POST(request: NextRequest) {
     );
 
     const promptTemplates = normalizeShortFormNanoBananaPromptTemplates(body.promptTemplates);
-    const characterReference = style.references.find((reference) => reference.usageType === "character");
     const extraReferences = style.references
-      .filter((reference) => reference.id !== characterReference?.id)
       .map((reference) => ({
         path: resolveStyleReferencePath(reference.imageRelativePath),
         label: reference.label,
@@ -184,8 +180,6 @@ export async function POST(request: NextRequest) {
       DEFAULT_IMAGE_ASPECT_RATIO,
       "--style-preset",
       DEFAULT_IMAGE_STYLE_PRESET,
-      "--subject",
-      style.subjectPrompt,
       "--style-extra",
       effectiveStylePrompt,
       "--header-percent",
@@ -198,10 +192,6 @@ export async function POST(request: NextRequest) {
     const promptTemplatesJsonPath = path.join(runDir, "nano-banana-prompt-templates.json");
     fs.writeFileSync(promptTemplatesJsonPath, JSON.stringify(promptTemplates, null, 2), "utf-8");
     args.push("--prompt-templates-json", promptTemplatesJsonPath);
-
-    if (characterReference) {
-      args.push("--character-reference", resolveStyleReferencePath(characterReference.imageRelativePath));
-    }
 
     const result = spawnSync("uv", args, {
       encoding: "utf-8",

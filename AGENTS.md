@@ -96,6 +96,17 @@ Rules:
 - Route-local or one-off button-like controls must also show `cursor: pointer` when clickable.
 - Icon-only controls, including kebab menus and toolbar buttons, should follow the same rule.
 
+### 5) Prompt templates are the source of truth
+
+Editable prompt templates define all prompt-affecting instructions. Runtime code may render placeholders and normalize legacy aliases for compatibility, but it must not force-add prompt text or placeholders back into saved user templates.
+
+Rules:
+- Put every prompt-affecting instruction in an editable settings template, not hidden rendering code.
+- Do not reinsert a placeholder a user removed from a saved template. Defaults may include placeholders, and one-time migrations may rename legacy placeholders, but saved user templates must remain user-controlled.
+- Keep compatibility aliases non-destructive. Alias handling may render old names or migrate old data, but it must not make removed placeholders reappear in user-visible settings.
+- Document every supported placeholder in the Useful placeholders table on the relevant settings page.
+- Keep placeholder tables alphabetized by displayed placeholder name.
+
 ## Practical Checklist
 
 Before implementing:
@@ -106,6 +117,7 @@ Before implementing:
 - Do clickable buttons/controls clearly use `cursor: pointer`?
 - Is there an existing reusable component I should reuse?
 - If not, is it better to modify an existing component or create a new one?
+- Does every prompt-affecting instruction live in an editable settings template, with placeholders documented alphabetically?
 
 ## Common Commands
 

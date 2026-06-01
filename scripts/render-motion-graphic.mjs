@@ -674,7 +674,12 @@ function buildCaptionWordWallTimeline({ lines, alignmentWords, visualStartSecond
     return buildCaptionWordWallTimeline({ lines: normalizedLines, alignmentWords: syntheticWords, visualStartSeconds: 0, durationSeconds, allowSyntheticTiming: true });
   }
 
+  const rangeToleranceSeconds = 0.05;
   let cursor = 0;
+  if (Number.isFinite(visualStartSeconds) && visualStartSeconds > 0) {
+    const firstInRangeIndex = alignmentWords.findIndex((word) => word.end >= visualStartSeconds - rangeToleranceSeconds);
+    cursor = firstInRangeIndex >= 0 ? firstInRangeIndex : alignmentWords.length;
+  }
   const wordEntries = [];
   const resolvedLines = normalizedLines.map((line, lineIndex) => {
     if (line.blank) return { blank: true, size: "regular", emphasized: false, words: [] };
@@ -696,7 +701,7 @@ function buildCaptionWordWallTimeline({ lines, alignmentWords, visualStartSecond
       cursor = matchIndex + 1;
       const localStart = matched.start - visualStartSeconds;
       const localEnd = matched.end - visualStartSeconds;
-      if (localEnd < -0.05 || localStart > durationSeconds + 0.05) {
+      if (localEnd < -rangeToleranceSeconds || localStart > durationSeconds + rangeToleranceSeconds) {
         throw new Error(`caption_word_wall word "${wordText}" is outside the visual start/end range. Align the motion graphic visual range with the spoken words it displays.`);
       }
       const entry = {

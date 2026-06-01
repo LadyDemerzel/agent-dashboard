@@ -34,6 +34,7 @@ import {
   summarizeShortFormAutoRunError,
   type ShortFormAutoRunState,
 } from "@/lib/short-form-auto-run";
+import { readXmlVisualEditStates } from "@/lib/short-form-xml-visual-editor";
 
 export type ShortFormStageKey = "research" | "script" | "scene-images" | "sound-design" | "video";
 export type PendingStageKey = "hooks" | ShortFormStageKey;
@@ -143,6 +144,13 @@ export interface SceneImageArtifact {
   motionGraphicTemplateId?: string;
   motionGraphicRendererId?: string;
   notes?: string;
+  imageId?: string;
+  basedOnImageId?: string;
+  reusedExistingAsset?: boolean;
+  visualId?: string;
+  xmlPrompt?: string;
+  xmlBasedOn?: string;
+  motionGraphicXml?: string;
   status?: "completed" | "in-progress";
 }
 
@@ -167,6 +175,8 @@ export interface StageRequestContext {
   mode: "generate" | "revise";
   notes?: string;
   sceneId?: string;
+  imageId?: string;
+  visualId?: string;
 }
 
 export interface HookRequestContext {
@@ -179,7 +189,8 @@ export interface HookRequestContext {
 export interface ShortFormProjectMeta {
   id: string;
   topic: string;
-  title: string;
+  name?: string;
+  title?: string;
   createdAt: string;
   updatedAt: string;
   selectedHookId?: string;
@@ -516,6 +527,38 @@ function createUniqueDuplicateId(source: ShortFormProjectMeta, title: string) {
   }
 
   return id;
+}
+
+function getShortFormProjectName(meta: Pick<ShortFormProjectMeta, "name" | "title" | "topic">) {
+  return meta.name?.trim() || meta.topic?.trim() || meta.title?.trim() || "Untitled short-form video";
+}
+
+function stripDuplicateCopySuffix(name: string) {
+  return name.replace(/\s+Copy\s+\d+$/i, "").trim() || name.trim();
+}
+
+function normalizeProjectNameForCompare(name: string) {
+  return name.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function getNextDuplicateProjectName(sourceMeta: ShortFormProjectMeta) {
+  const baseName = stripDuplicateCopySuffix(getShortFormProjectName(sourceMeta));
+  const existingNames = new Set<string>();
+
+  for (const entry of fs.readdirSync(SHORT_FORM_VIDEOS_DIR)) {
+    const entryPath = path.join(SHORT_FORM_VIDEOS_DIR, entry);
+    if (!fs.existsSync(entryPath) || !fs.statSync(entryPath).isDirectory()) continue;
+    const meta = readProjectMeta(entry);
+    if (!meta) continue;
+    existingNames.add(normalizeProjectNameForCompare(getShortFormProjectName(meta)));
+  }
+
+  let copyNumber = 1;
+  while (existingNames.has(normalizeProjectNameForCompare(`${baseName} Copy ${copyNumber}`))) {
+    copyNumber += 1;
+  }
+
+  return `${baseName} Copy ${copyNumber}`;
 }
 
 function isProbablyTextFile(filePath: string) {
@@ -944,6 +987,10 @@ function validateSceneManifestPayload(payload: unknown): JsonReadResult<SceneIma
     const motionGraphicTemplateId = (scene as { motionGraphicTemplateId?: unknown }).motionGraphicTemplateId;
     const motionGraphicRendererId = (scene as { motionGraphicRendererId?: unknown }).motionGraphicRendererId;
     const notes = (scene as { notes?: unknown }).notes;
+    const imageId = (scene as { imageId?: unknown }).imageId;
+    const basedOnImageId = (scene as { basedOnImageId?: unknown }).basedOnImageId;
+    const reusedExistingAsset = (scene as { reusedExistingAsset?: unknown }).reusedExistingAsset;
+    const visualId = (scene as { visualId?: unknown }).visualId;
 
     if (!isNonEmptyString(id)) {
       return { data: [], error: `${prefix}.id must be a non-empty string.` };
@@ -982,6 +1029,18 @@ function validateSceneManifestPayload(payload: unknown): JsonReadResult<SceneIma
       return { data: [], error: `${prefix}.notes must be a string when provided.` };
     }
 
+    if (!isOptionalString(imageId)) {
+      return { data: [], error: `${prefix}.imageId must be a string when provided.` };
+    }
+
+    if (!isOptionalString(basedOnImageId)) {
+      return { data: [], error: `${prefix}.basedOnImageId must be a string when provided.` };
+    }
+
+    if (!isOptionalString(visualId)) {
+      return { data: [], error: `${prefix}.visualId must be a string when provided.` };
+    }
+
     normalized.push({
       id,
       number: Number(number),
@@ -994,6 +1053,10 @@ function validateSceneManifestPayload(payload: unknown): JsonReadResult<SceneIma
       ...(typeof motionGraphicTemplateId === "string" && motionGraphicTemplateId.trim() ? { motionGraphicTemplateId: motionGraphicTemplateId.trim() } : {}),
       ...(typeof motionGraphicRendererId === "string" && motionGraphicRendererId.trim() ? { motionGraphicRendererId: motionGraphicRendererId.trim() } : {}),
       ...(typeof notes === "string" && notes.trim() ? { notes: notes.trim() } : {}),
+      ...(typeof imageId === "string" && imageId.trim() ? { imageId: imageId.trim() } : {}),
+      ...(typeof basedOnImageId === "string" && basedOnImageId.trim() ? { basedOnImageId: basedOnImageId.trim() } : {}),
+      ...(typeof reusedExistingAsset === "boolean" ? { reusedExistingAsset } : {}),
+      ...(typeof visualId === "string" && visualId.trim() ? { visualId: visualId.trim() } : {}),
     });
   }
 
@@ -1001,7 +1064,12 @@ function validateSceneManifestPayload(payload: unknown): JsonReadResult<SceneIma
 }
 
 export function readProjectMeta(projectId: string): ShortFormProjectMeta | null {
-  return readJsonFile<ShortFormProjectMeta | null>(getProjectMetaPath(projectId), null);
+  const meta = readJsonFile<ShortFormProjectMeta | null>(getProjectMetaPath(projectId), null);
+  if (!meta) return null;
+  return {
+    ...meta,
+    title: getShortFormProjectName(meta),
+  };
 }
 
 export function saveProjectMeta(projectId: string, data: ShortFormProjectMeta) {
@@ -1024,6 +1092,7 @@ export function createShortFormProject(topic = "") {
   const meta: ShortFormProjectMeta = {
     id,
     topic,
+    ...(topic ? { name: topic } : {}),
     title: topic || "Untitled short-form video",
     createdAt: now,
     updatedAt: now,
@@ -1049,8 +1118,8 @@ export function duplicateShortFormProject(
     return null;
   }
 
-  const title = options.title?.trim() || `${sourceMeta.title || sourceMeta.topic || "Untitled short-form video"} copy`;
-  const id = createUniqueDuplicateId(sourceMeta, title);
+  const name = options.title?.trim() || getNextDuplicateProjectName(sourceMeta);
+  const id = createUniqueDuplicateId(sourceMeta, name);
   const destinationDir = getProjectDir(id);
   fs.cpSync(sourceDir, destinationDir, {
     recursive: true,
@@ -1070,7 +1139,8 @@ export function duplicateShortFormProject(
   const meta: ShortFormProjectMeta = {
     ...copiedMeta,
     id,
-    title,
+    name,
+    title: name,
     createdAt: now,
     updatedAt: now,
     pendingHooks: false,
@@ -1396,7 +1466,11 @@ function sceneManifestNeedsSync(projectId: string, primary: JsonReadResult<Scene
       current.motionGraphicId !== next.motionGraphicId ||
       current.motionGraphicTemplateId !== next.motionGraphicTemplateId ||
       current.motionGraphicRendererId !== next.motionGraphicRendererId ||
-      current.notes !== next.notes
+      current.notes !== next.notes ||
+      current.imageId !== next.imageId ||
+      current.basedOnImageId !== next.basedOnImageId ||
+      current.reusedExistingAsset !== next.reusedExistingAsset ||
+      current.visualId !== next.visualId
     ) {
       return true;
     }
@@ -1553,7 +1627,7 @@ export function synchronizeSceneImagesArtifacts(projectId: string) {
 
   if (shouldSyncManifest) {
     const strictManifest = {
-      scenes: generated.data.map(({ id, number, caption, startTime, endTime, image, previewImage, previewVideo, visualType, motionGraphicId, motionGraphicTemplateId, motionGraphicRendererId, notes }) => ({
+      scenes: generated.data.map(({ id, number, caption, startTime, endTime, image, previewImage, previewVideo, visualType, motionGraphicId, motionGraphicTemplateId, motionGraphicRendererId, notes, imageId, basedOnImageId, reusedExistingAsset, visualId }) => ({
         id,
         number,
         caption,
@@ -1567,6 +1641,10 @@ export function synchronizeSceneImagesArtifacts(projectId: string) {
         ...(motionGraphicTemplateId ? { motionGraphicTemplateId } : {}),
         ...(motionGraphicRendererId ? { motionGraphicRendererId } : {}),
         ...(notes ? { notes } : {}),
+        ...(imageId ? { imageId } : {}),
+        ...(basedOnImageId ? { basedOnImageId } : {}),
+        ...(typeof reusedExistingAsset === "boolean" ? { reusedExistingAsset } : {}),
+        ...(visualId ? { visualId } : {}),
       })),
     };
     fs.writeFileSync(primaryPath, JSON.stringify(strictManifest, null, 2), "utf-8");
@@ -1702,7 +1780,7 @@ function readExpectedScriptVisualSpec(projectId: string) {
   const scriptPath = getXmlScriptPath(projectId);
   if (!fs.existsSync(scriptPath)) {
     return {
-      scenes: [] as Array<{ id: string; number: number; caption: string; imageId?: string }>,
+      scenes: [] as Array<{ id: string; number: number; caption: string; imageId?: string; visualId?: string }>,
       assetDependencies: new Map<string, string | undefined>(),
     };
   }
@@ -1711,14 +1789,14 @@ function readExpectedScriptVisualSpec(projectId: string) {
     const xml = extractBody(fs.readFileSync(scriptPath, "utf-8"));
     const assetsBody = xml.match(/<assets\b[^>]*>([\s\S]*?)<\/assets>/i)?.[1] || "";
     const timelineBody = xml.match(/<timeline\b[^>]*>([\s\S]*?)<\/timeline>/i)?.[1] || "";
-    const assetDependencies = new Map<string, string | undefined>();
+    const rawAssetDependencies = new Map<string, string | undefined>();
 
     for (const match of assetsBody.matchAll(/<image\b([^>]*)>([\s\S]*?)<\/image>/gi)) {
       const attributes = parseXmlAttributes(match[1] || "");
       const imageId = attributes.id?.trim();
       if (!imageId) continue;
       const basedOnImageId = attributes.basedOn?.trim();
-      assetDependencies.set(imageId, basedOnImageId || undefined);
+      rawAssetDependencies.set(imageId, basedOnImageId || undefined);
     }
 
     const scenes = Array.from(timelineBody.matchAll(/<visual\b([^>]*?)(?:\/>|>([\s\S]*?)<\/visual>)/gi)).map((match, index) => {
@@ -1728,18 +1806,33 @@ function readExpectedScriptVisualSpec(projectId: string) {
       const labelFromBody = visualBody.match(/<label>([\s\S]*?)<\/label>/i)?.[1] || "";
       const caption = normalizeXmlText(attributes.label || labelFromBody) || `Scene ${number}`;
       const imageId = attributes.imageId?.trim();
+      const visualId = attributes.id?.trim();
       return {
         id: `scene-${number}`,
         number,
         caption,
         ...(imageId ? { imageId } : {}),
+        ...(visualId ? { visualId } : {}),
       };
     });
+    const imageIdByReference = new Map<string, string>();
+    for (const imageId of rawAssetDependencies.keys()) {
+      imageIdByReference.set(imageId, imageId);
+    }
+    for (const scene of scenes) {
+      if (scene.imageId) imageIdByReference.set(scene.imageId, scene.imageId);
+      if (scene.visualId && scene.imageId) imageIdByReference.set(scene.visualId, scene.imageId);
+    }
+    const assetDependencies = new Map<string, string | undefined>();
+    for (const [imageId, basedOnReference] of rawAssetDependencies.entries()) {
+      const normalizedReference = basedOnReference ? imageIdByReference.get(basedOnReference) || basedOnReference : undefined;
+      assetDependencies.set(imageId, normalizedReference);
+    }
 
     return { scenes, assetDependencies };
   } catch {
     return {
-      scenes: [] as Array<{ id: string; number: number; caption: string; imageId?: string }>,
+      scenes: [] as Array<{ id: string; number: number; caption: string; imageId?: string; visualId?: string }>,
       assetDependencies: new Map<string, string | undefined>(),
     };
   }
@@ -2523,12 +2616,26 @@ function getSceneImagesStage(projectId: string, options?: { pending?: boolean })
   synchronizeSceneImagesArtifacts(projectId);
   const doc = readStageDocument(projectId, "scene-images", options);
   const manifest = readSceneManifestResult(projectId);
-  const manifestScenes = manifest.data.map((scene) => ({
-    ...scene,
-    image: scene.image ? toMediaUrl(projectId, scene.image, getProjectMediaVersion(projectId, scene.image)) : undefined,
-    previewImage: scene.previewImage ? toMediaUrl(projectId, scene.previewImage, getProjectMediaVersion(projectId, scene.previewImage)) : undefined,
-    previewVideo: scene.previewVideo ? toMediaUrl(projectId, scene.previewVideo, getProjectMediaVersion(projectId, scene.previewVideo)) : undefined,
-  }));
+  let xmlEditStates = new Map<number, ReturnType<typeof readXmlVisualEditStates>[number]>();
+  try {
+    xmlEditStates = new Map(
+      readXmlVisualEditStates(getXmlScriptPath(projectId)).map((state) => [state.number, state]),
+    );
+  } catch {
+    xmlEditStates = new Map();
+  }
+  const manifestScenes = manifest.data.map((scene) => {
+    const xmlEditState = xmlEditStates.get(scene.number);
+    return {
+      ...scene,
+      ...(xmlEditState?.prompt !== undefined ? { xmlPrompt: xmlEditState.prompt } : {}),
+      ...(xmlEditState?.basedOn !== undefined ? { xmlBasedOn: xmlEditState.basedOn } : {}),
+      ...(xmlEditState?.motionGraphicXml ? { motionGraphicXml: xmlEditState.motionGraphicXml } : {}),
+      image: scene.image ? toMediaUrl(projectId, scene.image, getProjectMediaVersion(projectId, scene.image)) : undefined,
+      previewImage: scene.previewImage ? toMediaUrl(projectId, scene.previewImage, getProjectMediaVersion(projectId, scene.previewImage)) : undefined,
+      previewVideo: scene.previewVideo ? toMediaUrl(projectId, scene.previewVideo, getProjectMediaVersion(projectId, scene.previewVideo)) : undefined,
+    };
+  });
   const progressState = buildSceneImagesProgressState(projectId, manifestScenes, doc);
   return { ...doc, scenes: progressState.scenes, sceneProgress: progressState.sceneProgress, validationError: manifest.error };
 }
@@ -3125,7 +3232,7 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
   const project: ShortFormProject = {
     id: nextMeta.id,
     topic: nextMeta.topic,
-    title: nextMeta.title,
+    title: getShortFormProjectName(nextMeta),
     createdAt: nextMeta.createdAt,
     updatedAt: nextMeta.updatedAt,
     selectedHookId,
@@ -3539,7 +3646,7 @@ function getShortFormProjectRow(projectId: string): ShortFormProjectRow | null {
   return {
     id: nextMeta.id,
     topic: nextMeta.topic,
-    title: nextMeta.title,
+    title: getShortFormProjectName(nextMeta),
     createdAt: nextMeta.createdAt,
     updatedAt: nextMeta.updatedAt,
     currentStage,

@@ -6,6 +6,7 @@ import {
 } from "@/lib/short-form-workflow-prompts";
 import {
   getShortFormImageStyleSettings,
+  normalizeShortFormNanoBananaPromptTemplates,
   saveShortFormImageStyleSettings,
   type ShortFormImageStyleSettings,
 } from "@/lib/short-form-image-styles";
@@ -46,17 +47,30 @@ export const dynamic = "force-dynamic";
 
 const LEGACY_MOTION_GRAPHIC_RENDERERS = new Set(["instruction", "step_checklist"]);
 
+function mergeImagePromptTemplates(
+  current: ShortFormImageStyleSettings["promptTemplates"],
+  patch: Partial<ShortFormImageStyleSettings>["promptTemplates"],
+) {
+  if (!patch) return current;
+
+  const rawPatch = patch as unknown as Record<string, unknown>;
+  const hasLegacySceneTemplate =
+    typeof rawPatch.sceneTemplate === "string" &&
+    typeof rawPatch.imageGenerationTemplate !== "string";
+
+  return normalizeShortFormNanoBananaPromptTemplates({
+    ...current,
+    ...patch,
+    ...(hasLegacySceneTemplate ? { imageGenerationTemplate: rawPatch.sceneTemplate } : {}),
+  });
+}
+
 function mergeImageStylesPatch(patch: Partial<ShortFormImageStyleSettings>) {
   const current = getShortFormImageStyleSettings();
   return {
     ...current,
     ...patch,
-    promptTemplates: patch.promptTemplates
-      ? {
-          ...current.promptTemplates,
-          ...patch.promptTemplates,
-        }
-      : current.promptTemplates,
+    promptTemplates: mergeImagePromptTemplates(current.promptTemplates, patch.promptTemplates),
   } satisfies ShortFormImageStyleSettings;
 }
 
@@ -206,10 +220,10 @@ export async function PATCH(request: NextRequest) {
     if (
       typeof candidate.pauseRemoval.minSilenceDurationSeconds !== "number"
       || Number.isNaN(candidate.pauseRemoval.minSilenceDurationSeconds)
-      || candidate.pauseRemoval.minSilenceDurationSeconds < 0.1
+      || candidate.pauseRemoval.minSilenceDurationSeconds < 0.01
       || candidate.pauseRemoval.minSilenceDurationSeconds > 2.5
     ) {
-      return NextResponse.json({ success: false, error: "Pause removal minimum silence duration must be a number between 0.1 and 2.5 seconds" }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Pause removal minimum silence duration must be a number between 0.01 and 2.5 seconds" }, { status: 400 });
     }
     if (
       typeof candidate.pauseRemoval.silenceThresholdDb !== "number"

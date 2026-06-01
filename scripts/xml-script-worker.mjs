@@ -251,7 +251,7 @@ function removeFileIfExists(filePath) {
 function clampPauseRemovalMinSilenceDurationSeconds(value) {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
   if (!Number.isFinite(parsed)) return DEFAULT_PAUSE_REMOVAL_MIN_SILENCE_DURATION_SECONDS;
-  return Math.min(2.5, Math.max(0.1, Math.round(parsed * 100) / 100));
+  return Math.min(2.5, Math.max(0.01, Math.round(parsed * 100) / 100));
 }
 
 function clampPauseRemovalSilenceThresholdDb(value) {

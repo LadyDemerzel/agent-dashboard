@@ -181,6 +181,9 @@ export interface Scene {
   basedOnImageId?: string;
   reusedExistingAsset?: boolean;
   visualId?: string;
+  xmlPrompt?: string;
+  xmlBasedOn?: string;
+  motionGraphicXml?: string;
   status?: 'completed' | 'in-progress';
 }
 
@@ -733,6 +736,9 @@ function normalizeScene(value: unknown): Scene | null {
     basedOnImageId: asOptionalString(obj.basedOnImageId),
     reusedExistingAsset: typeof obj.reusedExistingAsset === 'boolean' ? obj.reusedExistingAsset : undefined,
     visualId: asOptionalString(obj.visualId),
+    xmlPrompt: asOptionalString(obj.xmlPrompt),
+    xmlBasedOn: asOptionalString(obj.xmlBasedOn),
+    motionGraphicXml: asOptionalString(obj.motionGraphicXml),
     status: obj.status === 'in-progress' ? 'in-progress' : obj.status === 'completed' ? 'completed' : undefined,
   };
 }

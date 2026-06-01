@@ -543,7 +543,7 @@ function clampPauseRemovalMinSilenceDurationSeconds(
 ) {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
   if (!Number.isFinite(parsed)) return fallback;
-  return Math.min(2.5, Math.max(0.1, Math.round(parsed * 100) / 100));
+  return Math.min(2.5, Math.max(0.01, Math.round(parsed * 100) / 100));
 }
 
 function clampPauseRemovalSilenceThresholdDb(

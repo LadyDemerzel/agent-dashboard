@@ -226,6 +226,12 @@ interface SoundDesignReviewVariant {
   renderTrack?: string;
 }
 
+interface VisualXmlDraft {
+  prompt: string;
+  basedOn: string;
+  motionGraphicXml: string;
+}
+
 interface SessionLogEntry {
   id: string;
   timestamp?: string;
@@ -1435,11 +1441,6 @@ function XmlTaskPipelinePanel({
   );
 }
 
-function formatTimelineSeconds(value: number) {
-  if (!Number.isFinite(value)) return "0.0s";
-  return `${value.toFixed(1)}s`;
-}
-
 interface SoundLibraryOption {
   id: string;
   name: string;
@@ -1486,104 +1487,6 @@ function getSelectedSoundDesignAsset(
   const assetId = event.manualAssetId || event.assetId;
   if (!assetId) return undefined;
   return library.find((asset) => asset.id === assetId);
-}
-
-function VisualCaptionTimeline({
-  captions,
-  scenes,
-}: {
-  captions: NonNullable<Project["xmlScript"]["captions"]>;
-  scenes: Project["sceneImages"]["scenes"];
-}) {
-  const visualSpans = scenes.filter(
-    (scene) =>
-      typeof scene.startTime === "number" &&
-      typeof scene.endTime === "number" &&
-      (scene.endTime || 0) > (scene.startTime || 0),
-  );
-  const captionSpans = (captions || []).filter(
-    (caption) => caption.end > caption.start,
-  );
-  const maxEnd = Math.max(
-    ...visualSpans.map((scene) => scene.endTime || 0),
-    ...captionSpans.map((caption) => caption.end),
-    0,
-  );
-
-  if (maxEnd <= 0 || (visualSpans.length === 0 && captionSpans.length === 0))
-    return null;
-
-  return (
-    <div className="rounded-lg border border-border bg-background/60 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-medium text-foreground">
-            Caption / visual timeline
-          </h3>
-          <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-            Top lane = deterministic captions JSON. Bottom lane = XML visual
-            spans. Width is proportional to actual time so you can see overlaps
-            instead of a 1:1 caption-to-image mapping.
-          </p>
-        </div>
-        <Badge variant="outline">{formatTimelineSeconds(maxEnd)} total</Badge>
-      </div>
-      <div className="mt-4 space-y-4 overflow-x-auto pb-2">
-        <div className="min-w-[720px] space-y-3">
-          <div>
-            <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Captions
-            </div>
-            <div className="relative h-16 rounded-md border border-border bg-background/70">
-              {captionSpans.map((caption) => (
-                <div
-                  key={caption.id}
-                  className="absolute top-2 h-12 overflow-hidden rounded bg-primary/15 px-2 py-1 text-[11px] text-foreground ring-1 ring-primary/30"
-                  style={{
-                    left: `${(caption.start / maxEnd) * 100}%`,
-                    width: `${Math.max(3, ((caption.end - caption.start) / maxEnd) * 100)}%`,
-                  }}
-                  title={`${caption.text} (${formatTimelineSeconds(caption.start)} → ${formatTimelineSeconds(caption.end)})`}
-                >
-                  <div className="truncate font-medium">{caption.text}</div>
-                  <div className="truncate text-[10px] text-muted-foreground">
-                    {formatTimelineSeconds(caption.start)} →{" "}
-                    {formatTimelineSeconds(caption.end)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Generated visual spans
-            </div>
-            <div className="relative h-16 rounded-md border border-border bg-background/70">
-              {visualSpans.map((scene) => (
-                <div
-                  key={scene.id}
-                  className="absolute top-2 h-12 overflow-hidden rounded bg-emerald-500/15 px-2 py-1 text-[11px] text-foreground ring-1 ring-emerald-500/30"
-                  style={{
-                    left: `${((scene.startTime || 0) / maxEnd) * 100}%`,
-                    width: `${Math.max(3, (((scene.endTime || 0) - (scene.startTime || 0)) / maxEnd) * 100)}%`,
-                  }}
-                  title={`${scene.caption} (${formatTimelineSeconds(scene.startTime || 0)} → ${formatTimelineSeconds(scene.endTime || 0)})`}
-                >
-                  <div className="truncate font-medium">
-                    V{scene.number} · {scene.caption}
-                  </div>
-                  <div className="truncate text-[10px] text-muted-foreground">
-                    {formatTimelineSeconds(scene.startTime || 0)} →{" "}
-                    {formatTimelineSeconds(scene.endTime || 0)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function XMLScriptSection({
@@ -1859,7 +1762,7 @@ function XMLScriptSection({
                 : Math.min(
                     2.5,
                     Math.max(
-                      0.1,
+                      0.01,
                       Math.round((Number(minValue) || 0.35) * 100) / 100,
                     ),
                   ),
@@ -2194,7 +2097,7 @@ function XMLScriptSection({
                     </label>
                     <Input
                       type="number"
-                      min={0.1}
+                      min={0.01}
                       max={2.5}
                       step={0.01}
                       value={projectPauseRemovalMinSilenceDurationSecondsOverride}
@@ -3714,9 +3617,6 @@ function SceneImagesSection({
   project: Project;
   refresh: () => Promise<unknown>;
 }) {
-  const [requestByScene, setRequestByScene] = useState<Record<string, string>>(
-    {},
-  );
   const [submittingScene, setSubmittingScene] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [styleOptions, setStyleOptions] = useState<ImageStyleOption[]>([]);
@@ -3743,6 +3643,10 @@ function SceneImagesSection({
   const [sceneTabById, setSceneTabById] = useState<
     Record<string, "preview" | "raw">
   >({});
+  const [visualXmlDraftByScene, setVisualXmlDraftByScene] = useState<
+    Record<string, VisualXmlDraft>
+  >({});
+  const [savingSceneXml, setSavingSceneXml] = useState<string | null>(null);
 
   const { data: imageSettingsPayload } = useSWR<ApiResponse<WorkflowSettingsResponse>>(
     "/api/short-form-videos/settings",
@@ -3794,6 +3698,23 @@ function SceneImagesSection({
         }
       }
       return next;
+    });
+  }, [project.sceneImages.scenes]);
+
+  useEffect(() => {
+    setVisualXmlDraftByScene((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const scene of project.sceneImages.scenes) {
+        if (next[scene.id] !== undefined) continue;
+        next[scene.id] = {
+          prompt: scene.xmlPrompt ?? scene.notes ?? "",
+          basedOn: scene.xmlBasedOn ?? scene.basedOnImageId ?? "",
+          motionGraphicXml: scene.motionGraphicXml ?? "",
+        };
+        changed = true;
+      }
+      return changed ? next : current;
     });
   }, [project.sceneImages.scenes]);
 
@@ -3893,13 +3814,14 @@ function SceneImagesSection({
             body: JSON.stringify({
               action: "request-scene-change",
               sceneId: scene.id,
-              notes: requestByScene[scene.id] || "",
+              imageId: scene.imageId,
+              visualId: scene.visualId,
+              notes: "",
             }),
           },
         ),
         "Failed to request scene changes",
       );
-      setRequestByScene((prev) => ({ ...prev, [scene.id]: "" }));
       await refresh();
     } catch (err) {
       setError(
@@ -3907,6 +3829,45 @@ function SceneImagesSection({
       );
     } finally {
       setSubmittingScene(null);
+    }
+  }
+
+  async function saveSceneXml(scene: Scene) {
+    const draft = visualXmlDraftByScene[scene.id] ?? {
+      prompt: scene.xmlPrompt ?? scene.notes ?? "",
+      basedOn: scene.xmlBasedOn ?? scene.basedOnImageId ?? "",
+      motionGraphicXml: scene.motionGraphicXml ?? "",
+    };
+    setSavingSceneXml(scene.id);
+    setError(null);
+
+    try {
+      await parseJsonResponse(
+        await fetch(
+          `/api/short-form-videos/${project.id}/workflow/scene-images`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "save-visual-xml",
+              sceneId: scene.id,
+              imageId: scene.imageId,
+              visualId: scene.visualId,
+              ...(scene.visualType === "motion_graphic"
+                ? { motionGraphicXml: draft.motionGraphicXml }
+                : { prompt: draft.prompt, basedOn: draft.basedOn }),
+            }),
+          },
+        ),
+        "Failed to save visual XML changes",
+      );
+      await refresh();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to save visual XML changes",
+      );
+    } finally {
+      setSavingSceneXml(null);
     }
   }
 
@@ -3982,9 +3943,7 @@ function SceneImagesSection({
             }}
             links={
               <CompactSettingLink
-                href={buildShortFormSettingsHref("generate-visuals", {
-                  hash: "image-styles",
-                })}
+                href={buildShortFormSettingsHref("generate-visuals-image-styles")}
                 target="_blank"
                 rel="noreferrer"
               >
@@ -4005,9 +3964,7 @@ function SceneImagesSection({
                     />
                   ) : null}
                   <CompactSettingLink
-                    href={buildShortFormSettingsHref("generate-visuals", {
-                      hash: "image-styles",
-                    })}
+                    href={buildShortFormSettingsHref("generate-visuals-image-styles")}
                     target="_blank"
                     rel="noreferrer"
                   >
@@ -4116,9 +4073,8 @@ function SceneImagesSection({
             }}
             links={
               <CompactSettingLink
-                href={buildShortFormSettingsHref("generate-visuals", {
+                href={buildShortFormSettingsHref("generate-visuals-image-styles", {
                   query: `style=${encodeURIComponent(project.selectedImageStyleId || "")}`,
-                  hash: "image-styles",
                 })}
                 target="_blank"
                 rel="noreferrer"
@@ -4140,9 +4096,8 @@ function SceneImagesSection({
                     />
                   ) : null}
                   <CompactSettingLink
-                    href={buildShortFormSettingsHref("generate-visuals", {
+                    href={buildShortFormSettingsHref("generate-visuals-image-styles", {
                       query: `style=${encodeURIComponent(draftStyleId || activeStyleId)}`,
-                      hash: "image-styles",
                     })}
                     target="_blank"
                     rel="noreferrer"
@@ -4352,17 +4307,6 @@ function SceneImagesSection({
               </p>
             </div>
           ) : null}
-          {(project.xmlScript.captions?.length || 0) > 0 ||
-          project.sceneImages.scenes.some(
-            (scene) =>
-              typeof scene.startTime === "number" &&
-              typeof scene.endTime === "number",
-          ) ? (
-            <VisualCaptionTimeline
-              captions={project.xmlScript.captions || []}
-              scenes={project.sceneImages.scenes}
-            />
-          ) : null}
           {project.sceneImages.scenes.length > 0 ? (
             <div className="overflow-x-auto pb-2">
               <div className="flex min-w-max gap-4">
@@ -4377,17 +4321,56 @@ function SceneImagesSection({
                     hasPreviewVideo ||
                     hasRawImage ||
                     Boolean(scene.previewImage);
+                  const currentImagePrompt = scene.xmlPrompt ?? scene.notes ?? "";
+                  const currentBasedOn = scene.xmlBasedOn ?? scene.basedOnImageId ?? "";
+                  const currentMotionGraphicXml = scene.motionGraphicXml ?? "";
+                  const visualXmlDraft = visualXmlDraftByScene[scene.id] ?? {
+                    prompt: currentImagePrompt,
+                    basedOn: currentBasedOn,
+                    motionGraphicXml: currentMotionGraphicXml,
+                  };
+                  const isMotionGraphic = scene.visualType === "motion_graphic";
+                  const basedOnOptions = project.sceneImages.scenes
+                    .filter(
+                      (candidate) =>
+                        candidate.visualType !== "motion_graphic" &&
+                        candidate.imageId &&
+                        candidate.imageId !== scene.imageId &&
+                        candidate.visualId !== scene.visualId,
+                    )
+                    .map((candidate) => ({
+                      value: candidate.imageId || "",
+                      label: `Visual ${candidate.number}: ${candidate.caption}`,
+                    }))
+                    .filter((option) => option.value);
+                  const basedOnOptionValues = new Set(
+                    basedOnOptions.map((option) => option.value),
+                  );
+                  const hasCustomBasedOn =
+                    visualXmlDraft.basedOn.trim() &&
+                    !basedOnOptionValues.has(visualXmlDraft.basedOn.trim());
+                  const visualXmlDirty = isMotionGraphic
+                    ? visualXmlDraft.motionGraphicXml.trim() !== currentMotionGraphicXml.trim()
+                    : visualXmlDraft.prompt.trim() !== currentImagePrompt.trim() ||
+                      visualXmlDraft.basedOn.trim() !== currentBasedOn.trim();
 
                   return (
                     <div
                       key={scene.id}
-                      className="w-[260px] shrink-0 space-y-3 rounded-lg border border-border bg-background/60 p-3"
+                      className={`w-[260px] shrink-0 space-y-3 rounded-lg border bg-background/60 p-3 ${visualXmlDirty ? "border-amber-500 shadow-sm shadow-amber-500/20" : "border-border"}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-xs text-muted-foreground">
-                            Visual {scene.number}
-                          </p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-xs text-muted-foreground">
+                              Visual {scene.number}
+                            </p>
+                            {visualXmlDirty ? (
+                              <Badge className="border-amber-500 bg-amber-500/10 text-amber-700" variant="outline">
+                                Unsaved XML changes
+                              </Badge>
+                            ) : null}
+                          </div>
                           <p className="mt-1 text-sm font-medium text-foreground">
                             {scene.caption}
                           </p>
@@ -4469,7 +4452,7 @@ function SceneImagesSection({
                         </div>
                       )}
                       {scene.imageId ||
-                      scene.basedOnImageId ||
+                      currentBasedOn ||
                       scene.reusedExistingAsset ? (
                         <div className="flex flex-wrap gap-2">
                           {scene.imageId ? (
@@ -4480,9 +4463,9 @@ function SceneImagesSection({
                           {scene.reusedExistingAsset ? (
                             <Badge variant="secondary">reused asset</Badge>
                           ) : null}
-                          {scene.basedOnImageId ? (
+                          {currentBasedOn ? (
                             <Badge variant="outline">
-                              basedOn: {scene.basedOnImageId}
+                              basedOn: {currentBasedOn}
                             </Badge>
                           ) : null}
                           {scene.visualId ? (
@@ -4491,23 +4474,100 @@ function SceneImagesSection({
                         </div>
                       ) : null}
                       <div className="space-y-2">
-                        <Textarea
-                          value={requestByScene[scene.id] || ""}
-                          onChange={(e) =>
-                            setRequestByScene((prev) => ({
-                              ...prev,
-                              [scene.id]: e.target.value,
-                            }))
-                          }
-                          placeholder={
-                            sceneBusy
-                              ? "Wait for the current render to finish before requesting another change"
-                              : "Optional notes — leave blank to rerender this scene cleanly"
-                          }
-                          className="min-h-[88px]"
-                          disabled={sceneBusy}
-                        />
+                        {isMotionGraphic ? (
+                          <>
+                            <div className="space-y-1">
+                              <p className="text-xs font-medium text-muted-foreground">
+                                Motion graphic XML
+                              </p>
+                              <Textarea
+                                value={visualXmlDraft.motionGraphicXml}
+                                onChange={(e) =>
+                                  setVisualXmlDraftByScene((prev) => ({
+                                    ...prev,
+                                    [scene.id]: {
+                                      ...visualXmlDraft,
+                                      motionGraphicXml: e.target.value,
+                                    },
+                                  }))
+                                }
+                                placeholder="Edit the inline <motionGraphic> XML for this visual"
+                                className="min-h-[180px] font-mono text-xs"
+                                disabled={sceneBusy}
+                              />
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="space-y-1">
+                              <p className="text-xs font-medium text-muted-foreground">
+                                Image prompt
+                              </p>
+                              <Textarea
+                                value={visualXmlDraft.prompt}
+                                onChange={(e) =>
+                                  setVisualXmlDraftByScene((prev) => ({
+                                    ...prev,
+                                    [scene.id]: {
+                                      ...visualXmlDraft,
+                                      prompt: e.target.value,
+                                    },
+                                  }))
+                                }
+                                placeholder={
+                                  sceneBusy
+                                    ? "Wait for the current render to finish before editing XML"
+                                    : "Edit the XML image prompt"
+                                }
+                                className="min-h-[88px]"
+                                disabled={sceneBusy}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs font-medium text-muted-foreground">
+                                basedOn
+                              </p>
+                              <Select
+                                value={visualXmlDraft.basedOn}
+                                onChange={(e) =>
+                                  setVisualXmlDraftByScene((prev) => ({
+                                    ...prev,
+                                    [scene.id]: {
+                                      ...visualXmlDraft,
+                                      basedOn: e.target.value,
+                                    },
+                                  }))
+                                }
+                                disabled={sceneBusy}
+                              >
+                                <option value="">No basedOn parent</option>
+                                {hasCustomBasedOn ? (
+                                  <option value={visualXmlDraft.basedOn.trim()}>
+                                    Current: {visualXmlDraft.basedOn.trim()}
+                                  </option>
+                                ) : null}
+                                {basedOnOptions.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label} ({option.value})
+                                  </option>
+                                ))}
+                              </Select>
+                            </div>
+                          </>
+                        )}
                       </div>
+                      {visualXmlDirty ? (
+                        <Button
+                          variant="default"
+                          className="w-full"
+                          onClick={() => void saveSceneXml(scene)}
+                          disabled={sceneBusy || savingSceneXml === scene.id}
+                        >
+                          {savingSceneXml === scene.id
+                            ? "Saving…"
+                            : "Save XML changes"}
+                        </Button>
+                      ) : null}
                       <Button
                         variant="outline"
                         className="w-full"
@@ -4518,9 +4578,7 @@ function SceneImagesSection({
                           ? "Sending…"
                           : sceneBusy
                             ? "Visual is rendering…"
-                            : (requestByScene[scene.id] || "").trim()
-                              ? "Request visual changes"
-                              : "Rerender visual"}
+                            : "Re-render"}
                       </Button>
                     </div>
                   );

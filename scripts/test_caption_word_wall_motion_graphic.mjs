@@ -57,6 +57,8 @@ try {
 
   fs.writeFileSync(alignmentPath, JSON.stringify({
     items: [
+      { text: "most", start_time: 3.00, end_time: 3.18 },
+      { text: "the", start_time: 4.00, end_time: 4.18 },
       { text: "most", start_time: 10.00, end_time: 10.18 },
       { text: "people", start_time: 10.20, end_time: 10.46 },
       { text: "miss", start_time: 10.48, end_time: 10.72 },
@@ -89,6 +91,9 @@ try {
       <blankLine />
     </motionGraphic>
   </assets>
+  <timeline>
+    <visual id="visual-1" visualType="motion_graphic" start="10" end="15" motionGraphicId="word-wall" />
+  </timeline>
 </video>
 `, "utf-8");
   const parseResult = run(process.execPath, [stageWorker, xmlPath], {
