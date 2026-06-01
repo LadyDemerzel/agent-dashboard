@@ -407,6 +407,8 @@ function roundPauseSetting(value: number, digits: number) {
   return Math.round(value * factor) / factor;
 }
 
+const PAUSE_REMOVAL_ALGORITHM_VERSION = "overlap-crossfade-v1";
+
 function pauseRemovalSettingsMatch(
   actual: unknown,
   expected?: ShortFormPauseRemovalSettings
@@ -417,11 +419,13 @@ function pauseRemovalSettingsMatch(
   const obj = actual as Record<string, unknown>;
   const actualMin = typeof obj.minSilenceDurationSeconds === "number" ? obj.minSilenceDurationSeconds : Number.NaN;
   const actualThreshold = typeof obj.silenceThresholdDb === "number" ? obj.silenceThresholdDb : Number.NaN;
+  const actualAlgorithmVersion = typeof obj.algorithmVersion === "string" ? obj.algorithmVersion : "";
 
   if (!Number.isFinite(actualMin) || !Number.isFinite(actualThreshold)) return false;
 
   return roundPauseSetting(actualMin, 2) === roundPauseSetting(expected.minSilenceDurationSeconds, 2)
-    && roundPauseSetting(actualThreshold, 1) === roundPauseSetting(expected.silenceThresholdDb, 1);
+    && roundPauseSetting(actualThreshold, 1) === roundPauseSetting(expected.silenceThresholdDb, 1)
+    && actualAlgorithmVersion === PAUSE_REMOVAL_ALGORITHM_VERSION;
 }
 
 export function getXmlScriptDocument(

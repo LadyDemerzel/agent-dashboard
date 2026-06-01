@@ -63,6 +63,8 @@ const DEFAULT_XML_TASK = "full";
 const DEFAULT_PAUSE_REMOVAL_MIN_SILENCE_DURATION_SECONDS = 0.35;
 const DEFAULT_PAUSE_REMOVAL_SILENCE_THRESHOLD_DB = -40;
 const DEFAULT_PAUSE_REMOVAL_RETAIN_SILENCE_SECONDS = 0.08;
+const DEFAULT_PAUSE_REMOVAL_CROSSFADE_SECONDS = 0.075;
+const PAUSE_REMOVAL_ALGORITHM_VERSION = "overlap-crossfade-v1";
 
 function normalizeTask(value) {
   return value === "narration" || value === "silence" || value === "captions" || value === "visuals" ? value : DEFAULT_XML_TASK;
@@ -290,29 +292,183 @@ function getAudioDurationSeconds(filePath) {
   }
 }
 
-function buildSilenceRemovalFilter(settings) {
+function parseSilencedetectOutput(stderr, inputDurationSeconds) {
+  const silences = [];
+  let activeStart;
+
+  for (const line of String(stderr || "").split(/\r?\n/)) {
+    const startMatch = line.match(/silence_start:\s*([0-9.]+)/);
+    if (startMatch) {
+      activeStart = Number(startMatch[1]);
+      continue;
+    }
+
+    const endMatch = line.match(/silence_end:\s*([0-9.]+)\s*\|\s*silence_duration:\s*([0-9.]+)/);
+    if (!endMatch) continue;
+
+    const end = Number(endMatch[1]);
+    const duration = Number(endMatch[2]);
+    const start = Number.isFinite(activeStart) ? activeStart : end - duration;
+    activeStart = undefined;
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      silences.push({
+        startSeconds: Math.max(0, Math.round(start * 1000) / 1000),
+        endSeconds: Math.max(0, Math.round(end * 1000) / 1000),
+        durationSeconds: Math.max(0, Math.round((end - start) * 1000) / 1000),
+      });
+    }
+  }
+
+  if (Number.isFinite(activeStart) && Number.isFinite(inputDurationSeconds) && inputDurationSeconds > activeStart) {
+    silences.push({
+      startSeconds: Math.max(0, Math.round(activeStart * 1000) / 1000),
+      endSeconds: Math.max(0, Math.round(inputDurationSeconds * 1000) / 1000),
+      durationSeconds: Math.max(0, Math.round((inputDurationSeconds - activeStart) * 1000) / 1000),
+    });
+  }
+
+  return silences;
+}
+
+function detectSilences({ inputPath, settings, inputDurationSeconds }) {
   const threshold = `${settings.silenceThresholdDb.toFixed(1)}dB`;
   const minDuration = settings.minSilenceDurationSeconds.toFixed(2);
-  const retainSilence = DEFAULT_PAUSE_REMOVAL_RETAIN_SILENCE_SECONDS.toFixed(2);
-  return [
-    `silenceremove=start_periods=1`,
-    `start_duration=0`,
-    `start_threshold=${threshold}`,
-    `stop_periods=-1`,
-    `stop_duration=${minDuration}`,
-    `stop_threshold=${threshold}`,
-    `stop_silence=${retainSilence}`,
-  ].join(":");
+  const args = [
+    "-hide_banner",
+    "-nostats",
+    "-i",
+    inputPath,
+    "-af",
+    `silencedetect=noise=${threshold}:d=${minDuration}`,
+    "-f",
+    "null",
+    "-",
+  ];
+  const result = run("ffmpeg", args);
+  return {
+    command: ["ffmpeg", ...args],
+    silences: parseSilencedetectOutput(result.stderr, inputDurationSeconds),
+  };
+}
+
+function buildOverlapSegments({ inputDurationSeconds, silences }) {
+  if (!Number.isFinite(inputDurationSeconds) || inputDurationSeconds <= 0) {
+    return {
+      segments: [{ startSeconds: 0, endSeconds: undefined, durationSeconds: undefined }],
+      removedSilences: [],
+    };
+  }
+
+  const segments = [];
+  const removedSilences = [];
+  let cursor = 0;
+
+  for (const silence of silences) {
+    const silenceStart = Math.max(0, Math.min(inputDurationSeconds, silence.startSeconds));
+    const silenceEnd = Math.max(silenceStart, Math.min(inputDurationSeconds, silence.endSeconds));
+    const silenceDuration = silenceEnd - silenceStart;
+    if (silenceDuration <= 0.005) continue;
+
+    const retainedSilence = Math.min(DEFAULT_PAUSE_REMOVAL_RETAIN_SILENCE_SECONDS, silenceDuration * 0.4);
+    const removeStart = Math.max(cursor, silenceStart + retainedSilence / 2);
+    const removeEnd = Math.min(inputDurationSeconds, silenceEnd - retainedSilence / 2);
+    if (removeEnd - removeStart <= 0.005) continue;
+
+    if (removeStart - cursor > 0.005) {
+      segments.push({
+        startSeconds: Math.round(cursor * 1000) / 1000,
+        endSeconds: Math.round(removeStart * 1000) / 1000,
+        durationSeconds: Math.round((removeStart - cursor) * 1000) / 1000,
+      });
+    }
+    removedSilences.push({
+      ...silence,
+      removeStartSeconds: Math.round(removeStart * 1000) / 1000,
+      removeEndSeconds: Math.round(removeEnd * 1000) / 1000,
+      retainedSilenceSeconds: Math.round(retainedSilence * 1000) / 1000,
+      removedDurationSeconds: Math.round((removeEnd - removeStart) * 1000) / 1000,
+    });
+    cursor = removeEnd;
+  }
+
+  if (inputDurationSeconds - cursor > 0.005) {
+    segments.push({
+      startSeconds: Math.round(cursor * 1000) / 1000,
+      endSeconds: Math.round(inputDurationSeconds * 1000) / 1000,
+      durationSeconds: Math.round((inputDurationSeconds - cursor) * 1000) / 1000,
+    });
+  }
+
+  return {
+    segments: segments.length ? segments : [{ startSeconds: 0, endSeconds: Math.round(inputDurationSeconds * 1000) / 1000, durationSeconds: Math.round(inputDurationSeconds * 1000) / 1000 }],
+    removedSilences,
+  };
+}
+
+function formatSeconds(value) {
+  return Number(value).toFixed(3).replace(/0+$/, "").replace(/\.$/, ".0");
+}
+
+function buildOverlapFilterGraph(segments) {
+  const lines = [];
+  const streamLabels = [];
+
+  segments.forEach((segment, index) => {
+    const trimParts = [`start=${formatSeconds(segment.startSeconds)}`];
+    if (Number.isFinite(segment.endSeconds)) trimParts.push(`end=${formatSeconds(segment.endSeconds)}`);
+    const label = `seg${index}`;
+    lines.push(`[0:a]atrim=${trimParts.join(":")},asetpts=PTS-STARTPTS[${label}]`);
+    streamLabels.push(label);
+  });
+
+  if (streamLabels.length === 1) {
+    lines.push(`[${streamLabels[0]}]anull[pauseremoved]`);
+    return { filterGraph: lines.join(";"), outputLabel: "pauseremoved", crossfades: [] };
+  }
+
+  const crossfades = [];
+  let previousLabel = streamLabels[0];
+  let previousDuration = segments[0].durationSeconds;
+
+  for (let index = 1; index < streamLabels.length; index += 1) {
+    const segment = segments[index];
+    const maxDuration = Math.min(DEFAULT_PAUSE_REMOVAL_CROSSFADE_SECONDS, segment.durationSeconds * 0.45, previousDuration * 0.45);
+    const nextLabel = index === streamLabels.length - 1 ? "pauseremoved" : `xf${index}`;
+    if (maxDuration >= 0.005) {
+      const duration = Math.round(maxDuration * 1000) / 1000;
+      lines.push(`[${previousLabel}][${streamLabels[index]}]acrossfade=d=${formatSeconds(duration)}:c1=tri:c2=tri[${nextLabel}]`);
+      crossfades.push({
+        beforeSegmentIndex: index - 1,
+        afterSegmentIndex: index,
+        durationSeconds: duration,
+      });
+      previousDuration = Math.max(0.005, previousDuration + segment.durationSeconds - duration);
+    } else {
+      lines.push(`[${previousLabel}][${streamLabels[index]}]concat=n=2:v=0:a=1[${nextLabel}]`);
+      previousDuration = Math.max(0.005, previousDuration + segment.durationSeconds);
+    }
+    previousLabel = nextLabel;
+  }
+
+  return { filterGraph: lines.join(";"), outputLabel: "pauseremoved", crossfades };
 }
 
 function runSilenceRemoval({ inputPath, outputPath, settings }) {
-  const filter = buildSilenceRemovalFilter(settings);
+  const inputDurationSeconds = getAudioDurationSeconds(inputPath);
+  const detection = detectSilences({ inputPath, settings, inputDurationSeconds });
+  const { segments, removedSilences } = buildOverlapSegments({
+    inputDurationSeconds,
+    silences: detection.silences,
+  });
+  const { filterGraph, outputLabel, crossfades } = buildOverlapFilterGraph(segments);
   const args = [
     "-y",
     "-i",
     inputPath,
-    "-af",
-    filter,
+    "-filter_complex",
+    filterGraph,
+    "-map",
+    `[${outputLabel}]`,
     "-ar",
     "24000",
     "-ac",
@@ -332,10 +488,16 @@ function runSilenceRemoval({ inputPath, outputPath, settings }) {
   return {
     inputPath,
     outputPath,
-    filter,
+    algorithmVersion: PAUSE_REMOVAL_ALGORITHM_VERSION,
+    detectionCommand: detection.command,
+    filterGraph,
     command: ["ffmpeg", ...args],
-    inputDurationSeconds: getAudioDurationSeconds(inputPath),
+    inputDurationSeconds,
     outputDurationSeconds: getAudioDurationSeconds(outputPath),
+    detectedSilences: detection.silences,
+    removedSilences,
+    segments,
+    crossfades,
     processedAt: new Date().toISOString(),
   };
 }
@@ -1024,7 +1186,10 @@ async function main() {
       removeFileIfExists(captionPlanPath);
       removeFileIfExists(promptPath);
 
-      writeJson(pauseRemovalSettingsPath, pauseRemovalSettings);
+      writeJson(pauseRemovalSettingsPath, {
+        ...pauseRemovalSettings,
+        algorithmVersion: PAUSE_REMOVAL_ALGORITHM_VERSION,
+      });
       attempts.push({ step: "silence-removal", startedAt: new Date().toISOString(), settings: pauseRemovalSettings });
       liveProgress = { step: "silence-removal", label: "Removing pauses from narration audio", percent: 10 };
       updateStatus();
@@ -1143,6 +1308,7 @@ export {
   buildCaptionPlan,
   chunkSentence,
   hasFreshXmlAuthoringArtifact,
+  runSilenceRemoval,
   snapshotXmlAuthoringArtifact,
   splitSentences,
 };
