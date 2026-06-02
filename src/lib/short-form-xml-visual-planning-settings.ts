@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { SHORT_FORM_VIDEOS_DIR } from "@/lib/short-form-videos";
+import { getVersionedShortFormSettingsPath } from "@/lib/short-form-settings-paths";
 import { renderMotionGraphicTemplatePromptInjection } from "@/lib/short-form-motion-graphics";
 
 export interface ShortFormXmlVisualPlanningSettings {
@@ -9,7 +9,7 @@ export interface ShortFormXmlVisualPlanningSettings {
   revisePromptTemplate: string;
 }
 
-const SETTINGS_PATH = path.join(SHORT_FORM_VIDEOS_DIR, "_xml-visual-planning-settings.json");
+const SETTINGS_PATH = getVersionedShortFormSettingsPath("_xml-visual-planning-settings.json");
 
 const DEFAULT_PLANNING_GUIDELINES_TEMPLATE = [
   "# Context for the short-form video",

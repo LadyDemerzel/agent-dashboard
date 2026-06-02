@@ -42,7 +42,7 @@ const CAPTION_SPACY_MODEL = "https://github.com/explosion/spacy-models/releases/
 const OPENCLAW_CONFIG = path.join(HOME_DIR, ".openclaw", "openclaw.json");
 const SHORT_FORM_VOICES_ROOT = path.join(HOME_DIR, "tenxsolo", "business", "content", "deliverables", "short-form-videos");
 const VOICE_LIBRARY_DIR = path.join(SHORT_FORM_VOICES_ROOT, "_voice-library");
-const VIDEO_RENDER_SETTINGS_PATH = path.join(SHORT_FORM_VOICES_ROOT, "_video-render-settings.json");
+const VIDEO_RENDER_SETTINGS_PATH = path.join(AGENT_DASHBOARD_ROOT, "settings", "short-form-video", "_video-render-settings.json");
 const DEFAULT_VOICE_REFERENCE_TEXT = "Most people think their face shape is fixed, but posture, breathing, and muscular balance change more than you expect. In this lesson, I will walk through the habits that matter most, the mistakes that waste effort, and the small adjustments that create visible changes over time. Keep your shoulders relaxed, your neck long, and your breathing steady as we go step by step.";
 // Keep the saved reference long enough to give voice-clone a stronger identity anchor,
 // while still staying under the one-chunk ceiling used for voice-design generation.

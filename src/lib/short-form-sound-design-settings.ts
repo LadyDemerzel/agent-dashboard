@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { extractBody } from "@/lib/frontmatter";
 import { getShortFormVideoRenderSettings } from "@/lib/short-form-video-render-settings";
+import { getVersionedShortFormSettingsPath } from "@/lib/short-form-settings-paths";
 
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
 const SHORT_FORM_VIDEOS_DIR = path.join(
@@ -13,7 +14,7 @@ const SHORT_FORM_VIDEOS_DIR = path.join(
   "short-form-videos"
 );
 
-const SETTINGS_PATH = path.join(SHORT_FORM_VIDEOS_DIR, "_sound-design-settings.json");
+const SETTINGS_PATH = getVersionedShortFormSettingsPath("_sound-design-settings.json");
 const SOUND_LIBRARY_DIR = path.join(SHORT_FORM_VIDEOS_DIR, "_sound-library");
 const QUIETER_SFX_GAIN_DB_SHIFT = -3;
 

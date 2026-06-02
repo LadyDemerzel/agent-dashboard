@@ -1,0 +1,113 @@
+{
+  "defaultVisualGenerationModelId": "openclaw-gpt-image-2",
+  "defaultStyleId": "new-style-4-1775227624029",
+  "styles": [
+    {
+      "id": "default-charcoal",
+      "name": "Default charcoal",
+      "description": "Preserves the current dark charcoal house look used by the direct dashboard workflow.",
+      "stylePrompt": "Clean dramatic high-contrast pencil-and-charcoal illustration, premium modern TikTok aesthetic, dark smoky atmospheric background, restrained vivid red accents only on the key focal area, minimal clutter.",
+      "headerPercent": 28,
+      "testTopic": "Facial posture reset",
+      "testCaption": "Your jawline changes when posture changes",
+      "testImagePrompt": "Single full-frame side-profile portrait in a dark studio, subtle posture cue through neck alignment, premium charcoal illustration, natural negative space near the top.",
+      "references": [],
+      "lastTestImage": {
+        "runId": "29b34d0e-4753-4398-b84d-e2cb862ecfd4",
+        "updatedAt": "2026-04-02T21:31:47.419Z",
+        "cleanRelativePath": "29b34d0e-4753-4398-b84d-e2cb862ecfd4/output/scene-01-uncaptioned-1080x1920.png",
+        "previewRelativePath": "29b34d0e-4753-4398-b84d-e2cb862ecfd4/output/scene-01-captioned-1080x1920.png"
+      }
+    },
+    {
+      "id": "new-style-2-1775163399408",
+      "name": "Watercolor and pen",
+      "stylePrompt": "Premium modern social-video aesthetic, cohesive full-frame composition, dramatic but tasteful lighting, minimal clutter. Style should be very, very colorful, with high contrast colors, and should like a pastel drawing, but with subtle thin black pen ink for outlines and details. It should be slightly whimsical. Color pallet for the background should be primarily consisting of bright blues, bright pinks, bright yellows, and bright greens. Color pallet for any characters or items in the foreground should be more realistic.",
+      "headerPercent": 28,
+      "testTopic": "Facial posture reset",
+      "testCaption": "Your jawline changes when posture changes",
+      "testImagePrompt": "Single full-frame side-profile portrait in a dark studio, subtle posture cue through neck alignment, natural negative space near the top.",
+      "references": [],
+      "lastTestImage": {
+        "runId": "e8e95c7a-8e5c-44c5-897f-1b89d60e3b8c",
+        "updatedAt": "2026-04-02T22:56:30.825Z",
+        "cleanRelativePath": "e8e95c7a-8e5c-44c5-897f-1b89d60e3b8c/output/scene-01-uncaptioned-1080x1920.png",
+        "previewRelativePath": "e8e95c7a-8e5c-44c5-897f-1b89d60e3b8c/output/scene-01-captioned-1080x1920.png"
+      }
+    },
+    {
+      "id": "new-style-3-1775170050853",
+      "name": "Cartoon",
+      "description": "Cartoon",
+      "stylePrompt": "Cartoon art style, slightly anime inspired, with a hand drawn and colored pencil aesthetic",
+      "headerPercent": 28,
+      "testTopic": "Facial posture reset",
+      "testCaption": "Your jawline changes when posture changes",
+      "testImagePrompt": "Single full-frame side-profile portrait in a dark studio, subtle posture cue through neck alignment, natural negative space near the top.",
+      "references": [],
+      "lastTestImage": {
+        "runId": "fec7e9e9-51dc-4b29-beaa-6fbac4e9d13d",
+        "updatedAt": "2026-05-27T00:06:29.254Z",
+        "cleanRelativePath": "fec7e9e9-51dc-4b29-beaa-6fbac4e9d13d/output/scene-01-uncaptioned-1080x1920.png",
+        "previewRelativePath": "fec7e9e9-51dc-4b29-beaa-6fbac4e9d13d/output/scene-01-captioned-1080x1920.png"
+      }
+    },
+    {
+      "id": "new-style-4-1775227624029",
+      "name": "Water color with reference image",
+      "stylePrompt": "Use the attached references as the source of truth for this watercolor look. Match the watercolor medium, palette, lighting, softness, and overall finish from the style reference, and treat the primary character reference as canonical for the recurring woman: preserve her face, hair, and the same outfit, wardrobe silhouette, colors, and accessories across every scene unless a scene explicitly requests a different outfit.",
+      "headerPercent": 30,
+      "testTopic": "Facial posture reset",
+      "testCaption": "Your jawline changes when posture changes",
+      "testImagePrompt": "Make the woman face the camera directly. Her entire body and face should be facing the camera. Her body and face should NOT be angled to the side. Make her wearing a high-fashion urban outfit (think New York City, in the hot summer, worn by an influencer, to a casual hot-girl brunch in soho).",
+      "references": [
+        {
+          "id": "ref-1775227658122-7np1eo",
+          "label": "Style reference",
+          "usageType": "general",
+          "usageInstructions": "Use the watercolor visual style, palette, brushwork, softness, and lighting treatment from this image. Do not use the background from this image.",
+          "imageRelativePath": "new-style-4-1775227624029/scene-01-uncaptioned-1080x1920-png-4eeb9d49-8d26-4cb4-bcc7-17b2ad7034de.png",
+          "uploadedAt": "2026-04-03T14:47:38.124Z"
+        },
+        {
+          "id": "ref-1775231797298-y3vklk",
+          "label": "Primary character reference",
+          "usageType": "character",
+          "usageInstructions": "Use this as the primary character reference. Treat her outfit as canonical and preserve the same outfit across scenes unless a scene explicitly asks for a change. Don’t use the background in this image.",
+          "imageRelativePath": "new-style-4-1775227624029/scene-01-uncaptioned-1080x1920-2-png-8b9c48eb-bc5f-485f-a428-fa63edb3694e.png",
+          "uploadedAt": "2026-04-03T15:56:37.294Z"
+        }
+      ],
+      "lastTestImage": {
+        "runId": "e93f40e8-6ac3-4812-830f-67fb26a7d000",
+        "updatedAt": "2026-05-01T02:19:35.648Z",
+        "cleanRelativePath": "e93f40e8-6ac3-4812-830f-67fb26a7d000/output/scene-01-uncaptioned-1080x1920.png",
+        "previewRelativePath": "e93f40e8-6ac3-4812-830f-67fb26a7d000/output/scene-01-captioned-1080x1920.png"
+      }
+    },
+    {
+      "id": "new-style-5-1779840493478",
+      "name": "Photorealistic",
+      "description": "Use this style for photorealism",
+      "stylePrompt": "Photorealistic, looks like it was shot on an iPhone 17 Pro Max.",
+      "headerPercent": 28,
+      "testTopic": "Facial posture reset",
+      "testCaption": "Your jawline changes when posture changes",
+      "testImagePrompt": "Single full-frame side-profile portrait in a dark studio, subtle posture cue through neck alignment, natural negative space near the top.",
+      "references": [],
+      "lastTestImage": {
+        "runId": "6bfa1132-47c0-4776-afd0-6a962df6bfa2",
+        "updatedAt": "2026-05-27T00:10:50.879Z",
+        "cleanRelativePath": "6bfa1132-47c0-4776-afd0-6a962df6bfa2/output/scene-01-uncaptioned-1080x1920.png",
+        "previewRelativePath": "6bfa1132-47c0-4776-afd0-6a962df6bfa2/output/scene-01-captioned-1080x1920.png"
+      }
+    }
+  ],
+  "promptTemplates": {
+    "imageGenerationTemplate": "{{basedOnReferenceInstructions}}\n\n# Image description:\n{{imageDescription}}\n\n# Topic context: \n{{topic}}\n\n# Image style:\n{{styleInstructions}}\n\n{{extraReferencesInstructions}}\n\n# Hard constraints:\n- The main idea is immediately clear at a glance\n- The image is visually scroll-stopping\n- Keep the image as one cohesive full-frame composition with no separate header, banner, boxed strip, or hard horizontal divider.\n- No tiling, split panels, borders, framed prints, inset cards, mockups, boxed caption areas, collage layouts, or floating rectangles unless explicitly requested in the \"Image description\" above.\n- No baked-in text, logos, labels, subtitles, UI chrome, or watermarks.\n- Characters should never be cut off unless the crop is clearly motivated by the left, right, or bottom edge of the frame.\n- one cohesive full-frame 9:16 composition",
+    "basedOnReferenceTemplate": "# Image to base the new image off of:\nAttached reference image {{basedOnAttachmentIndex}} is the parent/base image for the new image you're generating. Use it as the visual source to build from.",
+    "continuityWithReferenceTemplate": "",
+    "extraReferencesTemplate": "# Additional image references\nAdditional attached reference images are provided. Use each one only for the role described below:\n{{individualExtraReferences}}",
+    "individualExtraReferenceTemplate": "- Attached reference image {{attachmentIndex}} ({{label}}): usage type '{{usageType}}'. {{usageInstructions}}"
+  }
+}

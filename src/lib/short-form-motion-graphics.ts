@@ -1,15 +1,6 @@
 import fs from "fs";
 import path from "path";
-
-const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
-const SHORT_FORM_VIDEOS_DIR = path.join(
-  HOME_DIR,
-  "tenxsolo",
-  "business",
-  "content",
-  "deliverables",
-  "short-form-videos"
-);
+import { getVersionedShortFormSettingsPath } from "@/lib/short-form-settings-paths";
 
 export const SUPPORTED_MOTION_GRAPHIC_RENDERERS = [
   "stat_reveal",
@@ -84,7 +75,7 @@ export interface ShortFormMotionGraphicsSettings {
   templates: MotionGraphicTemplateConfig[];
 }
 
-const SETTINGS_PATH = path.join(SHORT_FORM_VIDEOS_DIR, "_motion-graphics-settings.json");
+const SETTINGS_PATH = getVersionedShortFormSettingsPath("_motion-graphics-settings.json");
 const DEFAULT_STYLE_PRESET = "dark-pastel-watercolor";
 const GOOD_BAD_INDICATOR_TEMPLATE_ID = "good-bad-indicator";
 const CHECKLIST_TEMPLATE_ID = "checklist";

@@ -6,6 +6,7 @@ import {
   normalizeShortFormVisualGenerationModelId,
   type ShortFormVisualGenerationModelId,
 } from "@/lib/short-form-visual-generation";
+import { getVersionedShortFormSettingsPath } from "@/lib/short-form-settings-paths";
 
 export type ShortFormStyleReferenceUsageType = "general" | "style" | "character" | "lighting" | "composition" | "palette";
 
@@ -72,7 +73,7 @@ const SHORT_FORM_VIDEOS_DIR = path.join(
   "deliverables",
   "short-form-videos"
 );
-const SETTINGS_PATH = path.join(SHORT_FORM_VIDEOS_DIR, "_image-style-settings.json");
+const SETTINGS_PATH = getVersionedShortFormSettingsPath("_image-style-settings.json");
 const STYLE_TESTS_DIR = path.join(SHORT_FORM_VIDEOS_DIR, "_style-tests");
 const STYLE_REFERENCE_IMAGES_DIR = path.join(SHORT_FORM_VIDEOS_DIR, "_style-reference-images");
 const DEFAULT_STYLE_ID = "default-charcoal";

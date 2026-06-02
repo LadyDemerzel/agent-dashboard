@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
-import { SHORT_FORM_VIDEOS_DIR, type ShortFormStageKey } from "@/lib/short-form-videos";
+import type { ShortFormStageKey } from "@/lib/short-form-videos";
+import { getVersionedShortFormSettingsPath } from "@/lib/short-form-settings-paths";
 
 export type ShortFormPromptKey =
   | "hooksGenerate"
@@ -72,7 +73,7 @@ export const SHORT_FORM_PROMPT_DEFINITIONS: ShortFormPromptDefinition[] = [
   },
 ];
 
-const SETTINGS_PATH = path.join(SHORT_FORM_VIDEOS_DIR, "_workflow-settings.json");
+const SETTINGS_PATH = getVersionedShortFormSettingsPath("_workflow-settings.json");
 const WORKFLOW_PROMPT_MIGRATIONS_KEY = "__workflowPromptMigrations";
 const LEGACY_RESEARCH_XML_PROMPT_RESET_KEY = "researchXmlPromptReset";
 

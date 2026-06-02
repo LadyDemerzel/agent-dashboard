@@ -10,6 +10,7 @@ import {
   normalizeCaptionAnimationPresetEntry,
   type ShortFormCaptionAnimationPresetEntry,
 } from "@/lib/short-form-caption-animation";
+import { getVersionedShortFormSettingsPath } from "@/lib/short-form-settings-paths";
 
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
 const SHORT_FORM_VIDEOS_DIR = path.join(
@@ -207,7 +208,7 @@ export interface ShortFormVideoRenderSettings {
   pauseRemoval: ShortFormPauseRemovalSettings;
 }
 
-const SETTINGS_PATH = path.join(SHORT_FORM_VIDEOS_DIR, "_video-render-settings.json");
+const SETTINGS_PATH = getVersionedShortFormSettingsPath("_video-render-settings.json");
 const VOICE_TESTS_DIR = path.join(SHORT_FORM_VIDEOS_DIR, "_voice-tests");
 const VOICE_LIBRARY_DIR = path.join(SHORT_FORM_VIDEOS_DIR, "_voice-library");
 const MUSIC_TESTS_DIR = path.join(SHORT_FORM_VIDEOS_DIR, "_music-tests");

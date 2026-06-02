@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 const baseUrl = (process.env.DASHBOARD_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
 const settingsDir = path.join(
-  os.homedir(),
-  "tenxsolo/business/content/deliverables/short-form-videos",
+  process.cwd(),
+  "settings",
+  "short-form-video",
 );
 
 const settingsFiles = [

@@ -21,6 +21,7 @@ if (!jobPath) {
 }
 
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
+const AGENT_DASHBOARD_ROOT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard");
 const HOOK_WEBHOOK_TIMEOUT_MS = 30_000;
 const XML_SCENE_IMAGES_SCRIPT = path.join(HOME_DIR, ".openclaw", "skills", "xml-scene-images", "scripts", "generate_from_xml.py");
 const XML_SCENE_VIDEO_SCRIPT = path.join(HOME_DIR, ".openclaw", "skills", "xml-scene-video", "scripts", "generate_video.py");
@@ -58,15 +59,7 @@ const STYLE_REFERENCE_IMAGES_DIR = path.join(
   "short-form-videos",
   "_style-reference-images",
 );
-const VIDEO_RENDER_SETTINGS_PATH = path.join(
-  HOME_DIR,
-  "tenxsolo",
-  "business",
-  "content",
-  "deliverables",
-  "short-form-videos",
-  "_video-render-settings.json",
-);
+const VIDEO_RENDER_SETTINGS_PATH = path.join(AGENT_DASHBOARD_ROOT, "settings", "short-form-video", "_video-render-settings.json");
 const MUSIC_LIBRARY_DIR = path.join(
   HOME_DIR,
   "tenxsolo",

@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { SHORT_FORM_VIDEOS_DIR } from "@/lib/short-form-videos";
+import { getVersionedShortFormSettingsPath } from "@/lib/short-form-settings-paths";
 
 export interface ShortFormTextScriptSettings {
   defaultMaxIterations: number;
@@ -11,8 +11,8 @@ export interface ShortFormTextScriptSettings {
   reviewPrompt: string;
 }
 
-const SETTINGS_PATH = path.join(SHORT_FORM_VIDEOS_DIR, "_text-script-settings.json");
-const LEGACY_WORKFLOW_SETTINGS_PATH = path.join(SHORT_FORM_VIDEOS_DIR, "_workflow-settings.json");
+const SETTINGS_PATH = getVersionedShortFormSettingsPath("_text-script-settings.json");
+const LEGACY_WORKFLOW_SETTINGS_PATH = getVersionedShortFormSettingsPath("_workflow-settings.json");
 export const SHORT_FORM_TEXT_SCRIPT_PASSING_SCORE = 95;
 
 const DEFAULT_GENERATE_WRITER_FRAGMENT = [

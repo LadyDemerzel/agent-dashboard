@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { getVersionedShortFormSettingsPath } from "@/lib/short-form-settings-paths";
 
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
 const SHORT_FORM_VIDEOS_DIR = path.join(
@@ -10,7 +11,7 @@ const SHORT_FORM_VIDEOS_DIR = path.join(
   "deliverables",
   "short-form-videos"
 );
-const SETTINGS_PATH = path.join(SHORT_FORM_VIDEOS_DIR, "_background-video-settings.json");
+const SETTINGS_PATH = getVersionedShortFormSettingsPath("_background-video-settings.json");
 const BACKGROUND_VIDEOS_DIR = path.join(SHORT_FORM_VIDEOS_DIR, "_background-videos");
 const DEFAULT_BACKGROUND_NAME = "Default background";
 const DEFAULT_BACKGROUND_ID = "background-default";
