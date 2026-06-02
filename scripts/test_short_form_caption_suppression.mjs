@@ -56,11 +56,15 @@ assert.equal(suppressed.length, 3);
 assert.deepEqual(
   suppressed.map((caption) => ({ id: caption.id, start: caption.start, end: caption.end, text: caption.text })),
   [
-    { id: "caption-1-visible-1", start: 0, end: 1.2, text: "before during after" },
-    { id: "caption-1-visible-2", start: 3.2, end: 4, text: "before during after" },
+    { id: "caption-1-visible-1", start: 0, end: 1.2, text: "before" },
+    { id: "caption-1-visible-2", start: 3.2, end: 4, text: "after" },
     { id: "caption-3", start: 4.1, end: 4.8, text: "visible" },
   ],
 );
-assert.deepEqual(suppressed[0].words, words);
+assert.deepEqual(suppressed.map((caption) => caption.words?.map((word) => word.text)), [
+  ["before"],
+  ["after"],
+  ["visible"],
+]);
 
 console.log("short-form caption suppression tests passed");

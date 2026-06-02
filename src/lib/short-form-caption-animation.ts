@@ -27,6 +27,7 @@ export interface ShortFormCaptionAnimationTiming {
   minMs: number;
   maxMs: number;
   fixedMs: number;
+  timingOffsetMs: number;
 }
 
 export interface ShortFormCaptionAnimationColors {
@@ -124,7 +125,7 @@ const BUILT_IN_CAPTION_ANIMATION_PRESET_CONFIGS: Record<string, ShortFormCaption
   [BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.none]: {
     version: 1,
     layoutMode: 'stable',
-    timing: { mode: 'word-relative', multiplier: 1, minMs: 120, maxMs: 1000, fixedMs: 240 },
+    timing: { mode: 'word-relative', multiplier: 1, minMs: 120, maxMs: 1000, fixedMs: 240, timingOffsetMs: 0 },
     colors: {
       outlineColorMode: 'style-outline',
       shadowColorMode: 'style-shadow',
@@ -143,7 +144,7 @@ const BUILT_IN_CAPTION_ANIMATION_PRESET_CONFIGS: Record<string, ShortFormCaption
   [BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.stablePop]: {
     version: 1,
     layoutMode: 'stable',
-    timing: { mode: 'word-relative', multiplier: 1, minMs: 120, maxMs: 240, fixedMs: 240 },
+    timing: { mode: 'word-relative', multiplier: 1, minMs: 120, maxMs: 240, fixedMs: 240, timingOffsetMs: 0 },
     colors: {
       outlineColorMode: 'style-active-word',
       shadowColorMode: 'style-active-word',
@@ -162,7 +163,7 @@ const BUILT_IN_CAPTION_ANIMATION_PRESET_CONFIGS: Record<string, ShortFormCaption
   [BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.fluidPop]: {
     version: 1,
     layoutMode: 'fluid',
-    timing: { mode: 'word-relative', multiplier: 1, minMs: 120, maxMs: 240, fixedMs: 240 },
+    timing: { mode: 'word-relative', multiplier: 1, minMs: 120, maxMs: 240, fixedMs: 240, timingOffsetMs: 0 },
     colors: {
       outlineColorMode: 'style-active-word',
       shadowColorMode: 'style-active-word',
@@ -181,7 +182,7 @@ const BUILT_IN_CAPTION_ANIMATION_PRESET_CONFIGS: Record<string, ShortFormCaption
   [BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.pulse]: {
     version: 1,
     layoutMode: 'stable',
-    timing: { mode: 'word-relative', multiplier: 1, minMs: 180, maxMs: 320, fixedMs: 320 },
+    timing: { mode: 'word-relative', multiplier: 1, minMs: 180, maxMs: 320, fixedMs: 320, timingOffsetMs: 0 },
     colors: {
       outlineColorMode: 'style-outline',
       shadowColorMode: 'style-shadow',
@@ -200,7 +201,7 @@ const BUILT_IN_CAPTION_ANIMATION_PRESET_CONFIGS: Record<string, ShortFormCaption
   [BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.glow]: {
     version: 1,
     layoutMode: 'stable',
-    timing: { mode: 'word-relative', multiplier: 1, minMs: 160, maxMs: 300, fixedMs: 300 },
+    timing: { mode: 'word-relative', multiplier: 1, minMs: 160, maxMs: 300, fixedMs: 300, timingOffsetMs: 0 },
     colors: {
       outlineColorMode: 'style-active-word',
       shadowColorMode: 'style-active-word',
@@ -383,6 +384,7 @@ export function normalizeCaptionAnimationPresetConfig(
       minMs: normalizeInteger(timing.minMs, fallback.timing.minMs, 40, 2000),
       maxMs: normalizeInteger(timing.maxMs, fallback.timing.maxMs, 40, 2000),
       fixedMs: normalizeInteger(timing.fixedMs, fallback.timing.fixedMs, 40, 2000),
+      timingOffsetMs: normalizeInteger(timing.timingOffsetMs, fallback.timing.timingOffsetMs ?? 0, -2000, 2000),
     },
     colors: {
       outlineColorMode: normalizeColorMode(colors.outlineColorMode, fallback.colors.outlineColorMode),

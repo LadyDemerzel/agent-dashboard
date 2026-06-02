@@ -282,7 +282,7 @@ const BUILT_IN_CAPTION_ANIMATION_PRESET_CONFIGS = {
   [BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.none]: {
     version: 1,
     layoutMode: "stable",
-    timing: { mode: "word-relative", multiplier: 1, minMs: 120, maxMs: 1000, fixedMs: 240 },
+    timing: { mode: "word-relative", multiplier: 1, minMs: 120, maxMs: 1000, fixedMs: 240, timingOffsetMs: 0 },
     colors: { outlineColorMode: "style-outline", shadowColorMode: "style-shadow", glowColorMode: "style-active-word" },
     motion: {
       scale: track([[0, 1], [1, 1]]),
@@ -297,7 +297,7 @@ const BUILT_IN_CAPTION_ANIMATION_PRESET_CONFIGS = {
   [BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.stablePop]: {
     version: 1,
     layoutMode: "stable",
-    timing: { mode: "word-relative", multiplier: 1, minMs: 120, maxMs: 240, fixedMs: 240 },
+    timing: { mode: "word-relative", multiplier: 1, minMs: 120, maxMs: 240, fixedMs: 240, timingOffsetMs: 0 },
     colors: { outlineColorMode: "style-active-word", shadowColorMode: "style-active-word", glowColorMode: "style-active-word" },
     motion: {
       scale: track([[0, 1, "linear"], [0.16, 1.18, "ease-out-cubic"], [1, 1, "ease-out-cubic"]]),
@@ -312,7 +312,7 @@ const BUILT_IN_CAPTION_ANIMATION_PRESET_CONFIGS = {
   [BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.fluidPop]: {
     version: 1,
     layoutMode: "fluid",
-    timing: { mode: "word-relative", multiplier: 1, minMs: 120, maxMs: 240, fixedMs: 240 },
+    timing: { mode: "word-relative", multiplier: 1, minMs: 120, maxMs: 240, fixedMs: 240, timingOffsetMs: 0 },
     colors: { outlineColorMode: "style-active-word", shadowColorMode: "style-active-word", glowColorMode: "style-active-word" },
     motion: {
       scale: track([[0, 1, "linear"], [0.16, 1.18, "ease-out-cubic"], [1, 1, "ease-out-cubic"]]),
@@ -327,7 +327,7 @@ const BUILT_IN_CAPTION_ANIMATION_PRESET_CONFIGS = {
   [BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.pulse]: {
     version: 1,
     layoutMode: "stable",
-    timing: { mode: "word-relative", multiplier: 1, minMs: 180, maxMs: 320, fixedMs: 320 },
+    timing: { mode: "word-relative", multiplier: 1, minMs: 180, maxMs: 320, fixedMs: 320, timingOffsetMs: 0 },
     colors: { outlineColorMode: "style-outline", shadowColorMode: "style-shadow", glowColorMode: "style-active-word" },
     motion: {
       scale: track([[0, 1.03], [0.25, 1.08, "ease-out-quad"], [0.5, 1.03, "ease-in-out-cubic"], [0.75, 0.98, "ease-in-out-cubic"], [1, 1.03, "ease-in-out-cubic"]]),
@@ -342,7 +342,7 @@ const BUILT_IN_CAPTION_ANIMATION_PRESET_CONFIGS = {
   [BUILT_IN_CAPTION_ANIMATION_PRESET_IDS.glow]: {
     version: 1,
     layoutMode: "stable",
-    timing: { mode: "word-relative", multiplier: 1, minMs: 160, maxMs: 300, fixedMs: 300 },
+    timing: { mode: "word-relative", multiplier: 1, minMs: 160, maxMs: 300, fixedMs: 300, timingOffsetMs: 0 },
     colors: { outlineColorMode: "style-active-word", shadowColorMode: "style-active-word", glowColorMode: "style-active-word" },
     motion: {
       scale: track([[0, 1.02], [0.5, 1.06, "ease-in-out-cubic"], [1, 1.02, "ease-in-out-cubic"]]),
@@ -645,6 +645,7 @@ function normalizeAnimationConfig(value, fallback) {
       minMs: normalizeAnimationInteger(timing.minMs, safeFallback.timing.minMs, 40, 2000),
       maxMs: normalizeAnimationInteger(timing.maxMs, safeFallback.timing.maxMs, 40, 2000),
       fixedMs: normalizeAnimationInteger(timing.fixedMs, safeFallback.timing.fixedMs, 40, 2000),
+      timingOffsetMs: normalizeAnimationInteger(timing.timingOffsetMs, safeFallback.timing.timingOffsetMs ?? 0, -2000, 2000),
     },
     colors: {
       outlineColorMode: normalizeAnimationColorMode(colors.outlineColorMode, safeFallback.colors.outlineColorMode),
@@ -3573,6 +3574,38 @@ function buildAnimatedCaptionAssContent(captionTimeline, style, styleName = "Cap
   return `${header.join("\n")}\n${events.join("\n")}\n`;
 }
 
+function resolveCaptionTimingOffsetMs(captionStyleSelection) {
+  const parsed = Number(captionStyleSelection?.animationPreset?.config?.timing?.timingOffsetMs);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.min(2000, Math.max(-2000, Math.round(parsed)));
+}
+
+function shiftCaptionTimeline(captionTimeline, timingOffsetMs) {
+  const offsetSeconds = (Number(timingOffsetMs) || 0) / 1000;
+  if (Math.abs(offsetSeconds) < 0.0001) return captionTimeline;
+  return captionTimeline
+    .map((caption) => {
+      const captionStart = Math.max(0, (Number(caption.start) || 0) + offsetSeconds);
+      const captionEnd = Math.max(captionStart + 0.01, (Number(caption.end) || 0) + offsetSeconds);
+      const words = Array.isArray(caption.words)
+        ? caption.words
+          .map((word) => {
+            const start = Math.max(0, (Number(word.start) || 0) + offsetSeconds);
+            const end = Math.max(start + 0.01, (Number(word.end) || 0) + offsetSeconds);
+            return { ...word, start, end };
+          })
+          .filter((word) => Number.isFinite(word.start) && Number.isFinite(word.end) && word.end > word.start)
+        : [];
+      return {
+        ...caption,
+        start: captionStart,
+        end: captionEnd,
+        words,
+      };
+    })
+    .filter((caption) => caption.end > caption.start && (!Array.isArray(caption.words) || caption.words.length > 0));
+}
+
 function escapeSubtitlesFilterPath(filePath) {
   return String(filePath)
     .replace(/\\/g, "\\\\")
@@ -4330,12 +4363,14 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
   }
 
   const timeline = mapCaptionWordsToAlignment(captions, alignmentWords);
-  const captionTimeline = suppressCaptionTimelineForRanges(timeline, motionGraphicSuppressionRanges);
+  const timingOffsetMs = resolveCaptionTimingOffsetMs(captionStyleSelection);
+  const suppressionRanges = Array.isArray(motionGraphicSuppressionRanges) ? motionGraphicSuppressionRanges : [];
+  const suppressedTimeline = suppressCaptionTimelineForRanges(timeline, suppressionRanges);
+  const captionTimeline = shiftCaptionTimeline(suppressedTimeline, timingOffsetMs);
   const assPath = path.join(videoWorkDir, "captions-word-highlight.ass");
   ensureDir(path.dirname(assPath));
   fs.writeFileSync(assPath, buildAnimatedCaptionAssContent(captionTimeline, captionStyleSelection.style), "utf-8");
 
-  const suppressionRanges = Array.isArray(motionGraphicSuppressionRanges) ? motionGraphicSuppressionRanges : [];
   const suppressionMetadata = suppressionRanges.length > 0
     ? {
         motionGraphicSuppressionRanges: suppressionRanges.map((range) => ({
@@ -4359,6 +4394,7 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
       timeline: captionTimeline,
       baseVideoPath,
       renderer: "none",
+      timingOffsetMs,
       fallbackReason: "All caption intervals overlapped deterministic motion graphic visuals, so no final caption overlay was burned in.",
       ...suppressionMetadata,
     };
@@ -4388,7 +4424,7 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
       mode: "animated-image-overlay-v1",
       requestedMode: usesConfigDrivenPreset ? `${overlayPresetSlug}-config-overlay-v1` : "word-spacing-overlay-v1",
       assPath,
-      timeline,
+      timeline: captionTimeline,
       baseVideoPath,
       overlayManifestPath: overlayManifest.manifestPath,
       overlayDir: overlayManifest.outputDir,
@@ -4399,6 +4435,7 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
       overlayFrameCount: overlayTrack.frameCount,
       overlayFrameFps: overlayTrack.frameFps,
       renderer: "pillow-word-highlight-v1",
+      timingOffsetMs,
       ...suppressionMetadata,
       fallbackReason: usesConfigDrivenPreset
         ? `Caption preset ${captionStyleSelection.animationPreset?.name || overlayPresetSlug} now renders through the animated overlay renderer so the saved config-driven timing, easing, motion tracks, layout mode, and color-source settings are applied during final render.`
@@ -4426,7 +4463,7 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
         mode: "animated-image-overlay-v1",
         requestedMode: "ass-word-highlight-v1",
         assPath,
-        timeline,
+        timeline: captionTimeline,
         baseVideoPath,
         overlayManifestPath: overlayManifest.manifestPath,
         overlayDir: overlayManifest.outputDir,
@@ -4438,6 +4475,7 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
         overlayFrameFps: overlayTrack.frameFps,
         renderer: "pillow-word-highlight-v1",
         assUnavailableReason: assReason,
+        timingOffsetMs,
         ...suppressionMetadata,
       };
     } catch (overlayError) {
@@ -4488,6 +4526,7 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
       timeline: captionTimeline,
       baseVideoPath,
       renderer: "ffmpeg-subtitles-v1",
+      timingOffsetMs,
       ...suppressionMetadata,
     };
   } catch (assError) {
@@ -4517,6 +4556,7 @@ function updateVideoManifestCaptionRendering(projectId, config, captionStyleSele
     animationPreset: captionStyleSelection.style.animationPreset,
     animationPresetId: captionStyleSelection.resolvedAnimationPresetId || captionStyleSelection.style.animationPresetId,
     ...(captionStyleSelection.animationPreset?.name ? { animationPresetName: captionStyleSelection.animationPreset.name } : {}),
+    timingOffsetMs: resolveCaptionTimingOffsetMs(captionStyleSelection),
     fontWeight: captionStyleSelection.style.fontWeight,
     wordSpacing: captionStyleSelection.style.wordSpacing,
     assRelativePath: toProjectRelativePath(projectId, captionRender.assPath),

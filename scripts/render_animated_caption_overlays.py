@@ -55,7 +55,7 @@ BUILT_IN_ANIMATION_CONFIGS: dict[str, dict[str, Any]] = {
     "none": {
         "version": 1,
         "layoutMode": "stable",
-        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 120, "maxMs": 1000, "fixedMs": 240},
+        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 120, "maxMs": 1000, "fixedMs": 240, "timingOffsetMs": 0},
         "colors": {
             "outlineColorMode": "style-outline",
             "shadowColorMode": "style-shadow",
@@ -74,7 +74,7 @@ BUILT_IN_ANIMATION_CONFIGS: dict[str, dict[str, Any]] = {
     "stable-pop": {
         "version": 1,
         "layoutMode": "stable",
-        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 120, "maxMs": 240, "fixedMs": 240},
+        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 120, "maxMs": 240, "fixedMs": 240, "timingOffsetMs": 0},
         "colors": {
             "outlineColorMode": "style-active-word",
             "shadowColorMode": "style-active-word",
@@ -93,7 +93,7 @@ BUILT_IN_ANIMATION_CONFIGS: dict[str, dict[str, Any]] = {
     "fluid-pop": {
         "version": 1,
         "layoutMode": "fluid",
-        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 120, "maxMs": 240, "fixedMs": 240},
+        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 120, "maxMs": 240, "fixedMs": 240, "timingOffsetMs": 0},
         "colors": {
             "outlineColorMode": "style-active-word",
             "shadowColorMode": "style-active-word",
@@ -112,7 +112,7 @@ BUILT_IN_ANIMATION_CONFIGS: dict[str, dict[str, Any]] = {
     "pulse": {
         "version": 1,
         "layoutMode": "stable",
-        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 180, "maxMs": 320, "fixedMs": 320},
+        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 180, "maxMs": 320, "fixedMs": 320, "timingOffsetMs": 0},
         "colors": {
             "outlineColorMode": "style-outline",
             "shadowColorMode": "style-shadow",
@@ -131,7 +131,7 @@ BUILT_IN_ANIMATION_CONFIGS: dict[str, dict[str, Any]] = {
     "glow": {
         "version": 1,
         "layoutMode": "stable",
-        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 160, "maxMs": 300, "fixedMs": 300},
+        "timing": {"mode": "word-relative", "multiplier": 1, "minMs": 160, "maxMs": 300, "fixedMs": 300, "timingOffsetMs": 0},
         "colors": {
             "outlineColorMode": "style-active-word",
             "shadowColorMode": "style-active-word",
@@ -358,6 +358,7 @@ def normalize_animation_config(value: Any, fallback: dict[str, Any]) -> dict[str
             "minMs": normalize_int(timing.get("minMs"), fallback["timing"]["minMs"], 40, 2000),
             "maxMs": normalize_int(timing.get("maxMs"), fallback["timing"]["maxMs"], 40, 2000),
             "fixedMs": normalize_int(timing.get("fixedMs"), fallback["timing"]["fixedMs"], 40, 2000),
+            "timingOffsetMs": normalize_int(timing.get("timingOffsetMs"), fallback["timing"].get("timingOffsetMs", 0), -2000, 2000),
         },
         "colors": {
             "outlineColorMode": normalize_color_mode(colors.get("outlineColorMode"), fallback["colors"]["outlineColorMode"]),

@@ -1,6 +1,7 @@
 import fs from "fs";
 
 const MIN_VISIBLE_CAPTION_SECONDS = 0.04;
+const MIN_VISIBLE_WORD_SECONDS = 0.01;
 
 function finiteNumber(value) {
   const parsed = Number(value);
@@ -56,6 +57,33 @@ export function subtractTimeRanges(start, end, blockedRanges) {
   return visible;
 }
 
+function trimCaptionWordsToRange(words, range) {
+  return (Array.isArray(words) ? words : [])
+    .map((word) => {
+      const wordStart = finiteNumber(word?.start);
+      const wordEnd = finiteNumber(word?.end);
+      if (wordStart === null || wordEnd === null || wordEnd <= wordStart) return null;
+      if (wordEnd <= range.start || wordStart >= range.end) return null;
+      const start = Math.max(range.start, wordStart);
+      const end = Math.min(range.end, wordEnd);
+      if (end - start < MIN_VISIBLE_WORD_SECONDS) return null;
+      return {
+        ...word,
+        start,
+        end,
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildCaptionTextFromWords(words, fallbackText) {
+  const text = (Array.isArray(words) ? words : [])
+    .map((word) => String(word?.text || "").trim())
+    .filter(Boolean)
+    .join(" ");
+  return text || String(fallbackText || "").trim();
+}
+
 export function suppressCaptionTimelineForRanges(captionTimeline, blockedRanges) {
   const mergedBlockedRanges = mergeTimeRanges(blockedRanges);
   if (mergedBlockedRanges.length === 0) return Array.isArray(captionTimeline) ? captionTimeline : [];
@@ -75,11 +103,15 @@ export function suppressCaptionTimelineForRanges(captionTimeline, blockedRanges)
     }
 
     visibleRanges.forEach((range, index) => {
+      const words = trimCaptionWordsToRange(caption.words, range);
+      if (Array.isArray(caption.words) && words.length === 0) return;
       suppressed.push({
         ...caption,
         id: `${caption.id || `caption-${caption.index || suppressed.length + 1}`}-visible-${index + 1}`,
+        text: buildCaptionTextFromWords(words, caption.text),
         start: range.start,
         end: range.end,
+        ...(Array.isArray(caption.words) ? { words } : {}),
       });
     });
   }

@@ -4310,7 +4310,7 @@ function SceneImagesSection({
           {project.sceneImages.scenes.length > 0 ? (
             <div className="overflow-x-auto pb-2">
               <div className="flex min-w-max gap-4">
-                {project.sceneImages.scenes.map((scene) => {
+                {project.sceneImages.scenes.map((scene, sceneIndex) => {
                   const sceneBusy = scene.status === "in-progress";
                   const activeTab =
                     sceneTabById[scene.id] ||
@@ -4331,6 +4331,7 @@ function SceneImagesSection({
                   };
                   const isMotionGraphic = scene.visualType === "motion_graphic";
                   const basedOnOptions = project.sceneImages.scenes
+                    .slice(0, sceneIndex)
                     .filter(
                       (candidate) =>
                         candidate.visualType !== "motion_graphic" &&
@@ -4339,8 +4340,14 @@ function SceneImagesSection({
                         candidate.visualId !== scene.visualId,
                     )
                     .map((candidate) => ({
-                      value: candidate.imageId || "",
+                      value: candidate.visualId || candidate.imageId || "",
                       label: `Visual ${candidate.number}: ${candidate.caption}`,
+                      detail: [
+                        candidate.visualId,
+                        candidate.imageId && candidate.imageId !== candidate.visualId
+                          ? candidate.imageId
+                          : "",
+                      ].filter(Boolean).join(" / "),
                     }))
                     .filter((option) => option.value);
                   const basedOnOptionValues = new Set(
@@ -4548,10 +4555,15 @@ function SceneImagesSection({
                                 ) : null}
                                 {basedOnOptions.map((option) => (
                                   <option key={option.value} value={option.value}>
-                                    {option.label} ({option.value})
+                                    {option.label}
+                                    {option.detail ? ` (${option.detail})` : ""}
                                   </option>
                                 ))}
                               </Select>
+                              <p className="text-[11px] text-muted-foreground">
+                                Pick an earlier image visual to use as the
+                                parent reference, or clear it.
+                              </p>
                             </div>
                           </>
                         )}

@@ -300,6 +300,10 @@ export async function PATCH(request: NextRequest) {
       if (!timing || typeof timing !== "object" || Array.isArray(timing)) {
         return NextResponse.json({ success: false, error: `Animation preset ${preset.name} must include timing settings` }, { status: 400 });
       }
+      const timingConfig = timing as Record<string, unknown>;
+      if (typeof timingConfig.timingOffsetMs !== "number" || Number.isNaN(timingConfig.timingOffsetMs) || timingConfig.timingOffsetMs < -2000 || timingConfig.timingOffsetMs > 2000) {
+        return NextResponse.json({ success: false, error: `Animation preset ${preset.name} must use a timing offset between -2000 and 2000 ms` }, { status: 400 });
+      }
       const motion = presetConfig.motion;
       if (!motion || typeof motion !== "object" || Array.isArray(motion)) {
         return NextResponse.json({ success: false, error: `Animation preset ${preset.name} must include motion tracks` }, { status: 400 });

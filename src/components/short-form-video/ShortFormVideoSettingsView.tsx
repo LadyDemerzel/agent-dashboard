@@ -11923,32 +11923,13 @@ export function ShortFormVideoSettingsView({
                               </Select>
                             </div>
                             <CaptionStyleNumberField
-                              label="Timing multiplier"
+                              label="Timing offset ms"
+                              helper="Negative values show captions and active-word animation earlier. Positive values show them later."
                               value={
-                                selectedAnimationPreset.config.timing.multiplier
+                                selectedAnimationPreset.config.timing
+                                  .timingOffsetMs
                               }
-                              min={0.1}
-                              max={4}
-                              step={0.05}
-                              onChange={(value) =>
-                                updateSelectedAnimationPreset((preset) => ({
-                                  ...preset,
-                                  config: {
-                                    ...preset.config,
-                                    timing: {
-                                      ...preset.config.timing,
-                                      multiplier: value,
-                                    },
-                                  },
-                                }))
-                              }
-                            />
-                            <CaptionStyleNumberField
-                              label="Fixed duration ms"
-                              value={
-                                selectedAnimationPreset.config.timing.fixedMs
-                              }
-                              min={40}
+                              min={-2000}
                               max={2000}
                               step={10}
                               onChange={(value) =>
@@ -11958,54 +11939,103 @@ export function ShortFormVideoSettingsView({
                                     ...preset.config,
                                     timing: {
                                       ...preset.config.timing,
-                                      fixedMs: value,
+                                      timingOffsetMs: value,
                                     },
                                   },
                                 }))
                               }
                             />
-                            <CaptionStyleNumberField
-                              label="Min duration ms"
-                              value={
-                                selectedAnimationPreset.config.timing.minMs
-                              }
-                              min={40}
-                              max={2000}
-                              step={10}
-                              onChange={(value) =>
-                                updateSelectedAnimationPreset((preset) => ({
-                                  ...preset,
-                                  config: {
-                                    ...preset.config,
-                                    timing: {
-                                      ...preset.config.timing,
-                                      minMs: value,
+                            {selectedAnimationPreset.config.timing.mode ===
+                            "word-relative" ? (
+                              <>
+                                <CaptionStyleNumberField
+                                  label="Timing multiplier"
+                                  value={
+                                    selectedAnimationPreset.config.timing
+                                      .multiplier
+                                  }
+                                  min={0.1}
+                                  max={4}
+                                  step={0.05}
+                                  onChange={(value) =>
+                                    updateSelectedAnimationPreset((preset) => ({
+                                      ...preset,
+                                      config: {
+                                        ...preset.config,
+                                        timing: {
+                                          ...preset.config.timing,
+                                          multiplier: value,
+                                        },
+                                      },
+                                    }))
+                                  }
+                                />
+                                <CaptionStyleNumberField
+                                  label="Min duration ms"
+                                  value={
+                                    selectedAnimationPreset.config.timing.minMs
+                                  }
+                                  min={40}
+                                  max={2000}
+                                  step={10}
+                                  onChange={(value) =>
+                                    updateSelectedAnimationPreset((preset) => ({
+                                      ...preset,
+                                      config: {
+                                        ...preset.config,
+                                        timing: {
+                                          ...preset.config.timing,
+                                          minMs: value,
+                                        },
+                                      },
+                                    }))
+                                  }
+                                />
+                                <CaptionStyleNumberField
+                                  label="Max duration ms"
+                                  value={
+                                    selectedAnimationPreset.config.timing.maxMs
+                                  }
+                                  min={40}
+                                  max={2000}
+                                  step={10}
+                                  onChange={(value) =>
+                                    updateSelectedAnimationPreset((preset) => ({
+                                      ...preset,
+                                      config: {
+                                        ...preset.config,
+                                        timing: {
+                                          ...preset.config.timing,
+                                          maxMs: value,
+                                        },
+                                      },
+                                    }))
+                                  }
+                                />
+                              </>
+                            ) : (
+                              <CaptionStyleNumberField
+                                label="Fixed duration ms"
+                                value={
+                                  selectedAnimationPreset.config.timing.fixedMs
+                                }
+                                min={40}
+                                max={2000}
+                                step={10}
+                                onChange={(value) =>
+                                  updateSelectedAnimationPreset((preset) => ({
+                                    ...preset,
+                                    config: {
+                                      ...preset.config,
+                                      timing: {
+                                        ...preset.config.timing,
+                                        fixedMs: value,
+                                      },
                                     },
-                                  },
-                                }))
-                              }
-                            />
-                            <CaptionStyleNumberField
-                              label="Max duration ms"
-                              value={
-                                selectedAnimationPreset.config.timing.maxMs
-                              }
-                              min={40}
-                              max={2000}
-                              step={10}
-                              onChange={(value) =>
-                                updateSelectedAnimationPreset((preset) => ({
-                                  ...preset,
-                                  config: {
-                                    ...preset.config,
-                                    timing: {
-                                      ...preset.config.timing,
-                                      maxMs: value,
-                                    },
-                                  },
-                                }))
-                              }
-                            />
+                                  }))
+                                }
+                              />
+                            )}
                           </div>
 
                           <div className="mt-4 grid gap-4 md:grid-cols-3">
