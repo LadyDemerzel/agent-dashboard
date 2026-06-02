@@ -21,7 +21,7 @@ const UNIFIED_MOTION_GRAPHICS_BACKGROUND_IMAGE_PATH = path.join(
   "_motion-graphic-assets",
   "process-flow-dark-pastel-watercolor-bg.png",
 );
-const RENDER_SCRIPT_PATH = path.join(process.cwd(), "scripts", "render-motion-graphic.mjs");
+const RENDER_SCRIPT_PATH = path.join(process.cwd(), "scripts", "render-hyperframes-motion-graphic.mjs");
 const LEGACY_RENDERER_FALLBACKS: Record<string, string> = {
   process_flow: "timeline",
   warning_card: "good_bad_indicator",

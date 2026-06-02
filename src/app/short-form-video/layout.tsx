@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
-import { createPageMetadata } from "@/lib/metadata";
+import type { Metadata } from "next";
 
-export const metadata = createPageMetadata(
-  "Short-Form Videos",
-  "Manage short-form video projects and workflow stages."
-);
+export const metadata: Metadata = {
+  title: {
+    absolute: "Videos",
+  },
+  description: "Manage short-form video projects and workflow stages.",
+};
 
 export default function ShortFormVideoLayout({ children }: { children: ReactNode }) {
   return children;

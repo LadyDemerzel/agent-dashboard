@@ -18,11 +18,11 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { section } = await params;
   if (!isShortFormSettingsRouteSection(section)) {
-    return createPageMetadata('Short-form video settings');
+    return createPageMetadata('Settings');
   }
 
   return createPageMetadata(
-    `Short-form video settings: ${getShortFormSettingsSectionTitle(section)}`,
+    `Settings: ${getShortFormSettingsSectionTitle(section)}`,
     'Configure prompts, voice, visuals, background videos, and music for the short-form workflow.',
   );
 }

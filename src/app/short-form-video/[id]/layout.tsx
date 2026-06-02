@@ -17,7 +17,7 @@ export async function generateMetadata({
   const title = project?.title || project?.topic || id;
 
   return createPageMetadata(
-    createEntityPageTitle("Short-Form Project", title),
+    createEntityPageTitle("Video", title),
     project ? "Short-form workflow review, feedback, and generation controls." : undefined
   );
 }

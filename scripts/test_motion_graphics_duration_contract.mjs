@@ -13,7 +13,7 @@ const stageWorkerSource = fs.readFileSync(
   "utf-8",
 );
 const rendererSource = fs.readFileSync(
-  path.join(repoRoot, "scripts/render-motion-graphic.mjs"),
+  path.join(repoRoot, "scripts/render-hyperframes-motion-graphic.mjs"),
   "utf-8",
 );
 const settingsViewSource = fs.readFileSync(
@@ -118,6 +118,16 @@ assert.match(
   stageWorkerSource,
   /motion_graphic_renderer_id:\s*mergedConfig\.rendererId/,
   "Scene manifest entries must persist the resolved renderer id used for rendering.",
+);
+assert.match(
+  stageWorkerSource,
+  /render-hyperframes-motion-graphic\.mjs/,
+  "Generate Visuals must render motion graphics through the HyperFrames renderer.",
+);
+assert.match(
+  rendererSource,
+  /rendererEngine:\s*"hyperframes"/,
+  "Renderer CLI must report HyperFrames as the motion graphic render engine.",
 );
 assert.match(
   rendererSource,

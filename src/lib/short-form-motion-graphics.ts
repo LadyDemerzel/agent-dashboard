@@ -1050,7 +1050,7 @@ export function renderMotionGraphicTemplatePromptInjection(settings = getShortFo
     "- Do not define motion graphics inside <assets>. Motion graphics are not reusable assets.",
     "- Define each motion graphic directly inside exactly one <timeline><visual> as <visual visualType=\"motion_graphic\" start=\"...\" end=\"...\"><motionGraphic templateId=\"one_of_the_ids_above\">...</motionGraphic></visual>.",
     "- Each motion_graphic visual must have one inline <motionGraphic>; do not reference a separate motionGraphicId asset.",
-    "- Configure only the listed fields. Do not write arbitrary Remotion, JavaScript, CSS, HTML, or renderer code.",
+    "- Configure only the listed fields. Do not write arbitrary HyperFrames, JavaScript, CSS, HTML, or renderer code.",
     "- Use <arg name=\"fieldName\">value</arg> for text/number fields.",
     "- To time a core item's animation-in, add animateIn=\"absolute_video_timestamp_seconds\" on the relevant <item>, <step>, or <line>, or add <timing item=\"title\" at=\"12.20\" /> / <timing item=\"cause\" at=\"12.35\" /> inside the inline motionGraphic. Timings are absolute timestamps in the full video timeline, not seconds relative to the motion graphic visual start.",
     "- Keep every motion graphic item timing within that visual's start/end bounds.",

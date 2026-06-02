@@ -7,7 +7,7 @@ import { getShortFormSoundDesignSettings } from "@/lib/short-form-sound-design-s
 import { getShortFormVideoRenderSettings } from "@/lib/short-form-video-render-settings";
 
 export const metadata = createPageMetadata(
-  "Short-form video settings",
+  "Settings",
   "Configure prompts, voice, visuals, background videos, and music for the short-form workflow."
 );
 
