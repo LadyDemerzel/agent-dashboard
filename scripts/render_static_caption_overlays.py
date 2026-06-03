@@ -16,6 +16,8 @@ CANVAS_WIDTH = 1080
 CANVAS_HEIGHT = 1920
 DEFAULT_HORIZONTAL_PADDING = 80
 DEFAULT_BOTTOM_MARGIN = 220
+CAPTION_LINE_SPACING_RATIO = 0.09
+MIN_CAPTION_LINE_SPACING = 5
 SYSTEM_FONT_DIR = Path("/System/Library/Fonts/Supplemental")
 FONT_CANDIDATES = {
     "arial bold": [SYSTEM_FONT_DIR / "Arial Bold.ttf", SYSTEM_FONT_DIR / "Arial.ttf"],
@@ -100,8 +102,12 @@ def load_font(font_family: str, font_path: str | None, font_size: int) -> tuple[
 
 
 def text_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) -> int:
-    bbox = draw.multiline_textbbox((0, 0), text, font=font, align="center", spacing=8, stroke_width=0)
+    bbox = draw.multiline_textbbox((0, 0), text, font=font, align="center", spacing=resolve_line_spacing(getattr(font, "size", 72)), stroke_width=0)
     return max(0, bbox[2] - bbox[0])
+
+
+def resolve_line_spacing(font_size: int) -> int:
+    return max(MIN_CAPTION_LINE_SPACING, int(round(int(font_size) * CAPTION_LINE_SPACING_RATIO)))
 
 
 def wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, max_width: int) -> list[str]:
@@ -151,7 +157,7 @@ def render_overlay(caption: dict[str, Any], args: argparse.Namespace) -> dict[st
     if not lines:
         raise ValueError("Caption text is empty")
 
-    line_spacing = max(10, int(round(args.font_size * 0.18)))
+    line_spacing = resolve_line_spacing(getattr(font, "size", args.font_size))
     multiline = "\n".join(lines)
     stroke_width = max(0, int(round(args.outline_width)))
     text_bbox = draw.multiline_textbbox(

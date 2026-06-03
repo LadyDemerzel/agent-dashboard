@@ -18,6 +18,8 @@ CANVAS_WIDTH = 1080
 CANVAS_HEIGHT = 1920
 DEFAULT_HORIZONTAL_PADDING = 80
 DEFAULT_BOTTOM_MARGIN = 220
+CAPTION_LINE_SPACING_RATIO = 0.09
+MIN_CAPTION_LINE_SPACING = 5
 SYSTEM_FONT_DIR = Path("/System/Library/Fonts/Supplemental")
 CAPTION_FONT_WEIGHT_SUFFIX_RE = r"\s+(thin|hairline|extra\s*light|ultra\s*light|light|book|regular|normal|medium|semi\s*bold|semibold|demi\s*bold|bold|extra\s*bold|ultra\s*bold|black|heavy)\s*$"
 FONT_CANDIDATES = {
@@ -469,6 +471,10 @@ def resolve_space_width(base_space_width: float, word_spacing: float) -> float:
     return max(1.0, float(base_space_width) + float(word_spacing))
 
 
+def resolve_line_spacing(font_size: int) -> int:
+    return max(MIN_CAPTION_LINE_SPACING, int(round(int(font_size) * CAPTION_LINE_SPACING_RATIO)))
+
+
 def build_wrapped_lines(draw: ImageDraw.ImageDraw, words: list[str], font: ImageFont.ImageFont, max_width: int, stroke_width: int, args: argparse.Namespace) -> list[list[dict[str, Any]]]:
     if not words:
         return []
@@ -554,7 +560,7 @@ def fit_layout(draw: ImageDraw.ImageDraw, words: list[str], args: argparse.Names
             line_descents.append(metrics["descent"])
             line_heights.append(metrics["height"])
         if lines and len(lines) <= 4 and all(width <= max_text_width for width in line_max_advances):
-            line_spacing = max(10, int(round(size * 0.18)))
+            line_spacing = resolve_line_spacing(size)
             total_height = sum(line_heights) + (line_spacing * (len(lines) - 1 if len(lines) > 1 else 0))
             chosen_layout = {
                 "fontSize": size,
@@ -578,7 +584,7 @@ def fit_layout(draw: ImageDraw.ImageDraw, words: list[str], args: argparse.Names
         size = 30
         font = load_font_from_path(resolved_font_path, size)
         lines = build_wrapped_lines(draw, words, font, max_text_width, base_stroke_width, args)
-        line_spacing = max(10, int(round(size * 0.18)))
+        line_spacing = resolve_line_spacing(size)
         line_base_advances: list[float] = []
         line_max_advances: list[float] = []
         line_heights: list[int] = []
