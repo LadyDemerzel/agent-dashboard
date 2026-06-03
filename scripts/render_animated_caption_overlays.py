@@ -20,6 +20,7 @@ DEFAULT_HORIZONTAL_PADDING = 80
 DEFAULT_BOTTOM_MARGIN = 220
 CAPTION_LINE_SPACING_RATIO = 0.09
 MIN_CAPTION_LINE_SPACING = 5
+CAPTION_LINE_ADVANCE_TIGHTENING_RATIO = 0.16
 SYSTEM_FONT_DIR = Path("/System/Library/Fonts/Supplemental")
 CAPTION_FONT_WEIGHT_SUFFIX_RE = r"\s+(thin|hairline|extra\s*light|ultra\s*light|light|book|regular|normal|medium|semi\s*bold|semibold|demi\s*bold|bold|extra\s*bold|ultra\s*bold|black|heavy)\s*$"
 FONT_CANDIDATES = {
@@ -475,6 +476,23 @@ def resolve_line_spacing(font_size: int) -> int:
     return max(MIN_CAPTION_LINE_SPACING, int(round(int(font_size) * CAPTION_LINE_SPACING_RATIO)))
 
 
+def resolve_line_advance(font_size: int, line_height: int, line_spacing: int) -> int:
+    tightening = max(0, int(round(int(font_size) * CAPTION_LINE_ADVANCE_TIGHTENING_RATIO)))
+    return max(1, int(round(line_height + line_spacing - tightening)))
+
+
+def resolve_line_advances(font_size: int, line_heights: list[int], line_spacing: int) -> list[int]:
+    return [resolve_line_advance(font_size, line_height, line_spacing) for line_height in line_heights]
+
+
+def resolve_total_height(line_heights: list[int], line_advances: list[int]) -> int:
+    if not line_heights:
+        return 0
+    if len(line_heights) == 1:
+        return line_heights[0]
+    return sum(line_advances[:len(line_heights) - 1]) + line_heights[-1]
+
+
 def build_wrapped_lines(draw: ImageDraw.ImageDraw, words: list[str], font: ImageFont.ImageFont, max_width: int, stroke_width: int, args: argparse.Namespace) -> list[list[dict[str, Any]]]:
     if not words:
         return []
@@ -561,10 +579,12 @@ def fit_layout(draw: ImageDraw.ImageDraw, words: list[str], args: argparse.Names
             line_heights.append(metrics["height"])
         if lines and len(lines) <= 4 and all(width <= max_text_width for width in line_max_advances):
             line_spacing = resolve_line_spacing(size)
-            total_height = sum(line_heights) + (line_spacing * (len(lines) - 1 if len(lines) > 1 else 0))
+            line_advances = resolve_line_advances(size, line_heights, line_spacing)
+            total_height = resolve_total_height(line_heights, line_advances)
             chosen_layout = {
                 "fontSize": size,
                 "lineSpacing": line_spacing,
+                "lineAdvances": line_advances,
                 "lineBaseAdvances": line_base_advances,
                 "lineMaxAdvances": line_max_advances,
                 "lineHeights": line_heights,
@@ -600,16 +620,18 @@ def fit_layout(draw: ImageDraw.ImageDraw, words: list[str], args: argparse.Names
             line_ascents.append(metrics["ascent"])
             line_descents.append(metrics["descent"])
             line_heights.append(metrics["height"])
+        line_advances = resolve_line_advances(size, line_heights, line_spacing)
         chosen_layout = {
             "fontSize": size,
             "lineSpacing": line_spacing,
+            "lineAdvances": line_advances,
             "lineBaseAdvances": line_base_advances,
             "lineMaxAdvances": line_max_advances,
             "lineHeights": line_heights,
             "lineAscents": line_ascents,
             "lineDescents": line_descents,
             "maxLineWidth": max(line_max_advances) if line_max_advances else 0,
-            "totalHeight": sum(line_heights) + (line_spacing * (len(lines) - 1 if len(lines) > 1 else 0)),
+            "totalHeight": resolve_total_height(line_heights, line_advances),
             "lines": lines,
             "baseStrokeWidth": base_stroke_width,
             "spaceAdvance": space_advance,
@@ -839,7 +861,7 @@ def render_entry(entry: dict[str, Any], caption_lookup: dict[str, dict[str, Any]
             cursor_x += slot_width
 
         word_counter += len(line)
-        line_y += line_height + layout["lineSpacing"]
+        line_y += layout["lineAdvances"][line_index] if line_index < len(layout["lineAdvances"]) else line_height + layout["lineSpacing"]
 
     if glow_layer.getbbox():
         image = Image.alpha_composite(image, glow_layer.filter(ImageFilter.GaussianBlur(radius=4)))
