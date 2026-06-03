@@ -721,8 +721,8 @@
         "timing": {
           "mode": "word-relative",
           "multiplier": 1,
-          "minMs": 90,
-          "maxMs": 460,
+          "minMs": 40,
+          "maxMs": 1500,
           "fixedMs": 250,
           "timingOffsetMs": -110
         },
