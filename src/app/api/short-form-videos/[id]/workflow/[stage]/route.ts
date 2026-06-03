@@ -207,7 +207,7 @@ function buildTextScriptWorkflowConfig(
 ) {
   const textScriptSettings = getShortFormTextScriptSettings();
   const writerPromptMode: "generate" | "revise" =
-    shouldUseCleanRerunPrompt("script", requestContext.mode, requestContext.notes) ? "generate" : "revise";
+    requestContext.mode === "generate" || shouldUseCleanRerunPrompt("script", requestContext.mode, requestContext.notes) ? "generate" : "revise";
   const projectDir = getProjectDir(project.id);
   const researchPath = getStageFilePath(project.id, "research");
   const scriptPath = getStageFilePath(project.id, "script");

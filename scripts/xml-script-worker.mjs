@@ -59,6 +59,8 @@ const DEFAULT_VOICE_SELECTION = {
 };
 const DEFAULT_QWEN_VOICE_DESIGN_WARMUP_TEXT = "Hi there. Ready when you are.";
 const DEFAULT_QWEN_VOICE_DESIGN_MAX_CHARS = 1200;
+const DEFAULT_QWEN_VOICE_CLONE_MAX_CHARS = 2200;
+const DEFAULT_QWEN_VOICE_CLONE_MAX_NEW_TOKENS = 4096;
 const DEFAULT_XML_TASK = "full";
 const DEFAULT_PAUSE_REMOVAL_MIN_SILENCE_DURATION_SECONDS = 0.35;
 const DEFAULT_PAUSE_REMOVAL_SILENCE_THRESHOLD_DB = -40;
@@ -1132,6 +1134,10 @@ async function main() {
         ...(selectedVoice.speaker && !isUploadedReferenceVoice ? { referenceSpeaker: selectedVoice.speaker } : {}),
         ...(persistedReference?.generatedAt ? { referenceGeneratedAt: persistedReference.generatedAt } : {}),
         narrationMode: "voice-clone",
+        qwenOptions: {
+          maxChars: DEFAULT_QWEN_VOICE_CLONE_MAX_CHARS,
+          maxNewTokens: DEFAULT_QWEN_VOICE_CLONE_MAX_NEW_TOKENS,
+        },
         referenceSource: isUploadedReferenceVoice
           ? "uploaded-reference"
           : (canReuseSavedReference || persistedReference) ? "saved-library" : "generated-for-run",
@@ -1153,6 +1159,10 @@ async function main() {
         referenceTranscript,
         "--text-file",
         transcriptPath,
+        "--max-chars",
+        String(DEFAULT_QWEN_VOICE_CLONE_MAX_CHARS),
+        "--max-new-tokens",
+        String(DEFAULT_QWEN_VOICE_CLONE_MAX_NEW_TOKENS),
         "--output",
         originalAudioPath,
       ], {
