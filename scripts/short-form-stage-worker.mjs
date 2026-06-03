@@ -3580,14 +3580,18 @@ function shiftCaptionTimeline(captionTimeline, timingOffsetMs) {
   if (Math.abs(offsetSeconds) < 0.0001) return captionTimeline;
   return captionTimeline
     .map((caption) => {
-      const captionStart = Math.max(0, (Number(caption.start) || 0) + offsetSeconds);
-      const captionEnd = Math.max(captionStart + 0.01, (Number(caption.end) || 0) + offsetSeconds);
+      const rawCaptionStart = (Number(caption.start) || 0) + offsetSeconds;
+      const rawCaptionEnd = (Number(caption.end) || 0) + offsetSeconds;
+      const captionStart = Math.max(0, rawCaptionStart);
+      const captionEnd = Math.max(captionStart + 0.01, rawCaptionEnd);
       const words = Array.isArray(caption.words)
         ? caption.words
           .map((word) => {
-            const start = Math.max(0, (Number(word.start) || 0) + offsetSeconds);
-            const end = Math.max(start + 0.01, (Number(word.end) || 0) + offsetSeconds);
-            return { ...word, start, end };
+            const animationStart = (Number(word.start) || 0) + offsetSeconds;
+            const animationEnd = Math.max(animationStart + 0.01, (Number(word.end) || 0) + offsetSeconds);
+            const start = Math.max(0, animationStart);
+            const end = Math.max(start + 0.01, animationEnd);
+            return { ...word, start, end, animationStart, animationEnd };
           })
           .filter((word) => Number.isFinite(word.start) && Number.isFinite(word.end) && word.end > word.start)
         : [];
@@ -3595,6 +3599,8 @@ function shiftCaptionTimeline(captionTimeline, timingOffsetMs) {
         ...caption,
         start: captionStart,
         end: captionEnd,
+        animationStart: rawCaptionStart,
+        animationEnd: Math.max(rawCaptionStart + 0.01, rawCaptionEnd),
         words,
       };
     })

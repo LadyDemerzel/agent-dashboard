@@ -651,26 +651,39 @@ def resolve_word_state(word_index: int, active_index: int, word_count: int) -> s
     return "upcoming"
 
 
+def finite_float(value: Any, fallback: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    return parsed if math.isfinite(parsed) else fallback
+
+
 def resolve_entry_state(caption: dict[str, Any], animation_config: dict[str, Any], sample_time: float) -> tuple[int, float] | None:
     words = caption.get("words") if isinstance(caption, dict) else None
     if not isinstance(words, list) or not words:
         return None
-    safe_caption_start = max(0.0, float(caption.get("start", 0) or 0))
-    safe_caption_end = max(safe_caption_start + 0.05, float(caption.get("end", safe_caption_start + 0.05) or (safe_caption_start + 0.05)))
+    safe_caption_start = max(0.0, finite_float(caption.get("start"), 0.0))
+    safe_caption_end = max(safe_caption_start + 0.05, finite_float(caption.get("end"), safe_caption_start + 0.05))
     if sample_time < safe_caption_start or sample_time >= safe_caption_end:
         return None
-    first_word_start = max(safe_caption_start, float(words[0].get("start", safe_caption_start) or safe_caption_start))
+    first_word_start = max(safe_caption_start, finite_float(words[0].get("start"), safe_caption_start))
     if sample_time < first_word_start:
         return -1, 0.0
     for index, word in enumerate(words):
-        word_start = max(safe_caption_start, float(word.get("start", safe_caption_start) or safe_caption_start))
-        word_end = max(word_start + 0.05, float(word.get("end", word_start + 0.05) or (word_start + 0.05)))
+        word_start = max(safe_caption_start, finite_float(word.get("start"), safe_caption_start))
+        word_end = max(word_start + 0.05, finite_float(word.get("end"), word_start + 0.05))
         if word_start <= sample_time < word_end:
-            word_duration = max(0.001, word_end - word_start)
-            word_progress = (sample_time - word_start) / word_duration
+            animation_start = finite_float(word.get("animationStart"), word_start)
+            animation_end = finite_float(word.get("animationEnd"), word_end)
+            if animation_end <= animation_start:
+                animation_start = word_start
+                animation_end = word_end
+            word_duration = max(0.001, animation_end - animation_start)
+            word_progress = (sample_time - animation_start) / word_duration
             return index, resolve_animation_progress(animation_config, word_progress, word_duration)
         next_word = words[index + 1] if index + 1 < len(words) else None
-        hold_end = float(next_word.get("start", safe_caption_end) or safe_caption_end) if next_word else safe_caption_end
+        hold_end = finite_float(next_word.get("start"), safe_caption_end) if next_word else safe_caption_end
         hold_end = min(safe_caption_end, max(word_end, hold_end))
         if word_end <= sample_time < hold_end:
             return index + 1, 0.0
@@ -911,19 +924,25 @@ def main() -> None:
             if not isinstance(word, dict):
                 continue
             text = str(word.get("text") or "").strip()
-            start = float(word.get("start", 0) or 0)
-            end = float(word.get("end", 0) or 0)
+            start = finite_float(word.get("start"), 0.0)
+            end = finite_float(word.get("end"), 0.0)
             if not text or end <= start:
                 continue
-            normalized_words.append({"text": text, "start": start, "end": end})
+            normalized_word = {"text": text, "start": start, "end": end}
+            animation_start = finite_float(word.get("animationStart"), start)
+            animation_end = finite_float(word.get("animationEnd"), end)
+            if animation_end > animation_start:
+                normalized_word["animationStart"] = animation_start
+                normalized_word["animationEnd"] = animation_end
+            normalized_words.append(normalized_word)
         if not normalized_words:
             continue
         normalized = {
             "id": caption_id,
             "index": int(raw_caption.get("index", index) or index),
             "text": str(raw_caption.get("text") or " ".join(word["text"] for word in normalized_words)).strip(),
-            "start": float(raw_caption.get("start", normalized_words[0]["start"]) or normalized_words[0]["start"]),
-            "end": float(raw_caption.get("end", normalized_words[-1]["end"]) or normalized_words[-1]["end"]),
+            "start": finite_float(raw_caption.get("start"), normalized_words[0]["start"]),
+            "end": finite_float(raw_caption.get("end"), normalized_words[-1]["end"]),
             "words": normalized_words,
         }
         normalized_captions.append(normalized)

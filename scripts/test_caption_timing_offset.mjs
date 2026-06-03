@@ -11,6 +11,8 @@ const rendererSource = fs.readFileSync(path.join(repoRoot, "scripts", "render_an
 
 assert.match(workerSource, /function shiftCaptionTimeline/, "Final render worker must shift caption timeline timing.");
 assert.match(workerSource, /timingOffsetMs/, "Final render worker must read and persist timingOffsetMs.");
+assert.match(workerSource, /animationStart/, "Final render worker must preserve unclamped shifted word timing for animation progress.");
+assert.match(rendererSource, /animationStart/, "Animated overlay renderer must use unclamped shifted word timing for animation progress.");
 assert.match(workerSource, /const offsetAwareSuppressionRanges = buildOffsetAwareCaptionSuppressionRanges\(suppressionRanges, timingOffsetMs\);\s*const effectiveSuppressionRanges = buildEffectiveCaptionSuppressionRanges\(suppressionRanges, timingOffsetMs\);\s*const suppressedTimeline = suppressCaptionTimelineForRanges\(timeline, effectiveSuppressionRanges\);\s*const captionTimeline = shiftCaptionTimeline\(suppressedTimeline, timingOffsetMs\)/s, "Final render must suppress original and offset-aware motion-graphic caption ranges before applying the timing offset.");
 assert.match(rendererSource, /"timingOffsetMs": normalize_int/, "Animated overlay renderer must normalize timingOffsetMs in config JSON.");
 
@@ -81,5 +83,53 @@ const result = spawnSync("uv", [
 assert.equal(result.status, 0, result.stderr || result.stdout);
 const manifest = JSON.parse(fs.readFileSync(path.join(outputDir, "manifest.json"), "utf-8"));
 assert.equal(manifest.animationConfig.timing.timingOffsetMs, -130);
+
+const clampedTimelinePath = path.join(tempDir, "clamped-timeline.json");
+const clampedOutputDir = path.join(tempDir, "clamped-overlays");
+fs.writeFileSync(
+  clampedTimelinePath,
+  JSON.stringify({
+    captions: [{
+      id: "caption-1",
+      index: 1,
+      text: "You can make",
+      start: 0,
+      end: 0.29,
+      animationStart: -0.11,
+      animationEnd: 0.29,
+      words: [
+        { text: "You", start: 0, end: 0.01, animationStart: -0.11, animationEnd: -0.03 },
+        { text: "can", start: 0, end: 0.13, animationStart: -0.03, animationEnd: 0.13 },
+        { text: "make", start: 0.13, end: 0.29, animationStart: 0.13, animationEnd: 0.29 },
+      ],
+    }],
+  }),
+  "utf-8",
+);
+
+const clampedResult = spawnSync("uv", [
+  "run",
+  "--with",
+  "pillow",
+  "python3",
+  path.join(repoRoot, "scripts", "render_animated_caption_overlays.py"),
+  "--timeline-json",
+  clampedTimelinePath,
+  "--output-dir",
+  clampedOutputDir,
+  "--animation-config-json",
+  JSON.stringify(animationConfig),
+  "--fps",
+  "30",
+], { encoding: "utf-8" });
+
+assert.equal(clampedResult.status, 0, clampedResult.stderr || clampedResult.stdout);
+const clampedManifest = JSON.parse(fs.readFileSync(path.join(clampedOutputDir, "manifest.json"), "utf-8"));
+const firstFrame = clampedManifest.entries.find((entry) => entry.frameIndex === 0);
+const secondFrame = clampedManifest.entries.find((entry) => entry.frameIndex === 1);
+assert.equal(firstFrame.activeIndex, 0, "The first frame should still show the first word as active.");
+assert.ok(firstFrame.progress > 0.5, `The first word should render the tail of its animation, got ${firstFrame.progress}.`);
+assert.equal(secondFrame.activeIndex, 1, "The second frame should advance to the second word.");
+assert.ok(secondFrame.progress > 0.4, `The second word should animate from unclamped shifted timing, got ${secondFrame.progress}.`);
 
 console.log("caption timing offset: ok");
