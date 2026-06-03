@@ -6,6 +6,7 @@ import crypto from "crypto";
 import { spawnSync } from "child_process";
 import { postProcessTextScriptMarkdown } from "./short-form-text-post-processing.mjs";
 import {
+  buildOffsetAwareCaptionSuppressionRanges,
   readMotionGraphicSuppressionRanges,
   suppressCaptionTimelineForRanges,
 } from "./short-form-caption-suppression.mjs";
@@ -4358,7 +4359,8 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
   const timeline = mapCaptionWordsToAlignment(captions, alignmentWords);
   const timingOffsetMs = resolveCaptionTimingOffsetMs(captionStyleSelection);
   const suppressionRanges = Array.isArray(motionGraphicSuppressionRanges) ? motionGraphicSuppressionRanges : [];
-  const suppressedTimeline = suppressCaptionTimelineForRanges(timeline, suppressionRanges);
+  const offsetAwareSuppressionRanges = buildOffsetAwareCaptionSuppressionRanges(suppressionRanges, timingOffsetMs);
+  const suppressedTimeline = suppressCaptionTimelineForRanges(timeline, offsetAwareSuppressionRanges);
   const captionTimeline = shiftCaptionTimeline(suppressedTimeline, timingOffsetMs);
   const assPath = path.join(videoWorkDir, "captions-word-highlight.ass");
   ensureDir(path.dirname(assPath));
@@ -4367,6 +4369,11 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
   const suppressionMetadata = suppressionRanges.length > 0
     ? {
         motionGraphicSuppressionRanges: suppressionRanges.map((range) => ({
+          start: Number(range.start),
+          end: Number(range.end),
+          ...(Number.isFinite(Number(range.sceneIndex)) ? { sceneIndex: Number(range.sceneIndex) } : {}),
+        })),
+        offsetAwareMotionGraphicSuppressionRanges: offsetAwareSuppressionRanges.map((range) => ({
           start: Number(range.start),
           end: Number(range.end),
           ...(Number.isFinite(Number(range.sceneIndex)) ? { sceneIndex: Number(range.sceneIndex) } : {}),
@@ -4564,6 +4571,7 @@ function updateVideoManifestCaptionRendering(projectId, config, captionStyleSele
     ...(Number.isFinite(Number(captionRender.overlayFrameFps)) ? { overlayFrameFps: Number(captionRender.overlayFrameFps) } : {}),
     ...(captionRender.renderer ? { renderer: captionRender.renderer } : {}),
     ...(captionRender.motionGraphicSuppressionRanges ? { motionGraphicSuppressionRanges: captionRender.motionGraphicSuppressionRanges } : {}),
+    ...(captionRender.offsetAwareMotionGraphicSuppressionRanges ? { offsetAwareMotionGraphicSuppressionRanges: captionRender.offsetAwareMotionGraphicSuppressionRanges } : {}),
     ...(Number.isFinite(Number(captionRender.originalCaptionCount)) ? { originalCaptionCount: Number(captionRender.originalCaptionCount) } : {}),
     ...(Number.isFinite(Number(captionRender.visibleCaptionSegmentCount)) ? { visibleCaptionSegmentCount: Number(captionRender.visibleCaptionSegmentCount) } : {}),
     ...(captionRender.assUnavailableReason ? { assUnavailableReason: captionRender.assUnavailableReason } : {}),

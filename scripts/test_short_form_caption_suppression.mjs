@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  buildOffsetAwareCaptionSuppressionRanges,
   deriveMotionGraphicRangesFromVideoManifest,
   mergeTimeRanges,
   subtractTimeRanges,
@@ -66,5 +67,45 @@ assert.deepEqual(suppressed.map((caption) => caption.words?.map((word) => word.t
   ["after"],
   ["visible"],
 ]);
+
+const negativeOffsetSuppressionRanges = buildOffsetAwareCaptionSuppressionRanges([{ start: 0, end: 5 }], -130);
+assert.deepEqual(negativeOffsetSuppressionRanges, [{ start: 0, end: 5.13 }]);
+const negativeOffsetSuppressed = suppressCaptionTimelineForRanges([
+  {
+    id: "caption-after-motion",
+    index: 4,
+    text: "after motion",
+    start: 5.04,
+    end: 5.8,
+    words: [
+      { text: "after", start: 5.04, end: 5.28 },
+      { text: "motion", start: 5.28, end: 5.8 },
+    ],
+  },
+], negativeOffsetSuppressionRanges);
+assert.deepEqual(
+  negativeOffsetSuppressed.map((caption) => ({ start: caption.start, end: caption.end, text: caption.text })),
+  [{ start: 5.13, end: 5.8, text: "after motion" }],
+);
+
+const positiveOffsetSuppressionRanges = buildOffsetAwareCaptionSuppressionRanges([{ start: 5, end: 6 }], 130);
+assert.deepEqual(positiveOffsetSuppressionRanges, [{ start: 4.87, end: 5.87 }]);
+const positiveOffsetSuppressed = suppressCaptionTimelineForRanges([
+  {
+    id: "caption-before-motion",
+    index: 5,
+    text: "before motion",
+    start: 4.2,
+    end: 4.96,
+    words: [
+      { text: "before", start: 4.2, end: 4.6 },
+      { text: "motion", start: 4.6, end: 4.96 },
+    ],
+  },
+], positiveOffsetSuppressionRanges);
+assert.deepEqual(
+  positiveOffsetSuppressed.map((caption) => ({ start: caption.start, end: caption.end, text: caption.text })),
+  [{ start: 4.2, end: 4.87, text: "before motion" }],
+);
 
 console.log("short-form caption suppression tests passed");

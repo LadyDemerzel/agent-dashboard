@@ -118,6 +118,17 @@ export function suppressCaptionTimelineForRanges(captionTimeline, blockedRanges)
   return suppressed;
 }
 
+export function buildOffsetAwareCaptionSuppressionRanges(blockedRanges, timingOffsetMs) {
+  const offsetSeconds = (finiteNumber(timingOffsetMs) ?? 0) / 1000;
+  if (Math.abs(offsetSeconds) < 0.0001) return mergeTimeRanges(blockedRanges);
+
+  return mergeTimeRanges(blockedRanges).map((range) => ({
+    ...range,
+    start: offsetSeconds < 0 && range.start <= 0 ? 0 : range.start - offsetSeconds,
+    end: range.end - offsetSeconds,
+  }));
+}
+
 export function deriveMotionGraphicRangesFromVideoManifest(manifest) {
   const scenes = Array.isArray(manifest?.scenes) ? manifest.scenes : [];
   const ranges = [];
