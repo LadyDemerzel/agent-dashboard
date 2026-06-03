@@ -1,11 +1,19 @@
 import assert from "node:assert/strict";
 import {
+  buildEffectiveCaptionSuppressionRanges,
   buildOffsetAwareCaptionSuppressionRanges,
   deriveMotionGraphicRangesFromVideoManifest,
   mergeTimeRanges,
   subtractTimeRanges,
   suppressCaptionTimelineForRanges,
 } from "./short-form-caption-suppression.mjs";
+
+function roundRanges(ranges) {
+  return ranges.map((range) => ({
+    start: Math.round(range.start * 1000) / 1000,
+    end: Math.round(range.end * 1000) / 1000,
+  }));
+}
 
 const merged = mergeTimeRanges([
   { start: 2, end: 3 },
@@ -88,6 +96,23 @@ assert.deepEqual(
   [{ start: 5.13, end: 5.8, text: "after motion" }],
 );
 
+const negativeOffsetEffectiveSuppressionRanges = buildEffectiveCaptionSuppressionRanges([{ start: 5, end: 6 }], -130);
+assert.deepEqual(roundRanges(negativeOffsetEffectiveSuppressionRanges), [{ start: 4.98, end: 6.15 }]);
+const negativeOffsetDuringMotionSuppressed = suppressCaptionTimelineForRanges([
+  {
+    id: "caption-spoken-during-motion",
+    index: 5,
+    text: "during motion",
+    start: 5.04,
+    end: 5.12,
+    words: [
+      { text: "during", start: 5.04, end: 5.08 },
+      { text: "motion", start: 5.08, end: 5.12 },
+    ],
+  },
+], negativeOffsetEffectiveSuppressionRanges);
+assert.deepEqual(negativeOffsetDuringMotionSuppressed, []);
+
 const positiveOffsetSuppressionRanges = buildOffsetAwareCaptionSuppressionRanges([{ start: 5, end: 6 }], 130);
 assert.deepEqual(positiveOffsetSuppressionRanges, [{ start: 4.87, end: 5.87 }]);
 const positiveOffsetSuppressed = suppressCaptionTimelineForRanges([
@@ -107,5 +132,22 @@ assert.deepEqual(
   positiveOffsetSuppressed.map((caption) => ({ start: caption.start, end: caption.end, text: caption.text })),
   [{ start: 4.2, end: 4.87, text: "before motion" }],
 );
+
+const positiveOffsetEffectiveSuppressionRanges = buildEffectiveCaptionSuppressionRanges([{ start: 5, end: 6 }], 130);
+assert.deepEqual(roundRanges(positiveOffsetEffectiveSuppressionRanges), [{ start: 4.85, end: 6.02 }]);
+const positiveOffsetDuringMotionSuppressed = suppressCaptionTimelineForRanges([
+  {
+    id: "caption-spoken-during-motion-after",
+    index: 6,
+    text: "during motion",
+    start: 5.9,
+    end: 5.98,
+    words: [
+      { text: "during", start: 5.9, end: 5.94 },
+      { text: "motion", start: 5.94, end: 5.98 },
+    ],
+  },
+], positiveOffsetEffectiveSuppressionRanges);
+assert.deepEqual(positiveOffsetDuringMotionSuppressed, []);
 
 console.log("short-form caption suppression tests passed");

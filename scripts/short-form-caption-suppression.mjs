@@ -2,6 +2,7 @@ import fs from "fs";
 
 const MIN_VISIBLE_CAPTION_SECONDS = 0.04;
 const MIN_VISIBLE_WORD_SECONDS = 0.01;
+const CAPTION_SUPPRESSION_RENDER_SAFETY_SECONDS = 0.02;
 
 function finiteNumber(value) {
   const parsed = Number(value);
@@ -127,6 +128,16 @@ export function buildOffsetAwareCaptionSuppressionRanges(blockedRanges, timingOf
     start: offsetSeconds < 0 && range.start <= 0 ? 0 : range.start - offsetSeconds,
     end: range.end - offsetSeconds,
   }));
+}
+
+export function buildEffectiveCaptionSuppressionRanges(blockedRanges, timingOffsetMs) {
+  const originalRanges = mergeTimeRanges(blockedRanges);
+  const offsetAwareRanges = buildOffsetAwareCaptionSuppressionRanges(originalRanges, timingOffsetMs);
+  return mergeTimeRanges([...originalRanges, ...offsetAwareRanges].map((range) => ({
+    ...range,
+    start: Math.max(0, range.start - CAPTION_SUPPRESSION_RENDER_SAFETY_SECONDS),
+    end: range.end + CAPTION_SUPPRESSION_RENDER_SAFETY_SECONDS,
+  })));
 }
 
 export function deriveMotionGraphicRangesFromVideoManifest(manifest) {

@@ -6,6 +6,7 @@ import crypto from "crypto";
 import { spawnSync } from "child_process";
 import { postProcessTextScriptMarkdown } from "./short-form-text-post-processing.mjs";
 import {
+  buildEffectiveCaptionSuppressionRanges,
   buildOffsetAwareCaptionSuppressionRanges,
   readMotionGraphicSuppressionRanges,
   suppressCaptionTimelineForRanges,
@@ -4360,7 +4361,8 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
   const timingOffsetMs = resolveCaptionTimingOffsetMs(captionStyleSelection);
   const suppressionRanges = Array.isArray(motionGraphicSuppressionRanges) ? motionGraphicSuppressionRanges : [];
   const offsetAwareSuppressionRanges = buildOffsetAwareCaptionSuppressionRanges(suppressionRanges, timingOffsetMs);
-  const suppressedTimeline = suppressCaptionTimelineForRanges(timeline, offsetAwareSuppressionRanges);
+  const effectiveSuppressionRanges = buildEffectiveCaptionSuppressionRanges(suppressionRanges, timingOffsetMs);
+  const suppressedTimeline = suppressCaptionTimelineForRanges(timeline, effectiveSuppressionRanges);
   const captionTimeline = shiftCaptionTimeline(suppressedTimeline, timingOffsetMs);
   const assPath = path.join(videoWorkDir, "captions-word-highlight.ass");
   ensureDir(path.dirname(assPath));
@@ -4374,6 +4376,11 @@ function applyAnimatedCaptionBurnIn({ baseVideoPath, finalVideoPath, videoWorkDi
           ...(Number.isFinite(Number(range.sceneIndex)) ? { sceneIndex: Number(range.sceneIndex) } : {}),
         })),
         offsetAwareMotionGraphicSuppressionRanges: offsetAwareSuppressionRanges.map((range) => ({
+          start: Number(range.start),
+          end: Number(range.end),
+          ...(Number.isFinite(Number(range.sceneIndex)) ? { sceneIndex: Number(range.sceneIndex) } : {}),
+        })),
+        effectiveMotionGraphicSuppressionRanges: effectiveSuppressionRanges.map((range) => ({
           start: Number(range.start),
           end: Number(range.end),
           ...(Number.isFinite(Number(range.sceneIndex)) ? { sceneIndex: Number(range.sceneIndex) } : {}),
@@ -4572,6 +4579,7 @@ function updateVideoManifestCaptionRendering(projectId, config, captionStyleSele
     ...(captionRender.renderer ? { renderer: captionRender.renderer } : {}),
     ...(captionRender.motionGraphicSuppressionRanges ? { motionGraphicSuppressionRanges: captionRender.motionGraphicSuppressionRanges } : {}),
     ...(captionRender.offsetAwareMotionGraphicSuppressionRanges ? { offsetAwareMotionGraphicSuppressionRanges: captionRender.offsetAwareMotionGraphicSuppressionRanges } : {}),
+    ...(captionRender.effectiveMotionGraphicSuppressionRanges ? { effectiveMotionGraphicSuppressionRanges: captionRender.effectiveMotionGraphicSuppressionRanges } : {}),
     ...(Number.isFinite(Number(captionRender.originalCaptionCount)) ? { originalCaptionCount: Number(captionRender.originalCaptionCount) } : {}),
     ...(Number.isFinite(Number(captionRender.visibleCaptionSegmentCount)) ? { visibleCaptionSegmentCount: Number(captionRender.visibleCaptionSegmentCount) } : {}),
     ...(captionRender.assUnavailableReason ? { assUnavailableReason: captionRender.assUnavailableReason } : {}),

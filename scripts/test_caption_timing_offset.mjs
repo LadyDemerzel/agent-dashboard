@@ -11,7 +11,7 @@ const rendererSource = fs.readFileSync(path.join(repoRoot, "scripts", "render_an
 
 assert.match(workerSource, /function shiftCaptionTimeline/, "Final render worker must shift caption timeline timing.");
 assert.match(workerSource, /timingOffsetMs/, "Final render worker must read and persist timingOffsetMs.");
-assert.match(workerSource, /const offsetAwareSuppressionRanges = buildOffsetAwareCaptionSuppressionRanges\(suppressionRanges, timingOffsetMs\);\s*const suppressedTimeline = suppressCaptionTimelineForRanges\(timeline, offsetAwareSuppressionRanges\);\s*const captionTimeline = shiftCaptionTimeline\(suppressedTimeline, timingOffsetMs\)/s, "Final render must suppress offset-aware motion-graphic caption ranges before applying the timing offset.");
+assert.match(workerSource, /const offsetAwareSuppressionRanges = buildOffsetAwareCaptionSuppressionRanges\(suppressionRanges, timingOffsetMs\);\s*const effectiveSuppressionRanges = buildEffectiveCaptionSuppressionRanges\(suppressionRanges, timingOffsetMs\);\s*const suppressedTimeline = suppressCaptionTimelineForRanges\(timeline, effectiveSuppressionRanges\);\s*const captionTimeline = shiftCaptionTimeline\(suppressedTimeline, timingOffsetMs\)/s, "Final render must suppress original and offset-aware motion-graphic caption ranges before applying the timing offset.");
 assert.match(rendererSource, /"timingOffsetMs": normalize_int/, "Animated overlay renderer must normalize timingOffsetMs in config JSON.");
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "caption-offset-"));
