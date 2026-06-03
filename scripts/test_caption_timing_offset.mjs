@@ -132,4 +132,63 @@ assert.ok(firstFrame.progress > 0.5, `The first word should render the tail of i
 assert.equal(secondFrame.activeIndex, 1, "The second frame should advance to the second word.");
 assert.ok(secondFrame.progress > 0.4, `The second word should animate from unclamped shifted timing, got ${secondFrame.progress}.`);
 
+const boundaryTimelinePath = path.join(tempDir, "boundary-timeline.json");
+const boundaryOutputDir = path.join(tempDir, "boundary-overlays");
+fs.writeFileSync(
+  boundaryTimelinePath,
+  JSON.stringify({
+    captions: [
+      {
+        id: "caption-1",
+        index: 1,
+        text: "previous caption",
+        start: 0,
+        end: 0.29,
+        words: [
+          { text: "previous", start: 0, end: 0.16 },
+          { text: "caption", start: 0.16, end: 0.29 },
+        ],
+      },
+      {
+        id: "caption-2",
+        index: 2,
+        text: "next caption",
+        start: 0.29,
+        end: 0.7,
+        words: [
+          { text: "next", start: 0.29, end: 0.46 },
+          { text: "caption", start: 0.46, end: 0.7 },
+        ],
+      },
+    ],
+  }),
+  "utf-8",
+);
+
+const boundaryResult = spawnSync("uv", [
+  "run",
+  "--with",
+  "pillow",
+  "python3",
+  path.join(repoRoot, "scripts", "render_animated_caption_overlays.py"),
+  "--timeline-json",
+  boundaryTimelinePath,
+  "--output-dir",
+  boundaryOutputDir,
+  "--animation-config-json",
+  JSON.stringify(animationConfig),
+  "--fps",
+  "30",
+], { encoding: "utf-8" });
+
+assert.equal(boundaryResult.status, 0, boundaryResult.stderr || boundaryResult.stdout);
+const boundaryManifest = JSON.parse(fs.readFileSync(path.join(boundaryOutputDir, "manifest.json"), "utf-8"));
+const frameCounts = new Map();
+for (const entry of boundaryManifest.entries) {
+  frameCounts.set(entry.frameIndex, (frameCounts.get(entry.frameIndex) || 0) + 1);
+}
+assert.equal([...frameCounts.values()].filter((count) => count > 1).length, 0, "Boundary rendering should emit at most one overlay per frame.");
+assert.equal(boundaryManifest.entries.find((entry) => entry.frameIndex === 8)?.captionIndex, 1, "Frame 8 midpoint should keep the previous caption.");
+assert.equal(boundaryManifest.entries.find((entry) => entry.frameIndex === 9)?.captionIndex, 2, "Frame 9 midpoint should advance to the next caption.");
+
 console.log("caption timing offset: ok");

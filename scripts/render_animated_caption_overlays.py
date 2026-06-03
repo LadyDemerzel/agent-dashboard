@@ -692,37 +692,79 @@ def resolve_entry_state(caption: dict[str, Any], animation_config: dict[str, Any
 
 def build_frame_entries(captions: list[dict[str, Any]], animation_config: dict[str, Any], fps: float) -> list[dict[str, Any]]:
     safe_fps = max(12.0, min(60.0, float(fps or 30.0)))
-    entries: list[dict[str, Any]] = []
+    frame_candidates: dict[int, list[dict[str, Any]]] = {}
     for caption in captions:
         words = caption.get("words") if isinstance(caption, dict) else None
         if not isinstance(words, list) or not words:
             continue
-        safe_caption_start = max(0.0, float(caption.get("start", 0) or 0))
-        safe_caption_end = max(safe_caption_start + 0.05, float(caption.get("end", safe_caption_start + 0.05) or (safe_caption_start + 0.05)))
+        safe_caption_start = max(0.0, finite_float(caption.get("start"), 0.0))
+        safe_caption_end = max(safe_caption_start + 0.05, finite_float(caption.get("end"), safe_caption_start + 0.05))
         start_frame = max(0, int(math.floor(safe_caption_start * safe_fps)))
         end_frame = max(start_frame + 1, int(math.ceil(safe_caption_end * safe_fps)))
         for frame_index in range(start_frame, end_frame):
             frame_start = frame_index / safe_fps
             frame_end = (frame_index + 1) / safe_fps
-            sample_time = min(safe_caption_end - 0.0001, max(safe_caption_start, frame_start + (0.5 / safe_fps)))
-            state = resolve_entry_state(caption, animation_config, sample_time)
-            if state is None:
+            overlap_start = max(safe_caption_start, frame_start)
+            overlap_end = min(safe_caption_end, frame_end)
+            overlap_seconds = overlap_end - overlap_start
+            if overlap_seconds <= 0.0001:
                 continue
-            active_index, progress = state
-            entry_start = max(safe_caption_start, frame_start)
-            entry_end = min(safe_caption_end, frame_end)
-            if entry_end <= entry_start + 0.0001:
-                continue
-            entries.append({
-                "captionId": caption.get("id") or f"caption-{caption.get('index', len(entries) + 1)}",
-                "captionIndex": int(caption.get("index", len(entries) + 1) or (len(entries) + 1)),
-                "text": caption.get("text") or "",
-                "start": entry_start,
-                "end": entry_end,
-                "activeIndex": active_index,
-                "progress": progress,
-                "frameIndex": frame_index,
+            frame_candidates.setdefault(frame_index, []).append({
+                "caption": caption,
+                "captionStart": safe_caption_start,
+                "captionEnd": safe_caption_end,
+                "overlapStart": overlap_start,
+                "overlapEnd": overlap_end,
+                "overlapSeconds": overlap_seconds,
             })
+
+    entries: list[dict[str, Any]] = []
+    for frame_index in sorted(frame_candidates):
+        frame_start = frame_index / safe_fps
+        frame_end = (frame_index + 1) / safe_fps
+        sample_center = frame_start + (0.5 / safe_fps)
+        candidates = frame_candidates[frame_index]
+        containing = [
+            candidate for candidate in candidates
+            if candidate["captionStart"] <= sample_center < candidate["captionEnd"]
+        ]
+        if containing:
+            chosen = sorted(
+                containing,
+                key=lambda candidate: (candidate["captionStart"], candidate["overlapSeconds"]),
+                reverse=True,
+            )[0]
+            sample_time = sample_center
+        else:
+            chosen = sorted(
+                candidates,
+                key=lambda candidate: (candidate["overlapSeconds"], candidate["captionStart"]),
+                reverse=True,
+            )[0]
+            sample_time = (chosen["overlapStart"] + chosen["overlapEnd"]) / 2
+
+        caption = chosen["caption"]
+        safe_caption_start = chosen["captionStart"]
+        safe_caption_end = chosen["captionEnd"]
+        sample_time = min(safe_caption_end - 0.0001, max(safe_caption_start, sample_time))
+        state = resolve_entry_state(caption, animation_config, sample_time)
+        if state is None:
+            continue
+        active_index, progress = state
+        entry_start = chosen["overlapStart"]
+        entry_end = chosen["overlapEnd"]
+        if entry_end <= entry_start + 0.0001:
+            continue
+        entries.append({
+            "captionId": caption.get("id") or f"caption-{caption.get('index', len(entries) + 1)}",
+            "captionIndex": int(caption.get("index", len(entries) + 1) or (len(entries) + 1)),
+            "text": caption.get("text") or "",
+            "start": entry_start,
+            "end": entry_end,
+            "activeIndex": active_index,
+            "progress": progress,
+            "frameIndex": frame_index,
+        })
     return [entry for entry in entries if entry["end"] > entry["start"] + 0.0001]
 
 
