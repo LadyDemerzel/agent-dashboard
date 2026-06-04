@@ -592,8 +592,88 @@ function parseAttributes(nodeSource: string) {
   return attributes;
 }
 
+function isXmlNameCharacter(value: string | undefined) {
+  return Boolean(value && /[A-Za-z0-9_:-]/.test(value));
+}
+
+function findXmlishTagEnd(source: string, startIndex: number) {
+  let quote: string | undefined;
+  for (let index = startIndex; index < source.length; index += 1) {
+    const char = source[index];
+    if (quote) {
+      if (char === quote) quote = undefined;
+      continue;
+    }
+    if (char === "\"" || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === ">") return index;
+  }
+  return -1;
+}
+
+function isXmlishSelfClosingTag(openingTag: string) {
+  return /\/\s*>$/.test(openingTag);
+}
+
+function findXmlishTags(source: string, tagName: string) {
+  const tags: Array<{
+    source: string;
+    openingTag: string;
+    inner: string;
+    startIndex: number;
+    endIndex: number;
+    selfClosing: boolean;
+  }> = [];
+  let searchIndex = 0;
+  const openingPrefix = `<${tagName}`;
+  const closingTag = `</${tagName}>`;
+  while (searchIndex < source.length) {
+    const startIndex = source.indexOf(openingPrefix, searchIndex);
+    if (startIndex < 0) break;
+    const nextCharacter = source[startIndex + openingPrefix.length];
+    if (isXmlNameCharacter(nextCharacter)) {
+      searchIndex = startIndex + openingPrefix.length;
+      continue;
+    }
+    const openingEndIndex = findXmlishTagEnd(source, startIndex);
+    if (openingEndIndex < 0) break;
+    const openingTag = source.slice(startIndex, openingEndIndex + 1);
+    const selfClosing = isXmlishSelfClosingTag(openingTag);
+    if (selfClosing) {
+      tags.push({
+        source: openingTag,
+        openingTag,
+        inner: "",
+        startIndex,
+        endIndex: openingEndIndex + 1,
+        selfClosing,
+      });
+      searchIndex = openingEndIndex + 1;
+      continue;
+    }
+    const closeStartIndex = source.indexOf(closingTag, openingEndIndex + 1);
+    if (closeStartIndex < 0) {
+      searchIndex = openingEndIndex + 1;
+      continue;
+    }
+    const endIndex = closeStartIndex + closingTag.length;
+    tags.push({
+      source: source.slice(startIndex, endIndex),
+      openingTag,
+      inner: source.slice(openingEndIndex + 1, closeStartIndex),
+      startIndex,
+      endIndex,
+      selfClosing,
+    });
+    searchIndex = endIndex;
+  }
+  return tags;
+}
+
 function parseOpeningTagAttributes(nodeSource: string, tagName: string) {
-  const openingTag = nodeSource.match(new RegExp(`<${tagName}\\b[^>]*>`))?.[0] || nodeSource;
+  const openingTag = findXmlishTags(nodeSource, tagName)[0]?.openingTag || nodeSource;
   return parseAttributes(openingTag);
 }
 
@@ -878,19 +958,19 @@ export function parseShortFormSoundDesignMusicSegments(content: string): ShortFo
 
   // Keep generic <segment /> parsing scoped to explicit music containers so future
   // timeline/scene segment tags cannot accidentally become soundtrack cues.
-  const musicSegmentBlocks = xml.match(/<music_segments\b[^>]*>[\s\S]*?<\/music_segments>/g) || [];
+  const musicSegmentBlocks = findXmlishTags(xml, "music_segments");
   for (const block of musicSegmentBlocks) {
-    matches.push(...(block.match(/<segment\b[^>]*\/>/g) || []));
+    matches.push(...findXmlishTags(block.inner, "segment").filter((tag) => tag.selfClosing).map((tag) => tag.source));
   }
 
   // Backward-compatible direct music cue forms.
-  matches.push(...(xml.match(/<music_segment\b[^>]*\/>/g) || []));
-  matches.push(...(xml.match(/<music\b(?!_segments\b)[^>]*\/>/g) || []));
+  matches.push(...findXmlishTags(xml, "music_segment").filter((tag) => tag.selfClosing).map((tag) => tag.source));
+  matches.push(...findXmlishTags(xml, "music").filter((tag) => tag.selfClosing).map((tag) => tag.source));
 
   // Also accept <music> containers with nested <segment /> cues.
-  const musicBlocks = xml.match(/<music\b(?!_segments\b)[^>]*>[\s\S]*?<\/music>/g) || [];
+  const musicBlocks = findXmlishTags(xml, "music").filter((tag) => !tag.selfClosing);
   for (const block of musicBlocks) {
-    matches.push(...(block.match(/<segment\b[^>]*\/>/g) || []));
+    matches.push(...findXmlishTags(block.inner, "segment").filter((tag) => tag.selfClosing).map((tag) => tag.source));
   }
 
   const seen = new Set<string>();
@@ -2472,6 +2552,28 @@ function buildSoundDesignQaReport(options: {
   const audibleEventPercent = audibleSamples.length > 0 ? Math.round((audibleEvents / audibleSamples.length) * 1000) / 10 : undefined;
   const transientAudibleEventPercent = transientSamples.length > 0 ? Math.round((transientAudible / transientSamples.length) * 1000) / 10 : undefined;
   const issues: ShortFormSoundDesignQaIssue[] = [];
+  const plannedMusicSegments = fs.existsSync(getShortFormSoundDesignPath(projectId))
+    ? parseShortFormSoundDesignMusicSegments(fs.readFileSync(getShortFormSoundDesignPath(projectId), "utf-8"))
+    : [];
+  const resolvedMusicSegmentIds = new Set((resolution.musicSegments || []).map((segment) => segment.id));
+  const missingMusicSegmentIds = plannedMusicSegments
+    .map((segment) => segment.id)
+    .filter((id, index, ids) => id && ids.indexOf(id) === index && !resolvedMusicSegmentIds.has(id));
+  if (missingMusicSegmentIds.length > 0) {
+    issues.push({
+      severity: "fail",
+      code: "planned-music-segments-missing",
+      message: `Planned music segment${missingMusicSegmentIds.length === 1 ? "" : "s"} missing from resolved sound-design output: ${missingMusicSegmentIds.join(", ")}.`,
+    });
+  }
+  const unresolvedMusicSegments = (resolution.musicSegments || []).filter((segment) => segment.status !== "resolved" || !segment.musicRelativePath);
+  if (unresolvedMusicSegments.length > 0) {
+    issues.push({
+      severity: "fail",
+      code: "music-segments-unresolved",
+      message: `Resolve ${unresolvedMusicSegments.length} planned music segment${unresolvedMusicSegments.length === 1 ? "" : "s"} before approving the mix: ${unresolvedMusicSegments.map((segment) => segment.id).join(", ")}.`,
+    });
+  }
   if (typeof fullVsNoSfxCorrelation === "number" && fullVsNoSfxCorrelation >= 0.992) {
     issues.push({ severity: "warn", code: "sfx-correlation-too-high", message: `Full mix and no-SFX mix are very similar (${fullVsNoSfxCorrelation.toFixed(4)} correlation). The SFX bus may be sparse or quiet across the whole video.` });
   }

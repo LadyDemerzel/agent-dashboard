@@ -3939,6 +3939,85 @@ function getSoundDesignDocumentSignature(relativePath, absolutePath) {
   };
 }
 
+function isXmlNameCharacter(value) {
+  return Boolean(value && /[A-Za-z0-9_:-]/.test(value));
+}
+
+function findXmlishTagEnd(source, startIndex) {
+  let quote;
+  for (let index = startIndex; index < source.length; index += 1) {
+    const char = source[index];
+    if (quote) {
+      if (char === quote) quote = undefined;
+      continue;
+    }
+    if (char === "\"" || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === ">") return index;
+  }
+  return -1;
+}
+
+function findXmlishTags(source, tagName) {
+  const tags = [];
+  let searchIndex = 0;
+  const openingPrefix = `<${tagName}`;
+  const closingTag = `</${tagName}>`;
+  while (searchIndex < source.length) {
+    const startIndex = source.indexOf(openingPrefix, searchIndex);
+    if (startIndex < 0) break;
+    const nextCharacter = source[startIndex + openingPrefix.length];
+    if (isXmlNameCharacter(nextCharacter)) {
+      searchIndex = startIndex + openingPrefix.length;
+      continue;
+    }
+    const openingEndIndex = findXmlishTagEnd(source, startIndex);
+    if (openingEndIndex < 0) break;
+    const openingTag = source.slice(startIndex, openingEndIndex + 1);
+    const selfClosing = /\/\s*>$/.test(openingTag);
+    if (selfClosing) {
+      tags.push({ source: openingTag, inner: "", selfClosing });
+      searchIndex = openingEndIndex + 1;
+      continue;
+    }
+    const closeStartIndex = source.indexOf(closingTag, openingEndIndex + 1);
+    if (closeStartIndex < 0) {
+      searchIndex = openingEndIndex + 1;
+      continue;
+    }
+    tags.push({
+      source: source.slice(startIndex, closeStartIndex + closingTag.length),
+      inner: source.slice(openingEndIndex + 1, closeStartIndex),
+      selfClosing,
+    });
+    searchIndex = closeStartIndex + closingTag.length;
+  }
+  return tags;
+}
+
+function getPlannedMusicSegmentIds(projectId) {
+  const soundDesignDocPath = path.join(getProjectDir(projectId), "sound-design.md");
+  if (!fs.existsSync(soundDesignDocPath)) return [];
+  const xml = stripFrontMatter(fs.readFileSync(soundDesignDocPath, "utf-8"));
+  const segmentSources = [];
+  for (const block of findXmlishTags(xml, "music_segments")) {
+    segmentSources.push(...findXmlishTags(block.inner, "segment").filter((tag) => tag.selfClosing).map((tag) => tag.source));
+  }
+  segmentSources.push(...findXmlishTags(xml, "music_segment").filter((tag) => tag.selfClosing).map((tag) => tag.source));
+  segmentSources.push(...findXmlishTags(xml, "music").filter((tag) => tag.selfClosing).map((tag) => tag.source));
+  for (const block of findXmlishTags(xml, "music").filter((tag) => !tag.selfClosing)) {
+    segmentSources.push(...findXmlishTags(block.inner, "segment").filter((tag) => tag.selfClosing).map((tag) => tag.source));
+  }
+  const ids = [];
+  for (const source of segmentSources) {
+    const id = source.match(/\bid="([^"]+)"/)?.[1];
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
 function getSoundDesignFinalInputSnapshot(projectId, resolution) {
   const resolvedEvents = Array.isArray(resolution?.events) ? resolution.events : [];
   const activeEventsBase = resolvedEvents.filter((event) => event && event.status === "resolved" && !event.muted && event.assetRelativePath);
@@ -3978,6 +4057,25 @@ function updateSoundDesignFinalQa(projectId, resolution, finalVideoPath) {
   const retainedIssues = Array.isArray(resolution?.qa?.issues)
     ? resolution.qa.issues.filter((issue) => issue && issue.code !== "final-stale" && issue.code !== "final-format-low-quality")
     : [];
+  const resolvedMusicSegmentIds = new Set(Array.isArray(resolution?.musicSegments) ? resolution.musicSegments.map((segment) => segment?.id).filter(Boolean) : []);
+  const missingMusicSegmentIds = getPlannedMusicSegmentIds(projectId).filter((id) => !resolvedMusicSegmentIds.has(id));
+  if (missingMusicSegmentIds.length > 0 && !retainedIssues.some((issue) => issue?.code === "planned-music-segments-missing")) {
+    retainedIssues.push({
+      severity: "fail",
+      code: "planned-music-segments-missing",
+      message: `Planned music segment${missingMusicSegmentIds.length === 1 ? "" : "s"} missing from resolved sound-design output: ${missingMusicSegmentIds.join(", ")}.`,
+    });
+  }
+  const unresolvedMusicSegments = Array.isArray(resolution?.musicSegments)
+    ? resolution.musicSegments.filter((segment) => segment && (segment.status !== "resolved" || !segment.musicRelativePath))
+    : [];
+  if (unresolvedMusicSegments.length > 0 && !retainedIssues.some((issue) => issue?.code === "music-segments-unresolved")) {
+    retainedIssues.push({
+      severity: "fail",
+      code: "music-segments-unresolved",
+      message: `Resolve ${unresolvedMusicSegments.length} planned music segment${unresolvedMusicSegments.length === 1 ? "" : "s"} before approving the mix: ${unresolvedMusicSegments.map((segment) => segment.id).join(", ")}.`,
+    });
+  }
   const finalOutput = getAudioFileMetrics(finalVideoPath);
   if (!finalFresh) {
     retainedIssues.push({ severity: "warn", code: "final-stale", message: "Final video is stale relative to the current sound-design plan or resolution." });

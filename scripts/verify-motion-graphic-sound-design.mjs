@@ -61,5 +61,8 @@ assert(soundDesign.includes("buildDeterministicMotionGraphicSoundEvents"), "Reso
 assert(soundDesign.includes("mergePlannedAndDeterministicSoundEvents"), "Resolver is missing planned+deterministic event merge.");
 assert(soundDesign.includes("deterministic-motion-graphic-internal-sfx"), "Deterministic cues are missing their resolution marker.");
 assert(soundDesign.includes("Generated from known template timing, not Scribe planning."), "Deterministic cue rationale does not distinguish renderer-owned cues from Scribe cues.");
+assert(soundDesign.includes("findXmlishTagEnd"), "Sound-design music segment parsing must use a quoted-attribute-aware XML-ish tag scanner.");
+assert(soundDesign.includes("planned-music-segments-missing"), "Sound-design QA must fail when planned music segments are missing from resolution output.");
+assert(!soundDesign.includes("block.match(/<segment\\\\b[^>]*\\\\/>/g)"), "Music segment parsing must not use the old fragile segment regex.");
 
 console.log("motion graphic sound-design verification passed");
