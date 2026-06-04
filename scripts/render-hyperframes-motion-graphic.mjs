@@ -1073,6 +1073,28 @@ function estimateCaptionLineWidth(text, fontSize) {
   return (letters * fontSize * 0.57) + (tokenGaps * fontSize * 0.95);
 }
 
+function estimateCaptionWordWidth(word, fontSize) {
+  return Math.max(fontSize * 0.42, word.length * fontSize * 0.57);
+}
+
+function estimateCaptionWrappedRows(text, fontSize, wordGap, safeWidth) {
+  const words = splitDisplayWords(text);
+  if (words.length === 0) return 1;
+  let rows = 1;
+  let rowWidth = 0;
+  words.forEach((word) => {
+    const wordWidth = estimateCaptionWordWidth(word, fontSize);
+    const nextWidth = rowWidth <= 0 ? wordWidth : rowWidth + wordGap + wordWidth;
+    if (rowWidth > 0 && nextWidth > safeWidth) {
+      rows += 1;
+      rowWidth = wordWidth;
+      return;
+    }
+    rowWidth = nextWidth;
+  });
+  return rows;
+}
+
 function captionTextShadow(style, multiplier = 1) {
   const shadowColor = cssString(style.shadowColor, "#000000");
   const offsetX = captionStyleNumber(style, "shadowOffsetX", 0, -60, 60) * multiplier;
@@ -1098,13 +1120,13 @@ function buildCaptionWordWallLayout(lines, style) {
     }
     const ratio = captionWallSizeRatio(line.size);
     const rawFontSize = baseFontSize * ratio;
-    const widthScale = Math.min(1, safeWidth / Math.max(1, estimateCaptionLineWidth(line.text, rawFontSize * 1.55)));
-    const minWidthScale = line.size === "extra_large" ? 0.34 : line.size === "large" ? 0.42 : 0.45;
+    const longestWordWidth = splitDisplayWords(line.text).reduce((max, word) => Math.max(max, estimateCaptionWordWidth(word, rawFontSize * 1.18)), 1);
+    const widthScale = Math.min(1, safeWidth / longestWordWidth);
     return {
       ...line,
       ratio,
       rawFontSize,
-      widthScale: Math.max(minWidthScale, widthScale),
+      widthScale,
       fontWeight: Math.max(baseFontWeight, line.size === "regular" ? baseFontWeight : 900),
     };
   });
@@ -1118,14 +1140,20 @@ function buildCaptionWordWallLayout(lines, style) {
     }
     const fontSize = Math.max(42, Math.round(item.rawFontSize * item.widthScale * stackScale));
     const outlineWidth = Math.max(1, Math.round(baseOutlineWidth * item.ratio * item.widthScale * stackScale * 10) / 10);
-    const lineHeight = Math.ceil((fontSize * 1.52) + (outlineWidth * 2));
+    const activeFontSize = Math.round(fontSize * 1.16);
+    const wordGap = Math.max(28, Math.round((fontSize * 0.18) + (outlineWidth * 2.2)));
+    const rowGap = Math.max(8, Math.round(fontSize * 0.1));
+    const wrappedRows = estimateCaptionWrappedRows(item.text, activeFontSize, wordGap, safeWidth);
+    const rowHeight = Math.ceil((activeFontSize * 1.12) + (outlineWidth * 2.2));
     return {
       ...item,
       fontSize,
       outlineWidth,
-      wordGap: Math.max(8, Math.round(fontSize * 0.12)),
-      lineHeight,
-      height: lineHeight,
+      wordGap,
+      rowGap,
+      wrappedRows,
+      lineHeight: rowHeight,
+      height: (wrappedRows * rowHeight) + ((wrappedRows - 1) * rowGap),
       gapAfter: Math.max(10, Math.round(fontSize * 0.08)),
     };
   });
@@ -1190,6 +1218,7 @@ function captionWordWall(args, config, timeline) {
       `--caption-outline-width:${metrics.outlineWidth}px`,
       `--caption-shadow:${lineShadow}`,
       `--caption-word-gap:${metrics.wordGap || 8}px`,
+      `--caption-row-gap:${metrics.rowGap || 8}px`,
     ].join(";");
     html.push(htmlElement(
       id,
@@ -1204,7 +1233,7 @@ function captionWordWall(args, config, timeline) {
         `font-size:${metrics.fontSize}px`,
         `line-height:${metrics.lineHeight}px`,
         `text-align:left`,
-        `white-space:nowrap`,
+        `white-space:normal`,
         `color:${upcomingColor}`,
         tokenStyle,
       ].join(";"),
@@ -1329,11 +1358,12 @@ function buildCompositionHtml(config) {
       .massive { font-weight: 400; }
       .rule, .bar, .swatch, .dot, .check-box, .check-mark, .indicator-circle, .paper-card, .arrow { opacity: 0; }
       .caption-word-wall-stack { overflow: visible; will-change: transform; }
-      .word-line { opacity: 0; overflow: visible; text-shadow: var(--caption-shadow); display:flex; align-items:center; justify-content:flex-start; }
+      .word-line { opacity: 0; overflow: visible; text-shadow: var(--caption-shadow); display:flex; flex-wrap:wrap; align-content:center; align-items:center; justify-content:flex-start; row-gap:var(--caption-row-gap); }
       .word-token {
         display:inline-block;
         line-height: 1;
-        margin: 0 var(--caption-word-gap);
+        margin: 0;
+        padding-right: var(--caption-word-gap);
         opacity:1;
         color: var(--caption-upcoming);
         transform-origin:center center;
@@ -1342,6 +1372,7 @@ function buildCompositionHtml(config) {
         text-shadow: var(--caption-shadow);
         will-change: transform, color;
       }
+      .word-token:last-child { padding-right: 0; }
     </style>
   </head>
   <body>
