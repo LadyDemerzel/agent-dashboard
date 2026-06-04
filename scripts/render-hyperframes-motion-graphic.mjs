@@ -1059,8 +1059,8 @@ function captionStyleNumber(style, key, fallback, min, max) {
 }
 
 function captionWallSizeRatio(size) {
-  if (size === "extra_large") return 1.55;
-  if (size === "large") return 1.22;
+  if (size === "extra_large") return 2.25;
+  if (size === "large") return 1.55;
   return 1;
 }
 
@@ -1082,7 +1082,7 @@ function captionTextShadow(style, multiplier = 1) {
 }
 
 function buildCaptionWordWallLayout(lines, style) {
-  const safeWidth = WIDTH - 170;
+  const safeWidth = WIDTH - 70;
   const baseFontSize = captionStyleNumber(style, "fontSize", 90, 36, 180);
   const baseOutlineWidth = captionStyleNumber(style, "outlineWidth", 12, 0, 28);
   const baseFontWeight = Math.round(captionStyleNumber(style, "fontWeight", 900, 100, 1000));
@@ -1096,12 +1096,13 @@ function buildCaptionWordWallLayout(lines, style) {
     }
     const ratio = captionWallSizeRatio(line.size);
     const rawFontSize = baseFontSize * ratio;
-    const widthScale = Math.min(1, safeWidth / Math.max(1, estimateCaptionLineWidth(line.text, rawFontSize)));
+    const widthScale = Math.min(1, safeWidth / Math.max(1, estimateCaptionLineWidth(line.text, rawFontSize * 1.12)));
+    const minWidthScale = line.size === "extra_large" ? 0.47 : line.size === "large" ? 0.52 : 0.52;
     return {
       ...line,
       ratio,
       rawFontSize,
-      widthScale: Math.max(0.52, widthScale),
+      widthScale: Math.max(minWidthScale, widthScale),
       fontWeight: Math.max(baseFontWeight, line.size === "regular" ? baseFontWeight : 900),
     };
   });
@@ -1120,7 +1121,7 @@ function buildCaptionWordWallLayout(lines, style) {
       ...item,
       fontSize,
       outlineWidth,
-      wordGap: Math.max(12, Math.round(fontSize * 0.25)),
+      wordGap: Math.max(8, Math.round(fontSize * 0.12)),
       lineHeight,
       height: lineHeight,
       gapAfter: Math.max(10, Math.round(fontSize * 0.08)),
@@ -1192,9 +1193,9 @@ function captionWordWall(args, config, timeline) {
       id,
       "word-line",
       [
-        `left:85px`,
+        `left:35px`,
         `top:${metrics.y}px`,
-        `width:${WIDTH - 170}px`,
+        `width:${WIDTH - 70}px`,
         `height:${metrics.height}px`,
         `font-family:${fontFamily}, Arial, sans-serif`,
         `font-weight:${metrics.fontWeight}`,
@@ -1224,6 +1225,23 @@ function captionWordWall(args, config, timeline) {
     const activeOutline = Math.round(((metrics.outlineWidth || 8) * 1.12) * 10) / 10;
     const activeFontSize = Math.round((metrics.fontSize || 90) * 1.16);
     const activeShadow = captionTextShadow(captionStyle, (metrics.fontSize || 90) / captionStyleNumber(captionStyle, "fontSize", 90, 36, 180) * 1.08);
+    const beforeWordsByLine = new Map();
+    const afterWordsByLine = new Map();
+    data.words.forEach((entry) => {
+      if (entry.globalIndex === word.globalIndex) return;
+      const bucket = entry.globalIndex < word.globalIndex ? beforeWordsByLine : afterWordsByLine;
+      const ids = bucket.get(entry.lineIndex) || [];
+      ids.push(`#word-${entry.globalIndex}`);
+      bucket.set(entry.lineIndex, ids);
+    });
+    beforeWordsByLine.forEach((ids, lineIndex) => {
+      const lineMetrics = layout[lineIndex] || {};
+      timeline.push(`tl.set("${ids.join(",")}", {color:${JSON.stringify(spokenColor)}, fontSize:"${lineMetrics.fontSize || 90}px", y:0, webkitTextStrokeWidth:"${lineMetrics.outlineWidth || 8}px", textShadow:"var(--caption-shadow)"}, ${word.start.toFixed(3)});`);
+    });
+    afterWordsByLine.forEach((ids, lineIndex) => {
+      const lineMetrics = layout[lineIndex] || {};
+      timeline.push(`tl.set("${ids.join(",")}", {color:${JSON.stringify(upcomingColor)}, fontSize:"${lineMetrics.fontSize || 90}px", y:0, webkitTextStrokeWidth:"${lineMetrics.outlineWidth || 8}px", textShadow:"var(--caption-shadow)"}, ${word.start.toFixed(3)});`);
+    });
     timeline.push(`tl.fromTo("#word-${word.globalIndex}", {color:${JSON.stringify(activeColor)}, opacity:1, fontSize:"${activeFontSize}px", y:${-Math.round((metrics.fontSize || 90) * 0.08)}, webkitTextStrokeWidth:"${activeOutline}px", textShadow:${JSON.stringify(activeShadow)}}, {color:${JSON.stringify(spokenColor)}, fontSize:"${metrics.fontSize || 90}px", y:0, webkitTextStrokeWidth:"${metrics.outlineWidth || 8}px", textShadow:"var(--caption-shadow)", duration:${durationSeconds.toFixed(3)}, ease:"power3.out"}, ${word.start.toFixed(3)});`);
   });
   return htmlElement(
