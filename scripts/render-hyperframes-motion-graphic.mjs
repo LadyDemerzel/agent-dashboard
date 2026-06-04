@@ -16,6 +16,8 @@ const UNIFIED_BACKGROUND_IMAGE_PATH = path.join(MOTION_GRAPHIC_ASSETS_DIR, "proc
 const HYPERFRAMES_CLI = path.join(REPO_ROOT, "node_modules", "hyperframes", "dist", "cli.js");
 const GSAP_SCRIPT = path.join(REPO_ROOT, "node_modules", "gsap", "dist", "gsap.min.js");
 const VIDEO_RENDER_SETTINGS_PATH = path.join(REPO_ROOT, "settings", "short-form-video", "_video-render-settings.json");
+const CAPTION_WORD_WALL_HORIZONTAL_PADDING = Math.round(WIDTH * 0.15);
+const CAPTION_WORD_WALL_TEXT_WIDTH = WIDTH - (CAPTION_WORD_WALL_HORIZONTAL_PADDING * 2);
 
 const PALETTE = {
   offWhite: "#e8e5dd",
@@ -1082,7 +1084,7 @@ function captionTextShadow(style, multiplier = 1) {
 }
 
 function buildCaptionWordWallLayout(lines, style) {
-  const safeWidth = WIDTH - 70;
+  const safeWidth = CAPTION_WORD_WALL_TEXT_WIDTH;
   const baseFontSize = captionStyleNumber(style, "fontSize", 90, 36, 180);
   const baseOutlineWidth = captionStyleNumber(style, "outlineWidth", 12, 0, 28);
   const baseFontWeight = Math.round(captionStyleNumber(style, "fontWeight", 900, 100, 1000));
@@ -1096,8 +1098,8 @@ function buildCaptionWordWallLayout(lines, style) {
     }
     const ratio = captionWallSizeRatio(line.size);
     const rawFontSize = baseFontSize * ratio;
-    const widthScale = Math.min(1, safeWidth / Math.max(1, estimateCaptionLineWidth(line.text, rawFontSize * 1.12)));
-    const minWidthScale = line.size === "extra_large" ? 0.47 : line.size === "large" ? 0.52 : 0.52;
+    const widthScale = Math.min(1, safeWidth / Math.max(1, estimateCaptionLineWidth(line.text, rawFontSize * 1.55)));
+    const minWidthScale = line.size === "extra_large" ? 0.34 : line.size === "large" ? 0.42 : 0.45;
     return {
       ...line,
       ratio,
@@ -1193,15 +1195,15 @@ function captionWordWall(args, config, timeline) {
       id,
       "word-line",
       [
-        `left:35px`,
+        `left:${CAPTION_WORD_WALL_HORIZONTAL_PADDING}px`,
         `top:${metrics.y}px`,
-        `width:${WIDTH - 70}px`,
+        `width:${CAPTION_WORD_WALL_TEXT_WIDTH}px`,
         `height:${metrics.height}px`,
         `font-family:${fontFamily}, Arial, sans-serif`,
         `font-weight:${metrics.fontWeight}`,
         `font-size:${metrics.fontSize}px`,
         `line-height:${metrics.lineHeight}px`,
-        `text-align:center`,
+        `text-align:left`,
         `white-space:nowrap`,
         `color:${upcomingColor}`,
         tokenStyle,
@@ -1327,7 +1329,7 @@ function buildCompositionHtml(config) {
       .massive { font-weight: 400; }
       .rule, .bar, .swatch, .dot, .check-box, .check-mark, .indicator-circle, .paper-card, .arrow { opacity: 0; }
       .caption-word-wall-stack { overflow: visible; will-change: transform; }
-      .word-line { opacity: 0; overflow: visible; text-shadow: var(--caption-shadow); display:flex; align-items:center; justify-content:center; }
+      .word-line { opacity: 0; overflow: visible; text-shadow: var(--caption-shadow); display:flex; align-items:center; justify-content:flex-start; }
       .word-token {
         display:inline-block;
         line-height: 1;
