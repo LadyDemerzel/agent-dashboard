@@ -15,6 +15,7 @@ const MOTION_GRAPHIC_ASSETS_DIR = path.join(SHORT_FORM_VIDEOS_DIR, "_motion-grap
 const UNIFIED_BACKGROUND_IMAGE_PATH = path.join(MOTION_GRAPHIC_ASSETS_DIR, "process-flow-dark-pastel-watercolor-bg.png");
 const HYPERFRAMES_CLI = path.join(REPO_ROOT, "node_modules", "hyperframes", "dist", "cli.js");
 const GSAP_SCRIPT = path.join(REPO_ROOT, "node_modules", "gsap", "dist", "gsap.min.js");
+const VIDEO_RENDER_SETTINGS_PATH = path.join(REPO_ROOT, "settings", "short-form-video", "_video-render-settings.json");
 
 const PALETTE = {
   offWhite: "#e8e5dd",
@@ -89,6 +90,10 @@ function escapeHtml(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function cssString(value, fallback = "") {
+  return String(value ?? fallback).replace(/["\\\n\r]/g, "");
 }
 
 function normalizeRendererKey(value) {
@@ -1021,6 +1026,133 @@ function buildCaptionWordWallTimeline({ lines, alignmentWords, visualStartSecond
   return { lines: resolvedLines, words: entries };
 }
 
+function readDefaultCaptionStyle() {
+  const fallback = {
+    fontFamily: "Arial",
+    fontWeight: 900,
+    fontSize: 90,
+    activeWordColor: "#FFFFFF",
+    spokenWordColor: "#D0D0D0",
+    upcomingWordColor: "#5E5E5E",
+    outlineColor: "#111111",
+    outlineWidth: 12,
+    shadowColor: "#000000",
+    shadowStrength: 8,
+    shadowBlur: 2.2,
+    shadowOffsetX: 0,
+    shadowOffsetY: 3.4,
+  };
+  try {
+    const settings = JSON.parse(fs.readFileSync(VIDEO_RENDER_SETTINGS_PATH, "utf-8"));
+    const styles = Array.isArray(settings.captionStyles) ? settings.captionStyles : [];
+    const selected = styles.find((style) => style?.id === settings.defaultCaptionStyleId) || styles[0];
+    return selected && typeof selected === "object" ? { ...fallback, ...selected } : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function captionStyleNumber(style, key, fallback, min, max) {
+  const parsed = Number(style?.[key]);
+  const value = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
+function captionWallSizeRatio(size) {
+  if (size === "extra_large") return 1.55;
+  if (size === "large") return 1.22;
+  return 1;
+}
+
+function estimateCaptionLineWidth(text, fontSize) {
+  const words = splitDisplayWords(text);
+  const letters = words.join("").length;
+  const tokenGaps = Math.max(0, words.length - 1);
+  return (letters * fontSize * 0.57) + (tokenGaps * fontSize * 0.95);
+}
+
+function captionTextShadow(style, multiplier = 1) {
+  const shadowColor = cssString(style.shadowColor, "#000000");
+  const offsetX = captionStyleNumber(style, "shadowOffsetX", 0, -60, 60) * multiplier;
+  const offsetY = captionStyleNumber(style, "shadowOffsetY", 3.4, -60, 60) * multiplier;
+  const blur = captionStyleNumber(style, "shadowBlur", 2.2, 0, 40) * multiplier;
+  const strength = captionStyleNumber(style, "shadowStrength", 8, 0, 40) * multiplier;
+  const heavyOffsetY = offsetY + Math.max(0, strength * 0.34);
+  return `${offsetX.toFixed(1)}px ${heavyOffsetY.toFixed(1)}px ${blur.toFixed(1)}px ${shadowColor}`;
+}
+
+function buildCaptionWordWallLayout(lines, style) {
+  const safeWidth = WIDTH - 170;
+  const baseFontSize = captionStyleNumber(style, "fontSize", 90, 36, 180);
+  const baseOutlineWidth = captionStyleNumber(style, "outlineWidth", 12, 0, 28);
+  const baseFontWeight = Math.round(captionStyleNumber(style, "fontWeight", 900, 100, 1000));
+  const rawItems = lines.map((line) => {
+    if (line.blank) {
+      return {
+        ...line,
+        height: Math.round(baseFontSize * 0.54),
+        gapAfter: Math.round(baseFontSize * 0.08),
+      };
+    }
+    const ratio = captionWallSizeRatio(line.size);
+    const rawFontSize = baseFontSize * ratio;
+    const widthScale = Math.min(1, safeWidth / Math.max(1, estimateCaptionLineWidth(line.text, rawFontSize)));
+    return {
+      ...line,
+      ratio,
+      rawFontSize,
+      widthScale: Math.max(0.52, widthScale),
+      fontWeight: Math.max(baseFontWeight, line.size === "regular" ? baseFontWeight : 900),
+    };
+  });
+  const measureItems = (stackScale) => rawItems.map((item) => {
+    if (item.blank) {
+      return {
+        ...item,
+        height: Math.round(item.height * stackScale),
+        gapAfter: Math.round(item.gapAfter * stackScale),
+      };
+    }
+    const fontSize = Math.max(42, Math.round(item.rawFontSize * item.widthScale * stackScale));
+    const outlineWidth = Math.max(1, Math.round(baseOutlineWidth * item.ratio * item.widthScale * stackScale * 10) / 10);
+    const lineHeight = Math.ceil((fontSize * 1.52) + (outlineWidth * 2));
+    return {
+      ...item,
+      fontSize,
+      outlineWidth,
+      wordGap: Math.max(12, Math.round(fontSize * 0.25)),
+      lineHeight,
+      height: lineHeight,
+      gapAfter: Math.max(10, Math.round(fontSize * 0.08)),
+    };
+  });
+  const heightThrough = (items, index) => {
+    let height = 0;
+    for (let lineIndex = 0; lineIndex <= index; lineIndex += 1) {
+      const item = items[lineIndex];
+      if (!item) continue;
+      height += item.height;
+      if (lineIndex < index) height += item.gapAfter;
+    }
+    return height;
+  };
+  const initialItems = measureItems(1);
+  const lastVisibleIndex = initialItems.reduce((last, item, index) => item.blank ? last : index, -1);
+  const maxVisibleHeight = lastVisibleIndex >= 0 ? heightThrough(initialItems, lastVisibleIndex) : 0;
+  const stackScale = Math.min(1, (HEIGHT - 360) / Math.max(1, maxVisibleHeight));
+  const measured = measureItems(stackScale);
+  let cursorY = 0;
+  return measured.map((item, index) => {
+    const y = cursorY;
+    cursorY += item.height + item.gapAfter;
+    return {
+      ...item,
+      y,
+      visibleHeight: item.blank ? 0 : heightThrough(measured, index),
+    };
+  });
+}
+
 function captionWordWall(args, config, timeline) {
   const duration = Math.max(0.1, asNumber(config.durationSeconds, 6));
   const visualStartSeconds = Number.isFinite(Number(config.visualStartSeconds)) ? Number(config.visualStartSeconds) : 0;
@@ -1031,26 +1163,75 @@ function captionWordWall(args, config, timeline) {
     durationSeconds: duration,
     allowSyntheticTiming: config.allowSyntheticTiming === true,
   });
-  const nonBlankCount = data.lines.filter((line) => !line.blank).length;
-  let y = Math.round(HEIGHT / 2 - (nonBlankCount * 92) / 2);
+  const captionStyle = readDefaultCaptionStyle();
+  const activeColor = cssString(captionStyle.activeWordColor, "#FFFFFF");
+  const spokenColor = cssString(captionStyle.spokenWordColor, "#D0D0D0");
+  const upcomingColor = cssString(captionStyle.upcomingWordColor, "#5E5E5E");
+  const outlineColor = cssString(captionStyle.outlineColor, "#111111");
+  const fontFamily = cssString(captionStyle.fontFamily, "Arial");
+  const layout = buildCaptionWordWallLayout(data.lines, captionStyle);
   const html = [];
+  const visibleTargets = [];
   data.lines.forEach((line, lineIndex) => {
-    if (line.blank) {
-      y += 54;
-      return;
-    }
-    const size = line.size === "extra_large" ? 148 : line.size === "large" ? 98 : 64;
+    const metrics = layout[lineIndex];
+    if (!metrics || line.blank) return;
     const id = `word-line-${lineIndex}`;
-    html.push(htmlElement(id, "word-line", `left:124px;top:${y}px;width:832px;font-size:${size}px;line-height:${Math.round(size * 1.18)}px;color:${PALETTE.offWhite};`, line.words.map((word) => `<span id="word-${word.globalIndex}" class="word-token">${escapeHtml(word.text)}</span>`).join(" ")));
-    reveal(timeline, `#${id}`, line.lineStart ?? 0, { y: 24, duration: 0.28 });
-    y += Math.round(size * 1.28);
+    const targetY = Math.round((HEIGHT - metrics.visibleHeight) / 2);
+    visibleTargets.push({ at: line.lineStart ?? 0, y: targetY });
+    const lineShadow = captionTextShadow(captionStyle, metrics.fontSize / captionStyleNumber(captionStyle, "fontSize", 90, 36, 180));
+    const tokenStyle = [
+      `--caption-active:${activeColor}`,
+      `--caption-spoken:${spokenColor}`,
+      `--caption-upcoming:${upcomingColor}`,
+      `--caption-outline:${outlineColor}`,
+      `--caption-outline-width:${metrics.outlineWidth}px`,
+      `--caption-shadow:${lineShadow}`,
+      `--caption-word-gap:${metrics.wordGap || 8}px`,
+    ].join(";");
+    html.push(htmlElement(
+      id,
+      "word-line",
+      [
+        `left:85px`,
+        `top:${metrics.y}px`,
+        `width:${WIDTH - 170}px`,
+        `height:${metrics.height}px`,
+        `font-family:${fontFamily}, Arial, sans-serif`,
+        `font-weight:${metrics.fontWeight}`,
+        `font-size:${metrics.fontSize}px`,
+        `line-height:${metrics.lineHeight}px`,
+        `text-align:center`,
+        `white-space:nowrap`,
+        `color:${upcomingColor}`,
+        tokenStyle,
+      ].join(";"),
+      line.words.map((word) => `<span id="word-${word.globalIndex}" class="word-token">${escapeHtml(word.text)}</span>`).join(""),
+    ));
+    reveal(timeline, `#${id}`, line.lineStart ?? 0, { y: Math.round(metrics.fontSize * 0.22), duration: 0.28 });
+  });
+  const firstTarget = visibleTargets[0]?.y ?? Math.round(HEIGHT / 2);
+  timeline.push(`tl.set("#caption-word-wall-stack", {y:${firstTarget}}, 0);`);
+  let lastY = firstTarget;
+  visibleTargets.forEach((target, index) => {
+    if (target.y === lastY) return;
+    const at = Math.max(0, target.at - (index === 0 ? 0 : 0.02));
+    timeline.push(`tl.to("#caption-word-wall-stack", {y:${target.y}, duration:${index === 0 ? "0.001" : "0.42"}, ease:"power3.inOut"}, ${at.toFixed(3)});`);
+    lastY = target.y;
   });
   data.words.forEach((word) => {
     const durationSeconds = Math.max(0.08, word.end - word.start);
-    timeline.push(`tl.to("#word-${word.globalIndex}", {color:${JSON.stringify(PALETTE.offWhite)}, opacity:1, scale:1.16, y:-6, duration:${Math.min(0.18, durationSeconds / 2).toFixed(3)}, ease:"power3.out"}, ${word.start.toFixed(3)});`);
-    timeline.push(`tl.to("#word-${word.globalIndex}", {scale:1, y:0, duration:${Math.min(0.28, durationSeconds).toFixed(3)}, ease:"power3.out"}, ${(word.start + Math.min(0.18, durationSeconds / 2)).toFixed(3)});`);
+    const metrics = layout[word.lineIndex] || {};
+    const activeOutline = Math.round(((metrics.outlineWidth || 8) * 1.12) * 10) / 10;
+    const activeFontSize = Math.round((metrics.fontSize || 90) * 1.16);
+    const activeShadow = captionTextShadow(captionStyle, (metrics.fontSize || 90) / captionStyleNumber(captionStyle, "fontSize", 90, 36, 180) * 1.08);
+    timeline.push(`tl.fromTo("#word-${word.globalIndex}", {color:${JSON.stringify(activeColor)}, opacity:1, fontSize:"${activeFontSize}px", y:${-Math.round((metrics.fontSize || 90) * 0.08)}, webkitTextStrokeWidth:"${activeOutline}px", textShadow:${JSON.stringify(activeShadow)}}, {color:${JSON.stringify(spokenColor)}, fontSize:"${metrics.fontSize || 90}px", y:0, webkitTextStrokeWidth:"${metrics.outlineWidth || 8}px", textShadow:"var(--caption-shadow)", duration:${durationSeconds.toFixed(3)}, ease:"power3.out"}, ${word.start.toFixed(3)});`);
   });
-  return html.join("\n");
+  return htmlElement(
+    "caption-word-wall-stack",
+    "caption-word-wall-stack",
+    `left:0;top:0;width:${WIDTH}px;height:${HEIGHT}px;opacity:1;`,
+    html.join("\n"),
+  );
 }
 
 function buildTemplateHtml(config) {
@@ -1127,8 +1308,20 @@ function buildCompositionHtml(config) {
       .text-block { font-weight: 400; }
       .massive { font-weight: 400; }
       .rule, .bar, .swatch, .dot, .check-box, .check-mark, .indicator-circle, .paper-card, .arrow { opacity: 0; }
-      .word-line { opacity: 0; text-shadow: 0 5px 0 rgba(0,0,0,.72); }
-      .word-token { display:inline-block; opacity:.42; color: rgba(232,229,221,.42); transform-origin:center center; }
+      .caption-word-wall-stack { overflow: visible; will-change: transform; }
+      .word-line { opacity: 0; overflow: visible; text-shadow: var(--caption-shadow); display:flex; align-items:center; justify-content:center; }
+      .word-token {
+        display:inline-block;
+        line-height: 1;
+        margin: 0 var(--caption-word-gap);
+        opacity:1;
+        color: var(--caption-upcoming);
+        transform-origin:center center;
+        -webkit-text-stroke: var(--caption-outline-width) var(--caption-outline);
+        paint-order: stroke fill;
+        text-shadow: var(--caption-shadow);
+        will-change: transform, color;
+      }
     </style>
   </head>
   <body>
