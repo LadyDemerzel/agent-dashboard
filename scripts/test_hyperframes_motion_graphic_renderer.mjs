@@ -79,11 +79,13 @@ try {
       assert.ok(!html.includes("score-row"), "scorecard must not use the newer bordered-row visual style");
     }
     if (config.rendererId === "cause_effect") {
-      assert.ok(html.includes("cause-card"), "cause_effect must preserve the old cause card");
-      assert.ok(html.includes("effect-card"), "cause_effect must preserve the old effect card");
-      assert.ok(html.includes("cause-arrow-path"), "cause_effect must preserve the old downward arrow");
-      assert.ok(html.includes("border-radius:20px"), "cause_effect cards must match the old rounded-card styling");
-      assert.ok(html.includes("width:64px;height:156px"), "cause_effect arrow must match the old compact vertical geometry");
+      assert.ok(html.includes("cause-card"), "cause_effect must render the cause text group");
+      assert.ok(html.includes("effect-card"), "cause_effect must render the effect text group");
+      assert.ok(html.includes("cause-arrow-path"), "cause_effect must render the downward arrow");
+      assert.ok(!html.includes("cause-effect-card"), "cause_effect must not render boxed cause/effect cards");
+      assert.ok(!html.includes("border-radius:20px"), "cause_effect must not show rounded boxes around the cause/effect text");
+      assert.ok(html.includes("width:128px;height:156px"), "cause_effect arrow must use the thicker wide arrow geometry");
+      assert.ok(html.includes("stroke-width=\"16\""), "cause_effect arrow must be substantially thicker than the old compact arrow");
       assert.ok(!html.includes("drawSVG"), "cause_effect must not depend on non-installed GSAP plugins");
     }
     fs.writeFileSync(path.join(templateDir, "index.html"), html, "utf-8");

@@ -900,43 +900,43 @@ function goodBadIndicator(args, timeline) {
 function causeEffect(args, timeline) {
   const cause = asText(args.cause, "Small daily tension");
   const effect = asText(args.effect, "Jaw and neck read tighter");
-  const bodySize = 62;
-  const bodyLineGap = 20;
-  const cardPaddingX = 58;
-  const cardPaddingY = 48;
-  const maxCardW = WIDTH - 96 * 2;
-  const maxTextW = maxCardW - cardPaddingX * 2;
+  const bodySize = 72;
+  const bodyLineGap = 22;
+  const textPaddingX = 20;
+  const textPaddingY = 14;
+  const maxTextW = WIDTH - 160 * 2;
   const arrowHeight = 156;
   const arrowMargin = 84;
+  const arrowWidth = 128;
+  const arrowStrokeWidth = 16;
   const causeRevealAt = timingValue(args, "cause", 0.5);
   const arrowStart = timingValue(args, "arrow", 1.12);
   const effectRevealAt = timingValue(args, "effect", 1.86);
-  const cardLayout = (value) => {
-    const lines = wrap(value, 22, 4);
+  const textLayout = (value) => {
+    const lines = wrap(value, 18, 4);
     const longest = Math.max(1, ...lines.map((line) => line.length));
-    const estimatedTextW = Math.min(maxTextW, Math.max(360, longest * bodySize * 0.54));
-    const width = Math.min(maxCardW, Math.ceil(estimatedTextW + cardPaddingX * 2));
-    const height = cardPaddingY * 2 + bodySize + Math.max(0, lines.length - 1) * (bodySize + bodyLineGap);
+    const width = Math.min(maxTextW, Math.ceil(Math.max(360, longest * bodySize * 0.54) + textPaddingX * 2));
+    const height = (textPaddingY * 2) + bodySize + Math.max(0, lines.length - 1) * (bodySize + bodyLineGap);
     return { lines, width, height };
   };
-  const causeCard = cardLayout(cause);
-  const effectCard = cardLayout(effect);
-  const totalHeight = causeCard.height + arrowMargin + arrowHeight + arrowMargin + effectCard.height;
-  const causeCardY = Math.round((HEIGHT - totalHeight) / 2);
-  const arrowTopY = causeCardY + causeCard.height + arrowMargin;
-  const effectCardY = arrowTopY + arrowHeight + arrowMargin;
+  const causeBlock = textLayout(cause);
+  const effectBlock = textLayout(effect);
+  const totalHeight = causeBlock.height + arrowMargin + arrowHeight + arrowMargin + effectBlock.height;
+  const causeBlockY = Math.round((HEIGHT - totalHeight) / 2);
+  const arrowTopY = causeBlockY + causeBlock.height + arrowMargin;
+  const effectBlockY = arrowTopY + arrowHeight + arrowMargin;
   const centerX = WIDTH / 2;
-  const centerCardX = (card) => Math.round(centerX - card.width / 2);
-  const cardHtml = (id, card, x, y) => htmlElement(
+  const centerBlockX = (block) => Math.round(centerX - block.width / 2);
+  const textHtml = (id, block, x, y) => htmlElement(
     id,
-    "cause-effect-card",
-    `left:${x}px;top:${y}px;width:${card.width}px;height:${card.height}px;border-radius:20px;border:2px solid ${PALETTE.darkStroke};background:${PALETTE.darkPanel};box-shadow:0 12px 13px rgba(0,0,0,.28);padding:${cardPaddingY}px ${cardPaddingX}px;`,
-    `<div style="font-size:${bodySize}px;line-height:${bodySize + bodyLineGap}px;color:${PALETTE.offWhite};">${card.lines.map((line) => `<div>${escapeHtml(line)}</div>`).join("")}</div>`,
+    "cause-effect-text",
+    `left:${x}px;top:${y}px;width:${block.width}px;height:${block.height}px;padding:${textPaddingY}px ${textPaddingX}px;text-align:center;`,
+    `<div style="font-size:${bodySize}px;line-height:${bodySize + bodyLineGap}px;color:${PALETTE.offWhite};text-shadow:0 8px 0 rgba(0,0,0,.62);">${block.lines.map((line) => `<div>${escapeHtml(line)}</div>`).join("")}</div>`,
   );
   const html = [
-    cardHtml("cause-card", causeCard, centerCardX(causeCard), causeCardY),
-    htmlElement("cause-arrow", "arrow", `left:${centerX - 32}px;top:${arrowTopY}px;width:64px;height:${arrowHeight}px;`, `<svg width="64" height="${arrowHeight}" viewBox="0 0 64 ${arrowHeight}"><path id="cause-arrow-path" d="M32 6 V${arrowHeight - 28} M14 ${arrowHeight - 48} L32 ${arrowHeight - 8} L50 ${arrowHeight - 48}" fill="none" stroke="${PALETTE.mutedBlue}" stroke-width="4.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`),
-    cardHtml("effect-card", effectCard, centerCardX(effectCard), effectCardY),
+    textHtml("cause-card", causeBlock, centerBlockX(causeBlock), causeBlockY),
+    htmlElement("cause-arrow", "arrow", `left:${centerX - arrowWidth / 2}px;top:${arrowTopY}px;width:${arrowWidth}px;height:${arrowHeight}px;`, `<svg width="${arrowWidth}" height="${arrowHeight}" viewBox="0 0 ${arrowWidth} ${arrowHeight}"><path id="cause-arrow-path" d="M64 8 V${arrowHeight - 34} M30 ${arrowHeight - 68} L64 ${arrowHeight - 10} L98 ${arrowHeight - 68}" fill="none" stroke="${PALETTE.mutedBlue}" stroke-width="${arrowStrokeWidth}" stroke-linecap="round" stroke-linejoin="round"/></svg>`),
+    textHtml("effect-card", effectBlock, centerBlockX(effectBlock), effectBlockY),
   ];
   reveal(timeline, "#cause-card", causeRevealAt, { y: -22, duration: 0.44 });
   timeline.push(`tl.fromTo("#cause-arrow", {opacity:0}, {opacity:1, duration:.18}, ${arrowStart.toFixed(3)});`);

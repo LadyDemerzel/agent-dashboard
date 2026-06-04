@@ -547,7 +547,7 @@
       "id": "cause_effect",
       "rendererId": "cause_effect",
       "displayName": "Cause / effect",
-      "description": "Vertically stacked cause-effect relationship diagram. Displays a box containing the \"cause\" text and arrow below it pointing downwards towards a box containing the \"effect\" text",
+      "description": "Vertically stacked cause-effect relationship diagram. Displays cause text, a thick downward arrow, and effect text without boxes around the text.",
       "whenToUse": "Use when explaining mechanisms, causal relationships, inputs that drive outcomes, or why one action creates a visible result.",
       "additionalUsageInstructions": "",
       "durationSeconds": 6,
