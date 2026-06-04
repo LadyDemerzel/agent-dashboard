@@ -931,7 +931,7 @@ function causeEffect(args, timeline) {
     id,
     "cause-effect-text",
     `left:${x}px;top:${y}px;width:${block.width}px;height:${block.height}px;padding:${textPaddingY}px ${textPaddingX}px;text-align:center;`,
-    `<div style="font-size:${bodySize}px;line-height:${bodySize + bodyLineGap}px;color:${PALETTE.offWhite};text-shadow:0 8px 0 rgba(0,0,0,.62);">${block.lines.map((line) => `<div>${escapeHtml(line)}</div>`).join("")}</div>`,
+    `<div style="font-size:${bodySize}px;line-height:${bodySize + bodyLineGap}px;font-weight:500;color:${PALETTE.offWhite};text-shadow:0 8px 0 rgba(0,0,0,.62);">${block.lines.map((line) => `<div>${escapeHtml(line)}</div>`).join("")}</div>`,
   );
   const html = [
     textHtml("cause-card", causeBlock, centerBlockX(causeBlock), causeBlockY),
@@ -1061,9 +1061,15 @@ function captionStyleNumber(style, key, fallback, min, max) {
 }
 
 function captionWallSizeRatio(size) {
-  if (size === "extra_large") return 2.25;
-  if (size === "large") return 1.55;
-  return 1;
+  if (size === "extra_large") return 3.1;
+  if (size === "large") return 1.45;
+  return 0.82;
+}
+
+function captionWallFontWeight(size, baseFontWeight) {
+  if (size === "extra_large") return 1000;
+  if (size === "large") return Math.max(850, baseFontWeight);
+  return Math.max(500, Math.min(650, baseFontWeight - 300));
 }
 
 function estimateCaptionLineWidth(text, fontSize) {
@@ -1127,24 +1133,25 @@ function buildCaptionWordWallLayout(lines, style) {
       ratio,
       rawFontSize,
       widthScale,
-      fontWeight: Math.max(baseFontWeight, line.size === "regular" ? baseFontWeight : 900),
+      fontWeight: captionWallFontWeight(line.size, baseFontWeight),
     };
   });
   const measureItems = (stackScale) => rawItems.map((item) => {
+    const uniformLineGap = Math.max(4, Math.round(baseFontSize * 0.025 * stackScale));
     if (item.blank) {
       return {
         ...item,
-        height: Math.round(item.height * stackScale),
-        gapAfter: Math.round(item.gapAfter * stackScale),
+        height: Math.max(4, Math.round(baseFontSize * 0.06 * stackScale)),
+        gapAfter: uniformLineGap,
       };
     }
     const fontSize = Math.max(42, Math.round(item.rawFontSize * item.widthScale * stackScale));
     const outlineWidth = Math.max(1, Math.round(baseOutlineWidth * item.ratio * item.widthScale * stackScale * 10) / 10);
     const activeFontSize = Math.round(fontSize * 1.16);
     const wordGap = Math.max(28, Math.round((fontSize * 0.18) + (outlineWidth * 2.2)));
-    const rowGap = Math.max(8, Math.round(fontSize * 0.1));
+    const rowGap = Math.max(2, Math.round(fontSize * 0.018));
     const wrappedRows = estimateCaptionWrappedRows(item.text, activeFontSize, wordGap, safeWidth);
-    const rowHeight = Math.ceil((activeFontSize * 1.12) + (outlineWidth * 2.2));
+    const rowHeight = Math.ceil((fontSize * 0.9) + (outlineWidth * 1.1));
     return {
       ...item,
       fontSize,
@@ -1154,7 +1161,7 @@ function buildCaptionWordWallLayout(lines, style) {
       wrappedRows,
       lineHeight: rowHeight,
       height: (wrappedRows * rowHeight) + ((wrappedRows - 1) * rowGap),
-      gapAfter: Math.max(10, Math.round(fontSize * 0.08)),
+      gapAfter: uniformLineGap,
     };
   });
   const heightThrough = (items, index) => {
@@ -1358,7 +1365,7 @@ function buildCompositionHtml(config) {
       .massive { font-weight: 400; }
       .rule, .bar, .swatch, .dot, .check-box, .check-mark, .indicator-circle, .paper-card, .arrow { opacity: 0; }
       .caption-word-wall-stack { overflow: visible; will-change: transform; }
-      .word-line { opacity: 0; overflow: visible; text-shadow: var(--caption-shadow); display:flex; flex-wrap:wrap; align-content:center; align-items:center; justify-content:flex-start; row-gap:var(--caption-row-gap); }
+      .word-line { opacity: 0; overflow: visible; text-shadow: var(--caption-shadow); display:flex; flex-wrap:wrap; align-content:flex-start; align-items:flex-start; justify-content:flex-start; row-gap:var(--caption-row-gap); }
       .word-token {
         display:inline-block;
         line-height: 1;

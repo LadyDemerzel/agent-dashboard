@@ -86,7 +86,12 @@ try {
       assert.ok(!html.includes("border-radius:20px"), "cause_effect must not show rounded boxes around the cause/effect text");
       assert.ok(html.includes("width:128px;height:156px"), "cause_effect arrow must use the thicker wide arrow geometry");
       assert.ok(html.includes("stroke-width=\"16\""), "cause_effect arrow must be substantially thicker than the old compact arrow");
+      assert.ok(html.includes("font-weight:500"), "cause_effect text should render one weight notch above regular");
       assert.ok(!html.includes("drawSVG"), "cause_effect must not depend on non-installed GSAP plugins");
+    }
+    if (config.rendererId === "caption_word_wall") {
+      assert.ok(html.includes("align-content:flex-start"), "caption_word_wall wrapped rows should avoid extra centered vertical air");
+      assert.ok(html.includes("--caption-row-gap"), "caption_word_wall should keep row spacing explicit for wrapped lines");
     }
     fs.writeFileSync(path.join(templateDir, "index.html"), html, "utf-8");
     fs.writeFileSync(path.join(templateDir, "hyperframes.json"), JSON.stringify({ entry: "index.html" }), "utf-8");
