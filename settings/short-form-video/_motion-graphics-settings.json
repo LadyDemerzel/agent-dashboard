@@ -21,7 +21,7 @@
           "label": "Main value",
           "type": "text",
           "required": true,
-          "description": "",
+          "description": "The large central statistic, number, percentage, or short quantified phrase that should be the visual's main focus.",
           "defaultValue": "73%"
         },
         {
@@ -29,8 +29,8 @@
           "label": "Title",
           "type": "text",
           "required": true,
-          "description": "",
-          "defaultValue": "people notice the change"
+          "description": "The title for the slide",
+          "defaultValue": ""
         }
       ],
       "deterministicSoundEffects": [
@@ -108,7 +108,7 @@
           "label": "Title",
           "type": "text",
           "required": true,
-          "description": "",
+          "description": "Compact chart headline that tells viewers what the bars compare. Keep it short enough to read before the bars animate.",
           "defaultValue": "What changed most"
         },
         {
@@ -116,7 +116,7 @@
           "label": "Data points",
           "type": "dataSeries",
           "required": true,
-          "description": "",
+          "description": "Use 2-5 <item label=\"Category\" value=\"68\" displayValue=\"68%\" /> entries. The numeric value controls bar height; displayValue is the readable label shown with the bar.",
           "defaultValue": [
             {
               "label": "A",
@@ -191,7 +191,7 @@
           "label": "Title",
           "type": "text",
           "required": true,
-          "description": "",
+          "description": "Compact chart headline that explains what the slices add up to or compare.",
           "defaultValue": "What changed most"
         },
         {
@@ -284,7 +284,7 @@
           "label": "Title",
           "type": "text",
           "required": true,
-          "description": "",
+          "description": "Short headline for the trend. Name the metric or change the line represents.",
           "defaultValue": "Growth trend"
         },
         {
@@ -300,7 +300,7 @@
           "label": "Start label",
           "type": "text",
           "required": false,
-          "description": "",
+          "description": "Small label for the left/start side of the chart, such as Before, Week 1, Baseline, or Start.",
           "defaultValue": "Start"
         },
         {
@@ -308,7 +308,7 @@
           "label": "End label",
           "type": "text",
           "required": false,
-          "description": "",
+          "description": "Small label for the right/final side of the chart, such as After, Now, Week 4, or Result.",
           "defaultValue": "Now"
         },
         {
@@ -408,7 +408,7 @@
           "label": "Before label",
           "type": "text",
           "required": false,
-          "description": "",
+          "description": "Short label for the left/problem state. Use labels like Before, Old way, Mistake, or Without.",
           "defaultValue": "Before"
         },
         {
@@ -416,7 +416,7 @@
           "label": "After label",
           "type": "text",
           "required": false,
-          "description": "",
+          "description": "Short label for the right/improved state. Use labels like After, New way, Fix, or With.",
           "defaultValue": "After"
         },
         {
@@ -424,7 +424,7 @@
           "label": "Before copy",
           "type": "textarea",
           "required": true,
-          "description": "",
+          "description": "Concise text describing the initial, weaker, risky, or less desirable state. Keep it parallel with the after copy.",
           "defaultValue": "Problem state"
         },
         {
@@ -432,7 +432,7 @@
           "label": "After copy",
           "type": "textarea",
           "required": true,
-          "description": "",
+          "description": "Concise text describing the improved, corrected, or more desirable state. Keep it parallel with the before copy.",
           "defaultValue": "Improved state"
         }
       ],
@@ -563,7 +563,7 @@
           "label": "Cause",
           "type": "textarea",
           "required": true,
-          "description": "",
+          "description": "The input, habit, condition, or mechanism that starts the causal chain. Keep it short and concrete.",
           "defaultValue": "Small daily tension"
         },
         {
@@ -571,7 +571,7 @@
           "label": "Effect",
           "type": "textarea",
           "required": true,
-          "description": "",
+          "description": "The outcome or visible consequence produced by the cause. Phrase it as the result viewers should remember.",
           "defaultValue": "Jaw and neck read tighter"
         }
       ],
@@ -924,7 +924,7 @@
           "label": "Title",
           "type": "text",
           "required": true,
-          "description": "",
+          "description": "Short title naming what is being scored or compared across the rows.",
           "defaultValue": "Scorecard"
         },
         {
@@ -1089,7 +1089,7 @@
           "label": "Indicator text",
           "type": "textarea",
           "required": true,
-          "description": "",
+          "description": "Short rule, habit, mistake, warning, or recommendation that the good/bad indicator should emphasize.",
           "defaultValue": "Lift from the lower lid"
         }
       ],

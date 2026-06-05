@@ -98,8 +98,8 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     stylePreset: DEFAULT_STYLE_PRESET,
     defaultArgs: { value: "73%", title: "people notice the change" },
     fields: [
-      { name: "value", label: "Main value", type: "text", required: true, defaultValue: "73%" },
-      { name: "title", label: "Title", type: "text", required: true, defaultValue: "people notice the change" },
+      { name: "value", label: "Main value", type: "text", required: true, defaultValue: "73%", description: "The large central statistic, number, percentage, or short quantified phrase that should be the visual's main focus." },
+      { name: "title", label: "Title", type: "text", required: true, defaultValue: "people notice the change", description: "Short supporting context below the value. Use it to explain what the number means without adding a full sentence." },
     ],
     deterministicSoundEffects: [
       { id: "value-pop", type: "impact", offsetSeconds: 0.72, durationSeconds: 0.32, gainDb: -10, fadeOutMs: 120, description: "Soft accent as the main stat resolves", searchQuery: "premium soft reveal pop impact", frequencyBand: "mid", layerRole: "body", literalness: "stylized", priority: "nice-to-have" },
@@ -119,8 +119,8 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     stylePreset: DEFAULT_STYLE_PRESET,
     defaultArgs: { title: "What changed most", data: [{ label: "A", value: 35, displayValue: "35" }, { label: "B", value: 68, displayValue: "68" }, { label: "C", value: 92, displayValue: "92" }] },
     fields: [
-      { name: "title", label: "Title", type: "text", required: true, defaultValue: "What changed most" },
-      { name: "data", label: "Data points", type: "dataSeries", required: true, defaultValue: [{ label: "A", value: 35, displayValue: "35" }, { label: "B", value: 68, displayValue: "68" }] },
+      { name: "title", label: "Title", type: "text", required: true, defaultValue: "What changed most", description: "Compact chart headline that tells viewers what the bars compare. Keep it short enough to read before the bars animate." },
+      { name: "data", label: "Data points", type: "dataSeries", required: true, defaultValue: [{ label: "A", value: 35, displayValue: "35" }, { label: "B", value: 68, displayValue: "68" }], description: "Use 2-5 <item label=\"Category\" value=\"68\" displayValue=\"68%\" /> entries. The numeric value controls bar height; displayValue is the readable label shown with the bar." },
     ],
     deterministicSoundEffects: [
       { id: "bar-reveal", type: "click", repeat: { source: "data", firstOffsetSeconds: 0.36, stepSeconds: 0.7, maxCount: 5 }, durationSeconds: 0.16, gainDb: -11, fadeOutMs: 90, description: "Sparse tick as each bar animates in", searchQuery: "clean data bar tick pop", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "nice-to-have" },
@@ -146,7 +146,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
       ],
     },
     fields: [
-      { name: "title", label: "Title", type: "text", required: true, defaultValue: "What changed most" },
+      { name: "title", label: "Title", type: "text", required: true, defaultValue: "What changed most", description: "Compact chart headline that explains what the slices add up to or compare." },
       {
         name: "data",
         label: "Pie slices",
@@ -189,7 +189,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
       ],
     },
     fields: [
-      { name: "title", label: "Title", type: "text", required: true, defaultValue: "Growth trend" },
+      { name: "title", label: "Title", type: "text", required: true, defaultValue: "Growth trend", description: "Short headline for the trend. Name the metric or change the line represents." },
       {
         name: "direction",
         label: "Direction",
@@ -198,8 +198,8 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         description: "Exactly one of: increase, decrease. increase animates up/right; decrease animates down/right.",
         defaultValue: "increase",
       },
-      { name: "startLabel", label: "Start label", type: "text", defaultValue: "Start" },
-      { name: "endLabel", label: "End label", type: "text", defaultValue: "Now" },
+      { name: "startLabel", label: "Start label", type: "text", defaultValue: "Start", description: "Small label for the left/start side of the chart, such as Before, Week 1, Baseline, or Start." },
+      { name: "endLabel", label: "End label", type: "text", defaultValue: "Now", description: "Small label for the right/final side of the chart, such as After, Now, Week 4, or Result." },
       { name: "valueLabel", label: "Final value label", type: "text", required: false, defaultValue: "86", description: "Optional. When present, it counts up from 0 and follows the arrowhead." },
       { name: "units", label: "Counter units", type: "text", required: false, defaultValue: "", description: "Optional unit text appended to the animated value, such as homes, leads, dollars, or clients. Example: valueLabel 90 with units homes renders as 90 homes while counting up." },
       {
@@ -233,10 +233,10 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     stylePreset: DEFAULT_STYLE_PRESET,
     defaultArgs: { beforeLabel: "Before", afterLabel: "After", before: "Tension stacked under the chin", after: "Neck long, jawline reads cleaner" },
     fields: [
-      { name: "beforeLabel", label: "Before label", type: "text", defaultValue: "Before" },
-      { name: "afterLabel", label: "After label", type: "text", defaultValue: "After" },
-      { name: "before", label: "Before copy", type: "textarea", required: true, defaultValue: "Problem state" },
-      { name: "after", label: "After copy", type: "textarea", required: true, defaultValue: "Improved state" },
+      { name: "beforeLabel", label: "Before label", type: "text", defaultValue: "Before", description: "Short label for the left/problem state. Use labels like Before, Old way, Mistake, or Without." },
+      { name: "afterLabel", label: "After label", type: "text", defaultValue: "After", description: "Short label for the right/improved state. Use labels like After, New way, Fix, or With." },
+      { name: "before", label: "Before copy", type: "textarea", required: true, defaultValue: "Problem state", description: "Concise text describing the initial, weaker, risky, or less desirable state. Keep it parallel with the after copy." },
+      { name: "after", label: "After copy", type: "textarea", required: true, defaultValue: "Improved state", description: "Concise text describing the improved, corrected, or more desirable state. Keep it parallel with the before copy." },
     ],
     deterministicSoundEffects: [
       { id: "before-reveal", type: "click", offsetSeconds: 1.08, durationSeconds: 0.16, gainDb: -12, fadeOutMs: 80, description: "Subtle tick as the before side appears", searchQuery: "soft comparison tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "optional" },
@@ -282,8 +282,8 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     stylePreset: DEFAULT_STYLE_PRESET,
     defaultArgs: { cause: "Small daily tension", effect: "Jaw and neck read tighter" },
     fields: [
-      { name: "cause", label: "Cause", type: "textarea", required: true, defaultValue: "Small daily tension" },
-      { name: "effect", label: "Effect", type: "textarea", required: true, defaultValue: "Jaw and neck read tighter" },
+      { name: "cause", label: "Cause", type: "textarea", required: true, defaultValue: "Small daily tension", description: "The input, habit, condition, or mechanism that starts the causal chain. Keep it short and concrete." },
+      { name: "effect", label: "Effect", type: "textarea", required: true, defaultValue: "Jaw and neck read tighter", description: "The outcome or visible consequence produced by the cause. Phrase it as the result viewers should remember." },
     ],
     deterministicSoundEffects: [
       { id: "cause-card", type: "click", offsetSeconds: 0.5, durationSeconds: 0.16, gainDb: -12, fadeOutMs: 80, description: "Light tick as the cause card enters", searchQuery: "soft card enter tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "optional" },
@@ -455,7 +455,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
       ],
     },
     fields: [
-      { name: "title", label: "Title", type: "text", required: true, defaultValue: "Scorecard" },
+      { name: "title", label: "Title", type: "text", required: true, defaultValue: "Scorecard", description: "Short title naming what is being scored or compared across the rows." },
       {
         name: "data",
         label: "Score rows",
@@ -491,10 +491,10 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
       finding: "The visible difference came from consistency, not intensity.",
     },
     fields: [
-      { name: "source", label: "Source / journal", type: "text", defaultValue: "Journal of Applied Research" },
-      { name: "year", label: "Year", type: "text", defaultValue: "2024" },
-      { name: "title", label: "Paper title", type: "textarea", required: true, defaultValue: "Daily posture cues changed perceived jawline definition" },
-      { name: "finding", label: "Finding", type: "textarea", required: true, defaultValue: "The visible difference came from consistency, not intensity." },
+      { name: "source", label: "Source / journal", type: "text", defaultValue: "Journal of Applied Research", description: "Short journal, institution, author group, or credible source name shown at the top of the paper card." },
+      { name: "year", label: "Year", type: "text", defaultValue: "2024", description: "Short year or date cue for the study/source. Leave concise so it reads like a citation detail." },
+      { name: "title", label: "Paper title", type: "textarea", required: true, defaultValue: "Daily posture cues changed perceived jawline definition", description: "Compressed paper or study title. Keep it credible and short enough to fit as a formal title block." },
+      { name: "finding", label: "Finding", type: "textarea", required: true, defaultValue: "The visible difference came from consistency, not intensity.", description: "One plain-English takeaway from the source. Prefer a single concise finding over an abstract-style summary." },
     ],
     deterministicSoundEffects: [
       { id: "paper-enter", type: "whoosh", offsetSeconds: 0.28, durationSeconds: 0.38, gainDb: -12, fadeInMs: 20, fadeOutMs: 140, description: "Soft paper-card entrance motion accent", searchQuery: "soft paper card whoosh", frequencyBand: "mid", layerRole: "motion", literalness: "stylized", priority: "nice-to-have" },
@@ -525,7 +525,7 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         description: "Exactly one of: good, bad. Use good for positive/recommended items; use bad for negative/risky items.",
         defaultValue: "good",
       },
-      { name: "text", label: "Indicator text", type: "textarea", required: true, defaultValue: "Lift from the lower lid" },
+      { name: "text", label: "Indicator text", type: "textarea", required: true, defaultValue: "Lift from the lower lid", description: "Short rule, habit, mistake, warning, or recommendation that the good/bad indicator should emphasize." },
     ],
     deterministicSoundEffects: [
       { id: "icon-enter", type: "click", offsetSeconds: 0.78, durationSeconds: 0.16, gainDb: -11, fadeOutMs: 90, description: "Tick as the good/bad icon appears with the indicator text", searchQuery: "soft icon tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "nice-to-have" },
@@ -915,6 +915,12 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
     }
     return fields;
   })();
+  const fallbackFieldsByName = new Map(fallback.fields.map((field) => [field.name, field]));
+  const normalizedFieldsWithDescriptions = normalizedFields.map((field) => {
+    const fallbackField = fallbackFieldsByName.get(field.name);
+    const description = cleanString(field.description, fallbackField?.description || "");
+    return description ? { ...field, description } : field;
+  });
   const isLegacyChecklistTemplate = fallback.id === CHECKLIST_TEMPLATE_ID && candidate.id === "step_checklist";
   return {
     id: isLegacyChecklistTemplate ? fallback.id : cleanString(candidate.id, fallback.id || `motion-graphic-${index + 1}`),
@@ -929,7 +935,7 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
     durationGuidance: rendererId === "checklist" ? fallback.durationGuidance : cleanString(candidate.durationGuidance, fallback.durationGuidance),
     stylePreset: cleanString(candidate.stylePreset, fallback.stylePreset || DEFAULT_STYLE_PRESET),
     defaultArgs: normalizedDefaultArgs,
-    fields: normalizedFields,
+    fields: normalizedFieldsWithDescriptions,
     deterministicSoundEffects: normalizeDeterministicSoundCues(candidate.deterministicSoundEffects, fallback.deterministicSoundEffects || []),
     enabled: candidate.enabled !== false,
   };
