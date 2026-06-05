@@ -918,6 +918,26 @@ const PROMPT_TEMPLATE_EDITOR_TEXT_STYLE: CSSProperties = {
   textIndent: "0",
 };
 
+type PromptTemplatePreviewValues = Record<string, string>;
+
+function getPromptPlaceholderName(placeholder: string) {
+  return placeholder.match(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/)?.[1] || "";
+}
+
+function createPromptTemplatePreviewValues(
+  rows: ReadonlyArray<PromptPlaceholderRow>,
+): PromptTemplatePreviewValues {
+  return rows.reduce<PromptTemplatePreviewValues>((values, row) => {
+    const placeholderName = getPromptPlaceholderName(row.placeholder);
+    const example = row.example.trim() || `Example ${placeholderName || "value"}`;
+    values[row.placeholder] = example;
+    if (placeholderName) {
+      values[placeholderName] = example;
+    }
+    return values;
+  }, {});
+}
+
 function renderPromptTemplateText(value: string) {
   const nodes: ReactNode[] = [];
   let lastIndex = 0;
@@ -936,6 +956,43 @@ function renderPromptTemplateText(value: string) {
       </span>,
     );
     lastIndex = index + match[0].length;
+  }
+
+  if (lastIndex < value.length) {
+    nodes.push(value.slice(lastIndex));
+  }
+
+  return nodes.length > 0 ? nodes : "\u00a0";
+}
+
+function renderPromptTemplatePreviewText(
+  value: string,
+  previewValues: PromptTemplatePreviewValues,
+) {
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+
+  for (const match of value.matchAll(PROMPT_TEMPLATE_PLACEHOLDER_PATTERN)) {
+    const index = match.index ?? 0;
+    if (index > lastIndex) {
+      nodes.push(value.slice(lastIndex, index));
+    }
+    const placeholder = match[0];
+    const placeholderName = getPromptPlaceholderName(placeholder);
+    const renderedValue =
+      previewValues[placeholder] ||
+      previewValues[placeholderName] ||
+      `Example ${placeholderName || "value"}`;
+    nodes.push(
+      <span
+        key={`${placeholder}-${index}`}
+        title={`${placeholder} rendered value`}
+        className="box-decoration-clone rounded bg-primary/15 px-1 py-0.5 text-primary"
+      >
+        {renderedValue}
+      </span>,
+    );
+    lastIndex = index + placeholder.length;
   }
 
   if (lastIndex < value.length) {
@@ -1020,6 +1077,7 @@ function PromptTemplateEditorCard({
   onSave,
   onReset,
   minHeightClassName = "min-h-[280px]",
+  previewValues = {},
   children,
 }: {
   title: string;
@@ -1034,6 +1092,7 @@ function PromptTemplateEditorCard({
   onSave: () => void;
   onReset: () => void;
   minHeightClassName?: string;
+  previewValues?: PromptTemplatePreviewValues;
   children?: ReactNode;
 }) {
   return (
@@ -1063,6 +1122,29 @@ function PromptTemplateEditorCard({
         onBlur={onBlur}
         className={minHeightClassName}
       />
+      <details className="group rounded-md border border-border bg-muted/20">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-medium text-foreground [&::-webkit-details-marker]:hidden">
+          <span>Prompt preview</span>
+          <span
+            aria-hidden="true"
+            className="text-muted-foreground transition-transform group-open:rotate-90"
+          >
+            &gt;
+          </span>
+        </summary>
+        <div className="border-t border-border bg-background">
+          <div
+            className={cn(
+              "max-h-[360px] min-h-[120px] overflow-auto text-foreground",
+              PROMPT_TEMPLATE_EDITOR_TEXT_CLASS,
+            )}
+            style={PROMPT_TEMPLATE_EDITOR_TEXT_STYLE}
+          >
+            {renderPromptTemplatePreviewText(value, previewValues)}
+            {value.endsWith("\n") ? "\u00a0" : null}
+          </div>
+        </div>
+      </details>
       <SectionFeedbackNotice feedback={feedback} />
       {children ? <div className="space-y-1 text-xs text-muted-foreground">{children}</div> : null}
     </Card>
@@ -1443,6 +1525,31 @@ const SOUND_DESIGN_REVISION_PLACEHOLDER_ROWS: PromptPlaceholderRow[] = [
     example: "/Users/ittaisvidler/.../short-form-videos/project-id/sound-design.md",
   },
 ];
+
+const PROMPT_GROUP_PREVIEW_VALUES: Record<
+  "prompt-hooks" | "prompt-research",
+  PromptTemplatePreviewValues
+> = {
+  "prompt-hooks": createPromptTemplatePreviewValues(
+    PROMPT_GROUP_PLACEHOLDER_ROWS["prompt-hooks"],
+  ),
+  "prompt-research": createPromptTemplatePreviewValues(
+    PROMPT_GROUP_PLACEHOLDER_ROWS["prompt-research"],
+  ),
+};
+
+const TEXT_SCRIPT_PROMPT_PREVIEW_VALUES =
+  createPromptTemplatePreviewValues(TEXT_SCRIPT_PLACEHOLDER_ROWS);
+const XML_VISUAL_PLANNING_PROMPT_PREVIEW_VALUES =
+  createPromptTemplatePreviewValues(XML_VISUAL_PLANNING_PLACEHOLDER_ROWS);
+const XML_MOTION_GRAPHIC_TEMPLATE_PROMPT_PREVIEW_VALUES =
+  createPromptTemplatePreviewValues(XML_MOTION_GRAPHIC_TEMPLATE_PLACEHOLDER_ROWS);
+const SOUND_DESIGN_PROMPT_PREVIEW_VALUES =
+  createPromptTemplatePreviewValues(SOUND_DESIGN_PLACEHOLDER_ROWS);
+const SOUND_DESIGN_REVISION_PROMPT_PREVIEW_VALUES =
+  createPromptTemplatePreviewValues(SOUND_DESIGN_REVISION_PLACEHOLDER_ROWS);
+const NANO_BANANA_PROMPT_PREVIEW_VALUES =
+  createPromptTemplatePreviewValues(NANO_BANANA_PLACEHOLDER_ROWS);
 
 const PROMPT_TEMPLATE_IDS = [
   "hooksGenerate",
@@ -4979,6 +5086,11 @@ export function ShortFormVideoSettingsView({
                 onSave={() => void savePromptTemplate(templateId)}
                 onReset={() => resetPromptTemplate(templateId)}
                 minHeightClassName="min-h-[220px]"
+                previewValues={
+                  PROMPT_GROUP_PREVIEW_VALUES[
+                    group.id as "prompt-hooks" | "prompt-research"
+                  ]
+                }
               >
                 {definition?.stage ? (
                   <span className="rounded-full border border-border px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -5132,6 +5244,7 @@ export function ShortFormVideoSettingsView({
               onSave={() => void savePromptTemplate("textScript.generatePrompt")}
               onReset={() => resetPromptTemplate("textScript.generatePrompt")}
               minHeightClassName="min-h-[280px]"
+              previewValues={TEXT_SCRIPT_PROMPT_PREVIEW_VALUES}
             />
 
             <PromptTemplateEditorCard
@@ -5147,6 +5260,7 @@ export function ShortFormVideoSettingsView({
               onSave={() => void savePromptTemplate("textScript.revisePrompt")}
               onReset={() => resetPromptTemplate("textScript.revisePrompt")}
               minHeightClassName="min-h-[320px]"
+              previewValues={TEXT_SCRIPT_PROMPT_PREVIEW_VALUES}
             />
 
             <PromptTemplateEditorCard
@@ -5162,6 +5276,7 @@ export function ShortFormVideoSettingsView({
               onSave={() => void savePromptTemplate("textScript.reviewPrompt")}
               onReset={() => resetPromptTemplate("textScript.reviewPrompt")}
               minHeightClassName="min-h-[300px]"
+              previewValues={TEXT_SCRIPT_PROMPT_PREVIEW_VALUES}
             />
 
             <PromptPlaceholderCard
@@ -5215,6 +5330,7 @@ export function ShortFormVideoSettingsView({
                 )
               }
               minHeightClassName="min-h-[560px]"
+              previewValues={XML_VISUAL_PLANNING_PROMPT_PREVIEW_VALUES}
             >
                 <p>
                   This shared template is rendered first, then injected into
@@ -5264,6 +5380,7 @@ export function ShortFormVideoSettingsView({
                 )
               }
               minHeightClassName="min-h-[360px]"
+              previewValues={XML_MOTION_GRAPHIC_TEMPLATE_PROMPT_PREVIEW_VALUES}
             >
                 <p>
                   This template is rendered once for each enabled motion
@@ -5302,6 +5419,7 @@ export function ShortFormVideoSettingsView({
                 resetPromptTemplate("xmlVisualPlanning.promptTemplate")
               }
               minHeightClassName="min-h-[560px]"
+              previewValues={XML_VISUAL_PLANNING_PROMPT_PREVIEW_VALUES}
             >
                 <p>
                   Runtime placeholders stay in this template because the setting
@@ -5353,6 +5471,7 @@ export function ShortFormVideoSettingsView({
                 )
               }
               minHeightClassName="min-h-[560px]"
+              previewValues={XML_VISUAL_PLANNING_PROMPT_PREVIEW_VALUES}
             >
                 <p>
                   This is the complete top-level prompt used when Plan Visuals
@@ -5460,6 +5579,7 @@ export function ShortFormVideoSettingsView({
                   resetPromptTemplate("soundDesign.promptTemplate")
                 }
                 minHeightClassName="min-h-[320px]"
+                previewValues={SOUND_DESIGN_PROMPT_PREVIEW_VALUES}
               />
               <PromptTemplateEditorCard
                 title="Conditional revision-notes prompt template"
@@ -5498,6 +5618,7 @@ export function ShortFormVideoSettingsView({
                   )
                 }
                 minHeightClassName="min-h-[140px]"
+                previewValues={SOUND_DESIGN_REVISION_PROMPT_PREVIEW_VALUES}
               />
               <PromptPlaceholderCard
                 title="Plan Sound Design prompt placeholders"
@@ -10602,6 +10723,7 @@ export function ShortFormVideoSettingsView({
                     resetPromptTemplate("imageStyles.imageGenerationTemplate")
                   }
                   minHeightClassName="min-h-[480px]"
+                  previewValues={NANO_BANANA_PROMPT_PREVIEW_VALUES}
                 />
 
                 <PromptTemplateEditorCard
@@ -10641,6 +10763,7 @@ export function ShortFormVideoSettingsView({
                     )
                   }
                   minHeightClassName="min-h-[200px]"
+                  previewValues={NANO_BANANA_PROMPT_PREVIEW_VALUES}
                 />
 
                 <PromptTemplateEditorCard
@@ -10680,6 +10803,7 @@ export function ShortFormVideoSettingsView({
                     )
                   }
                   minHeightClassName="min-h-[240px]"
+                  previewValues={NANO_BANANA_PROMPT_PREVIEW_VALUES}
                 />
 
                 <PromptTemplateEditorCard
@@ -10719,6 +10843,7 @@ export function ShortFormVideoSettingsView({
                     )
                   }
                   minHeightClassName="min-h-[200px]"
+                  previewValues={NANO_BANANA_PROMPT_PREVIEW_VALUES}
                 />
 
                 <PromptPlaceholderCard
