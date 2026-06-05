@@ -42,7 +42,7 @@ const templateConfigs = [
   { rendererId: "scorecard", defaultArgs: { title: "Scorecard", data: [{ label: "Clarity", value: 92, displayValue: "92" }] } },
   { rendererId: "research_paper_card", defaultArgs: { source: "Study", title: "Research finding", finding: "One finding changes how this should be read." } },
   { rendererId: "good_bad_indicator", defaultArgs: { indicatorType: "good", text: "Do this" } },
-  { rendererId: "caption_word_wall", allowSyntheticTiming: true, defaultArgs: { lines: [{ text: "most people miss this part" }, { text: "the words become the visual", size: "large" }] } },
+  { rendererId: "caption_word_wall", allowSyntheticTiming: true, defaultArgs: { lines: [{ text: "miss this" }, { text: "words visual", size: "large" }, { text: "extra row", size: "extra_large" }] } },
 ];
 
 try {
@@ -86,12 +86,30 @@ try {
       assert.ok(!html.includes("border-radius:20px"), "cause_effect must not show rounded boxes around the cause/effect text");
       assert.ok(html.includes("width:128px;height:156px"), "cause_effect arrow must use the thicker wide arrow geometry");
       assert.ok(html.includes("stroke-width=\"16\""), "cause_effect arrow must be substantially thicker than the old compact arrow");
+      assert.ok(html.includes("rgba(132,130,121,0.84)"), "cause_effect arrow should use a darker neutral arrow color");
+      assert.ok(!html.includes("stroke=\"rgba(168,191,208,0.78)\""), "cause_effect arrow should not use the old blue hue");
       assert.ok(html.includes("font-weight:500"), "cause_effect text should render one weight notch above regular");
       assert.ok(!html.includes("drawSVG"), "cause_effect must not depend on non-installed GSAP plugins");
     }
     if (config.rendererId === "caption_word_wall") {
       assert.ok(html.includes("align-content:flex-start"), "caption_word_wall wrapped rows should avoid extra centered vertical air");
       assert.ok(html.includes("--caption-row-gap"), "caption_word_wall should keep row spacing explicit for wrapped lines");
+      assert.ok(html.includes("left:108px"), "caption_word_wall should use 10% left padding");
+      assert.ok(html.includes("width:864px"), "caption_word_wall should use an 80% text region");
+      const lineMetrics = [...html.matchAll(/id="word-line-\d+"[\s\S]*?top:(\d+)px[\s\S]*?height:(\d+)px[\s\S]*?font-weight:(\d+)[\s\S]*?font-size:(\d+)px/g)]
+        .map((match) => ({
+          top: Number(match[1]),
+          height: Number(match[2]),
+          weight: Number(match[3]),
+          fontSize: Number(match[4]),
+        }));
+      const lineFontSizes = lineMetrics.map((line) => line.fontSize);
+      assert.ok(lineFontSizes.length >= 3, "caption_word_wall fixture should render regular, large, and extra large lines");
+      assert.ok(lineFontSizes[1] > lineFontSizes[0] * 1.25, "large captions should remain clearly larger than regular captions");
+      assert.ok(lineFontSizes[2] > lineFontSizes[1] * 1.55, "extra large captions should be much larger than large captions");
+      assert.equal(lineMetrics[1].weight, 600, "large captions should use the requested 600 font weight");
+      assert.ok(lineMetrics[2].weight > lineMetrics[1].weight, "extra large captions should remain heavier than large captions");
+      assert.equal(lineMetrics[1].top - (lineMetrics[0].top + lineMetrics[0].height), 16, "caption_word_wall should keep a 16px gap between configured lines");
     }
     fs.writeFileSync(path.join(templateDir, "index.html"), html, "utf-8");
     fs.writeFileSync(path.join(templateDir, "hyperframes.json"), JSON.stringify({ entry: "index.html" }), "utf-8");

@@ -430,6 +430,9 @@ export async function PATCH(request: NextRequest) {
     if (typeof candidate.planningGuidelinesTemplate !== "string" || !candidate.planningGuidelinesTemplate.trim()) {
       return NextResponse.json({ success: false, error: "Visual-planning guidelines prompt template must be a non-empty string" }, { status: 400 });
     }
+    if (typeof candidate.motionGraphicTemplatePromptTemplate !== "string" || !candidate.motionGraphicTemplatePromptTemplate.trim()) {
+      return NextResponse.json({ success: false, error: "Individual motion-graphic template prompt must be a non-empty string" }, { status: 400 });
+    }
     if (typeof candidate.promptTemplate !== "string" || !candidate.promptTemplate.trim()) {
       return NextResponse.json({ success: false, error: "Visual-planning full generate prompt template must be a non-empty string" }, { status: 400 });
     }

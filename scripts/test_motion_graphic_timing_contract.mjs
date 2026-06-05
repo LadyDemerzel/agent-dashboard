@@ -55,8 +55,8 @@ try {
 
   assert.match(motionGraphicsSource, /Controllable animation-in timing items:/, "Scribe motion graphic prompt injection must list controllable timing items per template.");
   assert.match(motionGraphicsSource, /good_bad_indicator:\s*\["text"\]/, "Good/bad indicator must expose only indicator text as Scribe-controllable timing.");
-  assert.match(motionGraphicsSource, /<timing item=\\"title\\" at=\\"12\.20\\"/, "Scribe prompt injection must document named absolute timing controls.");
-  assert.match(motionGraphicsSource, /Items that visually belong together[\s\S]*animate together/, "Scribe prompt injection must explain grouped item timing.");
+  assert.match(visualPlanningSource, /<timing item=\\"title\\" at=\\"12\.20\\"/, "Editable XML visual planning guidance must document named absolute timing controls.");
+  assert.match(visualPlanningSource, /Items that visually belong together[\s\S]*animate together/, "Editable XML visual planning guidance must explain grouped item timing.");
   assert.match(visualPlanningSource, /absolute video timestamps/, "XML visual planning prompt must document absolute item timing attributes.");
   assert.match(visualPlanningSource, /not seconds relative to the visual start/, "XML visual planning prompt must reject local timing for new motion graphics.");
   assert.doesNotMatch(visualPlanningSource, /<timing item=\\"(?:icon|rule)\\"/, "Good/bad indicator example must not suggest separate icon/rule timing.");

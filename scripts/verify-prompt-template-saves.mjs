@@ -194,6 +194,11 @@ async function main() {
     "single XML visual-planning guidelines prompt partial save",
   );
   assertEqual(
+    data.xmlVisualPlanning.motionGraphicTemplatePromptTemplate,
+    initial.xmlVisualPlanning.motionGraphicTemplatePromptTemplate,
+    "adjacent XML visual-planning individual motion-graphic template prompt after guidelines partial save",
+  );
+  assertEqual(
     data.xmlVisualPlanning.promptTemplate,
     initial.xmlVisualPlanning.promptTemplate,
     "adjacent XML visual-planning generate prompt after guidelines partial save",
@@ -222,9 +227,42 @@ async function main() {
     "XML visual-planning guidelines prompt after generate partial save",
   );
   assertEqual(
+    data.xmlVisualPlanning.motionGraphicTemplatePromptTemplate,
+    initial.xmlVisualPlanning.motionGraphicTemplatePromptTemplate,
+    "adjacent XML visual-planning individual motion-graphic template prompt after generate partial save",
+  );
+  assertEqual(
     data.xmlVisualPlanning.revisePromptTemplate,
     initial.xmlVisualPlanning.revisePromptTemplate,
     "adjacent XML visual-planning revise prompt after generate partial save",
+  );
+  data = await patchSettings({
+    xmlVisualPlanning: {
+      motionGraphicTemplatePromptTemplate: appendSentinel(
+        initial.xmlVisualPlanning.motionGraphicTemplatePromptTemplate,
+        partialXmlSentinel,
+      ),
+    },
+  });
+  assertContains(
+    data.xmlVisualPlanning.motionGraphicTemplatePromptTemplate,
+    partialXmlSentinel,
+    "single XML visual-planning individual motion-graphic template prompt partial save",
+  );
+  assertContains(
+    data.xmlVisualPlanning.planningGuidelinesTemplate,
+    partialXmlSentinel,
+    "XML visual-planning guidelines prompt after individual motion-graphic template partial save",
+  );
+  assertContains(
+    data.xmlVisualPlanning.promptTemplate,
+    partialXmlSentinel,
+    "XML visual-planning generate prompt after individual motion-graphic template partial save",
+  );
+  assertEqual(
+    data.xmlVisualPlanning.revisePromptTemplate,
+    initial.xmlVisualPlanning.revisePromptTemplate,
+    "adjacent XML visual-planning revise prompt after individual motion-graphic template partial save",
   );
   data = await patchSettings({
     xmlVisualPlanning: {
@@ -340,11 +378,13 @@ async function main() {
     xmlVisualPlanning: {
       ...initial.xmlVisualPlanning,
       planningGuidelinesTemplate: appendSentinel(initial.xmlVisualPlanning.planningGuidelinesTemplate, xmlSentinel),
+      motionGraphicTemplatePromptTemplate: appendSentinel(initial.xmlVisualPlanning.motionGraphicTemplatePromptTemplate, xmlSentinel),
       promptTemplate: appendSentinel(initial.xmlVisualPlanning.promptTemplate, xmlSentinel),
       revisePromptTemplate: appendSentinel(initial.xmlVisualPlanning.revisePromptTemplate, xmlSentinel),
     },
   });
   assertContains(data.xmlVisualPlanning.planningGuidelinesTemplate, xmlSentinel, "XML visual-planning guidelines prompt");
+  assertContains(data.xmlVisualPlanning.motionGraphicTemplatePromptTemplate, xmlSentinel, "XML visual-planning individual motion-graphic template prompt");
   assertContains(data.xmlVisualPlanning.promptTemplate, xmlSentinel, "XML visual-planning prompt");
   assertContains(data.xmlVisualPlanning.revisePromptTemplate, xmlSentinel, "XML visual-planning revise prompt");
   data = await patchSettings({
@@ -369,21 +409,25 @@ async function main() {
   assertNotContains(data.xmlVisualPlanning.promptTemplate, "Plan Visuals regeneration rule:", "XML visual-planning prompt after GET");
   assertNotContains(data.xmlVisualPlanning.revisePromptTemplate, "Plan Visuals regeneration rule:", "XML visual-planning revise prompt after GET");
   const exactXmlGuidelinesPrompt = `${sentinelBase}: exact XML guidelines prompt`;
+  const exactXmlMotionGraphicTemplatePrompt = `${sentinelBase}: exact XML individual motion graphic template prompt`;
   const exactXmlPrompt = `${sentinelBase}: exact XML generate prompt`;
   const exactXmlRevisePrompt = `${sentinelBase}: exact XML revise prompt`;
   data = await patchSettings({
     xmlVisualPlanning: {
       ...data.xmlVisualPlanning,
       planningGuidelinesTemplate: exactXmlGuidelinesPrompt,
+      motionGraphicTemplatePromptTemplate: exactXmlMotionGraphicTemplatePrompt,
       promptTemplate: exactXmlPrompt,
       revisePromptTemplate: exactXmlRevisePrompt,
     },
   });
   assertEqual(data.xmlVisualPlanning.planningGuidelinesTemplate, exactXmlGuidelinesPrompt, "XML visual-planning guidelines prompt exact save");
+  assertEqual(data.xmlVisualPlanning.motionGraphicTemplatePromptTemplate, exactXmlMotionGraphicTemplatePrompt, "XML visual-planning individual motion-graphic template prompt exact save");
   assertEqual(data.xmlVisualPlanning.promptTemplate, exactXmlPrompt, "XML visual-planning prompt exact save");
   assertEqual(data.xmlVisualPlanning.revisePromptTemplate, exactXmlRevisePrompt, "XML visual-planning revise prompt exact save");
   data = await getSettings();
   assertEqual(data.xmlVisualPlanning.planningGuidelinesTemplate, exactXmlGuidelinesPrompt, "XML visual-planning guidelines prompt exact save after GET");
+  assertEqual(data.xmlVisualPlanning.motionGraphicTemplatePromptTemplate, exactXmlMotionGraphicTemplatePrompt, "XML visual-planning individual motion-graphic template prompt exact save after GET");
   assertEqual(data.xmlVisualPlanning.promptTemplate, exactXmlPrompt, "XML visual-planning prompt exact save after GET");
   assertEqual(data.xmlVisualPlanning.revisePromptTemplate, exactXmlRevisePrompt, "XML visual-planning revise prompt exact save after GET");
 

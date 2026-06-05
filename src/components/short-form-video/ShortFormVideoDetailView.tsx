@@ -232,6 +232,20 @@ interface VisualXmlDraft {
   motionGraphicXml: string;
 }
 
+interface SavedVisualXmlState {
+  number: number;
+  visualId?: string;
+  imageId?: string;
+  prompt?: string;
+  basedOn?: string;
+  motionGraphicXml?: string;
+}
+
+interface SaveVisualXmlResponse {
+  changed?: boolean;
+  visual?: SavedVisualXmlState;
+}
+
 interface SessionLogEntry {
   id: string;
   timestamp?: string;
@@ -3842,7 +3856,7 @@ function SceneImagesSection({
     setError(null);
 
     try {
-      await parseJsonResponse(
+      const payload = await parseJsonResponse<SaveVisualXmlResponse>(
         await fetch(
           `/api/short-form-videos/${project.id}/workflow/scene-images`,
           {
@@ -3861,6 +3875,16 @@ function SceneImagesSection({
         ),
         "Failed to save visual XML changes",
       );
+      const savedVisual = payload.data?.visual;
+      setVisualXmlDraftByScene((prev) => ({
+        ...prev,
+        [scene.id]: {
+          prompt: savedVisual?.prompt ?? draft.prompt,
+          basedOn: savedVisual?.basedOn ?? draft.basedOn,
+          motionGraphicXml:
+            savedVisual?.motionGraphicXml ?? draft.motionGraphicXml.trim(),
+        },
+      }));
       await refresh();
     } catch (err) {
       setError(

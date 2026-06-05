@@ -8,6 +8,10 @@ const motionGraphicsSource = fs.readFileSync(
   path.join(repoRoot, "src/lib/short-form-motion-graphics.ts"),
   "utf-8",
 );
+const visualPlanningSource = fs.readFileSync(
+  path.join(repoRoot, "src/lib/short-form-xml-visual-planning-settings.ts"),
+  "utf-8",
+);
 const stageWorkerSource = fs.readFileSync(
   path.join(repoRoot, "scripts/short-form-stage-worker.mjs"),
   "utf-8",
@@ -56,8 +60,8 @@ assert.match(
 );
 assert.match(
   motionGraphicsSource,
-  /formatAdditionalUsageInstructions\(template\.additionalUsageInstructions\)/,
-  "Blank additional usage instructions must be omitted from Scribe prompt injection.",
+  /additionalUsageInstructions:\s*template\.additionalUsageInstructions\s*\|\|\s*"None\."/,
+  "Blank additional usage instructions must render through the editable individual-template prompt with a neutral fallback.",
 );
 assert.match(
   motionGraphicsSource,
@@ -65,9 +69,9 @@ assert.match(
   "Line growth chart template must expose optional counter units to Scribe.",
 );
 assert.match(
-  motionGraphicsSource,
+  visualPlanningSource,
   /<arg name=\\"units\\">homes<\/arg>/,
-  "Scribe prompt injection must document line_growth_chart counter units.",
+  "Editable XML visual-planning guidance must document line_growth_chart counter units.",
 );
 assert.match(
   motionGraphicsSource,

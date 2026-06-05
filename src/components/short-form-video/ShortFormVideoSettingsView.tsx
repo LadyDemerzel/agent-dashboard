@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type CSSProperties,
   type ReactNode,
   useCallback,
   useEffect,
@@ -28,6 +29,7 @@ import { CaptionStylePreview } from "@/components/short-form-video/CaptionStyleP
 import { useShortFormSettingsShellNav } from "@/components/short-form-video/ShortFormVideoSettingsShell";
 import { apiDataFetcher, realtimeSWRConfig } from "@/lib/swr-fetcher";
 import { usePageScrollRestoration } from "@/components/usePageScrollRestoration";
+import { cn } from "@/lib/utils";
 import { type ShortFormSettingsRouteSection } from "@/lib/short-form-video-navigation";
 import {
   cloneCaptionAnimationConfig,
@@ -63,6 +65,7 @@ type TextScriptPromptTemplateKey =
 
 type XmlVisualPlanningPromptTemplateKey =
   | "planningGuidelinesTemplate"
+  | "motionGraphicTemplatePromptTemplate"
   | "promptTemplate"
   | "revisePromptTemplate";
 
@@ -268,52 +271,6 @@ const NANO_BANANA_PLACEHOLDER_ROWS = [
 
 const XML_VISUAL_PLANNING_PLACEHOLDER_ROWS = [
   {
-    placeholder: "{{planningVisualsGuidelines}}",
-    explanation:
-      "The fully rendered Guidelines for planning visuals template. Use this in the Full generate and Full revise prompt templates wherever the shared visual-planning instructions should appear.",
-    example:
-      "# Context for the short-form video\nInputs you must read before planning visuals...",
-  },
-  {
-    placeholder: "{{xmlScriptPath}}",
-    explanation:
-      "Absolute path where Scribe must write the final xml-script.md artifact.",
-    example:
-      "/Users/ittaisvidler/tenxsolo/business/content/deliverables/short-form-videos/abc123/xml-script.md",
-  },
-  {
-    placeholder: "{{topic}}",
-    explanation:
-      "The short-form project topic, with the same fallback the runtime uses when the topic is empty.",
-    example: "Facial posture reset",
-  },
-  {
-    placeholder: "{{selectedHook}}",
-    explanation:
-      "The approved hook text only. Put any surrounding label text directly in the editable prompt template.",
-    example: "Your jawline changed because your posture changed",
-  },
-  {
-    placeholder: "{{revisionNotes}}",
-    explanation:
-      "The raw rerun revision notes text. This is only populated in the Full revise prompt template because that template is selected only when notes exist.",
-    example: "Make backward image reuse more explicit and reduce camera motion.",
-  },
-  {
-    placeholder: "{{textScriptPath}}",
-    explanation:
-      "Absolute path to the approved plain narration text script for this project.",
-    example:
-      "/Users/ittaisvidler/tenxsolo/business/content/deliverables/short-form-videos/abc123/script.md",
-  },
-  {
-    placeholder: "{{transcriptPath}}",
-    explanation:
-      "Absolute path to the exact narration transcript file used for TTS and alignment reuse.",
-    example:
-      "/Users/ittaisvidler/tenxsolo/business/content/deliverables/short-form-videos/abc123/output/xml-script-work/voice/text-script.txt",
-  },
-  {
     placeholder: "{{alignmentPath}}",
     explanation:
       "Absolute path to the forced-alignment word-timestamps JSON produced earlier in the XML pipeline.",
@@ -328,24 +285,143 @@ const XML_VISUAL_PLANNING_PLACEHOLDER_ROWS = [
       "/Users/ittaisvidler/tenxsolo/business/content/deliverables/short-form-videos/abc123/output/xml-script-work/captions/caption-sections.json",
   },
   {
+    placeholder: "{{existingXmlBodySummary}}",
+    explanation:
+      "A generated state summary of the existing xml-script.md body, used only if this placeholder is present in the template.",
+    example:
+      "The current artifact body is 18742 characters; your saved body must differ from it.",
+  },
+  {
+    placeholder: "{{motionGraphicTemplates}}",
+    explanation:
+      "Renders the Individual motion graphic template prompt once for each enabled motion graphic template, then concatenates the rendered blocks with a newline.",
+    example:
+      "- bar_chart (Bar chart)\n  rendererId: bar_chart\n  Duration seconds: 7...",
+  },
+  {
+    placeholder: "{{planningVisualsGuidelines}}",
+    explanation:
+      "The fully rendered Guidelines for planning visuals template. Use this in the Full generate and Full revise prompt templates wherever the shared visual-planning instructions should appear.",
+    example:
+      "# Context for the short-form video\nInputs you must read before planning visuals...",
+  },
+  {
     placeholder: "{{projectDir}}",
     explanation: "Absolute project root for the short-form deliverable.",
     example:
       "/Users/ittaisvidler/tenxsolo/business/content/deliverables/short-form-videos/abc123",
   },
   {
-    placeholder: "{{motionGraphicTemplates}}",
+    placeholder: "{{revisionNotes}}",
     explanation:
-      "The complete allowed deterministic motion-graphic template reference generated from the editable Generate Visuals motion-graphics settings. Keep this placeholder where Scribe should see the available template IDs, fields, defaults, and usage guidance.",
-    example:
-      "Allowed deterministic motion graphic templates: bar_chart, scorecard, timeline...",
+      "The raw rerun revision notes text. This is only populated in the Full revise prompt template because that template is selected only when notes exist.",
+    example: "Make backward image reuse more explicit and reduce camera motion.",
   },
   {
-    placeholder: "{{existingXmlBodySummary}}",
+    placeholder: "{{selectedHook}}",
     explanation:
-      "A generated state summary of the existing xml-script.md body, used only if this placeholder is present in the template.",
+      "The approved hook text only. Put any surrounding label text directly in the editable prompt template.",
+    example: "Your jawline changed because your posture changed",
+  },
+  {
+    placeholder: "{{textScriptPath}}",
+    explanation:
+      "Absolute path to the approved plain narration text script for this project.",
     example:
-      "The current artifact body is 18742 characters; your saved body must differ from it.",
+      "/Users/ittaisvidler/tenxsolo/business/content/deliverables/short-form-videos/abc123/script.md",
+  },
+  {
+    placeholder: "{{topic}}",
+    explanation:
+      "The short-form project topic, with the same fallback the runtime uses when the topic is empty.",
+    example: "Facial posture reset",
+  },
+  {
+    placeholder: "{{transcriptPath}}",
+    explanation:
+      "Absolute path to the exact narration transcript file used for TTS and alignment reuse.",
+    example:
+      "/Users/ittaisvidler/tenxsolo/business/content/deliverables/short-form-videos/abc123/output/xml-script-work/voice/text-script.txt",
+  },
+  {
+    placeholder: "{{xmlScriptPath}}",
+    explanation:
+      "Absolute path where Scribe must write the final xml-script.md artifact.",
+    example:
+      "/Users/ittaisvidler/tenxsolo/business/content/deliverables/short-form-videos/abc123/xml-script.md",
+  },
+] as const;
+
+const XML_MOTION_GRAPHIC_TEMPLATE_PLACEHOLDER_ROWS = [
+  {
+    placeholder: "{{additionalUsageInstructions}}",
+    explanation:
+      "The template-specific additionalUsageInstructions field from the motion-graphics settings, or None. when it is empty.",
+    example:
+      "Only communicate one thing/idea/point in the indicator text.",
+  },
+  {
+    placeholder: "{{animationTimingControls}}",
+    explanation:
+      "The renderer-specific core items Scribe may time with animateIn or <timing> entries.",
+    example: "title; each data <item> / bar group",
+  },
+  {
+    placeholder: "{{description}}",
+    explanation: "The motion-graphics template description from settings.",
+    example:
+      "Minimal animated bar chart over the unified dark pastel watercolor background with subdued labels and pastel accents.",
+  },
+  {
+    placeholder: "{{deterministicSoundEffectsJson}}",
+    explanation:
+      "Pretty-printed JSON array of the template's built-in deterministic sound effect metadata from settings.",
+    example: "[\n  { \"id\": \"bar-reveal\", \"type\": \"click\", ... }\n]",
+  },
+  {
+    placeholder: "{{displayName}}",
+    explanation: "The human-readable motion-graphics template display name.",
+    example: "Bar chart",
+  },
+  {
+    placeholder: "{{durationGuidance}}",
+    explanation: "The template-specific duration guidance from settings.",
+    example:
+      "Around 2 seconds for the setup plus about 1 second per bar.",
+  },
+  {
+    placeholder: "{{durationSeconds}}",
+    explanation: "The configured default duration for this motion-graphics template.",
+    example: "7",
+  },
+  {
+    placeholder: "{{fieldsJson}}",
+    explanation:
+      "Pretty-printed JSON array of the template's configurable fields from settings, including names, labels, types, descriptions, required flags, and defaults.",
+    example:
+      "[\n  { \"name\": \"title\", \"label\": \"Title\", \"type\": \"text\", ... }\n]",
+  },
+  {
+    placeholder: "{{rendererId}}",
+    explanation: "The deterministic renderer ID used by the dashboard for this template.",
+    example: "bar_chart",
+  },
+  {
+    placeholder: "{{stylePreset}}",
+    explanation: "The template's default style preset.",
+    example: "dark-pastel-watercolor",
+  },
+  {
+    placeholder: "{{templateId}}",
+    explanation:
+      "The XML templateId Scribe should put on the inline <motionGraphic> element.",
+    example: "bar_chart",
+  },
+  {
+    placeholder: "{{whenToUse}}",
+    explanation: "The motion-graphics template's when-to-use guidance from settings.",
+    example:
+      "Use when comparing 2-5 categories, routines, channels, habits, or measured outcomes.",
   },
 ] as const;
 
@@ -541,6 +617,7 @@ interface TextScriptSettings {
 
 interface XmlVisualPlanningSettings {
   planningGuidelinesTemplate: string;
+  motionGraphicTemplatePromptTemplate: string;
   promptTemplate: string;
   revisePromptTemplate: string;
 }
@@ -829,6 +906,107 @@ interface SectionFeedback {
   message: string | null;
 }
 
+const PROMPT_TEMPLATE_PLACEHOLDER_PATTERN = /\{\{\s*[a-zA-Z0-9_]+\s*\}\}/g;
+const PROMPT_TEMPLATE_EDITOR_TEXT_CLASS =
+  "box-border w-full px-6 py-2 text-sm leading-5 whitespace-pre-wrap break-words [overflow-wrap:break-word] [tab-size:2]";
+const PROMPT_TEMPLATE_EDITOR_TEXT_STYLE: CSSProperties = {
+  fontFamily:
+    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+  fontFeatureSettings: '"liga" 0, "calt" 0',
+  fontVariantLigatures: "none",
+  letterSpacing: "0",
+  textIndent: "0",
+};
+
+function renderPromptTemplateText(value: string) {
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+
+  for (const match of value.matchAll(PROMPT_TEMPLATE_PLACEHOLDER_PATTERN)) {
+    const index = match.index ?? 0;
+    if (index > lastIndex) {
+      nodes.push(value.slice(lastIndex, index));
+    }
+    nodes.push(
+      <span
+        key={`${match[0]}-${index}`}
+        className="rounded bg-primary/20 text-transparent"
+      >
+        {match[0]}
+      </span>,
+    );
+    lastIndex = index + match[0].length;
+  }
+
+  if (lastIndex < value.length) {
+    nodes.push(value.slice(lastIndex));
+  }
+
+  return nodes.length > 0 ? nodes : "\u00a0";
+}
+
+function PromptTemplateTextarea({
+  value,
+  onChange,
+  onFocus,
+  onBlur,
+  className,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onFocus?: () => void;
+  onBlur?: () => void;
+  className?: string;
+}) {
+  const highlightRef = useRef<HTMLDivElement | null>(null);
+
+  const syncHighlightScroll = useCallback(
+    (textarea: HTMLTextAreaElement) => {
+      if (!highlightRef.current) return;
+      highlightRef.current.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`;
+    },
+    [],
+  );
+
+  return (
+    <div className="relative rounded-md border border-input bg-background">
+      <div
+        aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-md text-transparent",
+            PROMPT_TEMPLATE_EDITOR_TEXT_CLASS,
+            className,
+          )}
+          style={PROMPT_TEMPLATE_EDITOR_TEXT_STYLE}
+        >
+        <div
+          ref={highlightRef}
+          className="min-h-full w-full"
+        >
+          {renderPromptTemplateText(value)}
+          {value.endsWith("\n") ? "\u00a0" : null}
+        </div>
+      </div>
+      <Textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        onScroll={(event) => syncHighlightScroll(event.currentTarget)}
+        spellCheck={false}
+        autoCorrect="off"
+        autoCapitalize="off"
+        className={cn(
+          "relative z-10 border-transparent bg-transparent text-foreground shadow-none selection:bg-primary/30 focus-visible:ring-1 focus-visible:ring-ring",
+          PROMPT_TEMPLATE_EDITOR_TEXT_CLASS,
+          className,
+        )}
+        style={PROMPT_TEMPLATE_EDITOR_TEXT_STYLE}
+      />
+    </div>
+  );
+}
+
 function PromptTemplateEditorCard({
   title,
   description,
@@ -878,12 +1056,12 @@ function PromptTemplateEditorCard({
           onReset={onReset}
         />
       </div>
-      <Textarea
+      <PromptTemplateTextarea
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={onChange}
         onFocus={onFocus}
         onBlur={onBlur}
-        className={`${minHeightClassName} font-mono text-xs`}
+        className={minHeightClassName}
       />
       <SectionFeedbackNotice feedback={feedback} />
       {children ? <div className="space-y-1 text-xs text-muted-foreground">{children}</div> : null}
@@ -1275,6 +1453,7 @@ const PROMPT_TEMPLATE_IDS = [
   "textScript.revisePrompt",
   "textScript.reviewPrompt",
   "xmlVisualPlanning.planningGuidelinesTemplate",
+  "xmlVisualPlanning.motionGraphicTemplatePromptTemplate",
   "xmlVisualPlanning.promptTemplate",
   "xmlVisualPlanning.revisePromptTemplate",
   "soundDesign.promptTemplate",
@@ -5050,6 +5229,55 @@ export function ShortFormVideoSettingsView({
             </PromptTemplateEditorCard>
 
             <PromptTemplateEditorCard
+              title="Individual motion graphic template prompt"
+              value={xmlVisualPlanningSettings.motionGraphicTemplatePromptTemplate}
+              onChange={(value) =>
+                setPromptTemplateValue(
+                  "xmlVisualPlanning.motionGraphicTemplatePromptTemplate",
+                  value,
+                )
+              }
+              {...getPromptTemplateFocusHandlers(
+                "xmlVisualPlanning.motionGraphicTemplatePromptTemplate",
+              )}
+              feedback={
+                promptTemplateFeedback[
+                  "xmlVisualPlanning.motionGraphicTemplatePromptTemplate"
+                ]
+              }
+              dirty={isPromptTemplateDirty(
+                "xmlVisualPlanning.motionGraphicTemplatePromptTemplate",
+              )}
+              saving={
+                promptTemplateFeedback[
+                  "xmlVisualPlanning.motionGraphicTemplatePromptTemplate"
+                ].saving
+              }
+              onSave={() =>
+                void savePromptTemplate(
+                  "xmlVisualPlanning.motionGraphicTemplatePromptTemplate",
+                )
+              }
+              onReset={() =>
+                resetPromptTemplate(
+                  "xmlVisualPlanning.motionGraphicTemplatePromptTemplate",
+                )
+              }
+              minHeightClassName="min-h-[360px]"
+            >
+                <p>
+                  This template is rendered once for each enabled motion
+                  graphic template, and <code>{"{{motionGraphicTemplates}}"}</code>{" "}
+                  is only the newline-joined result of those rendered blocks.
+                </p>
+                <p>
+                  Put labels, formatting, and usage wording here if you want to
+                  change how each motion graphic appears in Scribe’s available
+                  templates list.
+                </p>
+            </PromptTemplateEditorCard>
+
+            <PromptTemplateEditorCard
               title="Full generate prompt template"
               value={xmlVisualPlanningSettings.promptTemplate}
               onChange={(value) =>
@@ -5143,6 +5371,11 @@ export function ShortFormVideoSettingsView({
               title="Generate/revise prompt placeholders"
               rows={XML_VISUAL_PLANNING_PLACEHOLDER_ROWS}
             />
+
+            <PromptPlaceholderCard
+              title="Individual motion graphic template placeholders"
+              rows={XML_MOTION_GRAPHIC_TEMPLATE_PLACEHOLDER_ROWS}
+            />
           </div>
         ) : null}
       </div>
@@ -5204,107 +5437,68 @@ export function ShortFormVideoSettingsView({
           <div className="space-y-6">
             {activeSection === "plan-sound-design" ? (
             <div className="space-y-6">
-              <Card className="space-y-2 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Full Plan Sound Design prompt template
-                  </label>
-                  <SectionActions
-                    dirty={isPromptTemplateDirty(
-                      "soundDesign.promptTemplate",
-                    )}
-                    saving={
-                      promptTemplateFeedback["soundDesign.promptTemplate"]
-                        .saving
-                    }
-                    saveLabel="Save template"
-                    resetLabel="Restore"
-                    onSave={() =>
-                      void savePromptTemplate("soundDesign.promptTemplate")
-                    }
-                    onReset={() =>
-                      resetPromptTemplate("soundDesign.promptTemplate")
-                    }
-                  />
-                </div>
-                <Textarea
-                  value={soundDesignSettings.promptTemplate}
-                  onChange={(event) =>
-                    setPromptTemplateValue(
-                      "soundDesign.promptTemplate",
-                      event.target.value,
-                    )
-                  }
-                  className="min-h-[320px] font-mono text-xs"
-                />
-                <SectionFeedbackNotice
-                  feedback={
-                    promptTemplateFeedback["soundDesign.promptTemplate"]
-                  }
-                />
-                <div className="space-y-1 text-xs text-muted-foreground">
-                  <p>
-                    This is the actual full top-level prompt template the
-                    dashboard sends to Scribe when Plan Sound Design runs.
-                    Keep labels, file-writing rules, and placeholder usage
-                    inline here when you want them enforced every time.
-                  </p>
-                </div>
-              </Card>
-              <Card className="space-y-4 p-4">
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Conditional revision-notes prompt template
-                    </label>
-                    <SectionActions
-                      dirty={isPromptTemplateDirty(
-                        "soundDesign.revisionPromptTemplate",
-                      )}
-                      saving={
-                        promptTemplateFeedback[
-                          "soundDesign.revisionPromptTemplate"
-                        ].saving
-                      }
-                      saveLabel="Save template"
-                      resetLabel="Restore"
-                      onSave={() =>
-                        void savePromptTemplate(
-                          "soundDesign.revisionPromptTemplate",
-                        )
-                      }
-                      onReset={() =>
-                        resetPromptTemplate(
-                          "soundDesign.revisionPromptTemplate",
-                        )
-                      }
-                    />
-                  </div>
-                  <Textarea
-                    value={soundDesignSettings.revisionPromptTemplate}
-                    onChange={(event) =>
-                      setPromptTemplateValue(
-                        "soundDesign.revisionPromptTemplate",
-                        event.target.value,
-                      )
-                    }
-                    className="min-h-[140px] font-mono text-xs"
-                  />
-                  <SectionFeedbackNotice
-                    feedback={
-                      promptTemplateFeedback[
-                        "soundDesign.revisionPromptTemplate"
-                      ]
-                    }
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    This template renders only when rerun revision notes exist.
-                    The rendered result becomes{" "}
-                    <code>{"{{revisionNotesBlock}}"}</code> inside the full
-                    prompt above.
-                  </p>
-                </div>
-              </Card>
+              <PromptTemplateEditorCard
+                title="Full Plan Sound Design prompt template"
+                description="The actual full top-level prompt template the dashboard sends to Scribe when Plan Sound Design runs. Keep labels, file-writing rules, and placeholder usage inline here when you want them enforced every time."
+                value={soundDesignSettings.promptTemplate}
+                onChange={(value) =>
+                  setPromptTemplateValue(
+                    "soundDesign.promptTemplate",
+                    value,
+                  )
+                }
+                {...getPromptTemplateFocusHandlers("soundDesign.promptTemplate")}
+                feedback={promptTemplateFeedback["soundDesign.promptTemplate"]}
+                dirty={isPromptTemplateDirty("soundDesign.promptTemplate")}
+                saving={
+                  promptTemplateFeedback["soundDesign.promptTemplate"].saving
+                }
+                onSave={() =>
+                  void savePromptTemplate("soundDesign.promptTemplate")
+                }
+                onReset={() =>
+                  resetPromptTemplate("soundDesign.promptTemplate")
+                }
+                minHeightClassName="min-h-[320px]"
+              />
+              <PromptTemplateEditorCard
+                title="Conditional revision-notes prompt template"
+                description="Renders only when rerun revision notes exist. The rendered result becomes {{revisionNotesBlock}} inside the full prompt above."
+                value={soundDesignSettings.revisionPromptTemplate}
+                onChange={(value) =>
+                  setPromptTemplateValue(
+                    "soundDesign.revisionPromptTemplate",
+                    value,
+                  )
+                }
+                {...getPromptTemplateFocusHandlers(
+                  "soundDesign.revisionPromptTemplate",
+                )}
+                feedback={
+                  promptTemplateFeedback[
+                    "soundDesign.revisionPromptTemplate"
+                  ]
+                }
+                dirty={isPromptTemplateDirty(
+                  "soundDesign.revisionPromptTemplate",
+                )}
+                saving={
+                  promptTemplateFeedback[
+                    "soundDesign.revisionPromptTemplate"
+                  ].saving
+                }
+                onSave={() =>
+                  void savePromptTemplate(
+                    "soundDesign.revisionPromptTemplate",
+                  )
+                }
+                onReset={() =>
+                  resetPromptTemplate(
+                    "soundDesign.revisionPromptTemplate",
+                  )
+                }
+                minHeightClassName="min-h-[140px]"
+              />
               <PromptPlaceholderCard
                 title="Plan Sound Design prompt placeholders"
                 rows={SOUND_DESIGN_PLACEHOLDER_ROWS}

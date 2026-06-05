@@ -575,19 +575,6 @@ function cleanOptionalString(value: unknown, fallback = "") {
   return typeof value === "string" ? value.trim() : fallback;
 }
 
-function formatAdditionalUsageInstructions(value: string) {
-  const lines = value
-    .trim()
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length === 0) return null;
-  return [
-    "  Additional usage instructions:",
-    ...lines.map((line) => `    - ${line}`),
-  ].join("\n");
-}
-
 function autoTimelineStepLabel(index: number) {
   return String(index + 1).padStart(2, "0");
 }
@@ -1004,60 +991,49 @@ export function saveShortFormMotionGraphicsSettings(patch: Partial<ShortFormMoti
   return next;
 }
 
-export function renderMotionGraphicTemplatePromptInjection(settings = getShortFormMotionGraphicsSettings()) {
-  const enabledTemplates = settings.templates.filter((template) => template.enabled);
-  if (enabledTemplates.length === 0) {
-    return "Motion graphics are currently disabled in settings. Use image assets only.";
-  }
+export const DEFAULT_MOTION_GRAPHIC_TEMPLATE_PROMPT_TEMPLATE = [
+  "- {{templateId}} ({{displayName}})",
+  "  rendererId: {{rendererId}}",
+  "  Duration seconds: {{durationSeconds}}",
+  "  Duration guidance: {{durationGuidance}}",
+  "  stylePreset default: {{stylePreset}}",
+  "  Description: {{description}}",
+  "  When to use: {{whenToUse}}",
+  "  Additional usage instructions: {{additionalUsageInstructions}}",
+  "  Controllable animation-in timing items: {{animationTimingControls}}.",
+  "  Built-in internal SFX JSON:",
+  "{{deterministicSoundEffectsJson}}",
+  "  Configurable fields JSON:",
+  "{{fieldsJson}}",
+].join("\n");
 
-  const templateBlocks = enabledTemplates.map((template) => {
-    const fields = template.fields.map((field) => {
-      const defaultText = field.defaultValue === undefined ? "" : ` Default: ${JSON.stringify(field.defaultValue)}`;
-      const requiredText = field.required ? " Required." : "";
-      return `  - ${field.name} (${field.type}): ${field.label}.${requiredText}${field.description ? ` ${field.description}` : ""}${defaultText}`;
-    }).join("\n");
-    return [
-      `- ${template.id} (${template.displayName})`,
-      `  rendererId: ${template.rendererId}`,
-      `  Duration guidance: ${template.durationGuidance}`,
-      `  stylePreset default: ${template.stylePreset}`,
-      `  Description: ${template.description}`,
-      `  When to use: ${template.whenToUse}`,
-      formatAdditionalUsageInstructions(template.additionalUsageInstructions),
-      `  Controllable animation-in timing items: ${(ANIMATION_TIMING_CONTROLS[template.rendererId] || []).join("; ") || "none"}.`,
-      template.deterministicSoundEffects?.length
-        ? `  Built-in internal SFX: ${template.deterministicSoundEffects.map((cue) => cue.description).join("; ")}. These are generated deterministically by the renderer/resolver, not by Scribe.`
-        : "  Built-in internal SFX: none.",
-      `  Configurable fields:`,
-      fields,
-    ].filter((line): line is string => typeof line === "string").join("\n");
-  }).join("\n\n");
+function renderMotionGraphicTemplatePromptBlock(template: MotionGraphicTemplateConfig, promptTemplate: string) {
+  const values: Record<string, string> = {
+    additionalUsageInstructions: template.additionalUsageInstructions || "None.",
+    animationTimingControls: (ANIMATION_TIMING_CONTROLS[template.rendererId] || []).join("; ") || "none",
+    description: template.description,
+    deterministicSoundEffectsJson: JSON.stringify(template.deterministicSoundEffects || [], null, 2),
+    displayName: template.displayName,
+    durationGuidance: template.durationGuidance,
+    durationSeconds: String(template.durationSeconds),
+    fieldsJson: JSON.stringify(template.fields, null, 2),
+    rendererId: template.rendererId,
+    stylePreset: template.stylePreset,
+    templateId: template.id,
+    whenToUse: template.whenToUse,
+  };
 
-  return [
-    "Allowed deterministic motion_graphic templates:",
-    templateBlocks,
-    "",
-    "XML usage for motion graphics:",
-    "- Do not define motion graphics inside <assets>. Motion graphics are not reusable assets.",
-    "- Define each motion graphic directly inside exactly one <timeline><visual> as <visual visualType=\"motion_graphic\" start=\"...\" end=\"...\"><motionGraphic templateId=\"one_of_the_ids_above\">...</motionGraphic></visual>.",
-    "- Each motion_graphic visual must have one inline <motionGraphic>; do not reference a separate motionGraphicId asset.",
-    "- Configure only the listed fields. Do not write arbitrary HyperFrames, JavaScript, CSS, HTML, or renderer code.",
-    "- Use <arg name=\"fieldName\">value</arg> for text/number fields.",
-    "- To time a core item's animation-in, add animateIn=\"absolute_video_timestamp_seconds\" on the relevant <item>, <step>, or <line>, or add <timing item=\"title\" at=\"12.20\" /> / <timing item=\"cause\" at=\"12.35\" /> inside the inline motionGraphic. Timings are absolute timestamps in the full video timeline, not seconds relative to the motion graphic visual start.",
-    "- Keep every motion graphic item timing within that visual's start/end bounds.",
-    "- Only time the controllable animation-in items listed for that template. Items that visually belong together, such as a bar plus its value and label or a pie slice plus its legend row, animate together from the same timing.",
-    "- For dataSeries fields, use repeated <item label=\"...\" value=\"...\" displayValue=\"...\" /> inside the motionGraphic.",
-    "- For pie_chart, use the same dataSeries shape as bar_chart; values should be positive parts of a whole and displayValue should usually be a short percent label.",
-    "- For line_growth_chart, set <arg name=\"direction\">increase</arg> for an up/right trend or <arg name=\"direction\">decrease</arg> for a down/right trend. Optional dataSeries points should match that direction. To show units on the moving counter, set <arg name=\"valueLabel\">90</arg> and optional <arg name=\"units\">homes</arg>; the renderer appends the unit text throughout the count-up.",
-    "- For stringList fields, use repeated <step>...</step> inside the motionGraphic.",
-    "- For timelineSteps fields, use repeated <step label=\"custom left label\">step text</step>. Omit label only when you want the renderer to auto-label steps as 01, 02, 03.",
-    "- For ranked_podium and checklist split sequences, set <arg name=\"startIndex\">2</arg> to render earlier items already present and animate from item 2. Set <arg name=\"futureItemsMode\">hidden</arg> or <arg name=\"futureItemsMode\">blurred</arg> to control unrevealed later items.",
-    "- For indicatorType fields, use exactly <arg name=\"indicatorType\">good</arg> or <arg name=\"indicatorType\">bad</arg>. The good-bad indicator template has only one text field: <arg name=\"text\">...</arg>.",
-    "- For captionWordWallLines fields, use ordered <line size=\"regular\">spoken words for this row</line>, <line size=\"large\">intermediate emphasis row</line>, <line size=\"extra_large\">largest emphasis row</line>, and <blankLine /> entries inside the motionGraphic. Size is whole-line only; do not size individual inline words. Legacy <line emphasized=\"true\"> still maps to size=\"extra_large\".",
-    "- For caption_word_wall specifically, line text must be exact spoken narration words in order from that visual's time range. The renderer uses forced-alignment word timestamps directly and does not use the deterministic caption JSON max-word chunks.",
-    "- Motion graphics are normal visuals; they must not include captions/subtitles/transcript text unless a configured field explicitly represents ordinary on-slide text. The caption_word_wall template is the only full-screen caption replacement and should not be paired with ordinary bottom captions.",
-    "- For image visuals, put an inline <image> inside the first <visual> that uses that image, then use imageId only on later visuals that reuse an earlier image visual. For motion_graphic visuals, do not set imageId or motionGraphicId; put the inline <motionGraphic> element inside the visual instead.",
-  ].join("\n");
+  return promptTemplate.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "");
+}
+
+export function renderMotionGraphicTemplatePromptInjection(
+  settings = getShortFormMotionGraphicsSettings(),
+  templatePromptTemplate = DEFAULT_MOTION_GRAPHIC_TEMPLATE_PROMPT_TEMPLATE,
+) {
+  return settings.templates
+    .filter((template) => template.enabled)
+    .map((template) => renderMotionGraphicTemplatePromptBlock(template, templatePromptTemplate))
+    .join("\n");
 }
 
 export const MOTION_GRAPHICS_SETTINGS_PATH = SETTINGS_PATH;

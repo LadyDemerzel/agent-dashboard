@@ -274,7 +274,11 @@ export function saveXmlVisualEdits(scriptPath: string, input: SaveXmlVisualEdits
   const inlineImage = getFirstDirectChild(visual, "image");
   const inlineImageId = inlineImage ? (inlineImage.attributes.id?.trim() || visualId) : undefined;
   const imageId = inlineImageId || visual.attributes.imageId?.trim();
-  if (input.imageId?.trim() && imageId !== input.imageId.trim() && visual.attributes.imageId?.trim() !== input.imageId.trim()) {
+  const motionGraphicOnlyEdit =
+    input.motionGraphicXml !== undefined &&
+    input.prompt === undefined &&
+    input.basedOn === undefined;
+  if (!motionGraphicOnlyEdit && input.imageId?.trim() && imageId !== input.imageId.trim() && visual.attributes.imageId?.trim() !== input.imageId.trim()) {
     throw new Error(`Visual ${visualId || input.sceneIndex} points to image ${imageId || "(none)"}, not requested image ${input.imageId}.`);
   }
 
@@ -330,5 +334,9 @@ export function saveXmlVisualEdits(scriptPath: string, input: SaveXmlVisualEdits
     fs.writeFileSync(scriptPath, `${prefix}${body.trim()}\n`, "utf-8");
   }
 
-  return { changed };
+  const savedVisual = readXmlVisualEditStates(scriptPath).find(
+    (state) => state.number === input.sceneIndex,
+  );
+
+  return { changed, visual: savedVisual };
 }

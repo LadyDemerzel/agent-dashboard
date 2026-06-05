@@ -16,7 +16,7 @@ const UNIFIED_BACKGROUND_IMAGE_PATH = path.join(MOTION_GRAPHIC_ASSETS_DIR, "proc
 const HYPERFRAMES_CLI = path.join(REPO_ROOT, "node_modules", "hyperframes", "dist", "cli.js");
 const GSAP_SCRIPT = path.join(REPO_ROOT, "node_modules", "gsap", "dist", "gsap.min.js");
 const VIDEO_RENDER_SETTINGS_PATH = path.join(REPO_ROOT, "settings", "short-form-video", "_video-render-settings.json");
-const CAPTION_WORD_WALL_HORIZONTAL_PADDING = Math.round(WIDTH * 0.15);
+const CAPTION_WORD_WALL_HORIZONTAL_PADDING = Math.round(WIDTH * 0.10);
 const CAPTION_WORD_WALL_TEXT_WIDTH = WIDTH - (CAPTION_WORD_WALL_HORIZONTAL_PADDING * 2);
 
 const PALETTE = {
@@ -25,6 +25,7 @@ const PALETTE = {
   dimGrey: "rgba(232,229,221,0.48)",
   faintGrey: "rgba(232,229,221,0.26)",
   mutedBlue: "rgba(168,191,208,0.78)",
+  darkNeutralArrow: "rgba(132,130,121,0.84)",
   mutedSage: "rgba(184,200,173,0.78)",
   mutedPeach: "rgba(214,174,143,0.8)",
   mutedLavender: "rgba(185,173,209,0.78)",
@@ -935,7 +936,7 @@ function causeEffect(args, timeline) {
   );
   const html = [
     textHtml("cause-card", causeBlock, centerBlockX(causeBlock), causeBlockY),
-    htmlElement("cause-arrow", "arrow", `left:${centerX - arrowWidth / 2}px;top:${arrowTopY}px;width:${arrowWidth}px;height:${arrowHeight}px;`, `<svg width="${arrowWidth}" height="${arrowHeight}" viewBox="0 0 ${arrowWidth} ${arrowHeight}"><path id="cause-arrow-path" d="M64 8 V${arrowHeight - 34} M30 ${arrowHeight - 68} L64 ${arrowHeight - 10} L98 ${arrowHeight - 68}" fill="none" stroke="${PALETTE.mutedBlue}" stroke-width="${arrowStrokeWidth}" stroke-linecap="round" stroke-linejoin="round"/></svg>`),
+    htmlElement("cause-arrow", "arrow", `left:${centerX - arrowWidth / 2}px;top:${arrowTopY}px;width:${arrowWidth}px;height:${arrowHeight}px;`, `<svg width="${arrowWidth}" height="${arrowHeight}" viewBox="0 0 ${arrowWidth} ${arrowHeight}"><path id="cause-arrow-path" d="M64 8 V${arrowHeight - 34} M30 ${arrowHeight - 68} L64 ${arrowHeight - 10} L98 ${arrowHeight - 68}" fill="none" stroke="${PALETTE.darkNeutralArrow}" stroke-width="${arrowStrokeWidth}" stroke-linecap="round" stroke-linejoin="round"/></svg>`),
     textHtml("effect-card", effectBlock, centerBlockX(effectBlock), effectBlockY),
   ];
   reveal(timeline, "#cause-card", causeRevealAt, { y: -22, duration: 0.44 });
@@ -1062,13 +1063,13 @@ function captionStyleNumber(style, key, fallback, min, max) {
 
 function captionWallSizeRatio(size) {
   if (size === "extra_large") return 3.1;
-  if (size === "large") return 1.45;
+  if (size === "large") return 1.18;
   return 0.82;
 }
 
 function captionWallFontWeight(size, baseFontWeight) {
   if (size === "extra_large") return 1000;
-  if (size === "large") return Math.max(850, baseFontWeight);
+  if (size === "large") return 600;
   return Math.max(500, Math.min(650, baseFontWeight - 300));
 }
 
@@ -1137,11 +1138,11 @@ function buildCaptionWordWallLayout(lines, style) {
     };
   });
   const measureItems = (stackScale) => rawItems.map((item) => {
-    const uniformLineGap = Math.max(4, Math.round(baseFontSize * 0.025 * stackScale));
+    const uniformLineGap = Math.max(16, Math.round(baseFontSize * 0.03 * stackScale));
     if (item.blank) {
       return {
         ...item,
-        height: Math.max(4, Math.round(baseFontSize * 0.06 * stackScale)),
+        height: 0,
         gapAfter: uniformLineGap,
       };
     }
