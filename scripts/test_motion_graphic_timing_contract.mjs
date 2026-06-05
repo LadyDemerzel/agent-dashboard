@@ -8,6 +8,7 @@ import path from "node:path";
 const repoRoot = process.cwd();
 const stageWorker = path.join(repoRoot, "scripts", "short-form-stage-worker.mjs");
 const motionGraphicsSource = fs.readFileSync(path.join(repoRoot, "src/lib/short-form-motion-graphics.ts"), "utf-8");
+const timingControlsSource = fs.readFileSync(path.join(repoRoot, "src/lib/short-form-motion-graphic-timing-controls.ts"), "utf-8");
 const visualPlanningSource = fs.readFileSync(path.join(repoRoot, "src/lib/short-form-xml-visual-planning-settings.ts"), "utf-8");
 const soundDesignSource = fs.readFileSync(path.join(repoRoot, "src/lib/short-form-sound-design.ts"), "utf-8");
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "motion-graphic-timing-contract-"));
@@ -54,7 +55,10 @@ try {
   assert.equal(parsedMotionGraphics[0].args.lines[0].animateIn, 0.7);
 
   assert.match(motionGraphicsSource, /Controllable animation-in timing items:/, "Scribe motion graphic prompt injection must list controllable timing items per template.");
-  assert.match(motionGraphicsSource, /good_bad_indicator:\s*\["text"\]/, "Good/bad indicator must expose only indicator text as Scribe-controllable timing.");
+  assert.match(motionGraphicsSource, /formatMotionGraphicAnimationTimingControls\(template\.rendererId\)/, "Scribe motion graphic prompt injection must render timing controls through the shared formatter.");
+  assert.match(timingControlsSource, /bar_chart:[\s\S]*each data <item> \/ bar group/, "Bar chart timing controls must describe repeated data items instead of rendering the raw data key.");
+  assert.doesNotMatch(timingControlsSource, /bar_chart:[\s\S]*controls:\s*\["title",\s*"data"\]/, "Bar chart timing controls must not regress to raw title/data labels.");
+  assert.match(timingControlsSource, /good_bad_indicator:[\s\S]*fields:\s*\["text"\][\s\S]*controls:\s*\["text"\]/, "Good/bad indicator must expose only indicator text as Scribe-controllable timing.");
   assert.match(visualPlanningSource, /<timing item=\\"title\\" at=\\"12\.20\\"/, "Editable XML visual planning guidance must document named absolute timing controls.");
   assert.match(visualPlanningSource, /Items that visually belong together[\s\S]*animate together/, "Editable XML visual planning guidance must explain grouped item timing.");
   assert.match(visualPlanningSource, /absolute video timestamps/, "XML visual planning prompt must document absolute item timing attributes.");

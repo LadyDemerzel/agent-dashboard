@@ -47,6 +47,10 @@ import {
   getShortFormVisualGenerationModelOptions,
   type ShortFormVisualGenerationModelId,
 } from "@/lib/short-form-visual-generation";
+import {
+  formatMotionGraphicAnimationTimingControls,
+  getMotionGraphicTimingControlConfig,
+} from "@/lib/short-form-motion-graphic-timing-controls";
 
 type PromptKey =
   | "hooksGenerate"
@@ -654,28 +658,6 @@ interface MotionGraphicsSettings {
   templates: MotionGraphicTemplateConfig[];
 }
 
-const MOTION_GRAPHIC_TIMING_CONTROLS: Record<
-  string,
-  { fields: string[]; extraTargets?: string[] }
-> = {
-  stat_reveal: { fields: ["value", "title"] },
-  bar_chart: { fields: ["title", "data"] },
-  pie_chart: { fields: ["title", "data"] },
-  line_growth_chart: { fields: ["title"], extraTargets: ["Chart line"] },
-  comparison_before_after: { fields: ["before", "after"] },
-  timeline: { fields: ["steps"] },
-  cause_effect: { fields: ["cause", "effect"], extraTargets: ["Arrow"] },
-  caption_word_wall: {
-    fields: ["lines"],
-    extraTargets: ["Forced-alignment word highlight"],
-  },
-  ranked_podium: { fields: ["items"] },
-  checklist: { fields: ["items"] },
-  scorecard: { fields: ["title", "data"] },
-  research_paper_card: { fields: ["source", "title", "finding"] },
-  good_bad_indicator: { fields: ["text"] },
-};
-
 function resolveMotionTemplateSelection({
   templates,
   currentId,
@@ -982,10 +964,7 @@ function stringifyPromptPreviewJson(value: unknown) {
 }
 
 function getMotionTemplateTimingControls(rendererId: string) {
-  const config = MOTION_GRAPHIC_TIMING_CONTROLS[rendererId];
-  const fields = config?.fields || [];
-  const extraTargets = config?.extraTargets || [];
-  return [...fields, ...extraTargets].join("; ") || "none";
+  return formatMotionGraphicAnimationTimingControls(rendererId);
 }
 
 function getPromptPreviewMotionTemplate(
@@ -3757,10 +3736,7 @@ function MotionConfigurableFieldsSummary({
 }: {
   template: MotionGraphicTemplateConfig;
 }) {
-  const timingConfig = MOTION_GRAPHIC_TIMING_CONTROLS[template.rendererId] || {
-    fields: [],
-    extraTargets: [],
-  };
+  const timingConfig = getMotionGraphicTimingControlConfig(template.rendererId);
   const timingFields = new Set(timingConfig.fields);
   const extraTargets = timingConfig.extraTargets || [];
   return (

@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { formatMotionGraphicAnimationTimingControls } from "@/lib/short-form-motion-graphic-timing-controls";
 import { getVersionedShortFormSettingsPath } from "@/lib/short-form-settings-paths";
 
 export const SUPPORTED_MOTION_GRAPHIC_RENDERERS = [
@@ -84,22 +85,6 @@ const LEGACY_RENDERER_ALIASES: Record<string, MotionGraphicRendererId> = {
   instruction: "good_bad_indicator",
   step_checklist: "checklist",
 };
-const ANIMATION_TIMING_CONTROLS: Record<MotionGraphicRendererId, string[]> = {
-  stat_reveal: ["value", "title"],
-  bar_chart: ["title", "each data <item> / bar group"],
-  pie_chart: ["title", "each data <item> / slice group"],
-  line_growth_chart: ["title", "chart"],
-  comparison_before_after: ["before", "after"],
-  timeline: ["each <step> timeline item"],
-  cause_effect: ["cause", "arrow", "effect"],
-  caption_word_wall: ["each <line> caption row; word highlighting still follows forced alignment"],
-  ranked_podium: ["each <step> / ranked item"],
-  checklist: ["each <step> / checklist item"],
-  scorecard: ["title", "each data <item> / score row"],
-  research_paper_card: ["paper", "source", "title", "finding"],
-  good_bad_indicator: ["text"],
-};
-
 const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
   {
     id: "stat_reveal",
@@ -1010,7 +995,7 @@ export const DEFAULT_MOTION_GRAPHIC_TEMPLATE_PROMPT_TEMPLATE = [
 function renderMotionGraphicTemplatePromptBlock(template: MotionGraphicTemplateConfig, promptTemplate: string) {
   const values: Record<string, string> = {
     additionalUsageInstructions: template.additionalUsageInstructions || "None.",
-    animationTimingControls: (ANIMATION_TIMING_CONTROLS[template.rendererId] || []).join("; ") || "none",
+    animationTimingControls: formatMotionGraphicAnimationTimingControls(template.rendererId),
     description: template.description,
     deterministicSoundEffectsJson: JSON.stringify(template.deterministicSoundEffects || [], null, 2),
     displayName: template.displayName,
