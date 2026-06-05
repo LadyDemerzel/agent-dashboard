@@ -91,7 +91,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <AppShellChromeContext.Provider value={contextValue}>
       <div
-        className="h-screen overflow-hidden"
+        className="fixed inset-0 h-[100dvh] min-h-[100svh] overflow-hidden"
         style={{
           ['--app-shell-header-height' as string]: '4rem',
           ['--app-shell-sidebar-width' as string]: isDesktop ? (mainCollapsed ? '4.75rem' : '15rem') : '0rem',
@@ -103,7 +103,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {activeSecondarySidebar ? <ShortFormSecondarySidebar sidebar={activeSecondarySidebar} /> : null}
           <div className="min-w-0 flex min-h-0 flex-1 flex-col">
             <AppTopBar />
-            <main id="app-shell-content" className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+            <main id="app-shell-content" className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain [-webkit-overflow-scrolling:touch]">
               <InstantNavigationLoader />
               {children}
             </main>

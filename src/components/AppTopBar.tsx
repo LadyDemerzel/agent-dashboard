@@ -53,7 +53,7 @@ export function AppTopBar() {
   const shortFormNavOpen = hasDesktopShortFormSidebar ? shortFormDesktopOpen : shortFormMobileOpen;
 
   return (
-    <header className="sticky top-0 z-30 flex h-[var(--app-shell-header-height)] items-center border-b border-border/70 bg-background/90 backdrop-blur">
+    <header className="relative z-30 flex h-[var(--app-shell-header-height)] shrink-0 items-center border-b border-border/70 bg-background/90 backdrop-blur">
       <div className="flex h-full w-full items-center gap-2 px-4 sm:px-6">
         <Button
           variant="ghost"
