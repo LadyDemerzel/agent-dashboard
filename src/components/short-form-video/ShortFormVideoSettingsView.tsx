@@ -938,6 +938,294 @@ function createPromptTemplatePreviewValues(
   }, {});
 }
 
+function setPromptTemplatePreviewValue(
+  values: PromptTemplatePreviewValues,
+  placeholderName: string,
+  value: string | number | boolean | null | undefined,
+) {
+  const renderedValue =
+    value === null || value === undefined ? "" : String(value);
+  values[placeholderName] = renderedValue;
+  values[`{{${placeholderName}}}`] = renderedValue;
+}
+
+function mergePromptTemplatePreviewValues(
+  base: PromptTemplatePreviewValues,
+  overrides: Record<string, string | number | boolean | null | undefined>,
+) {
+  const values = { ...base };
+  Object.entries(overrides).forEach(([key, value]) => {
+    setPromptTemplatePreviewValue(values, key, value);
+  });
+  return values;
+}
+
+function renderPromptTemplatePreviewString(
+  template: string,
+  previewValues: PromptTemplatePreviewValues,
+) {
+  return template.replace(
+    PROMPT_TEMPLATE_PLACEHOLDER_PATTERN,
+    (placeholder) => {
+      const placeholderName = getPromptPlaceholderName(placeholder);
+      return (
+        previewValues[placeholder] ||
+        previewValues[placeholderName] ||
+        `Example ${placeholderName || "value"}`
+      );
+    },
+  );
+}
+
+function stringifyPromptPreviewJson(value: unknown) {
+  return JSON.stringify(value, null, 2);
+}
+
+function getMotionTemplateTimingControls(rendererId: string) {
+  const config = MOTION_GRAPHIC_TIMING_CONTROLS[rendererId];
+  const fields = config?.fields || [];
+  const extraTargets = config?.extraTargets || [];
+  return [...fields, ...extraTargets].join("; ") || "none";
+}
+
+function getPromptPreviewMotionTemplate(
+  motionGraphicsSettings: MotionGraphicsSettings | null,
+  selectedMotionTemplateId?: string | null,
+) {
+  const templates = motionGraphicsSettings?.templates || [];
+  const selectedTemplate = templates.find(
+    (template) => template.id === selectedMotionTemplateId,
+  );
+  return (
+    (selectedTemplate?.enabled ? selectedTemplate : null) ||
+    templates.find((template) => template.enabled) ||
+    selectedTemplate ||
+    templates[0] ||
+    null
+  );
+}
+
+function createMotionGraphicTemplatePromptPreviewValues(
+  motionGraphicsSettings: MotionGraphicsSettings | null,
+  selectedMotionTemplateId?: string | null,
+) {
+  const base = XML_MOTION_GRAPHIC_TEMPLATE_PROMPT_PREVIEW_VALUES;
+  const template = getPromptPreviewMotionTemplate(
+    motionGraphicsSettings,
+    selectedMotionTemplateId,
+  );
+
+  if (!template) return base;
+
+  return mergePromptTemplatePreviewValues(base, {
+    additionalUsageInstructions:
+      template.additionalUsageInstructions || "None.",
+    animationTimingControls: getMotionTemplateTimingControls(
+      template.rendererId,
+    ),
+    description: template.description,
+    deterministicSoundEffectsJson: stringifyPromptPreviewJson(
+      template.deterministicSoundEffects || [],
+    ),
+    displayName: template.displayName,
+    durationGuidance: template.durationGuidance,
+    durationSeconds: template.durationSeconds,
+    fieldsJson: stringifyPromptPreviewJson(template.fields),
+    rendererId: template.rendererId,
+    stylePreset: template.stylePreset,
+    templateId: template.id,
+    whenToUse: template.whenToUse,
+  });
+}
+
+function renderMotionGraphicTemplatesPreviewValue(
+  motionGraphicsSettings: MotionGraphicsSettings | null,
+  motionGraphicTemplatePromptTemplate: string,
+) {
+  const enabledTemplates =
+    motionGraphicsSettings?.templates.filter((template) => template.enabled) ||
+    [];
+
+  if (enabledTemplates.length === 0) {
+    return "If no templates are listed below, use image visuals only.";
+  }
+
+  return enabledTemplates
+    .map((template) =>
+      renderPromptTemplatePreviewString(
+        motionGraphicTemplatePromptTemplate,
+        createMotionGraphicTemplatePromptPreviewValues(
+          {
+            defaultStylePreset:
+              motionGraphicsSettings?.defaultStylePreset || "",
+            templates: [template],
+          },
+          template.id,
+        ),
+      ),
+    )
+    .join("\n");
+}
+
+function createXmlVisualPlanningPromptPreviewValues({
+  xmlVisualPlanningSettings,
+  motionGraphicsSettings,
+}: {
+  xmlVisualPlanningSettings: XmlVisualPlanningSettings | null;
+  motionGraphicsSettings: MotionGraphicsSettings | null;
+}) {
+  let values = { ...XML_VISUAL_PLANNING_PROMPT_PREVIEW_VALUES };
+
+  const motionGraphicTemplatePromptTemplate =
+    xmlVisualPlanningSettings?.motionGraphicTemplatePromptTemplate || "";
+  const motionGraphicTemplates = motionGraphicTemplatePromptTemplate
+    ? renderMotionGraphicTemplatesPreviewValue(
+        motionGraphicsSettings,
+        motionGraphicTemplatePromptTemplate,
+      )
+    : values.motionGraphicTemplates || values["{{motionGraphicTemplates}}"];
+
+  values = mergePromptTemplatePreviewValues(values, {
+    motionGraphicTemplates,
+  });
+
+  if (xmlVisualPlanningSettings?.planningGuidelinesTemplate) {
+    values = mergePromptTemplatePreviewValues(values, {
+      planningVisualsGuidelines: renderPromptTemplatePreviewString(
+        xmlVisualPlanningSettings.planningGuidelinesTemplate,
+        values,
+      ),
+    });
+  }
+
+  return values;
+}
+
+function createSoundDesignPromptPreviewValues({
+  soundDesignSettings,
+  videoRender,
+}: {
+  soundDesignSettings: SoundDesignSettings | null;
+  videoRender: VideoRenderSettings | null;
+}) {
+  const soundLibrary = (soundDesignSettings?.library || []).slice(0, 8).map(
+    (sound) => ({
+      id: sound.id,
+      name: sound.name,
+      category: sound.category,
+      semanticTypes: sound.semanticTypes,
+      tags: sound.tags,
+      timingType: sound.timingType,
+      defaultAnchor: sound.defaultAnchor,
+      defaultGainDb: sound.defaultGainDb,
+      availableForPlanning: sound.availableForPlanning,
+      preferredForPlanning: sound.preferredForPlanning,
+      recommendedUses: sound.recommendedUses,
+    }),
+  );
+  const musicLibrary = (videoRender?.musicTracks || []).slice(0, 6).map(
+    (track) => ({
+      id: track.id,
+      name: track.name,
+      mood: track.mood,
+      pacing: track.pacing,
+      energy: track.energy,
+      tags: track.tags,
+      recommendedSections: track.recommendedSections,
+      preferredForPlanning: track.preferredForPlanning,
+      prompt: track.prompt,
+    }),
+  );
+  const revisionNotes =
+    SOUND_DESIGN_PROMPT_PREVIEW_VALUES.revisionNotes ||
+    SOUND_DESIGN_PROMPT_PREVIEW_VALUES["{{revisionNotes}}"];
+  const revisionNotesBlock = soundDesignSettings?.revisionPromptTemplate
+    ? renderPromptTemplatePreviewString(
+        soundDesignSettings.revisionPromptTemplate,
+        mergePromptTemplatePreviewValues(
+          SOUND_DESIGN_REVISION_PROMPT_PREVIEW_VALUES,
+          {
+            revisionNotes,
+          },
+        ),
+      )
+    : SOUND_DESIGN_PROMPT_PREVIEW_VALUES.revisionNotesBlock;
+
+  return mergePromptTemplatePreviewValues(SOUND_DESIGN_PROMPT_PREVIEW_VALUES, {
+    musicLibraryJson: stringifyPromptPreviewJson(musicLibrary),
+    revisionNotesBlock,
+    soundLibraryJson: stringifyPromptPreviewJson(soundLibrary),
+  });
+}
+
+function createNanoBananaPromptPreviewValues(
+  imageStyles: ImageStyleSettings | null,
+  selectedStyle: ImageStyle | null,
+) {
+  if (!imageStyles || !selectedStyle) return NANO_BANANA_PROMPT_PREVIEW_VALUES;
+
+  const reference = selectedStyle.references?.[0] || null;
+  const individualExtraReferenceValues = mergePromptTemplatePreviewValues(
+    NANO_BANANA_PROMPT_PREVIEW_VALUES,
+    {
+      attachmentIndex: reference ? 2 : 2,
+      label: reference?.label || "Lighting ref",
+      usageInstructions:
+        reference?.usageInstructions ||
+        "Use this reference for soft rim lighting and subtle studio falloff.",
+      usageType: reference?.usageType || "lighting",
+    },
+  );
+  const individualExtraReferences =
+    reference && imageStyles.promptTemplates.individualExtraReferenceTemplate
+      ? renderPromptTemplatePreviewString(
+          imageStyles.promptTemplates.individualExtraReferenceTemplate,
+          individualExtraReferenceValues,
+        )
+      : NANO_BANANA_PROMPT_PREVIEW_VALUES.individualExtraReferences;
+  const extraReferenceValues = mergePromptTemplatePreviewValues(
+    individualExtraReferenceValues,
+    {
+      individualExtraReferences,
+    },
+  );
+  const extraReferencesInstructions =
+    reference && imageStyles.promptTemplates.extraReferencesTemplate
+      ? renderPromptTemplatePreviewString(
+          imageStyles.promptTemplates.extraReferencesTemplate,
+          extraReferenceValues,
+        )
+      : NANO_BANANA_PROMPT_PREVIEW_VALUES.extraReferencesInstructions;
+  const basedOnReferenceInstructions =
+    imageStyles.promptTemplates.basedOnReferenceTemplate
+      ? renderPromptTemplatePreviewString(
+          imageStyles.promptTemplates.basedOnReferenceTemplate,
+          mergePromptTemplatePreviewValues(NANO_BANANA_PROMPT_PREVIEW_VALUES, {
+            basedOnAttachmentIndex: 3,
+            basedOnImageId: "source-profile",
+          }),
+        )
+      : NANO_BANANA_PROMPT_PREVIEW_VALUES.basedOnReferenceInstructions;
+
+  return mergePromptTemplatePreviewValues(NANO_BANANA_PROMPT_PREVIEW_VALUES, {
+    basedOnReferenceInstructions,
+    extraReferencesInstructions,
+    headerPercent: selectedStyle.headerPercent,
+    imageDescription: selectedStyle.testImagePrompt,
+    individualExtraReferences,
+    script: selectedStyle.testCaption,
+    styleInstructions: selectedStyle.stylePrompt,
+    topic: selectedStyle.testTopic,
+    ...(reference
+      ? {
+          label: reference.label || "Style reference",
+          usageInstructions: reference.usageInstructions,
+          usageType: reference.usageType,
+        }
+      : {}),
+  });
+}
+
 function renderPromptTemplateText(value: string) {
   const nodes: ReactNode[] = [];
   let lastIndex = 0;
@@ -4280,6 +4568,42 @@ export function ShortFormVideoSettingsView({
   const selectedMotionTemplatePreview = selectedMotionTemplate
     ? motionTemplatePreviewsById[selectedMotionTemplate.id] || null
     : null;
+  const xmlMotionGraphicTemplatePromptPreviewValues = useMemo(
+    () =>
+      createMotionGraphicTemplatePromptPreviewValues(
+        motionGraphicsSettings,
+        selectedMotionTemplateId,
+      ),
+    [motionGraphicsSettings, selectedMotionTemplateId],
+  );
+  const xmlVisualPlanningPromptPreviewValues = useMemo(
+    () =>
+      createXmlVisualPlanningPromptPreviewValues({
+        xmlVisualPlanningSettings,
+        motionGraphicsSettings,
+      }),
+    [motionGraphicsSettings, xmlVisualPlanningSettings],
+  );
+  const soundDesignPromptPreviewValues = useMemo(
+    () =>
+      createSoundDesignPromptPreviewValues({
+        soundDesignSettings,
+        videoRender,
+      }),
+    [soundDesignSettings, videoRender],
+  );
+  const soundDesignRevisionPromptPreviewValues = useMemo(
+    () =>
+      mergePromptTemplatePreviewValues(
+        SOUND_DESIGN_REVISION_PROMPT_PREVIEW_VALUES,
+        {
+          revisionNotes:
+            SOUND_DESIGN_PROMPT_PREVIEW_VALUES.revisionNotes ||
+            SOUND_DESIGN_PROMPT_PREVIEW_VALUES["{{revisionNotes}}"],
+        },
+      ),
+    [],
+  );
 
   useEffect(() => {
     setMotionDefaultArgsJsonDraft(
@@ -4644,6 +4968,10 @@ export function ShortFormVideoSettingsView({
   const selectedStyleTest = selectedStyle
     ? styleTestsById[selectedStyle.id]
     : undefined;
+  const nanoBananaPromptPreviewValues = useMemo(
+    () => createNanoBananaPromptPreviewValues(imageStyles, selectedStyle),
+    [imageStyles, selectedStyle],
+  );
   const selectedStyleUpload = selectedStyle
     ? styleReferenceUploadsById[selectedStyle.id]
     : undefined;
@@ -5330,7 +5658,7 @@ export function ShortFormVideoSettingsView({
                 )
               }
               minHeightClassName="min-h-[560px]"
-              previewValues={XML_VISUAL_PLANNING_PROMPT_PREVIEW_VALUES}
+              previewValues={xmlVisualPlanningPromptPreviewValues}
             >
                 <p>
                   This shared template is rendered first, then injected into
@@ -5380,7 +5708,7 @@ export function ShortFormVideoSettingsView({
                 )
               }
               minHeightClassName="min-h-[360px]"
-              previewValues={XML_MOTION_GRAPHIC_TEMPLATE_PROMPT_PREVIEW_VALUES}
+              previewValues={xmlMotionGraphicTemplatePromptPreviewValues}
             >
                 <p>
                   This template is rendered once for each enabled motion
@@ -5419,7 +5747,7 @@ export function ShortFormVideoSettingsView({
                 resetPromptTemplate("xmlVisualPlanning.promptTemplate")
               }
               minHeightClassName="min-h-[560px]"
-              previewValues={XML_VISUAL_PLANNING_PROMPT_PREVIEW_VALUES}
+              previewValues={xmlVisualPlanningPromptPreviewValues}
             >
                 <p>
                   Runtime placeholders stay in this template because the setting
@@ -5471,7 +5799,7 @@ export function ShortFormVideoSettingsView({
                 )
               }
               minHeightClassName="min-h-[560px]"
-              previewValues={XML_VISUAL_PLANNING_PROMPT_PREVIEW_VALUES}
+              previewValues={xmlVisualPlanningPromptPreviewValues}
             >
                 <p>
                   This is the complete top-level prompt used when Plan Visuals
@@ -5579,7 +5907,7 @@ export function ShortFormVideoSettingsView({
                   resetPromptTemplate("soundDesign.promptTemplate")
                 }
                 minHeightClassName="min-h-[320px]"
-                previewValues={SOUND_DESIGN_PROMPT_PREVIEW_VALUES}
+                previewValues={soundDesignPromptPreviewValues}
               />
               <PromptTemplateEditorCard
                 title="Conditional revision-notes prompt template"
@@ -5618,7 +5946,7 @@ export function ShortFormVideoSettingsView({
                   )
                 }
                 minHeightClassName="min-h-[140px]"
-                previewValues={SOUND_DESIGN_REVISION_PROMPT_PREVIEW_VALUES}
+                previewValues={soundDesignRevisionPromptPreviewValues}
               />
               <PromptPlaceholderCard
                 title="Plan Sound Design prompt placeholders"
@@ -10723,7 +11051,7 @@ export function ShortFormVideoSettingsView({
                     resetPromptTemplate("imageStyles.imageGenerationTemplate")
                   }
                   minHeightClassName="min-h-[480px]"
-                  previewValues={NANO_BANANA_PROMPT_PREVIEW_VALUES}
+                  previewValues={nanoBananaPromptPreviewValues}
                 />
 
                 <PromptTemplateEditorCard
@@ -10763,7 +11091,7 @@ export function ShortFormVideoSettingsView({
                     )
                   }
                   minHeightClassName="min-h-[200px]"
-                  previewValues={NANO_BANANA_PROMPT_PREVIEW_VALUES}
+                  previewValues={nanoBananaPromptPreviewValues}
                 />
 
                 <PromptTemplateEditorCard
@@ -10803,7 +11131,7 @@ export function ShortFormVideoSettingsView({
                     )
                   }
                   minHeightClassName="min-h-[240px]"
-                  previewValues={NANO_BANANA_PROMPT_PREVIEW_VALUES}
+                  previewValues={nanoBananaPromptPreviewValues}
                 />
 
                 <PromptTemplateEditorCard
@@ -10843,7 +11171,7 @@ export function ShortFormVideoSettingsView({
                     )
                   }
                   minHeightClassName="min-h-[200px]"
-                  previewValues={NANO_BANANA_PROMPT_PREVIEW_VALUES}
+                  previewValues={nanoBananaPromptPreviewValues}
                 />
 
                 <PromptPlaceholderCard
