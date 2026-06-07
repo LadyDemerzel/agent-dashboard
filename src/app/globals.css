@@ -71,6 +71,12 @@ body {
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
+@media (max-width: 768px) {
+  html.dark :is(input, textarea, select, [contenteditable="true"]) {
+    font-size: 16px;
+  }
+}
+
 .audio-library-card {
   container-type: inline-size;
 }

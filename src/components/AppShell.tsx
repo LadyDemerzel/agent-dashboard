@@ -12,9 +12,24 @@ import {
   SHORT_FORM_SECONDARY_NAV_WIDTH,
 } from '@/lib/short-form-secondary-nav';
 
+interface VisualViewportFrame {
+  top: string;
+  left: string;
+  width: string;
+  height: string;
+}
+
+const DEFAULT_VISUAL_VIEWPORT_FRAME: VisualViewportFrame = {
+  top: '0px',
+  left: '0px',
+  width: '100vw',
+  height: '100dvh',
+};
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || '/';
   const [viewportWidth, setViewportWidth] = useState<number | null>(null);
+  const [visualViewportFrame, setVisualViewportFrame] = useState<VisualViewportFrame>(DEFAULT_VISUAL_VIEWPORT_FRAME);
   const [manualOverride, setManualOverride] = useState<{ key: string; collapsed: boolean } | null>(null);
   const [mainMobileOpen, setMainMobileOpen] = useState(false);
   const [shortFormDesktopOpen, setShortFormDesktopOpen] = useState(true);
@@ -26,6 +41,43 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     update();
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
+  }, []);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    let animationFrame: number | null = null;
+
+    const update = () => {
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+
+      animationFrame = window.requestAnimationFrame(() => {
+        setVisualViewportFrame({
+          top: `${viewport.offsetTop}px`,
+          left: `${viewport.offsetLeft}px`,
+          width: `${viewport.width}px`,
+          height: `${viewport.height}px`,
+        });
+        animationFrame = null;
+      });
+    };
+
+    update();
+    viewport.addEventListener('resize', update);
+    viewport.addEventListener('scroll', update);
+    window.addEventListener('orientationchange', update);
+
+    return () => {
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+      viewport.removeEventListener('resize', update);
+      viewport.removeEventListener('scroll', update);
+      window.removeEventListener('orientationchange', update);
+    };
   }, []);
 
   const hasShortFormSecondaryNav = routeHasShortFormSecondaryNav(pathname);
@@ -91,8 +143,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <AppShellChromeContext.Provider value={contextValue}>
       <div
-        className="fixed inset-0 h-[100dvh] min-h-[100svh] overflow-hidden"
+        className="fixed overflow-hidden"
         style={{
+          top: visualViewportFrame.top,
+          left: visualViewportFrame.left,
+          width: visualViewportFrame.width,
+          height: visualViewportFrame.height,
           ['--app-shell-header-height' as string]: '4rem',
           ['--app-shell-sidebar-width' as string]: isDesktop ? (mainCollapsed ? '4.75rem' : '15rem') : '0rem',
           ['--short-form-secondary-nav-width' as string]: hasShortFormSecondaryNav && hasDesktopShortFormSidebar && shortFormDesktopOpen ? SHORT_FORM_SECONDARY_NAV_WIDTH : '0rem',

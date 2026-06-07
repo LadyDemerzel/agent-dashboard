@@ -62,6 +62,8 @@ export interface MotionGraphicTemplateConfig {
   description: string;
   whenToUse: string;
   additionalUsageInstructions: string;
+  xmlInstructions?: string;
+  exampleXml?: string;
   durationSeconds: number;
   durationGuidance: string;
   stylePreset: string;
@@ -85,6 +87,232 @@ const LEGACY_RENDERER_ALIASES: Record<string, MotionGraphicRendererId> = {
   instruction: "good_bad_indicator",
   step_checklist: "checklist",
 };
+
+const DEFAULT_XML_INSTRUCTIONS_BY_RENDERER: Record<MotionGraphicRendererId, string> = {
+  stat_reveal: [
+    "Use <arg name=\"value\">...</arg> for the primary statistic and <arg name=\"title\">...</arg> for the short supporting context.",
+    "Keep the title compact; this template is for one dominant quantified idea, not a multi-line explanation.",
+  ].join("\n"),
+  bar_chart: [
+    "Use repeated <item label=\"...\" value=\"...\" displayValue=\"...\" /> entries for the data field.",
+    "Use 2-5 items. The numeric value controls bar height; displayValue is what viewers read.",
+    "If one bar is the key reveal, put it later in the item order so its animation lands last.",
+  ].join("\n"),
+  pie_chart: [
+    "Use repeated <item label=\"...\" value=\"...\" displayValue=\"...\" /> entries for the data field.",
+    "Values should be positive parts of a whole. displayValue should usually be a compact percent or share label.",
+    "Use 2-5 slices and keep labels short enough for the legend.",
+  ].join("\n"),
+  line_growth_chart: [
+    "Set <arg name=\"direction\">increase</arg> for an up/right trend or <arg name=\"direction\">decrease</arg> for a down/right trend.",
+    "Optional dataSeries points should match the chosen direction.",
+    "To show units on the moving counter, set <arg name=\"valueLabel\">90</arg> and optional <arg name=\"units\">homes</arg>; the renderer appends the unit text throughout the count-up.",
+    "Leave valueLabel and units blank when there is no clear metric to display.",
+  ].join("\n"),
+  comparison_before_after: [
+    "Use beforeLabel/afterLabel for the small comparison labels and before/after for the main copy.",
+    "Keep before and after copy parallel so the visual reads as one clear transformation.",
+  ].join("\n"),
+  timeline: [
+    "Use repeated <step label=\"custom left label\">step text</step> entries.",
+    "Omit label only when you want the renderer to auto-label steps as 01, 02, 03.",
+    "Keep all step labels in the same semantic category, such as all dates, all phases, or all percentages.",
+  ].join("\n"),
+  cause_effect: [
+    "Use <arg name=\"cause\">...</arg> for the input or mechanism and <arg name=\"effect\">...</arg> for the outcome.",
+    "Keep each side short and concrete so the downward causal relationship is obvious.",
+  ].join("\n"),
+  caption_word_wall: [
+    "Use ordered <line size=\"regular\">spoken words for this row</line>, <line size=\"large\">...</line>, <line size=\"extra_large\">...</line>, and <blankLine /> entries.",
+    "Line size applies to the whole line; do not size individual inline words.",
+    "Line text must be exact spoken narration words in order from that visual's time range.",
+    "This template replaces ordinary bottom captions for that visual and should not be paired with normal captions.",
+  ].join("\n"),
+  ranked_podium: [
+    "Use repeated <step>...</step> entries for ranked items. Optional labels are rank markers; omit them for 01, 02, 03 auto-labels.",
+    "For split multi-visual sequences, set <arg name=\"startIndex\">2</arg> to render earlier ranks already present and animate from rank 2.",
+    "Set <arg name=\"futureItemsMode\">hidden</arg> or <arg name=\"futureItemsMode\">blurred</arg> to control unrevealed later ranks.",
+  ].join("\n"),
+  checklist: [
+    "Use repeated <step>...</step> entries for checklist items. Labels are ignored by this template.",
+    "For split multi-visual sequences, set <arg name=\"startIndex\">2</arg> to render earlier items already checked and animate from item 2.",
+    "Set <arg name=\"futureItemsMode\">hidden</arg> or <arg name=\"futureItemsMode\">blurred</arg> to control unrevealed later items.",
+  ].join("\n"),
+  scorecard: [
+    "Use <arg name=\"title\">...</arg> plus repeated <item label=\"...\" value=\"...\" displayValue=\"...\" /> score rows.",
+    "Values are normalized against the largest row, so keep numeric values comparable.",
+    "Use displayValue for the readable score, such as 82/100, High, or 4.5x.",
+  ].join("\n"),
+  research_paper_card: [
+    "Use source, year, title, and finding args to create a compact citation-style card.",
+    "Keep the finding to one plain-English takeaway; do not write a full abstract.",
+  ].join("\n"),
+  good_bad_indicator: [
+    "Use exactly <arg name=\"indicatorType\">good</arg> or <arg name=\"indicatorType\">bad</arg>.",
+    "Use one <arg name=\"text\">...</arg> field for the rule, habit, mistake, warning, or recommendation.",
+    "Communicate one idea only. If there are multiple ideas, use multiple visuals or another template.",
+  ].join("\n"),
+};
+
+const DEFAULT_EXAMPLE_XML_BY_RENDERER: Record<MotionGraphicRendererId, string> = {
+  stat_reveal: [
+    `<visual id=\"visual-4\" label=\"Key statistic\" start=\"8.00\" end=\"12.00\" visualType=\"motion_graphic\">`,
+    `  <motionGraphic templateId=\"stat_reveal\">`,
+    `    <timing item=\"value\" at=\"8.30\" />`,
+    `    <timing item=\"title\" at=\"8.90\" />`,
+    `    <arg name=\"value\">73%</arg>`,
+    `    <arg name=\"title\">people notice the change</arg>`,
+    `  </motionGraphic>`,
+    `</visual>`,
+  ].join("\n"),
+  bar_chart: [
+    `<visual id=\"visual-5\" label=\"Outcome comparison\" start=\"12.00\" end=\"18.00\" visualType=\"motion_graphic\">`,
+    `  <motionGraphic templateId=\"bar_chart\">`,
+    `    <timing item=\"title\" at=\"12.20\" />`,
+    `    <timing item=\"data\" at=\"12.90\" />`,
+    `    <arg name=\"title\">What changed most</arg>`,
+    `    <item label=\"Before\" value=\"35\" displayValue=\"35%\" />`,
+    `    <item label=\"After\" value=\"82\" displayValue=\"82%\" />`,
+    `  </motionGraphic>`,
+    `</visual>`,
+  ].join("\n"),
+  pie_chart: [
+    `<visual id=\"visual-5\" label=\"Time split\" start=\"12.00\" end=\"18.00\" visualType=\"motion_graphic\">`,
+    `  <motionGraphic templateId=\"pie_chart\">`,
+    `    <timing item=\"title\" at=\"12.20\" />`,
+    `    <timing item=\"data\" at=\"12.85\" />`,
+    `    <arg name=\"title\">Where time goes</arg>`,
+    `    <item label=\"Practice\" value=\"50\" displayValue=\"50%\" />`,
+    `    <item label=\"Recovery\" value=\"30\" displayValue=\"30%\" />`,
+    `    <item label=\"Setup\" value=\"20\" displayValue=\"20%\" />`,
+    `  </motionGraphic>`,
+    `</visual>`,
+  ].join("\n"),
+  line_growth_chart: [
+    `<visual id=\"visual-6\" label=\"Trend rising\" start=\"18.00\" end=\"24.00\" visualType=\"motion_graphic\">`,
+    `  <motionGraphic templateId=\"line_growth_chart\">`,
+    `    <timing item=\"title\" at=\"18.15\" />`,
+    `    <timing item=\"line\" at=\"18.80\" />`,
+    `    <arg name=\"title\">Growth trend</arg>`,
+    `    <arg name=\"direction\">increase</arg>`,
+    `    <arg name=\"startLabel\">Start</arg>`,
+    `    <arg name=\"endLabel\">Now</arg>`,
+    `    <arg name=\"valueLabel\">90</arg>`,
+    `    <arg name=\"units\">homes</arg>`,
+    `    <item label=\"Start\" value=\"22\" displayValue=\"22\" />`,
+    `    <item label=\"Now\" value=\"90\" displayValue=\"90\" />`,
+    `  </motionGraphic>`,
+    `</visual>`,
+  ].join("\n"),
+  comparison_before_after: [
+    `<visual id=\"visual-7\" label=\"Before and after\" start=\"24.00\" end=\"30.00\" visualType=\"motion_graphic\">`,
+    `  <motionGraphic templateId=\"comparison_before_after\">`,
+    `    <timing item=\"before\" at=\"24.40\" />`,
+    `    <timing item=\"after\" at=\"26.10\" />`,
+    `    <arg name=\"beforeLabel\">Before</arg>`,
+    `    <arg name=\"afterLabel\">After</arg>`,
+    `    <arg name=\"before\">Tension stacked under the chin</arg>`,
+    `    <arg name=\"after\">Neck long, jawline reads cleaner</arg>`,
+    `  </motionGraphic>`,
+    `</visual>`,
+  ].join("\n"),
+  timeline: [
+    `<visual id=\"visual-8\" label=\"Three-step timeline\" start=\"30.00\" end=\"38.00\" visualType=\"motion_graphic\">`,
+    `  <motionGraphic templateId=\"timeline\">`,
+    `    <timing item=\"steps\" at=\"30.50\" />`,
+    `    <step label=\"DAY 1\">Setup</step>`,
+    `    <step label=\"DAY 7\">Signal</step>`,
+    `    <step label=\"DAY 30\">Visible change</step>`,
+    `  </motionGraphic>`,
+    `</visual>`,
+  ].join("\n"),
+  cause_effect: [
+    `<visual id=\"visual-9\" label=\"Cause and effect\" start=\"38.00\" end=\"44.00\" visualType=\"motion_graphic\">`,
+    `  <motionGraphic templateId=\"cause_effect\">`,
+    `    <timing item=\"cause\" at=\"38.30\" />`,
+    `    <timing item=\"effect\" at=\"40.10\" />`,
+    `    <arg name=\"cause\">Small daily tension</arg>`,
+    `    <arg name=\"effect\">Jaw and neck read tighter</arg>`,
+    `  </motionGraphic>`,
+    `</visual>`,
+  ].join("\n"),
+  caption_word_wall: [
+    `<visual id=\"visual-10\" label=\"Caption wall emphasis\" start=\"44.00\" end=\"49.00\" visualType=\"motion_graphic\">`,
+    `  <motionGraphic templateId=\"caption_word_wall\">`,
+    `    <line size=\"regular\">most people miss this part</line>`,
+    `    <line size=\"large\">the words become the visual</line>`,
+    `    <line size=\"extra_large\">with one extra large row</line>`,
+    `    <blankLine />`,
+    `    <line size=\"regular\">and every highlight follows the voice</line>`,
+    `  </motionGraphic>`,
+    `</visual>`,
+  ].join("\n"),
+  ranked_podium: [
+    `<visual id=\"visual-11\" label=\"Ranked priorities\" start=\"49.00\" end=\"56.00\" visualType=\"motion_graphic\">`,
+    `  <motionGraphic templateId=\"ranked_podium\">`,
+    `    <timing item=\"items\" at=\"49.40\" />`,
+    `    <arg name=\"startIndex\">1</arg>`,
+    `    <arg name=\"futureItemsMode\">hidden</arg>`,
+    `    <step>Most visible change</step>`,
+    `    <step>Faster feedback</step>`,
+    `    <step>Cleaner routine</step>`,
+    `  </motionGraphic>`,
+    `</visual>`,
+  ].join("\n"),
+  checklist: [
+    `<visual id=\"visual-12\" label=\"Routine checklist\" start=\"56.00\" end=\"63.00\" visualType=\"motion_graphic\">`,
+    `  <motionGraphic templateId=\"checklist\">`,
+    `    <timing item=\"items\" at=\"56.40\" />`,
+    `    <arg name=\"startIndex\">1</arg>`,
+    `    <arg name=\"futureItemsMode\">hidden</arg>`,
+    `    <step>Set the baseline</step>`,
+    `    <step>Make the small adjustment</step>`,
+    `    <step>Repeat it daily</step>`,
+    `  </motionGraphic>`,
+    `</visual>`,
+  ].join("\n"),
+  scorecard: [
+    `<visual id=\"visual-13\" label=\"Scorecard\" start=\"63.00\" end=\"69.00\" visualType=\"motion_graphic\">`,
+    `  <motionGraphic templateId=\"scorecard\">`,
+    `    <timing item=\"title\" at=\"63.20\" />`,
+    `    <timing item=\"data\" at=\"63.90\" />`,
+    `    <arg name=\"title\">Scorecard</arg>`,
+    `    <item label=\"Clarity\" value=\"82\" displayValue=\"82/100\" />`,
+    `    <item label=\"Consistency\" value=\"68\" displayValue=\"68/100\" />`,
+    `    <item label=\"Effort\" value=\"91\" displayValue=\"91/100\" />`,
+    `  </motionGraphic>`,
+    `</visual>`,
+  ].join("\n"),
+  research_paper_card: [
+    `<visual id=\"visual-14\" label=\"Study finding\" start=\"69.00\" end=\"75.00\" visualType=\"motion_graphic\">`,
+    `  <motionGraphic templateId=\"research_paper_card\">`,
+    `    <timing item=\"source\" at=\"69.25\" />`,
+    `    <timing item=\"finding\" at=\"70.60\" />`,
+    `    <arg name=\"source\">Journal of Applied Research</arg>`,
+    `    <arg name=\"year\">2024</arg>`,
+    `    <arg name=\"title\">Daily posture cues changed perceived jawline definition</arg>`,
+    `    <arg name=\"finding\">The visible difference came from consistency, not intensity.</arg>`,
+    `  </motionGraphic>`,
+    `</visual>`,
+  ].join("\n"),
+  good_bad_indicator: [
+    `<visual id=\"visual-15\" label=\"Good habit\" start=\"75.00\" end=\"80.00\" visualType=\"motion_graphic\">`,
+    `  <motionGraphic templateId=\"good-bad-indicator\">`,
+    `    <timing item=\"text\" at=\"75.35\" />`,
+    `    <arg name=\"indicatorType\">good</arg>`,
+    `    <arg name=\"text\">Lift from the lower lid</arg>`,
+    `  </motionGraphic>`,
+    `</visual>`,
+  ].join("\n"),
+};
+
+function getDefaultXmlInstructionsForRenderer(rendererId: MotionGraphicRendererId) {
+  return DEFAULT_XML_INSTRUCTIONS_BY_RENDERER[rendererId] || "";
+}
+
+function getDefaultExampleXmlForRenderer(rendererId: MotionGraphicRendererId) {
+  return DEFAULT_EXAMPLE_XML_BY_RENDERER[rendererId] || "";
+}
 const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
   {
     id: "stat_reveal",
@@ -929,6 +1157,14 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
     description: rendererId === "checklist" ? fallback.description : cleanString(candidate.description, fallback.description),
     whenToUse: rendererId === "checklist" ? fallback.whenToUse : cleanString(candidate.whenToUse, fallback.whenToUse),
     additionalUsageInstructions: cleanOptionalString(candidate.additionalUsageInstructions, fallback.additionalUsageInstructions || ""),
+    xmlInstructions: cleanOptionalString(
+      candidate.xmlInstructions,
+      fallback.xmlInstructions || getDefaultXmlInstructionsForRenderer(rendererId),
+    ),
+    exampleXml: cleanOptionalString(
+      candidate.exampleXml,
+      fallback.exampleXml || getDefaultExampleXmlForRenderer(rendererId),
+    ),
     durationSeconds: typeof candidate.durationSeconds === "number" && Number.isFinite(candidate.durationSeconds)
       ? Math.min(12, Math.max(3, candidate.durationSeconds))
       : fallback.durationSeconds,
@@ -996,6 +1232,10 @@ export const DEFAULT_MOTION_GRAPHIC_TEMPLATE_PROMPT_TEMPLATE = [
   "{{deterministicSoundEffectsJson}}",
   "  Configurable fields JSON:",
   "{{fieldsJson}}",
+  "  XML instructions:",
+  "{{xmlInstructions}}",
+  "  Example XML:",
+  "{{exampleXml}}",
 ].join("\n");
 
 function renderMotionGraphicTemplatePromptBlock(template: MotionGraphicTemplateConfig, promptTemplate: string) {
@@ -1007,11 +1247,13 @@ function renderMotionGraphicTemplatePromptBlock(template: MotionGraphicTemplateC
     displayName: template.displayName,
     durationGuidance: template.durationGuidance,
     durationSeconds: String(template.durationSeconds),
+    exampleXml: template.exampleXml || "None.",
     fieldsJson: JSON.stringify(template.fields, null, 2),
     rendererId: template.rendererId,
     stylePreset: template.stylePreset,
     templateId: template.id,
     whenToUse: template.whenToUse,
+    xmlInstructions: template.xmlInstructions || "None.",
   };
 
   return promptTemplate.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "");

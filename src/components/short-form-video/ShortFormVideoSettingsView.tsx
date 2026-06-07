@@ -399,6 +399,13 @@ const XML_MOTION_GRAPHIC_TEMPLATE_PLACEHOLDER_ROWS = [
     example: "7",
   },
   {
+    placeholder: "{{exampleXml}}",
+    explanation:
+      "A minimal template-specific XML example from the motion-graphics settings, or None. when it is empty.",
+    example:
+      "<visual id=\"visual-5\" label=\"Outcome comparison\" start=\"12.00\" end=\"18.00\" visualType=\"motion_graphic\">\n  <motionGraphic templateId=\"bar_chart\">\n    ...\n  </motionGraphic>\n</visual>",
+  },
+  {
     placeholder: "{{fieldsJson}}",
     explanation:
       "Pretty-printed JSON array of the template's configurable fields from settings, including names, labels, types, descriptions, required flags, and defaults.",
@@ -426,6 +433,13 @@ const XML_MOTION_GRAPHIC_TEMPLATE_PLACEHOLDER_ROWS = [
     explanation: "The motion-graphics template's when-to-use guidance from settings.",
     example:
       "Use when comparing 2-5 categories, routines, channels, habits, or measured outcomes.",
+  },
+  {
+    placeholder: "{{xmlInstructions}}",
+    explanation:
+      "Template-specific XML authoring rules from the motion-graphics settings, or None. when it is empty.",
+    example:
+      "Use repeated <item label=\"...\" value=\"...\" displayValue=\"...\" /> entries for the data field.",
   },
 ] as const;
 
@@ -644,6 +658,8 @@ interface MotionGraphicTemplateConfig {
   description: string;
   whenToUse: string;
   additionalUsageInstructions: string;
+  xmlInstructions?: string;
+  exampleXml?: string;
   durationSeconds: number;
   durationGuidance: string;
   stylePreset: string;
@@ -1009,11 +1025,13 @@ function createMotionGraphicTemplatePromptPreviewValues(
     displayName: template.displayName,
     durationGuidance: template.durationGuidance,
     durationSeconds: template.durationSeconds,
+    exampleXml: template.exampleXml || "None.",
     fieldsJson: stringifyPromptPreviewJson(template.fields),
     rendererId: template.rendererId,
     stylePreset: template.stylePreset,
     templateId: template.id,
     whenToUse: template.whenToUse,
+    xmlInstructions: template.xmlInstructions || "None.",
   });
 }
 
@@ -8171,6 +8189,8 @@ export function ShortFormVideoSettingsView({
       description: "Configured deterministic motion graphic template.",
       whenToUse: "Use when this recurring visual pattern fits the scene better than a generated image.",
       additionalUsageInstructions: "",
+      xmlInstructions: "Describe how Scribe should write this template's XML args, child nodes, timing entries, and any renderer-specific constraints.",
+      exampleXml: `<visual id="visual-1" label="New motion graphic" start="0.00" end="6.00" visualType="motion_graphic">\n  <motionGraphic templateId="${id}">\n    <timing item="title" at="0.40" />\n    <arg name="title">New motion template</arg>\n  </motionGraphic>\n</visual>`,
       durationSeconds: 6,
       durationGuidance: "Set visual start/end times to match the planned animation beat; do not assume a fixed template duration.",
       stylePreset: motionGraphicsSettings.defaultStylePreset || "watercolor-editorial",
@@ -10864,6 +10884,44 @@ export function ShortFormVideoSettingsView({
                         />
                         <p className="text-xs text-muted-foreground">
                           If filled out, this text is injected into Scribe’s Plan Visuals prompt inside this template’s motion-graphic reference. Blank values are omitted entirely.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-foreground">
+                          XML instructions
+                        </label>
+                        <Textarea
+                          className="min-h-32 font-mono text-xs"
+                          value={selectedMotionTemplate.xmlInstructions || ""}
+                          placeholder="Template-specific XML rules, field-shape notes, and edge cases for Scribe."
+                          onChange={(event) =>
+                            updateSelectedMotionTemplate((template) => ({
+                              ...template,
+                              xmlInstructions: event.target.value,
+                            }))
+                          }
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Injected through <code>{"{{xmlInstructions}}"}</code> in the Individual motion graphic template prompt.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-foreground">
+                          Example XML
+                        </label>
+                        <Textarea
+                          className="min-h-48 font-mono text-xs"
+                          value={selectedMotionTemplate.exampleXml || ""}
+                          placeholder="<visual ... visualType=&quot;motion_graphic&quot;>...</visual>"
+                          onChange={(event) =>
+                            updateSelectedMotionTemplate((template) => ({
+                              ...template,
+                              exampleXml: event.target.value,
+                            }))
+                          }
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Injected through <code>{"{{exampleXml}}"}</code> in the Individual motion graphic template prompt.
                         </p>
                       </div>
                       </Card>
