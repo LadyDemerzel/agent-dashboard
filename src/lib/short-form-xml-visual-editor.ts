@@ -6,6 +6,9 @@ export interface XmlVisualEditState {
   imageId?: string;
   prompt?: string;
   basedOn?: string;
+  cameraZoom?: string;
+  cameraZoomStart?: string;
+  cameraZoomEnd?: string;
   motionGraphicXml?: string;
 }
 
@@ -15,6 +18,9 @@ export interface SaveXmlVisualEditsInput {
   imageId?: string;
   prompt?: string;
   basedOn?: string;
+  cameraZoom?: string;
+  cameraZoomStart?: string;
+  cameraZoomEnd?: string;
   motionGraphicXml?: string;
 }
 
@@ -170,6 +176,24 @@ function replaceOpeningTagAttribute(xml: string, node: XmlNode, name: string, ne
   return `${xml.slice(0, node.start)}${nextOpen}${xml.slice(node.openEnd)}`;
 }
 
+function updateVisualAttribute(
+  xml: string,
+  root: XmlNode,
+  input: SaveXmlVisualEditsInput,
+  name: string,
+  nextValue: string,
+) {
+  const visual = findVisual(root, input.sceneIndex, input.visualId);
+  if (!visual) throw new Error(`Visual ${input.visualId || input.sceneIndex} was not found in the XML plan.`);
+  if ((visual.attributes[name] || "").trim() === nextValue.trim()) {
+    return { body: xml, changed: false };
+  }
+  return {
+    body: replaceOpeningTagAttribute(xml, visual, name, nextValue),
+    changed: true,
+  };
+}
+
 function replaceNodeXml(xml: string, node: XmlNode, nextXml: string) {
   if (!Number.isInteger(node.end)) {
     throw new Error(`Cannot replace <${node.tagName}> because it is not closed.`);
@@ -250,6 +274,9 @@ export function readXmlVisualEditStates(scriptPath: string): XmlVisualEditState[
       imageId: imageId || undefined,
       prompt,
       basedOn: image?.attributes.basedOn?.trim() || "",
+      cameraZoom: visual.attributes.cameraZoom?.trim() || "",
+      cameraZoomStart: visual.attributes.cameraZoomStart?.trim() || "",
+      cameraZoomEnd: visual.attributes.cameraZoomEnd?.trim() || "",
       motionGraphicXml: motionGraphic && Number.isInteger(motionGraphic.end)
         ? body.slice(motionGraphic.start, motionGraphic.end).trim()
         : undefined,
@@ -328,6 +355,18 @@ export function saveXmlVisualEdits(scriptPath: string, input: SaveXmlVisualEdits
       body = replaceNodeXml(body, motionGraphic, nextMotionGraphicXml);
       changed = true;
     }
+  }
+
+  for (const [name, value] of [
+    ["cameraZoom", input.cameraZoom],
+    ["cameraZoomStart", input.cameraZoomStart],
+    ["cameraZoomEnd", input.cameraZoomEnd],
+  ] as const) {
+    if (value === undefined) continue;
+    ({ body, root } = parsePlan(`${prefix}${body}`));
+    const result = updateVisualAttribute(body, root, input, name, value);
+    body = result.body;
+    changed = result.changed || changed;
   }
 
   if (changed) {

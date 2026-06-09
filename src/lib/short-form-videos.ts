@@ -150,6 +150,9 @@ export interface SceneImageArtifact {
   visualId?: string;
   xmlPrompt?: string;
   xmlBasedOn?: string;
+  cameraZoom?: string;
+  cameraZoomStart?: string;
+  cameraZoomEnd?: string;
   motionGraphicXml?: string;
   status?: "completed" | "in-progress";
 }
@@ -2641,6 +2644,9 @@ function getSceneImagesStage(projectId: string, options?: { pending?: boolean })
       ...scene,
       ...(xmlEditState?.prompt !== undefined ? { xmlPrompt: xmlEditState.prompt } : {}),
       ...(xmlEditState?.basedOn !== undefined ? { xmlBasedOn: xmlEditState.basedOn } : {}),
+      ...(xmlEditState?.cameraZoom !== undefined ? { cameraZoom: xmlEditState.cameraZoom } : {}),
+      ...(xmlEditState?.cameraZoomStart !== undefined ? { cameraZoomStart: xmlEditState.cameraZoomStart } : {}),
+      ...(xmlEditState?.cameraZoomEnd !== undefined ? { cameraZoomEnd: xmlEditState.cameraZoomEnd } : {}),
       ...(xmlEditState?.motionGraphicXml ? { motionGraphicXml: xmlEditState.motionGraphicXml } : {}),
       image: scene.image ? toMediaUrl(projectId, scene.image, getProjectMediaVersion(projectId, scene.image)) : undefined,
       previewImage: scene.previewImage ? toMediaUrl(projectId, scene.previewImage, getProjectMediaVersion(projectId, scene.previewImage)) : undefined,

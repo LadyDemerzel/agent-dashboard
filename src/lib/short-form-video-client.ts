@@ -183,6 +183,9 @@ export interface Scene {
   visualId?: string;
   xmlPrompt?: string;
   xmlBasedOn?: string;
+  cameraZoom?: string;
+  cameraZoomStart?: string;
+  cameraZoomEnd?: string;
   motionGraphicXml?: string;
   status?: 'completed' | 'in-progress';
 }
@@ -738,6 +741,9 @@ function normalizeScene(value: unknown): Scene | null {
     visualId: asOptionalString(obj.visualId),
     xmlPrompt: asOptionalString(obj.xmlPrompt),
     xmlBasedOn: asOptionalString(obj.xmlBasedOn),
+    cameraZoom: asOptionalString(obj.cameraZoom),
+    cameraZoomStart: asOptionalString(obj.cameraZoomStart),
+    cameraZoomEnd: asOptionalString(obj.cameraZoomEnd),
     motionGraphicXml: asOptionalString(obj.motionGraphicXml),
     status: obj.status === 'in-progress' ? 'in-progress' : obj.status === 'completed' ? 'completed' : undefined,
   };

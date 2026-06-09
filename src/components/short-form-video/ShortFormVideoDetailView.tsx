@@ -18,6 +18,12 @@ import { RefreshIconButton } from "@/components/RefreshIconButton";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DialogFooter } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -229,6 +235,10 @@ interface SoundDesignReviewVariant {
 interface VisualXmlDraft {
   prompt: string;
   basedOn: string;
+  cameraZoomMode: "static" | "animated";
+  cameraZoom: string;
+  cameraZoomStart: string;
+  cameraZoomEnd: string;
   motionGraphicXml: string;
 }
 
@@ -238,6 +248,9 @@ interface SavedVisualXmlState {
   imageId?: string;
   prompt?: string;
   basedOn?: string;
+  cameraZoom?: string;
+  cameraZoomStart?: string;
+  cameraZoomEnd?: string;
   motionGraphicXml?: string;
 }
 
@@ -825,6 +838,41 @@ function ScenePreviewVideoCard({
       className="aspect-[9/16] w-full rounded-md border border-border bg-black object-cover"
     />
   );
+}
+
+function getSceneVisualXmlDraft(scene: Scene): VisualXmlDraft {
+  const cameraZoomStart = scene.cameraZoomStart ?? "";
+  const cameraZoomEnd = scene.cameraZoomEnd ?? "";
+  return {
+    prompt: scene.xmlPrompt ?? scene.notes ?? "",
+    basedOn: scene.xmlBasedOn ?? scene.basedOnImageId ?? "",
+    cameraZoomMode: cameraZoomStart || cameraZoomEnd ? "animated" : "static",
+    cameraZoom: scene.cameraZoom ?? "",
+    cameraZoomStart,
+    cameraZoomEnd,
+    motionGraphicXml: scene.motionGraphicXml ?? "",
+  };
+}
+
+function getSceneDraftSignature(scene: Scene) {
+  const draft = getSceneVisualXmlDraft(scene);
+  return [
+    scene.id,
+    scene.visualId || "",
+    scene.imageId || "",
+    draft.prompt,
+    draft.basedOn,
+    draft.cameraZoomMode,
+    draft.cameraZoom,
+    draft.cameraZoomStart,
+    draft.cameraZoomEnd,
+    draft.motionGraphicXml,
+  ].join("\u001f");
+}
+
+function appendCacheBust(url: string, value?: number) {
+  if (!value) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}previewBust=${value}`;
 }
 
 const SUPPRESSED_VIDEO_PIPELINE_WARNINGS = new Set([
@@ -3660,6 +3708,9 @@ function SceneImagesSection({
   const [visualXmlDraftByScene, setVisualXmlDraftByScene] = useState<
     Record<string, VisualXmlDraft>
   >({});
+  const [scenePreviewBustById, setScenePreviewBustById] = useState<
+    Record<string, number>
+  >({});
   const [savingSceneXml, setSavingSceneXml] = useState<string | null>(null);
 
   const { data: imageSettingsPayload } = useSWR<ApiResponse<WorkflowSettingsResponse>>(
@@ -3706,6 +3757,10 @@ function SceneImagesSection({
   useEffect(() => {
     setSceneTabById((current) => {
       const next = { ...current };
+      const validSceneIds = new Set(project.sceneImages.scenes.map((scene) => scene.id));
+      for (const sceneId of Object.keys(next)) {
+        if (!validSceneIds.has(sceneId)) delete next[sceneId];
+      }
       for (const scene of project.sceneImages.scenes) {
         if (!next[scene.id]) {
           next[scene.id] = scene.previewVideo ? "preview" : "raw";
@@ -3716,21 +3771,18 @@ function SceneImagesSection({
   }, [project.sceneImages.scenes]);
 
   useEffect(() => {
-    setVisualXmlDraftByScene((current) => {
-      let changed = false;
-      const next = { ...current };
-      for (const scene of project.sceneImages.scenes) {
-        if (next[scene.id] !== undefined) continue;
-        next[scene.id] = {
-          prompt: scene.xmlPrompt ?? scene.notes ?? "",
-          basedOn: scene.xmlBasedOn ?? scene.basedOnImageId ?? "",
-          motionGraphicXml: scene.motionGraphicXml ?? "",
-        };
-        changed = true;
-      }
-      return changed ? next : current;
-    });
-  }, [project.sceneImages.scenes]);
+    setVisualXmlDraftByScene(
+      Object.fromEntries(
+        project.sceneImages.scenes.map((scene) => [
+          scene.id,
+          getSceneVisualXmlDraft(scene),
+        ]),
+      ),
+    );
+  }, [
+    project.sceneImages.updatedAt,
+    project.sceneImages.scenes.map(getSceneDraftSignature).join("\u001e"),
+  ]);
 
   async function saveProjectStyle(styleId: string) {
     setSavingStyle(true);
@@ -3814,11 +3866,27 @@ function SceneImagesSection({
     }
   }
 
-  async function requestSceneChange(scene: Scene) {
+  async function requestSceneChange(
+    scene: Scene,
+    mode: "regenerate-image" | "preview-camera" = "regenerate-image",
+  ) {
     setSubmittingScene(scene.id);
     setError(null);
 
     try {
+      if (mode === "regenerate-image" || mode === "preview-camera") {
+        const saved = await saveSceneXml(scene, { keepSavingIndicator: true });
+        if (!saved) return;
+      }
+      if (mode === "preview-camera") {
+        setSceneTabById((prev) => ({ ...prev, [scene.id]: "preview" }));
+        setScenePreviewBustById((prev) => ({
+          ...prev,
+          [scene.id]: Date.now(),
+        }));
+        await refresh();
+        return;
+      }
       await parseJsonResponse(
         await fetch(
           `/api/short-form-videos/${project.id}/workflow/scene-images`,
@@ -3842,20 +3910,34 @@ function SceneImagesSection({
         err instanceof Error ? err.message : "Failed to request scene changes",
       );
     } finally {
+      setSavingSceneXml(null);
       setSubmittingScene(null);
     }
   }
 
-  async function saveSceneXml(scene: Scene) {
+  async function saveSceneXml(
+    scene: Scene,
+    options?: { keepSavingIndicator?: boolean },
+  ) {
     const draft = visualXmlDraftByScene[scene.id] ?? {
-      prompt: scene.xmlPrompt ?? scene.notes ?? "",
-      basedOn: scene.xmlBasedOn ?? scene.basedOnImageId ?? "",
-      motionGraphicXml: scene.motionGraphicXml ?? "",
+      ...getSceneVisualXmlDraft(scene),
     };
     setSavingSceneXml(scene.id);
     setError(null);
 
     try {
+      const cameraFields =
+        draft.cameraZoomMode === "animated"
+          ? {
+              cameraZoom: "",
+              cameraZoomStart: draft.cameraZoomStart,
+              cameraZoomEnd: draft.cameraZoomEnd,
+            }
+          : {
+              cameraZoom: draft.cameraZoom,
+              cameraZoomStart: "",
+              cameraZoomEnd: "",
+            };
       const payload = await parseJsonResponse<SaveVisualXmlResponse>(
         await fetch(
           `/api/short-form-videos/${project.id}/workflow/scene-images`,
@@ -3869,7 +3951,11 @@ function SceneImagesSection({
               visualId: scene.visualId,
               ...(scene.visualType === "motion_graphic"
                 ? { motionGraphicXml: draft.motionGraphicXml }
-                : { prompt: draft.prompt, basedOn: draft.basedOn }),
+                : {
+                    prompt: draft.prompt,
+                    basedOn: draft.basedOn,
+                    ...cameraFields,
+                  }),
             }),
           },
         ),
@@ -3881,17 +3967,29 @@ function SceneImagesSection({
         [scene.id]: {
           prompt: savedVisual?.prompt ?? draft.prompt,
           basedOn: savedVisual?.basedOn ?? draft.basedOn,
+          cameraZoomMode:
+            savedVisual?.cameraZoomStart || savedVisual?.cameraZoomEnd
+              ? "animated"
+              : draft.cameraZoomMode,
+          cameraZoom: savedVisual?.cameraZoom ?? cameraFields.cameraZoom,
+          cameraZoomStart:
+            savedVisual?.cameraZoomStart ?? cameraFields.cameraZoomStart,
+          cameraZoomEnd: savedVisual?.cameraZoomEnd ?? cameraFields.cameraZoomEnd,
           motionGraphicXml:
             savedVisual?.motionGraphicXml ?? draft.motionGraphicXml.trim(),
         },
       }));
       await refresh();
+      return true;
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to save visual XML changes",
       );
+      return false;
     } finally {
-      setSavingSceneXml(null);
+      if (!options?.keepSavingIndicator) {
+        setSavingSceneXml(null);
+      }
     }
   }
 
@@ -4347,11 +4445,16 @@ function SceneImagesSection({
                     Boolean(scene.previewImage);
                   const currentImagePrompt = scene.xmlPrompt ?? scene.notes ?? "";
                   const currentBasedOn = scene.xmlBasedOn ?? scene.basedOnImageId ?? "";
+                  const currentCameraZoom = scene.cameraZoom ?? "";
+                  const currentCameraZoomStart = scene.cameraZoomStart ?? "";
+                  const currentCameraZoomEnd = scene.cameraZoomEnd ?? "";
+                  const currentCameraZoomMode =
+                    currentCameraZoomStart || currentCameraZoomEnd
+                      ? "animated"
+                      : "static";
                   const currentMotionGraphicXml = scene.motionGraphicXml ?? "";
                   const visualXmlDraft = visualXmlDraftByScene[scene.id] ?? {
-                    prompt: currentImagePrompt,
-                    basedOn: currentBasedOn,
-                    motionGraphicXml: currentMotionGraphicXml,
+                    ...getSceneVisualXmlDraft(scene),
                   };
                   const isMotionGraphic = scene.visualType === "motion_graphic";
                   const basedOnOptions = project.sceneImages.scenes
@@ -4383,7 +4486,24 @@ function SceneImagesSection({
                   const visualXmlDirty = isMotionGraphic
                     ? visualXmlDraft.motionGraphicXml.trim() !== currentMotionGraphicXml.trim()
                     : visualXmlDraft.prompt.trim() !== currentImagePrompt.trim() ||
-                      visualXmlDraft.basedOn.trim() !== currentBasedOn.trim();
+                      visualXmlDraft.basedOn.trim() !== currentBasedOn.trim() ||
+                      visualXmlDraft.cameraZoomMode !== currentCameraZoomMode ||
+                      visualXmlDraft.cameraZoom.trim() !== currentCameraZoom.trim() ||
+                      visualXmlDraft.cameraZoomStart.trim() !== currentCameraZoomStart.trim() ||
+                      visualXmlDraft.cameraZoomEnd.trim() !== currentCameraZoomEnd.trim();
+                  const dependentImageVisuals = project.sceneImages.scenes.filter(
+                    (candidate) =>
+                      !isMotionGraphic &&
+                      candidate.id !== scene.id &&
+                      candidate.visualType !== "motion_graphic" &&
+                      Boolean(scene.imageId || scene.visualId) &&
+                      (
+                        candidate.xmlBasedOn === scene.imageId ||
+                        candidate.xmlBasedOn === scene.visualId ||
+                        candidate.basedOnImageId === scene.imageId ||
+                        candidate.basedOnImageId === scene.visualId
+                      ),
+                  );
 
                   return (
                     <div
@@ -4454,7 +4574,10 @@ function SceneImagesSection({
                       ) : hasRenderableMedia ? (
                         activeTab === "preview" && hasPreviewVideo ? (
                           <ScenePreviewVideoCard
-                            src={scene.previewVideo!}
+                            src={appendCacheBust(
+                              scene.previewVideo!,
+                              scenePreviewBustById[scene.id],
+                            )}
                             poster={
                               scene.previewImage || scene.image || undefined
                             }
@@ -4589,6 +4712,113 @@ function SceneImagesSection({
                                 parent reference, or clear it.
                               </p>
                             </div>
+                            <div className="space-y-2 rounded-md border border-border bg-background/70 p-2">
+                              <div className="space-y-1">
+                                <p className="text-xs font-medium text-muted-foreground">
+                                  Camera zoom
+                                </p>
+                                <Select
+                                  value={visualXmlDraft.cameraZoomMode}
+                                  onChange={(e) =>
+                                    setVisualXmlDraftByScene((prev) => ({
+                                      ...prev,
+                                      [scene.id]: {
+                                        ...visualXmlDraft,
+                                        cameraZoomMode:
+                                          e.target.value === "animated"
+                                            ? "animated"
+                                            : "static",
+                                      },
+                                    }))
+                                  }
+                                  disabled={sceneBusy}
+                                >
+                                  <option value="static">Static zoom</option>
+                                  <option value="animated">Animated zoom</option>
+                                </Select>
+                              </div>
+                              {visualXmlDraft.cameraZoomMode === "animated" ? (
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="space-y-1">
+                                    <p className="text-[11px] font-medium text-muted-foreground">
+                                      zoom start
+                                    </p>
+                                    <Input
+                                      value={visualXmlDraft.cameraZoomStart}
+                                      onChange={(e) =>
+                                        setVisualXmlDraftByScene((prev) => ({
+                                          ...prev,
+                                          [scene.id]: {
+                                            ...visualXmlDraft,
+                                            cameraZoomStart: e.target.value,
+                                          },
+                                        }))
+                                      }
+                                      placeholder="0.02"
+                                      disabled={sceneBusy}
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-[11px] font-medium text-muted-foreground">
+                                      zoom end
+                                    </p>
+                                    <Input
+                                      value={visualXmlDraft.cameraZoomEnd}
+                                      onChange={(e) =>
+                                        setVisualXmlDraftByScene((prev) => ({
+                                          ...prev,
+                                          [scene.id]: {
+                                            ...visualXmlDraft,
+                                            cameraZoomEnd: e.target.value,
+                                          },
+                                        }))
+                                      }
+                                      placeholder="0.08"
+                                      disabled={sceneBusy}
+                                    />
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="space-y-1">
+                                  <p className="text-[11px] font-medium text-muted-foreground">
+                                    zoom
+                                  </p>
+                                  <Input
+                                    value={visualXmlDraft.cameraZoom}
+                                    onChange={(e) =>
+                                      setVisualXmlDraftByScene((prev) => ({
+                                        ...prev,
+                                        [scene.id]: {
+                                          ...visualXmlDraft,
+                                          cameraZoom: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                    placeholder="0.05"
+                                    disabled={sceneBusy}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                            <div className="rounded-md border border-border bg-background/70 p-2 text-[11px] text-muted-foreground">
+                              {dependentImageVisuals.length > 0 ? (
+                                <div className="space-y-1">
+                                  <p className="font-medium text-foreground">
+                                    Based-on dependents
+                                  </p>
+                                  <p>
+                                    {dependentImageVisuals
+                                      .map(
+                                        (dependent) =>
+                                          `Visual ${dependent.number}${dependent.visualId ? ` (${dependent.visualId})` : ""}`,
+                                      )
+                                      .join(", ")}
+                                  </p>
+                                </div>
+                              ) : (
+                                <p>No other image visuals are based on this visual.</p>
+                              )}
+                            </div>
                           </>
                         )}
                       </div>
@@ -4604,18 +4834,55 @@ function SceneImagesSection({
                             : "Save XML changes"}
                         </Button>
                       ) : null}
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => void requestSceneChange(scene)}
-                        disabled={sceneBusy || submittingScene === scene.id}
-                      >
-                        {submittingScene === scene.id
-                          ? "Sending…"
-                          : sceneBusy
-                            ? "Visual is rendering…"
-                            : "Re-render"}
-                      </Button>
+                      {isMotionGraphic ? (
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => void requestSceneChange(scene)}
+                          disabled={sceneBusy || submittingScene === scene.id}
+                        >
+                          {submittingScene === scene.id
+                            ? "Sending…"
+                            : sceneBusy
+                              ? "Visual is rendering…"
+                              : "Re-render"}
+                        </Button>
+                      ) : (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className="w-full justify-between"
+                              disabled={sceneBusy || submittingScene === scene.id}
+                            >
+                              <span>
+                                {submittingScene === scene.id
+                                  ? "Sending…"
+                                  : sceneBusy
+                                    ? "Visual is rendering…"
+                                    : "Re-render"}
+                              </span>
+                              <ChevronDown className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-64">
+                            <DropdownMenuItem
+                              onSelect={() =>
+                                void requestSceneChange(scene, "regenerate-image")
+                              }
+                            >
+                              Re-generate image
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onSelect={() =>
+                                void requestSceneChange(scene, "preview-camera")
+                              }
+                            >
+                              Re-render preview camera effect changes
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </div>
                   );
                 })}
