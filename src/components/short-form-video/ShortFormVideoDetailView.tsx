@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type ChangeEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -870,6 +871,127 @@ const visualSelectClass =
 
 const visualRerenderButtonClass =
   "w-full border-[#343439] bg-[#29292e] text-foreground hover:bg-[#33333a] active:bg-[#37373d]";
+
+function highlightXmlTag(tag: string, keyPrefix: string): ReactNode[] {
+  const tokens =
+    tag.match(/<\/?|\/?>|[\w:-]+|=|"[^"]*"|'[^']*'|\s+|[^\s]/g) ?? [];
+  let expectingTagName = false;
+  let tagNameSeen = false;
+
+  return tokens.map((token, index) => {
+    let className = "text-foreground";
+    if (token === "<" || token === "</") {
+      className = "text-muted-foreground";
+      expectingTagName = true;
+      tagNameSeen = false;
+    } else if (token === ">" || token === "/>") {
+      className = "text-muted-foreground";
+      expectingTagName = false;
+      tagNameSeen = false;
+    } else if (token === "=") {
+      className = "text-muted-foreground";
+    } else if (/^["']/.test(token)) {
+      className = "text-emerald-300";
+    } else if (/^\s+$/.test(token)) {
+      className = "text-foreground";
+    } else if (expectingTagName && !tagNameSeen) {
+      className = "text-sky-300";
+      tagNameSeen = true;
+      expectingTagName = false;
+    } else {
+      className = "text-amber-200";
+    }
+
+    return (
+      <span className={className} key={`${keyPrefix}-${index}`}>
+        {token}
+      </span>
+    );
+  });
+}
+
+function highlightXml(value: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const pattern = /<!--[\s\S]*?-->|<[^>]*>/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(value)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(value.slice(lastIndex, match.index));
+    }
+
+    const token = match[0];
+    if (token.startsWith("<!--")) {
+      nodes.push(
+        <span className="text-emerald-400/70" key={`comment-${match.index}`}>
+          {token}
+        </span>,
+      );
+    } else {
+      nodes.push(...highlightXmlTag(token, `tag-${match.index}`));
+    }
+    lastIndex = pattern.lastIndex;
+  }
+
+  if (lastIndex < value.length) {
+    nodes.push(value.slice(lastIndex));
+  }
+
+  return nodes.length > 0 ? nodes : [" "];
+}
+
+function HighlightedXmlTextarea({
+  value,
+  onChange,
+  placeholder,
+  disabled,
+}: {
+  value: string;
+  onChange: (event: ChangeEvent<HTMLTextAreaElement>) => void;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  const highlightRef = useRef<HTMLPreElement | null>(null);
+
+  return (
+    <div
+      className={cn(
+        "relative min-h-[540px] rounded-md border border-[#2d2d32] bg-[#242428]",
+        "focus-within:ring-1 focus-within:ring-[#59595f]",
+        disabled && "opacity-50",
+      )}
+    >
+      <pre
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-3 py-2 font-mono text-xs leading-5"
+        ref={highlightRef}
+      >
+        <code>{highlightXml(value)}</code>
+      </pre>
+      <Textarea
+        value={value}
+        onChange={onChange}
+        onScroll={(event) => {
+          if (!highlightRef.current) {
+            return;
+          }
+          highlightRef.current.scrollTop = event.currentTarget.scrollTop;
+          highlightRef.current.scrollLeft = event.currentTarget.scrollLeft;
+        }}
+        placeholder={placeholder}
+        className={cn(
+          "relative min-h-[540px] resize-y border-0 bg-transparent px-3 py-2 font-mono text-xs leading-5 text-transparent shadow-none caret-foreground",
+          "focus-visible:ring-0",
+          "[tab-size:2]",
+          disabled && "cursor-not-allowed",
+        )}
+        disabled={disabled}
+        spellCheck={false}
+      />
+    </div>
+  );
+}
 
 interface VisualDependencyTreeNode {
   scene: Scene;
@@ -4826,7 +4948,7 @@ function SceneImagesSection({
                         {isMotionGraphic ? (
                           <VisualDetailSection title="Motion graphic XML">
                             <div className="space-y-1">
-                              <Textarea
+                              <HighlightedXmlTextarea
                                 value={visualXmlDraft.motionGraphicXml}
                                 onChange={(e) =>
                                   setVisualXmlDraftByScene((prev) => ({
@@ -4838,10 +4960,6 @@ function SceneImagesSection({
                                   }))
                                 }
                                 placeholder="Edit the inline <motionGraphic> XML for this visual"
-                                className={cn(
-                                  "min-h-[180px] font-mono text-xs",
-                                  visualFieldClass,
-                                )}
                                 disabled={sceneBusy}
                               />
                             </div>
@@ -4865,7 +4983,7 @@ function SceneImagesSection({
                                     ? "Wait for the current render to finish before editing XML"
                                     : "Edit the XML image prompt"
                                 }
-                                className={cn("min-h-[88px]", visualFieldClass)}
+                                className={cn("min-h-[264px]", visualFieldClass)}
                                 disabled={sceneBusy}
                               />
                             </VisualDetailSection>
