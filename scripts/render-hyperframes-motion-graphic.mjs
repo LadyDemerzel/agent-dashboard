@@ -850,8 +850,8 @@ function checklist(args, timeline) {
     const at = itemTiming(args, "items", item, index, fixedRevealTiming(index, { firstRevealAt: 0.44, revealDuration: 0.42, gapAfterReveal: 0.36 }).revealAt, ["steps", "checklist"]);
     const y = cursorY;
     const contentTop = y + itemPaddingY;
-    const boxTop = Math.round(contentTop + (layout.contentHeight - boxSize) / 2);
-    const textTop = Math.round(contentTop + (layout.contentHeight - layout.textHeight) / 2);
+    const textTop = Math.round(contentTop);
+    const boxTop = Math.round(contentTop + (textLineHeight - boxSize) / 2);
     html.push(htmlElement(`check-box-${index}`, "check-box", `left:126px;top:${boxTop}px;width:${boxSize}px;height:${boxSize}px;border-radius:12px;background:${PALETTE.mutedSage};`));
     html.push(htmlElement(`check-mark-${index}`, "check-mark", `left:142px;top:${boxTop + 16}px;width:32px;height:20px;border-left:7px solid ${PALETTE.offWhite};border-bottom:7px solid ${PALETTE.offWhite};transform:rotate(-45deg);`));
     html.push(textBlock(`check-text-${index}`, layout.lines, 236, textTop, { width: 760, size: textSize, lineGap: textLineGap }));

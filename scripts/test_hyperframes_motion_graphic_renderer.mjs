@@ -105,7 +105,7 @@ try {
       assert.ok(html.includes("the routine gets longer"), "checklist fixture must keep a wrapped long item for responsive-height coverage");
       assert.ok(textTops[2] - textTops[1] > textTops[1] - textTops[0], "checklist rows should advance by measured content height instead of one fixed row height");
       assert.equal(boxTops[0] - textTops[0], 3, "single-line checklist text should be vertically centered against the check box");
-      assert.ok(boxTops[1] > textTops[1], "multi-line checklist check box should center inside the taller text content");
+      assert.equal(boxTops[1] - textTops[1], boxTops[0] - textTops[0], "multi-line checklist check box should align to the first text row instead of the full wrapped text block");
       assert.ok(!html.includes("height:128px"), "checklist items should not render a fixed row height");
       assert.ok(!html.includes("height:104px"), "checklist items should not render the compact fixed row height");
     }
