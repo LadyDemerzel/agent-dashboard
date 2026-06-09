@@ -2688,7 +2688,6 @@ function buildVideoPipelineSummary(
   const alignmentOutputPath = path.join(workDir, "alignment", "word-timestamps.json");
   const baseVideoPath = path.join(workDir, "final-base-video.mp4");
   const captionAssPath = path.join(workDir, "captions-word-highlight.ass");
-  const generatedMusicPath = path.join(workDir, "music", "background-music-ace-step.wav");
   const videoDocPath = getStageFilePath(projectId, "video");
   const xmlVoicePath = path.join(xmlWorkDir, "voice", "narration-full.wav");
   const xmlAlignmentPath = path.join(xmlWorkDir, "alignment", "word-timestamps.json");
@@ -2702,7 +2701,6 @@ function buildVideoPipelineSummary(
     alignmentOutputPath,
     baseVideoPath,
     captionAssPath,
-    generatedMusicPath,
     xmlVoicePath,
     xmlAlignmentPath,
     xmlCaptionsPath,
@@ -2738,7 +2736,6 @@ function buildVideoPipelineSummary(
   };
 
   const inputArtifactsReady = [xmlVoicePath, xmlAlignmentPath, xmlCaptionsPath].every((filePath) => fs.existsSync(filePath));
-  const musicReady = typeof manifest?.music === "string" ? stepDone(manifest.music) : stepDone(generatedMusicPath);
   const baseVideoDone = stepDone(baseVideoPath) || (!shouldRequireFreshArtifacts && Boolean(videoArtifactPath && fs.existsSync(videoArtifactPath)));
   const captionsDone = Boolean(
     (videoArtifactPath && stepDone(videoArtifactPath))
@@ -2831,7 +2828,7 @@ function buildVideoPipelineSummary(
         : renderBaseVideoStatus === "active"
           ? (activeStatusText || "Rendering the base video from the XML scene pipeline.")
           : renderBaseVideoStatus === "completed"
-            ? "Rendered the visual scenes, narration, and soundtrack into a base video before caption burn-in."
+            ? "Rendered the visual scenes and narration into a base video before caption burn-in and sound-design handoff."
             : "Waiting for the base video render to start.",
       updatedAt: getFileUpdatedAt(baseVideoPath) || (videoArtifactPath ? getFileUpdatedAt(videoArtifactPath) : undefined) || getFileUpdatedAt(manifestPath),
       details: manifest
@@ -2877,7 +2874,7 @@ function buildVideoPipelineSummary(
         : finalizeOutputStatus === "active"
           ? (activeStatusText || "Saving final-video metadata and review artifacts.")
           : finalizeOutputStatus === "completed"
-            ? `Final MP4${musicReady ? " with soundtrack" : ""} is ready, and the review document was refreshed.`
+            ? "Final MP4 is ready, and the review document was refreshed."
             : "Waiting for the final video and review document to be published.",
       updatedAt: (videoArtifactPath ? getFileUpdatedAt(videoArtifactPath) : undefined) || getFileUpdatedAt(videoDocPath),
       details: manifest

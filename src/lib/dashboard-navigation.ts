@@ -49,7 +49,6 @@ const SHORT_FORM_SETTINGS_LABELS: Record<ShortFormSettingsRouteSection, string> 
   'generate-visuals-image-styles': 'Image Styles',
   'plan-sound-design': 'Plan Sound Design',
   'generate-sound-design': 'Generate Sound Design',
-  'final-video': 'Final Video',
 };
 
 function titleCaseSegment(segment: string) {

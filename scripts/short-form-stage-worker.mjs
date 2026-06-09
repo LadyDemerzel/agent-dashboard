@@ -973,23 +973,6 @@ function resolveVoiceSelection(preferredVoiceId) {
   return { voice: fallbackVoice, resolvedVoiceId: fallbackVoice.id, source: "fallback" };
 }
 
-function resolveMusicSelection(preferredMusicId) {
-  const settings = readVideoRenderSettings();
-  const projectMusic = preferredMusicId ? settings.musicTracks.find((track) => track.id === preferredMusicId) : undefined;
-  if (projectMusic) {
-    return { music: projectMusic, resolvedMusicId: projectMusic.id, source: "project", musicVolume: settings.musicVolume };
-  }
-  const defaultMusic = settings.defaultMusicTrackId ? settings.musicTracks.find((track) => track.id === settings.defaultMusicTrackId) : undefined;
-  if (defaultMusic) {
-    return { music: defaultMusic, resolvedMusicId: defaultMusic.id, source: "default", musicVolume: settings.musicVolume };
-  }
-  const fallbackMusic = settings.musicTracks[0];
-  if (fallbackMusic) {
-    return { music: fallbackMusic, resolvedMusicId: fallbackMusic.id, source: "fallback", musicVolume: settings.musicVolume };
-  }
-  return { source: "none", musicVolume: settings.musicVolume };
-}
-
 function resolveCaptionStyleSelection(preferredCaptionStyleId) {
   const settings = readVideoRenderSettings();
   const projectStyle = preferredCaptionStyleId ? settings.captionStyles.find((style) => style.id === preferredCaptionStyleId) : undefined;
@@ -4705,7 +4688,7 @@ function updateVideoManifestCaptionRendering(projectId, config, captionStyleSele
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
 }
 
-function buildVideoReviewDoc(projectId, config, selectedVoice = createDefaultVoice(), selectedMusic, captionStyleSelection) {
+function buildVideoReviewDoc(projectId, config, selectedVoice = createDefaultVoice(), captionStyleSelection) {
   const topic = readProjectTopic(projectId);
   const existingMeta = readExistingDocMetadata(config.videoDocPath);
   const status = normalizeDocStatus(existingMeta.status);
@@ -4742,7 +4725,7 @@ function buildVideoReviewDoc(projectId, config, selectedVoice = createDefaultVoi
     "",
     `${config.mode === "revise" ? "Regenerated" : "Generated"} the final vertical short-form video through the direct dashboard workflow. This execution path now calls the xml-scene-video renderer deterministically instead of routing the render through Scribe.`,
     "",
-    `This run stayed on the default deterministic pipeline: the final renderer reused the narration and forced-alignment artifacts from the XML Script step as the source of truth, rendered the full-frame visual scenes directly, burned in word-level captions with active, spoken, and upcoming highlighting, reused the saved soundtrack WAV chosen in the short-form settings, and applied any per-visual XML camera motion only to the image layer when explicitly present in the XML (otherwise the visual stays static).`,
+    `This run stayed on the default deterministic pipeline: the final renderer reused the narration and forced-alignment artifacts from the XML Script step as the source of truth, rendered the full-frame visual scenes directly, burned in word-level captions with active, spoken, and upcoming highlighting, left music and effects to the approved Generate Sound Design mix, and applied any per-visual XML camera motion only to the image layer when explicitly present in the XML (otherwise the visual stays static).`,
     ...(config.notes ? ["", "## Request notes", "", config.notes] : []),
     ...(alignmentWarning ? ["", "## Alignment warning", "", alignmentWarning] : []),
     "",
@@ -4757,7 +4740,6 @@ function buildVideoReviewDoc(projectId, config, selectedVoice = createDefaultVoi
         : `legacy custom voice \`${selectedVoice.name}\` / speaker \`${selectedVoice.speaker || DEFAULT_VOICE_SPEAKER}\``}`,
     `- Voice prompt: ${selectedVoice.sourceType === "uploaded-reference" ? "Uses the saved uploaded reference clip for voice-clone narration." : selectedVoice.voiceDesignPrompt}`,
     `- Caption style: ${captionStyleSelection?.style?.name ? `\`${captionStyleSelection.style.name}\` (${captionStyleSelection.animationPreset?.name || captionStyleSelection.style.animationPreset || captionStyleSelection.style.animationPresetId || "animation preset"})` : config.captionStyleName ? `\`${config.captionStyleName}\`` : "Default/fallback"}`,
-    `- Music path: ${selectedMusic?.generatedAudioRelativePath ? `\`${selectedMusic.generatedAudioRelativePath}\`` : "Not configured"}`,
     `- Sound design handoff: ${config.soundDesignDecision === "skipped"
       ? "Skipped intentionally. Final render omitted the sound-design mix."
       : config.soundDesignDecision === "approved"
@@ -4978,7 +4960,6 @@ function runDirectVideo(job) {
   }
 
   const projectMeta = readProjectMeta(job.projectId) || {};
-  const selectedMusic = resolveMusicSelection(projectMeta.selectedMusicId);
   const videoRenderSettings = readVideoRenderSettings();
   const defaultCaptionStyles = createDefaultCaptionStyles();
   const requestedAnimationPreset = config.animationPreset
@@ -5050,13 +5031,6 @@ function runDirectVideo(job) {
   }
 
   const xmlSelectedVoice = readXmlVoiceSelection(job.projectId) || resolveVoiceSelection(projectMeta.selectedVoiceId).voice;
-  const reusableMusicPath = selectedMusic.music?.generatedAudioRelativePath
-    ? resolveMusicLibraryAbsolutePath(selectedMusic.music.generatedAudioRelativePath)
-    : null;
-  if (!reusableMusicPath || !fs.existsSync(reusableMusicPath)) {
-    throw new Error("Missing saved soundtrack file for final-video generation. Open Short-form workflow settings, save the music library, and generate the soundtrack file once for the selected preset before rendering.");
-  }
-
   const args = [
     "run",
     "--with",
@@ -5086,14 +5060,11 @@ function runDirectVideo(job) {
     existingVoicePath,
     "--existing-alignment",
     existingAlignmentPath,
-    "--music",
-    reusableMusicPath,
-    "--music-volume",
-    String(selectedMusic.musicVolume ?? Number(DEFAULT_MUSIC_VOLUME)),
+    "--no-music",
     "--force",
   ];
 
-  updateDirectVideoProgress("prepare-inputs", "Loading XML narration, alignment, caption, visuals, and soundtrack inputs.");
+  updateDirectVideoProgress("prepare-inputs", "Loading XML narration, alignment, caption, visual, and sound-design inputs.");
   updateDirectVideoProgress("render-base-video", "Rendering the base final video from the XML scene pipeline.");
   const result = runCommand("uv", args);
   const baseVideoPath = writeBaseVideoArtifact(config.finalVideoPath, config.videoWorkDir);
@@ -5111,8 +5082,8 @@ function runDirectVideo(job) {
   const soundDesignMixPath = renderProjectSoundDesignMix({
     projectId: job.projectId,
     narrationPath: existingVoicePath,
-    musicPath: reusableMusicPath,
-    musicVolume: selectedMusic.musicVolume ?? Number(DEFAULT_MUSIC_VOLUME),
+    musicPath: null,
+    musicVolume: Number(DEFAULT_MUSIC_VOLUME),
     workDir: config.videoWorkDir,
     soundDesignDecision: config.soundDesignDecision,
     soundDesignPreviewRelativePath: config.soundDesignPreviewRelativePath,
@@ -5128,7 +5099,7 @@ function runDirectVideo(job) {
     }
   }
   updateVideoManifestCaptionRendering(job.projectId, config, captionStyleSelection, captionRender);
-  fs.writeFileSync(config.videoDocPath, buildVideoReviewDoc(job.projectId, config, xmlSelectedVoice, selectedMusic.music, captionStyleSelection), "utf-8");
+  fs.writeFileSync(config.videoDocPath, buildVideoReviewDoc(job.projectId, config, xmlSelectedVoice, captionStyleSelection), "utf-8");
   return {
     command: ["uv", ...args].join(" "),
     stdout: result.stdout.trim(),

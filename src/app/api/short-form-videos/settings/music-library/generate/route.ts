@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
   const settings = getShortFormVideoRenderSettings();
   const track = settings.musicTracks.find((candidate) => candidate.id === trackId);
   if (!track) {
-    return NextResponse.json({ success: false, error: "Saved soundtrack preset not found" }, { status: 404 });
+    return NextResponse.json({ success: false, error: "Saved music track not found" }, { status: 404 });
   }
 
   const durationSeconds = normalizeDuration(track.previewDurationSeconds, DEFAULT_DURATION_SECONDS);

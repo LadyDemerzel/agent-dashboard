@@ -103,11 +103,6 @@ interface VoiceOption {
   sourceType?: "generated" | "uploaded-reference";
 }
 
-interface MusicOption {
-  id: string;
-  name: string;
-}
-
 interface CaptionStyleOption {
   id: string;
   name: string;
@@ -161,9 +156,6 @@ interface WorkflowSettingsResponse {
   videoRender?: {
     defaultVoiceId?: string;
     voices?: VoiceOption[];
-    defaultMusicTrackId?: string;
-    musicVolume?: number;
-    musicTracks?: MusicOption[];
     defaultCaptionStyleId?: string;
     captionStyles?: CaptionStyleOption[];
     captionMaxWords?: number;
@@ -6465,22 +6457,15 @@ function VideoSection({
   refresh: () => Promise<unknown>;
 }) {
   const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([]);
-  const [musicOptions, setMusicOptions] = useState<MusicOption[]>([]);
   const [captionStyleOptions, setCaptionStyleOptions] = useState<
     CaptionStyleOption[]
   >([]);
   const [defaultVoiceId, setDefaultVoiceId] = useState<string>("");
-  const [defaultMusicId, setDefaultMusicId] = useState<string>("");
   const [defaultCaptionStyleId, setDefaultCaptionStyleId] =
     useState<string>("");
-  const [musicVolume, setMusicVolume] = useState<number>(0.38);
-  const [savingMusic, setSavingMusic] = useState(false);
-  const [musicDialogOpen, setMusicDialogOpen] = useState(false);
-  const [draftMusicId, setDraftMusicId] = useState("");
   const [savingCaptionStyle, setSavingCaptionStyle] = useState(false);
   const [captionStyleDialogOpen, setCaptionStyleDialogOpen] = useState(false);
   const [draftCaptionStyleId, setDraftCaptionStyleId] = useState("");
-  const [musicError, setMusicError] = useState<string | null>(null);
   const [captionStyleError, setCaptionStyleError] = useState<string | null>(
     null,
   );
@@ -6502,16 +6487,6 @@ function VideoSection({
             ),
         )
       : [];
-    const nextMusic = Array.isArray(videoSettingsPayload?.data?.videoRender?.musicTracks)
-      ? videoSettingsPayload.data.videoRender.musicTracks.filter(
-          (track): track is MusicOption =>
-            Boolean(
-              track &&
-              typeof track.id === "string" &&
-              typeof track.name === "string",
-            ),
-        )
-      : [];
     const nextCaptionStyles = Array.isArray(
       videoSettingsPayload?.data?.videoRender?.captionStyles,
     )
@@ -6525,47 +6500,12 @@ function VideoSection({
         )
       : [];
     setVoiceOptions(nextVoices);
-    setMusicOptions(nextMusic);
     setCaptionStyleOptions(nextCaptionStyles);
     setDefaultVoiceId(videoSettingsPayload?.data?.videoRender?.defaultVoiceId || "");
-    setDefaultMusicId(
-      videoSettingsPayload?.data?.videoRender?.defaultMusicTrackId || "",
-    );
     setDefaultCaptionStyleId(
       videoSettingsPayload?.data?.videoRender?.defaultCaptionStyleId || "",
     );
-    setMusicVolume(
-      typeof videoSettingsPayload?.data?.videoRender?.musicVolume === "number"
-        ? videoSettingsPayload.data.videoRender.musicVolume
-        : 0.38,
-    );
   }, [videoSettingsPayload]);
-
-  async function saveProjectMusic(musicId: string) {
-    setSavingMusic(true);
-    setMusicError(null);
-    try {
-      await parseJsonResponse(
-        await fetch(`/api/short-form-videos/${project.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ selectedMusicId: musicId }),
-        }),
-        "Failed to update project soundtrack",
-      );
-      await refresh();
-      return true;
-    } catch (err) {
-      setMusicError(
-        err instanceof Error
-          ? err.message
-          : "Failed to update project soundtrack",
-      );
-      return false;
-    } finally {
-      setSavingMusic(false);
-    }
-  }
 
   async function saveProjectCaptionStyle(captionStyleId: string | null) {
     setSavingCaptionStyle(true);
@@ -6600,11 +6540,6 @@ function VideoSection({
     project.selectedVoiceName ||
     voiceOptions.find((voice) => voice.id === defaultVoiceId)?.name ||
     "default voice";
-  const globalDefaultMusicLabel =
-    musicOptions.find((track) => track.id === defaultMusicId)?.name ||
-    "default soundtrack";
-  const activeMusicId = project.selectedMusicId || defaultMusicId || "";
-  const activeMusicLabel = project.selectedMusicName || globalDefaultMusicLabel;
   const globalDefaultCaptionStyleLabel =
     captionStyleOptions.find((style) => style.id === defaultCaptionStyleId)
       ?.name || "default caption style";
@@ -6649,12 +6584,12 @@ function VideoSection({
       projectId={project.id}
       title="Video"
       stage="video"
-      description="After generated visuals are approved, the dashboard renders the final short-form video directly through the xml-scene-video workflow by reusing the narration + forced-alignment artifacts already produced during Generate Narration Audio, full-frame visual assets, saved background music, ASS/libass subtitle burn-in, and per-visual XML camera motion that applies only to the image layer when explicitly set in the XML."
+      description="After generated visuals are approved, the dashboard renders the final short-form video directly through the xml-scene-video workflow by reusing the narration + forced-alignment artifacts already produced during Generate Narration Audio, full-frame visual assets, ASS/libass subtitle burn-in, per-visual XML camera motion, and the approved Generate Sound Design mix."
       doc={project.video}
       mode="markdown"
       emptyText="No video yet. Generate the final video after approving generated visuals and resolving the Generate Sound Design handoff."
       triggerLabel="Generate final video"
-      triggerDescription={`The video should be rendered from the XML <script> and approved full-frame scene assets by reusing the saved XML-step narration/alignment artifacts${activeVoiceLabel ? ` (voice source currently shown as ${activeVoiceLabel} in Generate Narration Audio)` : ""}${activeMusicLabel ? `, soundtrack preset ${activeMusicLabel}` : ""}${activeCaptionStyleLabel ? `, caption style ${activeCaptionStyleLabel}` : ""}, plus the saved music mix volume (${Math.round(musicVolume * 100)}%) and the deterministic ASS/libass caption path unless explicitly overridden.`}
+      triggerDescription={`The video should be rendered from the XML <script> and approved full-frame scene assets by reusing the saved XML-step narration/alignment artifacts${activeVoiceLabel ? ` (voice source currently shown as ${activeVoiceLabel} in Generate Narration Audio)` : ""}${activeCaptionStyleLabel ? `, caption style ${activeCaptionStyleLabel}` : ""}, the deterministic ASS/libass caption path, and the approved Generate Sound Design audio mix.`}
       onRefresh={refresh}
       triggerDisabled={!soundDesignReadyForVideo}
       triggerDisabledReason={
@@ -6669,120 +6604,12 @@ function VideoSection({
       allowRerunWithNotes={false}
       extra={
         <div className="space-y-4">
-          {musicError ? (
-            <ValidationNotice
-              title="Soundtrack selection failed"
-              message={musicError}
-            />
-          ) : null}
           {captionStyleError ? (
             <ValidationNotice
               title="Caption style selection failed"
               message={captionStyleError}
             />
           ) : null}
-          <CompactSettingCard
-            title="Soundtrack"
-            globalDefault={<>Global default soundtrack: {globalDefaultMusicLabel}</>}
-            valueLines={[
-              { children: activeMusicLabel },
-              {
-                children: `Mix volume ${Math.round(musicVolume * 100)}%`,
-                tone: "secondary",
-              },
-            ]}
-            editTooltip="Edit soundtrack"
-            editDisabled={musicOptions.length === 0}
-            onEdit={() => {
-              setDraftMusicId(activeMusicId);
-              setMusicError(null);
-              setMusicDialogOpen(true);
-            }}
-            links={
-              <CompactSettingLink
-                href={buildShortFormSettingsHref("final-video", {
-                  hash: "music-library",
-                })}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Open music library ↗
-              </CompactSettingLink>
-            }
-            dialog={{
-              open: musicDialogOpen,
-              title: "Soundtrack",
-              description: "Pick the saved soundtrack entry to reuse for this project.",
-              children: (
-                <>
-                  {musicError ? (
-                    <ValidationNotice
-                      title="Soundtrack selection failed"
-                      message={musicError}
-                    />
-                  ) : null}
-                  <CompactSettingLink
-                    href={buildShortFormSettingsHref("final-video", {
-                      hash: "music-library",
-                    })}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Open music library ↗
-                  </CompactSettingLink>
-                  <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                    {musicOptions.length > 0 ? (
-                      musicOptions.map((track) => (
-                        <button
-                          key={track.id}
-                          type="button"
-                          onClick={() => setDraftMusicId(track.id)}
-                          disabled={savingMusic}
-                          className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
-                            draftMusicId === track.id
-                              ? "border-primary bg-primary/10 text-foreground"
-                              : "border-border bg-background/60 text-muted-foreground hover:border-foreground/40 hover:text-foreground"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="font-medium">{track.name}</span>
-                            {track.id === defaultMusicId ? (
-                              <Badge variant="secondary">Global default</Badge>
-                            ) : null}
-                          </div>
-                        </button>
-                      ))
-                    ) : (
-                      <p className="rounded-md border border-border bg-background/60 p-3 text-sm text-muted-foreground">
-                        No soundtrack entries are available yet.
-                      </p>
-                    )}
-                  </div>
-                  <DialogFooter className="mt-0 justify-start">
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        void saveProjectMusic(draftMusicId).then((saved) => {
-                          if (saved) setMusicDialogOpen(false);
-                        })
-                      }
-                      disabled={savingMusic || !draftMusicId || musicOptions.length === 0}
-                    >
-                      {savingMusic ? "Saving…" : "Save"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setMusicDialogOpen(false)}
-                      disabled={savingMusic}
-                    >
-                      Cancel
-                    </Button>
-                  </DialogFooter>
-                </>
-              ),
-            }}
-          />
           <CompactSettingCard
             title="Caption style"
             globalDefault={<>Global default caption style: {globalDefaultCaptionStyleLabel}</>}

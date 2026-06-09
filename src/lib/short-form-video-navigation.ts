@@ -33,7 +33,6 @@ export const SHORT_FORM_SETTINGS_SECTIONS = [
   'generate-visuals-image-styles',
   'plan-sound-design',
   'generate-sound-design',
-  'final-video',
 ] as const;
 
 export type ShortFormSettingsRouteSection = (typeof SHORT_FORM_SETTINGS_SECTIONS)[number];
@@ -51,7 +50,6 @@ export const SHORT_FORM_SETTINGS_SECTION_TITLES = {
   'generate-visuals-image-styles': 'Image Styles',
   'plan-sound-design': 'Plan Sound Design',
   'generate-sound-design': 'Generate Sound Design',
-  'final-video': 'Final Video',
 } satisfies Record<ShortFormSettingsRouteSection, string>;
 
 export function getShortFormSettingsSectionTitle(section: ShortFormSettingsRouteSection): string {
@@ -64,8 +62,8 @@ export const LEGACY_SHORT_FORM_SETTINGS_SECTION_REDIRECTS: Record<string, { sect
   'sound-library': { section: 'plan-sound-design', hash: 'sound-library' },
   images: { section: 'generate-visuals-image-styles' },
   captions: { section: 'plan-captions', hash: 'caption-styles' },
-  backgrounds: { section: 'final-video', hash: 'music-library' },
-  music: { section: 'final-video', hash: 'music-library' },
+  backgrounds: { section: 'generate-sound-design', hash: 'sound-library' },
+  music: { section: 'generate-sound-design', hash: 'sound-library' },
   'sound-design': { section: 'plan-sound-design' },
   'generate-visuals': { section: 'generate-visuals-motion-graphics' },
   'motion-graphics': { section: 'generate-visuals-motion-graphics' },
@@ -110,5 +108,5 @@ export const SHORT_FORM_SETTINGS_ANCHOR_TO_SECTION: Record<string, ShortFormSett
   'image-templates': 'generate-visuals-image-generation-prompts',
   'image-styles': 'generate-visuals-image-styles',
   'caption-styles': 'plan-captions',
-  'music-library': 'final-video',
+  'music-library': 'generate-sound-design',
 };

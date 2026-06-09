@@ -408,7 +408,6 @@ export function getShortFormSettingsNavItems(summary?: ShortFormSettingsNavSumma
       ],
     },
     buildItem('plan-sound-design', 'Plan Sound Design', 'plan-sound-design', 'SOUND DESIGN', 'Full sound-design planning prompt templates and revision-note instructions.', '2 prompts', ['sound-library']),
-    buildItem('generate-sound-design', 'Generate Sound Design', 'generate-sound-design', 'SOUND DESIGN', 'Saved SFX and music library plus mix defaults for sound-design generation.', `${summary?.soundCount || 0} sounds · ${summary?.musicTrackCount || 0} tracks`, ['sound-library']),
-    buildItem('final-video', 'Final Video', 'final-video', 'RENDER', 'Music presets and final-render defaults.', `${summary?.musicTrackCount || 0} tracks`, ['music-library']),
+    buildItem('generate-sound-design', 'Generate Sound Design', 'generate-sound-design', 'SOUND DESIGN', 'Saved SFX and music library plus mix defaults for sound-design generation.', `${summary?.soundCount || 0} sounds · ${summary?.musicTrackCount || 0} tracks`, ['sound-library', 'music-library']),
   ];
 }
