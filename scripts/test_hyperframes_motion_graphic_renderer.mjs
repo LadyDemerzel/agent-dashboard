@@ -38,7 +38,7 @@ const templateConfigs = [
   { rendererId: "timeline", defaultArgs: { steps: [{ label: "MONTH 12 CHECKPOINT", text: "Setup" }, { label: "DAY 7", text: "Signal" }, { label: "DAY 30", text: "Visible change" }] } },
   { rendererId: "cause_effect", defaultArgs: { cause: "Small habit", effect: "Visible change" } },
   { rendererId: "ranked_podium", defaultArgs: { items: ["Most visible change", "Faster feedback", "Cleaner routine"] } },
-  { rendererId: "checklist", defaultArgs: { items: ["Set the baseline", "Make the small adjustment", "Repeat it daily"] } },
+  { rendererId: "checklist", defaultArgs: { items: ["Set the baseline", "Make the small adjustment that continues even when the routine gets longer", "Repeat it daily"] } },
   { rendererId: "scorecard", defaultArgs: { title: "Scorecard", data: [{ label: "Clarity", value: 92, displayValue: "1,234,567 people" }] } },
   { rendererId: "research_paper_card", defaultArgs: { source: "Study", title: "Research finding", finding: "One finding changes how this should be read." } },
   { rendererId: "good_bad_indicator", defaultArgs: { indicatorType: "good", text: "Do this" } },
@@ -91,6 +91,23 @@ try {
       assert.ok(html.includes("width:max-content"), "scorecard displayValue should use intrinsic width instead of a fixed value column");
       assert.ok(html.includes("font-size:40px"), "scorecard displayValue must keep the configured font size instead of shrinking to fit");
       assert.ok(html.includes("1,234,567 people"), "scorecard fixture must keep a long displayValue for no-wrap coverage");
+    }
+    if (config.rendererId === "checklist") {
+      const readStyleNumber = (id, property) => {
+        const match = html.match(new RegExp(`id="${id}"[^>]*style="([^"]*)"`));
+        assert.ok(match, `${id} should be rendered`);
+        const propertyMatch = match[1].match(new RegExp(`${property}:(-?\\d+)px`));
+        assert.ok(propertyMatch, `${id} should define ${property}`);
+        return Number(propertyMatch[1]);
+      };
+      const textTops = [0, 1, 2].map((index) => readStyleNumber(`check-text-${index}`, "top"));
+      const boxTops = [0, 1, 2].map((index) => readStyleNumber(`check-box-${index}`, "top"));
+      assert.ok(html.includes("the routine gets longer"), "checklist fixture must keep a wrapped long item for responsive-height coverage");
+      assert.ok(textTops[2] - textTops[1] > textTops[1] - textTops[0], "checklist rows should advance by measured content height instead of one fixed row height");
+      assert.equal(boxTops[0] - textTops[0], 3, "single-line checklist text should be vertically centered against the check box");
+      assert.ok(boxTops[1] > textTops[1], "multi-line checklist check box should center inside the taller text content");
+      assert.ok(!html.includes("height:128px"), "checklist items should not render a fixed row height");
+      assert.ok(!html.includes("height:104px"), "checklist items should not render the compact fixed row height");
     }
     if (config.rendererId === "cause_effect") {
       assert.ok(html.includes("cause-card"), "cause_effect must render the cause text group");

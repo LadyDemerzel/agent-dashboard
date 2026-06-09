@@ -824,20 +824,41 @@ function rankedPodium(args, timeline) {
 function checklist(args, timeline) {
   const items = asTimelineSteps(args.steps || args.items, ["Set the baseline", "Make the small adjustment", "Repeat it daily"]).slice(0, 6);
   const textSize = items.length <= 4 ? 56 : 48;
-  const rowH = items.length <= 4 ? 128 : 104;
+  const textLineGap = 14;
+  const textLineHeight = textSize + textLineGap;
+  const textMaxChars = items.length <= 4 ? 25 : 27;
+  const itemPaddingY = items.length <= 4 ? 22 : 18;
   const gap = items.length <= 4 ? 42 : 30;
-  const totalH = items.length * rowH + Math.max(0, items.length - 1) * gap;
+  const boxSize = 64;
+  const layouts = items.map((item) => {
+    const lines = wrap(item.text, textMaxChars);
+    const textHeight = lines.length * textLineHeight;
+    const contentHeight = Math.max(boxSize, textHeight);
+    return {
+      lines,
+      height: contentHeight + itemPaddingY * 2,
+      contentHeight,
+      textHeight,
+    };
+  });
+  const totalH = layouts.reduce((sum, layout) => sum + layout.height, 0) + Math.max(0, items.length - 1) * gap;
   const startY = Math.round((HEIGHT - totalH) / 2);
   const html = [];
+  let cursorY = startY;
   items.forEach((item, index) => {
+    const layout = layouts[index];
     const at = itemTiming(args, "items", item, index, fixedRevealTiming(index, { firstRevealAt: 0.44, revealDuration: 0.42, gapAfterReveal: 0.36 }).revealAt, ["steps", "checklist"]);
-    const y = startY + index * (rowH + gap);
-    html.push(htmlElement(`check-box-${index}`, "check-box", `left:126px;top:${y + 22}px;width:64px;height:64px;border-radius:12px;background:${PALETTE.mutedSage};`));
-    html.push(htmlElement(`check-mark-${index}`, "check-mark", `left:142px;top:${y + 38}px;width:32px;height:20px;border-left:7px solid ${PALETTE.offWhite};border-bottom:7px solid ${PALETTE.offWhite};transform:rotate(-45deg);`));
-    html.push(textBlock(`check-text-${index}`, wrap(item.text, items.length <= 4 ? 25 : 27), 236, y + 16, { width: 760, size: textSize, lineGap: 14 }));
+    const y = cursorY;
+    const contentTop = y + itemPaddingY;
+    const boxTop = Math.round(contentTop + (layout.contentHeight - boxSize) / 2);
+    const textTop = Math.round(contentTop + (layout.contentHeight - layout.textHeight) / 2);
+    html.push(htmlElement(`check-box-${index}`, "check-box", `left:126px;top:${boxTop}px;width:${boxSize}px;height:${boxSize}px;border-radius:12px;background:${PALETTE.mutedSage};`));
+    html.push(htmlElement(`check-mark-${index}`, "check-mark", `left:142px;top:${boxTop + 16}px;width:32px;height:20px;border-left:7px solid ${PALETTE.offWhite};border-bottom:7px solid ${PALETTE.offWhite};transform:rotate(-45deg);`));
+    html.push(textBlock(`check-text-${index}`, layout.lines, 236, textTop, { width: 760, size: textSize, lineGap: textLineGap }));
     scaleReveal(timeline, `#check-box-${index}`, at, { duration: 0.3, fromScale: 0.8 });
     timeline.push(`tl.fromTo("#check-mark-${index}", {opacity:0, scale:.7, rotate:-45}, {opacity:1, scale:1, rotate:-45, duration:.26, ease:"back.out(1.7)"}, ${(at + 0.1).toFixed(3)});`);
     reveal(timeline, `#check-text-${index}`, at, { y: 28, duration: 0.42 });
+    cursorY += layout.height + gap;
   });
   return html.join("\n");
 }
