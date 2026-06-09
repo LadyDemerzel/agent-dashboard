@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -8,7 +9,7 @@ import {
   useState,
 } from "react";
 import Link from "next/link";
-import { ChevronDown, Square, TerminalSquare } from "lucide-react";
+import { ChevronDown, RefreshCw, Square, TerminalSquare } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
@@ -75,6 +76,7 @@ import {
   getShortFormVisualGenerationModelOptions,
   type ShortFormVisualGenerationModelId,
 } from "@/lib/short-form-visual-generation";
+import { cn } from "@/lib/utils";
 
 interface ApiResponse<T> {
   success: boolean;
@@ -839,6 +841,35 @@ function ScenePreviewVideoCard({
     />
   );
 }
+
+function VisualDetailSection({
+  title,
+  children,
+}: {
+  title?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-2 rounded-md border border-border bg-accent/60 p-2">
+      {title ? (
+        <p className="text-xs font-medium text-muted-foreground">{title}</p>
+      ) : null}
+      <div className="text-[11px] text-foreground">{children}</div>
+    </section>
+  );
+}
+
+const visualControlClass =
+  "cursor-pointer transition-colors active:scale-[0.99] disabled:cursor-not-allowed";
+
+const visualFieldClass =
+  "border-[#2d2d32] bg-[#242428] text-foreground placeholder:text-muted-foreground focus-visible:ring-[#59595f]";
+
+const visualSelectClass =
+  "cursor-pointer border-[#2d2d32] bg-[#242428] pr-8 text-foreground transition-colors hover:bg-[#28282d] active:bg-[#2d2d32] disabled:cursor-not-allowed";
+
+const visualRerenderButtonClass =
+  "w-full border-[#343439] bg-[#29292e] text-foreground hover:bg-[#33333a] active:bg-[#37373d]";
 
 function getSceneVisualXmlDraft(scene: Scene): VisualXmlDraft {
   const cameraZoomStart = scene.cameraZoomStart ?? "";
@@ -4510,33 +4541,42 @@ function SceneImagesSection({
                       key={scene.id}
                       className={`w-[260px] shrink-0 space-y-3 rounded-lg border bg-background/60 p-3 ${visualXmlDirty ? "border-amber-500 shadow-sm shadow-amber-500/20" : "border-border"}`}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
                             <p className="text-xs text-muted-foreground">
                               Visual {scene.number}
                             </p>
                             {visualXmlDirty ? (
-                              <Badge className="border-amber-500 bg-amber-500/10 text-amber-700" variant="outline">
-                                Unsaved XML changes
-                              </Badge>
+                              <span
+                                aria-label="Unsaved changes"
+                                className="h-2 w-2 rounded-full bg-amber-500"
+                              />
                             ) : null}
                           </div>
-                          <p className="mt-1 text-sm font-medium text-foreground">
-                            {scene.caption}
-                          </p>
+                          <div className="shrink-0">
+                            {sceneBusy ? (
+                              <StatusBadge status="in-progress" compact />
+                            ) : (
+                              <StatusBadge status="completed" compact />
+                            )}
+                          </div>
                         </div>
-                        {sceneBusy ? (
-                          <StatusBadge status="in-progress" compact />
-                        ) : (
-                          <StatusBadge status="completed" compact />
-                        )}
+                        <p className="break-words text-sm font-medium text-foreground">
+                          {scene.caption}
+                        </p>
                       </div>
                       {!sceneBusy ? (
                         <div className="flex rounded-md border border-border bg-background/70 p-1 text-[11px]">
                           <button
                             type="button"
-                            className={`flex-1 rounded px-2 py-1 ${activeTab === "preview" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                            className={cn(
+                              "flex-1 rounded px-2 py-1",
+                              visualControlClass,
+                              activeTab === "preview"
+                                ? "bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80"
+                                : "text-muted-foreground hover:text-foreground",
+                            )}
                             onClick={() =>
                               setSceneTabById((prev) => ({
                                 ...prev,
@@ -4549,7 +4589,13 @@ function SceneImagesSection({
                           </button>
                           <button
                             type="button"
-                            className={`flex-1 rounded px-2 py-1 ${activeTab === "raw" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                            className={cn(
+                              "flex-1 rounded px-2 py-1",
+                              visualControlClass,
+                              activeTab === "raw"
+                                ? "bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80"
+                                : "text-muted-foreground hover:text-foreground",
+                            )}
                             onClick={() =>
                               setSceneTabById((prev) => ({
                                 ...prev,
@@ -4605,35 +4651,29 @@ function SceneImagesSection({
                           No image yet
                         </div>
                       )}
-                      {scene.imageId ||
-                      currentBasedOn ||
-                      scene.reusedExistingAsset ? (
-                        <div className="flex flex-wrap gap-2">
-                          {scene.imageId ? (
-                            <Badge variant="outline">
-                              imageId: {scene.imageId}
-                            </Badge>
-                          ) : null}
-                          {scene.reusedExistingAsset ? (
-                            <Badge variant="secondary">reused asset</Badge>
-                          ) : null}
-                          {currentBasedOn ? (
-                            <Badge variant="outline">
-                              basedOn: {currentBasedOn}
-                            </Badge>
-                          ) : null}
-                          {scene.visualId ? (
-                            <Badge variant="outline">{scene.visualId}</Badge>
-                          ) : null}
-                        </div>
-                      ) : null}
                       <div className="space-y-2">
+                        {scene.visualId ? (
+                          <VisualDetailSection title="Visual ID">
+                            <p className="break-words font-mono text-foreground">
+                              {scene.visualId}
+                            </p>
+                          </VisualDetailSection>
+                        ) : null}
+                        {scene.imageId ? (
+                          <VisualDetailSection title="Image ID">
+                            <p className="break-words font-mono text-foreground">
+                              {scene.imageId}
+                            </p>
+                          </VisualDetailSection>
+                        ) : null}
+                        {scene.reusedExistingAsset ? (
+                          <VisualDetailSection title="Asset source">
+                            <p>Reused existing asset</p>
+                          </VisualDetailSection>
+                        ) : null}
                         {isMotionGraphic ? (
-                          <>
+                          <VisualDetailSection title="Motion graphic XML">
                             <div className="space-y-1">
-                              <p className="text-xs font-medium text-muted-foreground">
-                                Motion graphic XML
-                              </p>
                               <Textarea
                                 value={visualXmlDraft.motionGraphicXml}
                                 onChange={(e) =>
@@ -4646,17 +4686,17 @@ function SceneImagesSection({
                                   }))
                                 }
                                 placeholder="Edit the inline <motionGraphic> XML for this visual"
-                                className="min-h-[180px] font-mono text-xs"
+                                className={cn(
+                                  "min-h-[180px] font-mono text-xs",
+                                  visualFieldClass,
+                                )}
                                 disabled={sceneBusy}
                               />
                             </div>
-                          </>
+                          </VisualDetailSection>
                         ) : (
                           <>
-                            <div className="space-y-1">
-                              <p className="text-xs font-medium text-muted-foreground">
-                                Image prompt
-                              </p>
+                            <VisualDetailSection title="Image prompt">
                               <Textarea
                                 value={visualXmlDraft.prompt}
                                 onChange={(e) =>
@@ -4673,16 +4713,19 @@ function SceneImagesSection({
                                     ? "Wait for the current render to finish before editing XML"
                                     : "Edit the XML image prompt"
                                 }
-                                className="min-h-[88px]"
+                                className={cn("min-h-[88px]", visualFieldClass)}
                                 disabled={sceneBusy}
                               />
-                            </div>
-                            <div className="space-y-1">
-                              <p className="text-xs font-medium text-muted-foreground">
-                                basedOn
-                              </p>
+                            </VisualDetailSection>
+                            <VisualDetailSection title="Based-on image parent">
                               <Select
                                 value={visualXmlDraft.basedOn}
+                                className={cn(
+                                  visualSelectClass,
+                                  visualXmlDraft.basedOn.trim()
+                                    ? "text-foreground"
+                                    : "text-muted-foreground",
+                                )}
                                 onChange={(e) =>
                                   setVisualXmlDraftByScene((prev) => ({
                                     ...prev,
@@ -4707,166 +4750,175 @@ function SceneImagesSection({
                                   </option>
                                 ))}
                               </Select>
-                              <p className="text-[11px] text-muted-foreground">
-                                Pick an earlier image visual to use as the
-                                parent reference, or clear it.
-                              </p>
-                            </div>
-                            <div className="space-y-2 rounded-md border border-border bg-background/70 p-2">
-                              <div className="space-y-1">
-                                <p className="text-xs font-medium text-muted-foreground">
-                                  Camera zoom
-                                </p>
-                                <Select
-                                  value={visualXmlDraft.cameraZoomMode}
-                                  onChange={(e) =>
-                                    setVisualXmlDraftByScene((prev) => ({
-                                      ...prev,
-                                      [scene.id]: {
-                                        ...visualXmlDraft,
-                                        cameraZoomMode:
-                                          e.target.value === "animated"
-                                            ? "animated"
-                                            : "static",
-                                      },
-                                    }))
-                                  }
-                                  disabled={sceneBusy}
-                                >
-                                  <option value="static">Static zoom</option>
-                                  <option value="animated">Animated zoom</option>
-                                </Select>
-                              </div>
-                              {visualXmlDraft.cameraZoomMode === "animated" ? (
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div className="space-y-1">
-                                    <p className="text-[11px] font-medium text-muted-foreground">
-                                      zoom start
-                                    </p>
-                                    <Input
-                                      value={visualXmlDraft.cameraZoomStart}
-                                      onChange={(e) =>
-                                        setVisualXmlDraftByScene((prev) => ({
-                                          ...prev,
-                                          [scene.id]: {
-                                            ...visualXmlDraft,
-                                            cameraZoomStart: e.target.value,
-                                          },
-                                        }))
-                                      }
-                                      placeholder="0.02"
-                                      disabled={sceneBusy}
-                                    />
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-[11px] font-medium text-muted-foreground">
-                                      zoom end
-                                    </p>
-                                    <Input
-                                      value={visualXmlDraft.cameraZoomEnd}
-                                      onChange={(e) =>
-                                        setVisualXmlDraftByScene((prev) => ({
-                                          ...prev,
-                                          [scene.id]: {
-                                            ...visualXmlDraft,
-                                            cameraZoomEnd: e.target.value,
-                                          },
-                                        }))
-                                      }
-                                      placeholder="0.08"
-                                      disabled={sceneBusy}
-                                    />
-                                  </div>
-                                </div>
+                            </VisualDetailSection>
+                            <VisualDetailSection title="Based-on dependents">
+                              {dependentImageVisuals.length > 0 ? (
+                                <ul className="space-y-1">
+                                  {dependentImageVisuals.map((dependent) => (
+                                    <li key={dependent.id}>
+                                      Visual {dependent.number}
+                                      {dependent.visualId
+                                        ? ` (${dependent.visualId})`
+                                        : ""}
+                                    </li>
+                                  ))}
+                                </ul>
                               ) : (
-                                <div className="space-y-1">
-                                  <p className="text-[11px] font-medium text-muted-foreground">
-                                    zoom
-                                  </p>
+                                <p className="text-muted-foreground">
+                                  No other image visuals are based on this
+                                  visual.
+                                </p>
+                              )}
+                            </VisualDetailSection>
+                            <VisualDetailSection title="Camera zoom type">
+                              <Select
+                                value={visualXmlDraft.cameraZoomMode}
+                                className={visualSelectClass}
+                                onChange={(e) =>
+                                  setVisualXmlDraftByScene((prev) => ({
+                                    ...prev,
+                                    [scene.id]: {
+                                      ...visualXmlDraft,
+                                      cameraZoomMode:
+                                        e.target.value === "animated"
+                                          ? "animated"
+                                          : "static",
+                                    },
+                                  }))
+                                }
+                                disabled={sceneBusy}
+                              >
+                                <option value="static">Static zoom</option>
+                                <option value="animated">Animated zoom</option>
+                              </Select>
+                            </VisualDetailSection>
+                            {visualXmlDraft.cameraZoomMode === "animated" ? (
+                              <div className="grid grid-cols-2 gap-2">
+                                <VisualDetailSection title="Zoom start">
                                   <Input
-                                    value={visualXmlDraft.cameraZoom}
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={visualXmlDraft.cameraZoomStart}
                                     onChange={(e) =>
                                       setVisualXmlDraftByScene((prev) => ({
                                         ...prev,
                                         [scene.id]: {
                                           ...visualXmlDraft,
-                                          cameraZoom: e.target.value,
+                                          cameraZoomStart: e.target.value,
                                         },
                                       }))
                                     }
-                                    placeholder="0.05"
+                                    placeholder="0.02"
+                                    className={visualFieldClass}
                                     disabled={sceneBusy}
                                   />
-                                </div>
-                              )}
-                            </div>
-                            <div className="rounded-md border border-border bg-background/70 p-2 text-[11px] text-muted-foreground">
-                              {dependentImageVisuals.length > 0 ? (
-                                <div className="space-y-1">
-                                  <p className="font-medium text-foreground">
-                                    Based-on dependents
-                                  </p>
-                                  <p>
-                                    {dependentImageVisuals
-                                      .map(
-                                        (dependent) =>
-                                          `Visual ${dependent.number}${dependent.visualId ? ` (${dependent.visualId})` : ""}`,
-                                      )
-                                      .join(", ")}
-                                  </p>
-                                </div>
-                              ) : (
-                                <p>No other image visuals are based on this visual.</p>
-                              )}
-                            </div>
+                                </VisualDetailSection>
+                                <VisualDetailSection title="Zoom end">
+                                  <Input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={visualXmlDraft.cameraZoomEnd}
+                                    onChange={(e) =>
+                                      setVisualXmlDraftByScene((prev) => ({
+                                        ...prev,
+                                        [scene.id]: {
+                                          ...visualXmlDraft,
+                                          cameraZoomEnd: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                    placeholder="0.08"
+                                    className={visualFieldClass}
+                                    disabled={sceneBusy}
+                                  />
+                                </VisualDetailSection>
+                              </div>
+                            ) : (
+                              <VisualDetailSection title="Zoom static value">
+                                <Input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={visualXmlDraft.cameraZoom}
+                                  onChange={(e) =>
+                                    setVisualXmlDraftByScene((prev) => ({
+                                      ...prev,
+                                      [scene.id]: {
+                                        ...visualXmlDraft,
+                                        cameraZoom: e.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder="0.05"
+                                  className={visualFieldClass}
+                                  disabled={sceneBusy}
+                                />
+                              </VisualDetailSection>
+                            )}
                           </>
                         )}
                       </div>
                       {visualXmlDirty ? (
-                        <Button
-                          variant="default"
-                          className="w-full"
-                          onClick={() => void saveSceneXml(scene)}
-                          disabled={sceneBusy || savingSceneXml === scene.id}
-                        >
-                          {savingSceneXml === scene.id
-                            ? "Saving…"
-                            : "Save XML changes"}
-                        </Button>
+                        <div className="space-y-2">
+                          <div className="flex justify-center">
+                            <Badge
+                              className="border-amber-500 bg-amber-500/10 text-amber-700"
+                              variant="outline"
+                            >
+                              Unsaved changes
+                            </Badge>
+                          </div>
+                          <Button
+                            variant="default"
+                            className="w-full active:bg-primary/80"
+                            onClick={() => void saveSceneXml(scene)}
+                            disabled={sceneBusy || savingSceneXml === scene.id}
+                          >
+                            {savingSceneXml === scene.id
+                              ? "Saving…"
+                              : "Save XML changes"}
+                          </Button>
+                        </div>
                       ) : null}
                       {isMotionGraphic ? (
                         <Button
                           variant="outline"
-                          className="w-full"
+                          className={cn(visualRerenderButtonClass, "justify-start gap-2 text-left")}
                           onClick={() => void requestSceneChange(scene)}
                           disabled={sceneBusy || submittingScene === scene.id}
                         >
-                          {submittingScene === scene.id
-                            ? "Sending…"
-                            : sceneBusy
-                              ? "Visual is rendering…"
-                              : "Re-render"}
+                          <RefreshCw className="h-4 w-4 shrink-0" />
+                          <span>
+                            {submittingScene === scene.id
+                              ? "Sending…"
+                              : sceneBusy
+                                ? "Visual is rendering…"
+                                : "Re-render"}
+                          </span>
                         </Button>
                       ) : (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
                               variant="outline"
-                              className="w-full justify-between"
+                              className={cn(visualRerenderButtonClass, "justify-between")}
                               disabled={sceneBusy || submittingScene === scene.id}
                             >
-                              <span>
-                                {submittingScene === scene.id
-                                  ? "Sending…"
-                                  : sceneBusy
-                                    ? "Visual is rendering…"
-                                    : "Re-render"}
+                              <span className="flex min-w-0 items-center gap-2">
+                                <RefreshCw className="h-4 w-4 shrink-0" />
+                                <span className="truncate">
+                                  {submittingScene === scene.id
+                                    ? "Sending…"
+                                    : sceneBusy
+                                      ? "Visual is rendering…"
+                                      : "Re-render"}
+                                </span>
                               </span>
                               <ChevronDown className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-64">
                             <DropdownMenuItem
+                              className="cursor-pointer transition-colors hover:bg-[#28282d] active:bg-[#2d2d32]"
                               onSelect={() =>
                                 void requestSceneChange(scene, "regenerate-image")
                               }
@@ -4874,6 +4926,7 @@ function SceneImagesSection({
                               Re-generate image
                             </DropdownMenuItem>
                             <DropdownMenuItem
+                              className="cursor-pointer transition-colors hover:bg-[#28282d] active:bg-[#2d2d32]"
                               onSelect={() =>
                                 void requestSceneChange(scene, "preview-camera")
                               }

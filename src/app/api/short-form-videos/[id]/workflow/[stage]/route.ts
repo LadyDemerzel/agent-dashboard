@@ -389,6 +389,9 @@ export async function POST(
         visualId,
         ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
         ...(typeof body.basedOn === "string" ? { basedOn: body.basedOn } : {}),
+        ...(typeof body.cameraZoom === "string" ? { cameraZoom: body.cameraZoom } : {}),
+        ...(typeof body.cameraZoomStart === "string" ? { cameraZoomStart: body.cameraZoomStart } : {}),
+        ...(typeof body.cameraZoomEnd === "string" ? { cameraZoomEnd: body.cameraZoomEnd } : {}),
         ...(typeof body.motionGraphicXml === "string" ? { motionGraphicXml: body.motionGraphicXml } : {}),
       });
       return NextResponse.json({ success: true, data: result });
