@@ -38,14 +38,7 @@ import {
   resolveShortFormImageStyle,
   resolveShortFormVisualGenerationModel,
 } from "@/lib/short-form-image-styles";
-import {
-  resolveShortFormBackgroundVideoAbsolutePath,
-  resolveShortFormBackgroundVideoSelection,
-} from "@/lib/short-form-background-videos";
-import {
-  resolveShortFormCaptionStyleSelection,
-  resolveShortFormChromaKeySelection,
-} from "@/lib/short-form-video-render-settings";
+import { resolveShortFormCaptionStyleSelection } from "@/lib/short-form-video-render-settings";
 import {
   getShortFormTextScriptSettings,
   SHORT_FORM_TEXT_SCRIPT_PASSING_SCORE,
@@ -100,7 +93,7 @@ function ensureInitialStageDoc(projectId: string, stage: ShortFormStageKey, topi
     "scene-images": {
       title: `${topic || "Short-form video"} generate visuals`,
       agent: "workflow",
-      body: "# Generate Visuals\n\nWaiting for the dashboard workflow to generate the visual manifest and green-screen assets.",
+      body: "# Generate Visuals\n\nWaiting for the dashboard workflow to generate the visual manifest and scene assets.",
     },
     "sound-design": {
       title: `${topic || "Short-form video"} plan sound design`,
@@ -361,12 +354,6 @@ export async function POST(
   const sceneId = typeof body.sceneId === "string" ? body.sceneId.trim() : "";
   const imageId = typeof body.imageId === "string" ? body.imageId.trim() : "";
   const visualId = typeof body.visualId === "string" ? body.visualId.trim() : "";
-  const requestedChromaKeyOverride = body.chromaKeyEnabledOverride === null
-    ? null
-    : typeof body.chromaKeyEnabledOverride === "boolean"
-      ? body.chromaKeyEnabledOverride
-      : undefined;
-
   ensureInitialStageDoc(id, stage, project.topic);
 
   if (requestedAction === "request-scene-change" && stage !== "scene-images") {
@@ -438,15 +425,7 @@ export async function POST(
   const resolvedVisualGeneration = resolveShortFormVisualGenerationModel(
     project.visualGenerationModelOverrideId,
   );
-  const resolvedBackgroundVideo = resolveShortFormBackgroundVideoSelection(project.selectedBackgroundVideoId);
   const resolvedCaptionStyle = resolveShortFormCaptionStyleSelection(project.selectedCaptionStyleId);
-  const resolvedChromaKey = resolveShortFormChromaKeySelection(
-    requestedChromaKeyOverride === undefined
-      ? project.chromaKeyEnabledOverride
-      : requestedChromaKeyOverride === null
-        ? undefined
-        : requestedChromaKeyOverride
-  );
 
   const textScriptWorkflow = stage === "script" && textScriptRunId
     ? buildTextScriptWorkflowConfig(project, { mode, notes: requestNotes, textScriptRunId })
@@ -465,15 +444,9 @@ export async function POST(
               `Shared/common style constraints plus per-style instructions are already resolved and must stay applied for this run.`,
             ]
           : []),
-        ...(stage === "video" && resolvedBackgroundVideo.background
-          ? [`Selected looping background video: ${resolvedBackgroundVideo.background.name}`]
-          : stage === "video"
-            ? ["No looping background video is configured. The direct video render should fail clearly until one is chosen in settings/project selection."]
-            : []),
         ...(stage === "video"
           ? [
               `Selected caption style: ${resolvedCaptionStyle.captionStyle.name} (${resolvedCaptionStyle.source === "project" ? "project override" : resolvedCaptionStyle.source === "default" ? "global default" : "fallback"})`,
-              `Chroma key: ${resolvedChromaKey.enabled ? "enabled" : "disabled"} (${resolvedChromaKey.source === "project" ? "project override" : "global default"})`,
             ]
           : []),
         directWorkflowRequestLine,
@@ -570,15 +543,6 @@ export async function POST(
                 imageStyleReferences: resolvedImageStyle.style.references || [],
                 imagePromptTemplates: resolvedImageStyle.settings.promptTemplates,
                 motionGraphicsSettings: getShortFormMotionGraphicsSettings(),
-                ...(resolvedBackgroundVideo.background
-                  ? {
-                      backgroundVideoId: resolvedBackgroundVideo.resolvedBackgroundVideoId,
-                      backgroundVideoName: resolvedBackgroundVideo.background.name,
-                      backgroundVideoPath: resolveShortFormBackgroundVideoAbsolutePath(
-                        resolvedBackgroundVideo.background.videoRelativePath
-                      ),
-                    }
-                  : {}),
                 ...(effectiveAction === "request-scene-change"
                   ? effectiveNotes
                     ? { notes: effectiveNotes }
@@ -602,15 +566,6 @@ export async function POST(
                   videoDocPath,
                   videoWorkDir,
                   mode,
-                  ...(resolvedBackgroundVideo.background
-                    ? {
-                        backgroundVideoId: resolvedBackgroundVideo.resolvedBackgroundVideoId,
-                        backgroundVideoName: resolvedBackgroundVideo.background.name,
-                        backgroundVideoPath: resolveShortFormBackgroundVideoAbsolutePath(
-                          resolvedBackgroundVideo.background.videoRelativePath
-                        ),
-                      }
-                    : {}),
                   soundDesignDecision: project.soundDesignDecision,
                   soundDesignPreviewRelativePath: project.soundDesign.resolution?.previewAudioRelativePath || project.soundDesign.previewAudioPath,
                   captionStyleId: resolvedCaptionStyle.resolvedCaptionStyleId,
@@ -618,8 +573,6 @@ export async function POST(
                   captionStyleSource: resolvedCaptionStyle.source,
                   captionStyle: resolvedCaptionStyle.captionStyle,
                   animationPreset: resolvedCaptionStyle.animationPreset,
-                  chromaKeyEnabled: resolvedChromaKey.enabled,
-                  chromaKeySource: resolvedChromaKey.source,
                   ...(requestNotes ? { notes: requestNotes } : {}),
                 },
               }

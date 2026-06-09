@@ -23,7 +23,7 @@ export async function generateMetadata({
 
   return createPageMetadata(
     `Settings: ${getShortFormSettingsSectionTitle(section)}`,
-    'Configure prompts, voice, visuals, background videos, and music for the short-form workflow.',
+    'Configure prompts, voice, visuals, and music for the short-form workflow.',
   );
 }
 

@@ -73,7 +73,6 @@ import { getSoundDesignHandoffState } from "@/lib/short-form-sound-design-handof
 import { generateClientDiff } from "@/lib/diff-client";
 import { usePageScrollRestoration } from "@/components/usePageScrollRestoration";
 import {
-  buildShortFormDetailHref,
   buildShortFormSettingsHref,
   type ShortFormDetailRouteSection,
 } from "@/lib/short-form-video-navigation";
@@ -114,13 +113,6 @@ interface CaptionStyleOption {
   name: string;
   animationPresetId?: string;
   animationPreset?: string;
-}
-
-interface BackgroundVideoOption {
-  id: string;
-  name: string;
-  notes?: string;
-  videoUrl?: string;
 }
 
 type XmlPipelineStep = PipelineStep;
@@ -171,7 +163,6 @@ interface WorkflowSettingsResponse {
     voices?: VoiceOption[];
     defaultMusicTrackId?: string;
     musicVolume?: number;
-    chromaKeyEnabledByDefault?: boolean;
     musicTracks?: MusicOption[];
     defaultCaptionStyleId?: string;
     captionStyles?: CaptionStyleOption[];
@@ -180,10 +171,6 @@ interface WorkflowSettingsResponse {
       minSilenceDurationSeconds?: number;
       silenceThresholdDb?: number;
     };
-  };
-  backgroundVideos?: {
-    defaultBackgroundVideoId?: string;
-    backgrounds?: BackgroundVideoOption[];
   };
   textScript?: {
     defaultMaxIterations?: number;
@@ -338,7 +325,7 @@ const DETAIL_PAGE_META: Record<
   "generate-visuals": {
     title: "Generate Visuals",
     description:
-      "Once the XML script is approved, the dashboard runs the visuals workflow directly to generate or reuse the needed green-screen visual plates from inline timeline image definitions. Exact backward-only image reuse never regenerates the image unnecessarily; reference-derived new images remain explicit in the XML and manifest for debugging. Captions are overlaid separately and the selected background video is composited behind each visual in preview and final render.",
+      "Once the XML script is approved, the dashboard runs the visuals workflow directly to generate or reuse full-frame visual assets from inline timeline image definitions. Exact backward-only image reuse never regenerates the image unnecessarily; reference-derived new images remain explicit in the XML and manifest for debugging.",
   },
   "plan-sound-design": {
     title: "Plan Sound Design",
@@ -353,7 +340,7 @@ const DETAIL_PAGE_META: Record<
   "final-video": {
     title: "Final Video",
     description:
-      "After generated visuals are approved, the dashboard renders the final short-form video directly through the xml-scene-video workflow by reusing the narration and forced-alignment artifacts already produced during Generate Narration Audio, plus background video, optional chroma-key compositing, saved music, subtitle burn-in, and any explicit XML camera motion.",
+      "After generated visuals are approved, the dashboard renders the final short-form video directly through the xml-scene-video workflow by reusing the narration and forced-alignment artifacts already produced during Generate Narration Audio, full-frame visuals, saved music, subtitle burn-in, and any explicit XML camera motion.",
   },
 };
 
@@ -891,9 +878,6 @@ function VisualDetailSection({
   );
 }
 
-const visualControlClass =
-  "cursor-pointer transition-colors active:scale-[0.99] disabled:cursor-not-allowed";
-
 const visualFieldClass =
   "border-[#2d2d32] bg-[#242428] text-foreground placeholder:text-muted-foreground focus-visible:ring-[#59595f]";
 
@@ -1214,11 +1198,6 @@ function getSceneDraftSignature(scene: Scene) {
     draft.cameraZoomEnd,
     draft.motionGraphicXml,
   ].join("\u001f");
-}
-
-function appendCacheBust(url: string, value?: number) {
-  if (!value) return url;
-  return `${url}${url.includes("?") ? "&" : "?"}previewBust=${value}`;
 }
 
 const SUPPRESSED_VIDEO_PIPELINE_WARNINGS = new Set([
@@ -4028,13 +4007,8 @@ function SceneImagesSection({
   const [submittingScene, setSubmittingScene] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [styleOptions, setStyleOptions] = useState<ImageStyleOption[]>([]);
-  const [backgroundOptions, setBackgroundOptions] = useState<
-    BackgroundVideoOption[]
-  >([]);
   const [defaultStyleId, setDefaultStyleId] = useState<string>("");
   const [defaultVisualGenerationModelId, setDefaultVisualGenerationModelId] =
-    useState<string>("");
-  const [defaultBackgroundVideoId, setDefaultBackgroundVideoId] =
     useState<string>("");
   const [savingStyle, setSavingStyle] = useState(false);
   const [styleDialogOpen, setStyleDialogOpen] = useState(false);
@@ -4045,17 +4019,8 @@ function SceneImagesSection({
     useState(false);
   const [draftVisualGenerationModelId, setDraftVisualGenerationModelId] =
     useState("");
-  const [savingBackground, setSavingBackground] = useState(false);
-  const [backgroundDialogOpen, setBackgroundDialogOpen] = useState(false);
-  const [draftBackgroundVideoId, setDraftBackgroundVideoId] = useState("");
-  const [sceneTabById, setSceneTabById] = useState<
-    Record<string, "preview" | "raw">
-  >({});
   const [visualXmlDraftByScene, setVisualXmlDraftByScene] = useState<
     Record<string, VisualXmlDraft>
-  >({});
-  const [scenePreviewBustById, setScenePreviewBustById] = useState<
-    Record<string, number>
   >({});
   const [savingSceneXml, setSavingSceneXml] = useState<string | null>(null);
 
@@ -4076,45 +4041,13 @@ function SceneImagesSection({
             ),
         )
       : [];
-    const nextBackgrounds = Array.isArray(
-      imageSettingsPayload?.data?.backgroundVideos?.backgrounds,
-    )
-      ? imageSettingsPayload.data.backgroundVideos.backgrounds.filter(
-          (background): background is BackgroundVideoOption =>
-            Boolean(
-              background &&
-              typeof background.id === "string" &&
-              typeof background.name === "string",
-            ),
-        )
-      : [];
     setStyleOptions(nextStyles);
     setDefaultStyleId(imageSettingsPayload?.data?.imageStyles?.defaultStyleId || "");
     setDefaultVisualGenerationModelId(
       imageSettingsPayload?.data?.imageStyles?.defaultVisualGenerationModelId ||
         "",
     );
-    setBackgroundOptions(nextBackgrounds);
-    setDefaultBackgroundVideoId(
-      imageSettingsPayload?.data?.backgroundVideos?.defaultBackgroundVideoId || "",
-    );
   }, [imageSettingsPayload]);
-
-  useEffect(() => {
-    setSceneTabById((current) => {
-      const next = { ...current };
-      const validSceneIds = new Set(project.sceneImages.scenes.map((scene) => scene.id));
-      for (const sceneId of Object.keys(next)) {
-        if (!validSceneIds.has(sceneId)) delete next[sceneId];
-      }
-      for (const scene of project.sceneImages.scenes) {
-        if (!next[scene.id]) {
-          next[scene.id] = scene.previewVideo ? "preview" : "raw";
-        }
-      }
-      return next;
-    });
-  }, [project.sceneImages.scenes]);
 
   useEffect(() => {
     setVisualXmlDraftByScene(
@@ -4184,55 +4117,13 @@ function SceneImagesSection({
     }
   }
 
-  async function saveProjectBackground(backgroundVideoId: string) {
-    setSavingBackground(true);
-    setError(null);
-    try {
-      await parseJsonResponse(
-        await fetch(`/api/short-form-videos/${project.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            selectedBackgroundVideoId: backgroundVideoId,
-          }),
-        }),
-        "Failed to update background video",
-      );
-      await refresh();
-      return true;
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to update background video",
-      );
-      return false;
-    } finally {
-      setSavingBackground(false);
-    }
-  }
-
-  async function requestSceneChange(
-    scene: Scene,
-    mode: "regenerate-image" | "preview-camera" = "regenerate-image",
-  ) {
+  async function requestSceneChange(scene: Scene) {
     setSubmittingScene(scene.id);
     setError(null);
 
     try {
-      if (mode === "regenerate-image" || mode === "preview-camera") {
-        const saved = await saveSceneXml(scene, { keepSavingIndicator: true });
-        if (!saved) return;
-      }
-      if (mode === "preview-camera") {
-        setSceneTabById((prev) => ({ ...prev, [scene.id]: "preview" }));
-        setScenePreviewBustById((prev) => ({
-          ...prev,
-          [scene.id]: Date.now(),
-        }));
-        await refresh();
-        return;
-      }
+      const saved = await saveSceneXml(scene, { keepSavingIndicator: true });
+      if (!saved) return;
       await parseJsonResponse(
         await fetch(
           `/api/short-form-videos/${project.id}/workflow/scene-images`,
@@ -4360,29 +4251,20 @@ function SceneImagesSection({
   const activeStyleLabel = project.selectedImageStyleName || defaultStyleLabel;
   const activeVisualGenerationLabel =
     project.visualGenerationModelLabel || defaultVisualGenerationLabel;
-  const defaultBackgroundLabel =
-    backgroundOptions.find(
-      (background) => background.id === defaultBackgroundVideoId,
-    )?.name || "default background video";
-  const activeBackgroundVideoId =
-    project.selectedBackgroundVideoId || defaultBackgroundVideoId || "";
-  const activeBackgroundLabel =
-    project.selectedBackgroundVideoName ||
-    (defaultBackgroundVideoId ? defaultBackgroundLabel : "No background video");
 
   return (
     <StageReviewSection
       projectId={project.id}
       title="Generate Visuals"
       stage="scene-images"
-      description="Once the XML script is approved, the dashboard runs the visuals workflow directly to generate or reuse the needed green-screen visual plates from inline timeline image definitions. Exact backward-only image reuse never regenerates the image unnecessarily; reference-derived new images remain explicit in the XML and manifest for debugging. Captions are overlaid separately and the selected background video is composited behind each visual in preview/final render."
+      description="Once the XML script is approved, the dashboard runs the visuals workflow directly to generate or reuse full-frame visual assets from inline timeline image definitions. Exact backward-only image reuse never regenerates the image unnecessarily; reference-derived new images remain explicit in the XML and manifest for debugging."
       doc={project.sceneImages}
       mode="markdown"
       emptyText="No generated visuals yet. Generate them after approving the XML script."
       triggerLabel="Generate visuals"
       stopLabel="Stop generating visuals"
       onStop={stopGeneratingVisuals}
-      triggerDescription={`This should create green-screen scene plates using ${activeVisualGenerationLabel} and the selected image style${project.selectedImageStyleName ? ` (${project.selectedImageStyleName})` : ""}${project.selectedBackgroundVideoName ? `, then prepare preview compositing against ${project.selectedBackgroundVideoName}` : ""}.`}
+      triggerDescription={`This should create full-frame visual assets using ${activeVisualGenerationLabel} and the selected image style${project.selectedImageStyleName ? ` (${project.selectedImageStyleName})` : ""}.`}
       onRefresh={refresh}
       collapseDocumentByDefault
       hideReviewDocument
@@ -4631,110 +4513,6 @@ function SceneImagesSection({
             }}
           />
 
-
-          <CompactSettingCard
-            title="Looping background video"
-            globalDefault={<>Global default background: {defaultBackgroundLabel}</>}
-            valueLines={[{ children: activeBackgroundLabel }]}
-            editTooltip="Edit looping background video"
-            editDisabled={backgroundOptions.length === 0}
-            onEdit={() => {
-              setDraftBackgroundVideoId(activeBackgroundVideoId);
-              setError(null);
-              setBackgroundDialogOpen(true);
-            }}
-            links={
-              <CompactSettingLink
-                href={buildShortFormSettingsHref("final-video", {
-                  hash: "background-videos",
-                })}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Manage backgrounds ↗
-              </CompactSettingLink>
-            }
-            dialog={{
-              open: backgroundDialogOpen,
-              title: "Looping background video",
-              description:
-                "Pick which saved background video should sit behind the green-screen characters for previews and final render.",
-              children: (
-                <>
-                  {error ? (
-                    <ValidationNotice
-                      title="Visual change request failed"
-                      message={error}
-                    />
-                  ) : null}
-                  <CompactSettingLink
-                    href={buildShortFormSettingsHref("final-video", {
-                      hash: "background-videos",
-                    })}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Manage backgrounds ↗
-                  </CompactSettingLink>
-                  <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                    {backgroundOptions.length > 0 ? (
-                      backgroundOptions.map((background) => (
-                        <button
-                          key={background.id}
-                          type="button"
-                          onClick={() => setDraftBackgroundVideoId(background.id)}
-                          disabled={savingBackground}
-                          className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
-                            draftBackgroundVideoId === background.id
-                              ? "border-primary bg-primary/10 text-foreground"
-                              : "border-border bg-background/60 text-muted-foreground hover:border-foreground/40 hover:text-foreground"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="font-medium">{background.name}</span>
-                            {background.id === defaultBackgroundVideoId ? (
-                              <Badge variant="secondary">Global default</Badge>
-                            ) : null}
-                          </div>
-                        </button>
-                      ))
-                    ) : (
-                      <p className="rounded-md border border-border bg-background/60 p-3 text-sm text-muted-foreground">
-                        No background videos are available yet.
-                      </p>
-                    )}
-                  </div>
-                  <DialogFooter className="mt-0 justify-start">
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        void saveProjectBackground(draftBackgroundVideoId).then(
-                          (saved) => {
-                            if (saved) setBackgroundDialogOpen(false);
-                          },
-                        )
-                      }
-                      disabled={
-                        savingBackground ||
-                        !draftBackgroundVideoId ||
-                        backgroundOptions.length === 0
-                      }
-                    >
-                      {savingBackground ? "Saving…" : "Save"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setBackgroundDialogOpen(false)}
-                      disabled={savingBackground}
-                    >
-                      Cancel
-                    </Button>
-                  </DialogFooter>
-                </>
-              ),
-            }}
-          />
           {sceneProgress ? (
             <div className="rounded-lg border border-border bg-background/60 p-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -4780,9 +4558,6 @@ function SceneImagesSection({
               <div className="flex min-w-max gap-4">
                 {project.sceneImages.scenes.map((scene, sceneIndex) => {
                   const sceneBusy = scene.status === "in-progress";
-                  const activeTab =
-                    sceneTabById[scene.id] ||
-                    (scene.previewVideo ? "preview" : "raw");
                   const hasPreviewVideo = Boolean(scene.previewVideo);
                   const hasRawImage = Boolean(scene.image);
                   const hasRenderableMedia =
@@ -4871,48 +4646,6 @@ function SceneImagesSection({
                           {scene.caption}
                         </p>
                       </div>
-                      {!sceneBusy ? (
-                        <div className="flex rounded-md border border-border bg-background/70 p-1 text-[11px]">
-                          <button
-                            type="button"
-                            className={cn(
-                              "flex-1 rounded px-2 py-1",
-                              visualControlClass,
-                              activeTab === "preview"
-                                ? "bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80"
-                                : "text-muted-foreground hover:text-foreground",
-                            )}
-                            onClick={() =>
-                              setSceneTabById((prev) => ({
-                                ...prev,
-                                [scene.id]: "preview",
-                              }))
-                            }
-                            disabled={!hasPreviewVideo}
-                          >
-                            Preview
-                          </button>
-                          <button
-                            type="button"
-                            className={cn(
-                              "flex-1 rounded px-2 py-1",
-                              visualControlClass,
-                              activeTab === "raw"
-                                ? "bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80"
-                                : "text-muted-foreground hover:text-foreground",
-                            )}
-                            onClick={() =>
-                              setSceneTabById((prev) => ({
-                                ...prev,
-                                [scene.id]: "raw",
-                              }))
-                            }
-                            disabled={!hasRawImage}
-                          >
-                            Green screen
-                          </button>
-                        </div>
-                      ) : null}
                       {sceneBusy ? (
                         <div className="relative aspect-[9/16] w-full overflow-hidden rounded-md border border-dashed border-border bg-muted/40">
                           <Skeleton className="h-full w-full rounded-none" />
@@ -4923,21 +4656,18 @@ function SceneImagesSection({
                           </div>
                         </div>
                       ) : hasRenderableMedia ? (
-                        activeTab === "preview" && hasPreviewVideo ? (
+                        hasPreviewVideo ? (
                           <ScenePreviewVideoCard
-                            src={appendCacheBust(
-                              scene.previewVideo!,
-                              scenePreviewBustById[scene.id],
-                            )}
+                            src={scene.previewVideo!}
                             poster={
                               scene.previewImage || scene.image || undefined
                             }
-                            label={`${scene.caption} preview video`}
+                            label={`${scene.caption} video`}
                           />
                         ) : hasRawImage ? (
                           <img
                             src={scene.image}
-                            alt={`${scene.caption} raw green screen`}
+                            alt={scene.caption}
                             className="aspect-[9/16] w-full rounded-md border border-border bg-muted object-cover"
                           />
                         ) : scene.previewImage ? (
@@ -5229,19 +4959,9 @@ function SceneImagesSection({
                           <DropdownMenuContent align="end" className="w-64">
                             <DropdownMenuItem
                               className="cursor-pointer transition-colors hover:bg-[#28282d] active:bg-[#2d2d32]"
-                              onSelect={() =>
-                                void requestSceneChange(scene, "regenerate-image")
-                              }
+                              onSelect={() => void requestSceneChange(scene)}
                             >
                               Re-generate image
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="cursor-pointer transition-colors hover:bg-[#28282d] active:bg-[#2d2d32]"
-                              onSelect={() =>
-                                void requestSceneChange(scene, "preview-camera")
-                              }
-                            >
-                              Re-render preview camera effect changes
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -6723,8 +6443,6 @@ function VideoSection({
   const [defaultMusicId, setDefaultMusicId] = useState<string>("");
   const [defaultCaptionStyleId, setDefaultCaptionStyleId] =
     useState<string>("");
-  const [defaultChromaKeyEnabled, setDefaultChromaKeyEnabled] =
-    useState<boolean>(false);
   const [musicVolume, setMusicVolume] = useState<number>(0.38);
   const [savingMusic, setSavingMusic] = useState(false);
   const [musicDialogOpen, setMusicDialogOpen] = useState(false);
@@ -6732,15 +6450,10 @@ function VideoSection({
   const [savingCaptionStyle, setSavingCaptionStyle] = useState(false);
   const [captionStyleDialogOpen, setCaptionStyleDialogOpen] = useState(false);
   const [draftCaptionStyleId, setDraftCaptionStyleId] = useState("");
-  const [savingChromaKey, setSavingChromaKey] = useState(false);
-  const [backgroundChromaDialogOpen, setBackgroundChromaDialogOpen] =
-    useState(false);
-  const [draftChromaKeyValue, setDraftChromaKeyValue] = useState("");
   const [musicError, setMusicError] = useState<string | null>(null);
   const [captionStyleError, setCaptionStyleError] = useState<string | null>(
     null,
   );
-  const [chromaKeyError, setChromaKeyError] = useState<string | null>(null);
 
   const { data: videoSettingsPayload } = useSWR<ApiResponse<WorkflowSettingsResponse>>(
     "/api/short-form-videos/settings",
@@ -6790,9 +6503,6 @@ function VideoSection({
     );
     setDefaultCaptionStyleId(
       videoSettingsPayload?.data?.videoRender?.defaultCaptionStyleId || "",
-    );
-    setDefaultChromaKeyEnabled(
-      Boolean(videoSettingsPayload?.data?.videoRender?.chromaKeyEnabledByDefault),
     );
     setMusicVolume(
       typeof videoSettingsPayload?.data?.videoRender?.musicVolume === "number"
@@ -6856,32 +6566,6 @@ function VideoSection({
     }
   }
 
-  async function saveProjectChromaKey(value: boolean | null) {
-    setSavingChromaKey(true);
-    setChromaKeyError(null);
-    try {
-      await parseJsonResponse(
-        await fetch(`/api/short-form-videos/${project.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chromaKeyEnabledOverride: value }),
-        }),
-        "Failed to update project chroma-key setting",
-      );
-      await refresh();
-      return true;
-    } catch (err) {
-      setChromaKeyError(
-        err instanceof Error
-          ? err.message
-          : "Failed to update project chroma-key setting",
-      );
-      return false;
-    } finally {
-      setSavingChromaKey(false);
-    }
-  }
-
   const activeVoiceLabel =
     project.selectedVoiceName ||
     voiceOptions.find((voice) => voice.id === defaultVoiceId)?.name ||
@@ -6896,14 +6580,6 @@ function VideoSection({
       ?.name || "default caption style";
   const activeCaptionStyleLabel =
     project.selectedCaptionStyleName || globalDefaultCaptionStyleLabel;
-  const activeBackgroundLabel =
-    project.selectedBackgroundVideoName || "Not selected yet";
-  const defaultChromaKeyLabel = defaultChromaKeyEnabled ? "On" : "Off";
-  const activeChromaKeyLabel = project.chromaKeyEnabled ? "On" : "Off";
-  const activeChromaKeySourceLabel =
-    project.chromaKeyEnabledSource === "project"
-      ? "project override"
-      : "global default";
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const previewRefreshToken = useMemo(() => {
     const finalizeStep = project.video.pipeline?.steps.find(
@@ -6943,16 +6619,13 @@ function VideoSection({
       projectId={project.id}
       title="Video"
       stage="video"
-      description="After generated visuals are approved, the dashboard renders the final short-form video directly through the xml-scene-video workflow by reusing the narration + forced-alignment artifacts already produced during Generate Narration Audio, plus a full-duration looping background video track, optional chroma-key compositing, saved background music, ASS/libass subtitle burn-in, and per-visual XML camera motion that applies only to the image layer when explicitly set in the XML."
+      description="After generated visuals are approved, the dashboard renders the final short-form video directly through the xml-scene-video workflow by reusing the narration + forced-alignment artifacts already produced during Generate Narration Audio, full-frame visual assets, saved background music, ASS/libass subtitle burn-in, and per-visual XML camera motion that applies only to the image layer when explicitly set in the XML."
       doc={project.video}
       mode="markdown"
       emptyText="No video yet. Generate the final video after approving generated visuals and resolving the Generate Sound Design handoff."
       triggerLabel="Generate final video"
-      triggerDescription={`The video should be rendered from the XML <script> and approved scene assets by reusing the saved XML-step narration/alignment artifacts${activeVoiceLabel ? ` (voice source currently shown as ${activeVoiceLabel} in Generate Narration Audio)` : ""}${activeMusicLabel ? `, soundtrack preset ${activeMusicLabel}` : ""}${activeCaptionStyleLabel ? `, caption style ${activeCaptionStyleLabel}` : ""}${project.selectedBackgroundVideoName ? `, the looping background video ${project.selectedBackgroundVideoName}` : ""}, with chroma key currently ${activeChromaKeyLabel} via ${activeChromaKeySourceLabel}, plus the saved music mix volume (${Math.round(musicVolume * 100)}%) and the deterministic ASS/libass caption path unless explicitly overridden.`}
+      triggerDescription={`The video should be rendered from the XML <script> and approved full-frame scene assets by reusing the saved XML-step narration/alignment artifacts${activeVoiceLabel ? ` (voice source currently shown as ${activeVoiceLabel} in Generate Narration Audio)` : ""}${activeMusicLabel ? `, soundtrack preset ${activeMusicLabel}` : ""}${activeCaptionStyleLabel ? `, caption style ${activeCaptionStyleLabel}` : ""}, plus the saved music mix volume (${Math.round(musicVolume * 100)}%) and the deterministic ASS/libass caption path unless explicitly overridden.`}
       onRefresh={refresh}
-      triggerPayload={{
-        chromaKeyEnabledOverride: project.chromaKeyEnabledOverride ?? null,
-      }}
       triggerDisabled={!soundDesignReadyForVideo}
       triggerDisabledReason={
         !soundDesignReadyForVideo
@@ -6976,12 +6649,6 @@ function VideoSection({
             <ValidationNotice
               title="Caption style selection failed"
               message={captionStyleError}
-            />
-          ) : null}
-          {chromaKeyError ? (
-            <ValidationNotice
-              title="Chroma-key selection failed"
-              message={chromaKeyError}
             />
           ) : null}
           <CompactSettingCard
@@ -7219,142 +6886,7 @@ function VideoSection({
               ),
             }}
           />
-          <CompactSettingCard
-            title="Background + chroma key"
-            globalDefault={<>Default chroma key: {defaultChromaKeyLabel}</>}
-            valueLines={[
-              { children: activeBackgroundLabel },
-              { children: `Chroma key ${activeChromaKeyLabel}`, tone: "secondary" },
-            ]}
-            editTooltip="Edit chroma key"
-            onEdit={() => {
-              setDraftChromaKeyValue(
-                typeof project.chromaKeyEnabledOverride === "boolean"
-                  ? project.chromaKeyEnabledOverride
-                    ? "enabled"
-                    : "disabled"
-                  : "",
-              );
-              setChromaKeyError(null);
-              setBackgroundChromaDialogOpen(true);
-            }}
-            links={
-              <>
-                <CompactSettingLink
-                  href={buildShortFormDetailHref(project.id, "generate-visuals")}
-                >
-                  Edit background in Generate Visuals ↑
-                </CompactSettingLink>
-                <CompactSettingLink
-                  href={buildShortFormSettingsHref("generate-narration-audio", {
-                    hash: "pause-removal",
-                  })}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Defaults ↗
-                </CompactSettingLink>
-              </>
-            }
-            dialog={{
-              open: backgroundChromaDialogOpen,
-              title: "Background + chroma key",
-              description:
-                "Background video is selected on Generate Visuals. Final Video can override only the chroma-key behavior.",
-              children: (
-                <>
-                  {chromaKeyError ? (
-                    <ValidationNotice
-                      title="Chroma-key selection failed"
-                      message={chromaKeyError}
-                    />
-                  ) : null}
-                  <div className="rounded-md border border-border bg-background/60 p-3 text-sm">
-                    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Background
-                    </div>
-                    <div className="mt-1 text-sm font-semibold text-foreground">
-                      {activeBackgroundLabel}
-                    </div>
-                    <CompactSettingLink
-                      href={buildShortFormDetailHref(project.id, "generate-visuals")}
-                      className="mt-2"
-                    >
-                      Edit background in Generate Visuals ↑
-                    </CompactSettingLink>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Chroma key
-                    </label>
-                    <Select
-                      value={draftChromaKeyValue}
-                      onChange={(event) =>
-                        setDraftChromaKeyValue(event.target.value)
-                      }
-                      disabled={savingChromaKey}
-                      className="max-w-[240px]"
-                    >
-                      <option value="">
-                        Use default ({defaultChromaKeyEnabled ? "On" : "Off"})
-                      </option>
-                      <option value="disabled">Force off</option>
-                      <option value="enabled">Force on</option>
-                    </Select>
-                  </div>
-                  <CompactSettingLink
-                    href={buildShortFormSettingsHref("generate-narration-audio", {
-                      hash: "pause-removal",
-                    })}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Defaults ↗
-                  </CompactSettingLink>
-                  <DialogFooter className="mt-0 justify-start">
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        void saveProjectChromaKey(
-                          draftChromaKeyValue === ""
-                            ? null
-                            : draftChromaKeyValue === "enabled",
-                        ).then((saved) => {
-                          if (saved) setBackgroundChromaDialogOpen(false);
-                        })
-                      }
-                      disabled={savingChromaKey}
-                    >
-                      {savingChromaKey ? "Saving…" : "Save"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        void saveProjectChromaKey(null).then((saved) => {
-                          if (saved) setBackgroundChromaDialogOpen(false);
-                        })
-                      }
-                      disabled={
-                        savingChromaKey ||
-                        typeof project.chromaKeyEnabledOverride !== "boolean"
-                      }
-                    >
-                      Use global default
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setBackgroundChromaDialogOpen(false)}
-                      disabled={savingChromaKey}
-                    >
-                      Cancel
-                    </Button>
-                  </DialogFooter>
-                </>
-              ),
-            }}
-          />
+
           <VideoPipelinePanel project={project} />
           {previewVideoUrl ? (
             <Card className="space-y-3 p-4">

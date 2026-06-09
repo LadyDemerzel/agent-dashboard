@@ -29,9 +29,6 @@ export interface DirectSceneImagesConfig {
   imageStyleReferences?: ShortFormStyleReferenceImage[];
   imagePromptTemplates: ShortFormNanoBananaPromptTemplates;
   motionGraphicsSettings?: ShortFormMotionGraphicsSettings;
-  backgroundVideoId?: string;
-  backgroundVideoName?: string;
-  backgroundVideoPath?: string;
 }
 
 export interface DirectVideoConfig {
@@ -49,11 +46,6 @@ export interface DirectVideoConfig {
   captionStyleSource?: "project" | "default" | "fallback";
   captionStyle?: ShortFormCaptionStyleEntry;
   animationPreset?: ShortFormCaptionAnimationPresetEntry;
-  backgroundVideoId?: string;
-  backgroundVideoName?: string;
-  backgroundVideoPath?: string;
-  chromaKeyEnabled?: boolean;
-  chromaKeySource?: "project" | "default";
   notes?: string;
 }
 

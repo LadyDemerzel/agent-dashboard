@@ -94,11 +94,9 @@ type PromptTemplateId =
 type SettingsSectionId =
   | "tts-voice"
   | "pause-removal"
-  | "final-video-render"
   | "music-library"
   | "sound-library"
   | "caption-styles"
-  | "background-videos"
   | "image-templates"
   | "image-styles"
   | "motion-graphics"
@@ -597,7 +595,6 @@ interface VideoRenderSettings {
   voices: VoiceLibraryEntry[];
   defaultMusicTrackId?: string;
   musicVolume: number;
-  chromaKeyEnabledByDefault: boolean;
   musicTracks: MusicLibraryEntry[];
   defaultCaptionStyleId: string;
   animationPresets: AnimationPresetEntry[];
@@ -607,21 +604,6 @@ interface VideoRenderSettings {
     minSilenceDurationSeconds: number;
     silenceThresholdDb: number;
   };
-}
-
-interface BackgroundVideoEntry {
-  id: string;
-  name: string;
-  notes?: string;
-  videoRelativePath: string;
-  videoUrl?: string;
-  uploadedAt?: string;
-  updatedAt?: string;
-}
-
-interface BackgroundVideoSettings {
-  defaultBackgroundVideoId?: string;
-  backgrounds: BackgroundVideoEntry[];
 }
 
 interface TextScriptSettings {
@@ -777,7 +759,6 @@ interface SettingsResponse {
     definitions: PromptDefinition[];
     imageStyles: ImageStyleSettings;
     videoRender: VideoRenderSettings;
-    backgroundVideos: BackgroundVideoSettings;
     textScript: TextScriptSettings;
     xmlVisualPlanning: XmlVisualPlanningSettings;
     motionGraphics: MotionGraphicsSettings;
@@ -860,11 +841,6 @@ interface StyleReferenceUploadState {
 }
 
 interface SoundUploadState {
-  isUploading: boolean;
-  error: string | null;
-}
-
-interface BackgroundVideoUploadState {
   isUploading: boolean;
   error: string | null;
 }
@@ -1970,9 +1946,9 @@ const SETTINGS_PAGE_META: Record<
     eyebrow: "Short-form workflow settings",
     title: "Final Video",
     description:
-      "Manage background loops, soundtrack presets, and final-render defaults used by the Final Video workflow page.",
-    summaryLabel: "Render settings",
-    sectionIds: ["final-video-render", "background-videos", "music-library"],
+      "Manage soundtrack presets used by the Final Video workflow page.",
+    summaryLabel: "Music library",
+    sectionIds: ["music-library"],
   },
 };
 
@@ -1982,16 +1958,12 @@ function getSettingsSectionSaveLabel(sectionId: SettingsSectionId) {
       return "Save voice library";
     case "pause-removal":
       return "Save pause-removal defaults";
-    case "final-video-render":
-      return "Save final-render defaults";
     case "music-library":
       return "Save music library";
     case "sound-library":
       return "Save sound library settings";
     case "caption-styles":
       return "Save caption styles";
-    case "background-videos":
-      return "Save background library";
     case "image-styles":
       return "Save style library";
     case "motion-graphics":
@@ -2032,11 +2004,9 @@ function createEmptySectionFeedback(): Record<
   return {
     "tts-voice": { saving: false, error: null, message: null },
     "pause-removal": { saving: false, error: null, message: null },
-    "final-video-render": { saving: false, error: null, message: null },
     "music-library": { saving: false, error: null, message: null },
     "sound-library": { saving: false, error: null, message: null },
     "caption-styles": { saving: false, error: null, message: null },
-    "background-videos": { saving: false, error: null, message: null },
     "image-templates": { saving: false, error: null, message: null },
     "image-styles": { saving: false, error: null, message: null },
     "motion-graphics": { saving: false, error: null, message: null },
@@ -4038,10 +4008,6 @@ export function ShortFormVideoSettingsView({
   );
   const [initialVideoRender, setInitialVideoRender] =
     useState<VideoRenderSettings | null>(initialSettings?.videoRender || null);
-  const [backgroundVideos, setBackgroundVideos] =
-    useState<BackgroundVideoSettings | null>(initialSettings?.backgroundVideos || null);
-  const [initialBackgroundVideos, setInitialBackgroundVideos] =
-    useState<BackgroundVideoSettings | null>(initialSettings?.backgroundVideos || null);
   const [textScriptSettings, setTextScriptSettings] =
     useState<TextScriptSettings | null>(initialSettings?.textScript || null);
   const [initialTextScriptSettings, setInitialTextScriptSettings] =
@@ -4146,8 +4112,6 @@ export function ShortFormVideoSettingsView({
   >({});
   const selectedSoundAudioRef = useRef<HTMLAudioElement | null>(null);
   const [selectedSoundAudioTime, setSelectedSoundAudioTime] = useState(0);
-  const [backgroundVideoUpload, setBackgroundVideoUpload] =
-    useState<BackgroundVideoUploadState>({ isUploading: false, error: null });
   const [sectionFeedback, setSectionFeedback] = useState<
     Record<SettingsSectionId, SectionFeedback>
   >(createEmptySectionFeedback());
@@ -4472,8 +4436,6 @@ export function ShortFormVideoSettingsView({
       setInitialImageStyles(data.imageStyles);
       setVideoRender(data.videoRender);
       setInitialVideoRender(data.videoRender);
-      setBackgroundVideos(data.backgroundVideos);
-      setInitialBackgroundVideos(data.backgroundVideos);
       setTextScriptSettings(data.textScript);
       setInitialTextScriptSettings(data.textScript);
       setXmlVisualPlanningSettings(data.xmlVisualPlanning);
@@ -5138,21 +5100,6 @@ export function ShortFormVideoSettingsView({
             pauseRemoval: initialVideoRender.pauseRemoval,
           })
         : false;
-    const finalVideoRenderDirty =
-      videoRender && initialVideoRender
-        ? serializeForCompare({
-            chromaKeyEnabledByDefault: videoRender.chromaKeyEnabledByDefault,
-          }) !==
-          serializeForCompare({
-            chromaKeyEnabledByDefault:
-              initialVideoRender.chromaKeyEnabledByDefault,
-          })
-        : false;
-    const backgroundVideosDirty =
-      backgroundVideos && initialBackgroundVideos
-        ? serializeForCompare(backgroundVideos) !==
-          serializeForCompare(initialBackgroundVideos)
-        : false;
     const textScriptPromptsDirty =
       textScriptSettings && initialTextScriptSettings
         ? serializeForCompare(textScriptSettings) !==
@@ -5180,11 +5127,9 @@ export function ShortFormVideoSettingsView({
     return {
       "tts-voice": ttsDirty,
       "pause-removal": pauseRemovalDirty,
-      "final-video-render": finalVideoRenderDirty,
       "music-library": musicDirty,
       "sound-library": soundLibraryDirty,
       "caption-styles": captionStylesDirty,
-      "background-videos": backgroundVideosDirty,
       "image-templates": imageTemplateDirty,
       "image-styles": imageStyleLibraryDirty,
       "motion-graphics": motionGraphicsDirty,
@@ -5194,9 +5139,7 @@ export function ShortFormVideoSettingsView({
       "xml-visual-planning": xmlVisualPlanningDirty,
     };
   }, [
-    backgroundVideos,
     imageStyles,
-    initialBackgroundVideos,
     initialImageStyles,
     initialMotionGraphicsSettings,
     initialPrompts,
@@ -5258,8 +5201,7 @@ export function ShortFormVideoSettingsView({
     musicPreview.isLoading ||
     Boolean(selectedStyleUpload?.isUploading) ||
     Boolean(selectedVoiceUpload?.isUploading) ||
-    Boolean(selectedSoundUpload?.isUploading) ||
-    backgroundVideoUpload.isUploading;
+    Boolean(selectedSoundUpload?.isUploading);
 
   const {
     data: settingsData,
@@ -5335,7 +5277,7 @@ export function ShortFormVideoSettingsView({
     activeSection === "generate-narration-audio"
       ? ["pause-removal", "tts-voice"]
       : activeSection === "final-video"
-        ? ["final-video-render", "background-videos", "music-library"]
+        ? ["music-library"]
         : pageActionSectionId
           ? [pageActionSectionId]
           : [];
@@ -5348,8 +5290,7 @@ export function ShortFormVideoSettingsView({
     musicPreview.isLoading ||
     Boolean(selectedStyleUpload?.isUploading) ||
     Boolean(selectedVoiceUpload?.isUploading) ||
-    Boolean(selectedSoundUpload?.isUploading) ||
-    backgroundVideoUpload.isUploading;
+    Boolean(selectedSoundUpload?.isUploading);
 
   useEffect(() => {
     if (!settingsShellNav) return;
@@ -5369,7 +5310,6 @@ export function ShortFormVideoSettingsView({
       soundCount: soundDesignSettings?.library.length || 0,
       styleCount: imageStyles?.styles.length || 0,
       captionStyleCount: videoRender?.captionStyles.length || 0,
-      backgroundCount: backgroundVideos?.backgrounds.length || 0,
       musicTrackCount: videoRender?.musicTracks.length || 0,
     });
 
@@ -5377,7 +5317,6 @@ export function ShortFormVideoSettingsView({
       settingsShellNav.setSummaryOverrides({});
     };
   }, [
-    backgroundVideos?.backgrounds.length,
     imageStyles?.styles.length,
     settingsShellNav,
     soundDesignSettings?.library.length,
@@ -5820,54 +5759,6 @@ export function ShortFormVideoSettingsView({
           </div>
         ) : null}
       </div>
-    </section>
-  );
-
-  const finalVideoRenderSection = (
-    <section id="final-video-render" className="scroll-mt-24">
-      <Card className="space-y-5 p-5">
-        <WorkflowSectionHeader
-          title="Final-render defaults"
-          description="Set global render defaults used by the Final Video workflow page. Individual projects can still override these values from their project page."
-        />
-
-        {videoRender ? (
-          <div className="space-y-2">
-            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Default chroma key
-            </label>
-            <Select
-              value={
-                videoRender.chromaKeyEnabledByDefault
-                  ? "enabled"
-                  : "disabled"
-              }
-              onChange={(event) => {
-                updateSectionFeedbackState("final-video-render", {
-                  error: null,
-                  message: null,
-                });
-                setVideoRender({
-                  ...videoRender,
-                  chromaKeyEnabledByDefault: event.target.value === "enabled",
-                });
-              }}
-              className="max-w-[220px]"
-            >
-              <option value="disabled">Disabled</option>
-              <option value="enabled">Enabled</option>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              New projects use this for final-video runs unless a project-level
-              override says otherwise.
-            </p>
-          </div>
-        ) : null}
-
-        <SectionFeedbackNotice
-          feedback={sectionFeedback["final-video-render"]}
-        />
-      </Card>
     </section>
   );
 
@@ -8336,12 +8227,6 @@ export function ShortFormVideoSettingsView({
       return;
     }
 
-    if (sectionId === "background-videos") {
-      setBackgroundVideos(data.backgroundVideos);
-      setInitialBackgroundVideos(data.backgroundVideos);
-      return;
-    }
-
     if (sectionId === "text-script-prompts") {
       setTextScriptSettings(data.textScript);
       setInitialTextScriptSettings(data.textScript);
@@ -8443,15 +8328,6 @@ export function ShortFormVideoSettingsView({
               },
             }
           : null;
-      case "final-video-render":
-        return videoRender
-          ? {
-              videoRender: {
-                chromaKeyEnabledByDefault:
-                  videoRender.chromaKeyEnabledByDefault,
-              },
-            }
-          : null;
       case "music-library":
         return videoRender
           ? {
@@ -8477,8 +8353,6 @@ export function ShortFormVideoSettingsView({
         return soundDesignSettings
           ? { soundDesign: soundDesignSettings }
           : null;
-      case "background-videos":
-        return backgroundVideos ? { backgroundVideos } : null;
       case "text-script-prompts":
         return textScriptSettings ? { textScript: textScriptSettings } : null;
       case "xml-visual-planning":
@@ -8542,14 +8416,10 @@ export function ShortFormVideoSettingsView({
             ? "Saved. New XML narration runs will now reuse this voice library, including any saved voice samples."
             : sectionId === "pause-removal"
               ? "Saved. New narration timing runs now use these global pause-removal defaults unless a project override is set."
-              : sectionId === "final-video-render"
-                ? "Saved. New final-video runs now use these global render defaults unless a project override is set."
               : sectionId === "music-library"
                 ? "Saved. New final-video runs will now reuse this soundtrack library, including any generated soundtrack files."
                 : sectionId === "caption-styles"
                   ? "Saved. New final-video runs will use this caption-style library/default immediately."
-                  : sectionId === "background-videos"
-                    ? "Saved. Projects now use this background-video library/default immediately."
                     : sectionId === "image-templates" ||
                         sectionId === "image-styles"
                       ? "Saved. New scene-image runs and tests will use this section immediately."
@@ -8698,7 +8568,6 @@ export function ShortFormVideoSettingsView({
     if (
       (sectionId === "tts-voice" ||
         sectionId === "music-library" ||
-        sectionId === "final-video-render" ||
         sectionId === "pause-removal" ||
         sectionId === "caption-styles") &&
       initialVideoRender &&
@@ -8722,15 +8591,6 @@ export function ShortFormVideoSettingsView({
         setVideoRender({
           ...videoRender,
           pauseRemoval: initialVideoRender.pauseRemoval,
-        });
-        return;
-      }
-
-      if (sectionId === "final-video-render") {
-        setVideoRender({
-          ...videoRender,
-          chromaKeyEnabledByDefault:
-            initialVideoRender.chromaKeyEnabledByDefault,
         });
         return;
       }
@@ -8780,11 +8640,6 @@ export function ShortFormVideoSettingsView({
           return current;
         return initialSoundDesignSettings.library[0]?.id || null;
       });
-      return;
-    }
-
-    if (sectionId === "background-videos" && initialBackgroundVideos) {
-      setBackgroundVideos(initialBackgroundVideos);
       return;
     }
 
@@ -9569,75 +9424,6 @@ export function ShortFormVideoSettingsView({
       }));
     }
   }
-
-  async function uploadBackgroundVideo(file: File) {
-    setBackgroundVideoUpload({ isUploading: true, error: null });
-    updateSectionFeedbackState("background-videos", {
-      error: null,
-      message: null,
-    });
-
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("label", file.name);
-
-      const response = await fetch(
-        "/api/short-form-videos/settings/background-videos/upload",
-        {
-          method: "POST",
-          body: formData,
-        },
-      );
-      const payload = (await response.json().catch(() => ({}))) as {
-        success?: boolean;
-        data?: {
-          videoRelativePath: string;
-          videoUrl?: string;
-          uploadedAt?: string;
-        };
-        error?: string;
-      };
-
-      if (!response.ok || payload.success === false || !payload.data) {
-        throw new Error(payload.error || "Failed to upload background video");
-      }
-
-      setBackgroundVideos((current) => {
-        const entryId = `${slugify(file.name.replace(/\.[^.]+$/, "")) || "background"}-${Date.now()}`;
-        const nextEntry: BackgroundVideoEntry = {
-          id: entryId,
-          name: file.name.replace(/\.[^.]+$/, "") || "Background video",
-          videoRelativePath: payload.data!.videoRelativePath,
-          videoUrl: payload.data!.videoUrl,
-          uploadedAt: payload.data!.uploadedAt,
-          updatedAt: payload.data!.uploadedAt,
-        };
-        if (!current) {
-          return {
-            defaultBackgroundVideoId: entryId,
-            backgrounds: [nextEntry],
-          };
-        }
-        return {
-          ...current,
-          defaultBackgroundVideoId: current.defaultBackgroundVideoId || entryId,
-          backgrounds: [...current.backgrounds, nextEntry],
-        };
-      });
-
-      setBackgroundVideoUpload({ isUploading: false, error: null });
-    } catch (err) {
-      setBackgroundVideoUpload({
-        isUploading: false,
-        error:
-          err instanceof Error
-            ? err.message
-            : "Failed to upload background video",
-      });
-    }
-  }
-
   async function generateStyleTest() {
     if (!imageStyles || !selectedStyle) return;
 
@@ -12952,224 +12738,6 @@ export function ShortFormVideoSettingsView({
                 feedback={sectionFeedback["caption-styles"]}
               />
             </div>
-          </section>
-        </div>
-      ) : null}
-
-      {activeSection === "final-video" ? (
-        <div className="space-y-6">
-          {finalVideoRenderSection}
-          <section id="background-videos" className="scroll-mt-24">
-            <Card className="space-y-5 p-5">
-              {backgroundVideos ? (
-                <div className="space-y-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-background/60 p-4">
-                    <div>
-                      <h3 className="text-sm font-medium text-foreground">
-                        Background library
-                      </h3>
-                      <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
-                        These videos are looped to the full narration duration
-                        during final render, then the green-screen character
-                        plates are chroma-keyed over them. Scene preview tabs
-                        also composite against the selected project background.
-                      </p>
-                    </div>
-                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-accent">
-                      <span>
-                        {backgroundVideoUpload.isUploading
-                          ? "Uploading…"
-                          : "Upload background video"}
-                      </span>
-                      <input
-                        type="file"
-                        accept="video/mp4,video/quicktime,video/webm,video/x-m4v,.mp4,.mov,.webm,.m4v"
-                        className="hidden"
-                        disabled={backgroundVideoUpload.isUploading}
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          if (file) {
-                            void uploadBackgroundVideo(file);
-                          }
-                          event.currentTarget.value = "";
-                        }}
-                      />
-                    </label>
-                  </div>
-
-                  {backgroundVideoUpload.error ? (
-                    <ValidationNotice
-                      title="Background upload failed"
-                      message={backgroundVideoUpload.error}
-                    />
-                  ) : null}
-
-                  {backgroundVideos.backgrounds.length > 0 ? (
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      {backgroundVideos.backgrounds.map((background) => {
-                        const isDefault =
-                          backgroundVideos.defaultBackgroundVideoId ===
-                          background.id;
-                        return (
-                          <div
-                            key={background.id}
-                            className="space-y-3 rounded-lg border border-border bg-background/60 p-4"
-                          >
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <p className="text-sm font-medium text-foreground">
-                                  {background.name}
-                                </p>
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  {background.notes || "No notes yet."}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant={isDefault ? "secondary" : "outline"}
-                                  onClick={() => {
-                                    updateSectionFeedbackState(
-                                      "background-videos",
-                                      { error: null, message: null },
-                                    );
-                                    setBackgroundVideos({
-                                      ...backgroundVideos,
-                                      defaultBackgroundVideoId: background.id,
-                                    });
-                                  }}
-                                >
-                                  {isDefault
-                                    ? "Default background"
-                                    : "Set as default"}
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    updateSectionFeedbackState(
-                                      "background-videos",
-                                      { error: null, message: null },
-                                    );
-                                    const remaining =
-                                      backgroundVideos.backgrounds.filter(
-                                        (entry) => entry.id !== background.id,
-                                      );
-                                    setBackgroundVideos({
-                                      defaultBackgroundVideoId:
-                                        backgroundVideos.defaultBackgroundVideoId ===
-                                        background.id
-                                          ? remaining[0]?.id
-                                          : backgroundVideos.defaultBackgroundVideoId,
-                                      backgrounds: remaining,
-                                    });
-                                  }}
-                                >
-                                  Delete
-                                </Button>
-                              </div>
-                            </div>
-
-                            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
-                              <div className="space-y-3">
-                                <div className="space-y-2">
-                                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                    Background name
-                                  </label>
-                                  <Input
-                                    value={background.name}
-                                    onChange={(event) => {
-                                      updateSectionFeedbackState(
-                                        "background-videos",
-                                        { error: null, message: null },
-                                      );
-                                      setBackgroundVideos({
-                                        ...backgroundVideos,
-                                        backgrounds:
-                                          backgroundVideos.backgrounds.map(
-                                            (entry) =>
-                                              entry.id === background.id
-                                                ? {
-                                                    ...entry,
-                                                    name: event.target.value,
-                                                  }
-                                                : entry,
-                                          ),
-                                      });
-                                    }}
-                                  />
-                                </div>
-                                <div className="space-y-2">
-                                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                    Notes
-                                  </label>
-                                  <Textarea
-                                    value={background.notes || ""}
-                                    onChange={(event) => {
-                                      updateSectionFeedbackState(
-                                        "background-videos",
-                                        { error: null, message: null },
-                                      );
-                                      setBackgroundVideos({
-                                        ...backgroundVideos,
-                                        backgrounds:
-                                          backgroundVideos.backgrounds.map(
-                                            (entry) =>
-                                              entry.id === background.id
-                                                ? {
-                                                    ...entry,
-                                                    notes: event.target.value,
-                                                  }
-                                                : entry,
-                                          ),
-                                      });
-                                    }}
-                                    className="min-h-[100px] text-xs"
-                                    placeholder="Optional notes about where this background works best"
-                                  />
-                                </div>
-                              </div>
-                              <div className="space-y-2">
-                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                  Preview
-                                </p>
-                                {background.videoUrl ? (
-                                  <video
-                                    src={background.videoUrl}
-                                    controls
-                                    muted
-                                    loop
-                                    playsInline
-                                    preload="metadata"
-                                    className="aspect-[9/16] w-full rounded-lg border border-border bg-black object-cover"
-                                  />
-                                ) : (
-                                  <div className="flex aspect-[9/16] items-center justify-center rounded-lg border border-dashed border-border text-xs text-muted-foreground">
-                                    Preview unavailable
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-                      No background videos yet. Upload one or more vertical (or
-                      croppable) loops here, then set a default so new projects
-                      inherit it automatically.
-                    </div>
-                  )}
-                </div>
-              ) : null}
-
-              <SectionFeedbackNotice
-                feedback={sectionFeedback["background-videos"]}
-              />
-            </Card>
           </section>
         </div>
       ) : null}

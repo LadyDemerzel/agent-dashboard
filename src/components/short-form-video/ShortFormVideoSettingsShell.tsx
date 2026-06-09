@@ -16,7 +16,6 @@ interface SettingsSummaryData {
     musicTracks?: unknown[];
     captionStyles?: unknown[];
   };
-  backgroundVideos?: { backgrounds?: unknown[] };
   soundDesign?: { library?: unknown[] };
 }
 
@@ -35,7 +34,6 @@ function normalizeSummary(payload: SettingsSummaryData | null | undefined): Shor
     soundCount: payload.soundDesign?.library?.length || 0,
     styleCount: payload.imageStyles?.styles?.length || 0,
     captionStyleCount: payload.videoRender?.captionStyles?.length || 0,
-    backgroundCount: payload.backgroundVideos?.backgrounds?.length || 0,
     musicTrackCount: payload.videoRender?.musicTracks?.length || 0,
   };
 }

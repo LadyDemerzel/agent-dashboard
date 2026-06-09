@@ -4,7 +4,6 @@ import {
 } from "@/lib/short-form-workflow-prompts";
 import { getShortFormImageStyleSettings } from "@/lib/short-form-image-styles";
 import { getShortFormVideoRenderSettings } from "@/lib/short-form-video-render-settings";
-import { getShortFormBackgroundVideoSettings } from "@/lib/short-form-background-videos";
 import { getShortFormTextScriptSettings } from "@/lib/short-form-text-script-settings";
 import { getShortFormXmlVisualPlanningSettings } from "@/lib/short-form-xml-visual-planning-settings";
 import {
@@ -22,7 +21,6 @@ export function getShortFormSettingsPayload() {
     definitions: getShortFormPromptDefinitions(),
     imageStyles: getShortFormImageStyleSettings(),
     videoRender: getShortFormVideoRenderSettings(),
-    backgroundVideos: getShortFormBackgroundVideoSettings(),
     textScript: getShortFormTextScriptSettings(),
     xmlVisualPlanning: getShortFormXmlVisualPlanningSettings(),
     motionGraphics: getShortFormMotionGraphicsSettings(),

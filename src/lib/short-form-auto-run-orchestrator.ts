@@ -1789,7 +1789,6 @@ async function runFinalVideo(
     `/api/short-form-videos/${projectId}/workflow/video`,
     {
       action: "generate",
-      chromaKeyEnabledOverride: current.chromaKeyEnabledOverride ?? null,
     },
     "Failed to generate final video",
     signal,

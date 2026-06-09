@@ -48,7 +48,6 @@
   ],
   "defaultMusicTrackId": "music-ambient-piano-loop-120",
   "musicVolume": 0.81,
-  "chromaKeyEnabledByDefault": false,
   "musicTracks": [
     {
       "id": "music-cinematic-contemplative-piano",

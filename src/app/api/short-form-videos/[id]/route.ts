@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getShortFormProject, selectShortFormProjectPayload, updateProjectMeta } from "@/lib/short-form-videos";
 import { resolveShortFormImageStyle } from "@/lib/short-form-image-styles";
 import { getShortFormVideoRenderSettings } from "@/lib/short-form-video-render-settings";
-import { getShortFormBackgroundVideoSettings } from "@/lib/short-form-background-videos";
 import { getSoundDesignHandoffState } from "@/lib/short-form-sound-design-handoff";
 import { isShortFormVisualGenerationModelId } from "@/lib/short-form-visual-generation";
 import { normalizeShortFormAutoRunState } from "@/lib/short-form-auto-run";
@@ -53,7 +52,6 @@ export async function PATCH(
   const selectedVoiceId = typeof body.selectedVoiceId === "string" ? body.selectedVoiceId.trim() : undefined;
   const selectedMusicId = body.selectedMusicId === null ? null : typeof body.selectedMusicId === "string" ? body.selectedMusicId.trim() : undefined;
   const selectedCaptionStyleId = body.selectedCaptionStyleId === null ? null : typeof body.selectedCaptionStyleId === "string" ? body.selectedCaptionStyleId.trim() : undefined;
-  const selectedBackgroundVideoId = typeof body.selectedBackgroundVideoId === "string" ? body.selectedBackgroundVideoId.trim() : undefined;
   const soundDesignDecision = body.soundDesignDecision === null
     ? null
     : body.soundDesignDecision === "approved" || body.soundDesignDecision === "skipped"
@@ -63,11 +61,6 @@ export async function PATCH(
     ? null
     : typeof body.soundDesignSkipReason === "string"
       ? body.soundDesignSkipReason.trim()
-      : undefined;
-  const chromaKeyEnabledOverride = body.chromaKeyEnabledOverride === null
-    ? null
-    : typeof body.chromaKeyEnabledOverride === "boolean"
-      ? body.chromaKeyEnabledOverride
       : undefined;
   const textScriptMaxIterationsOverride = body.textScriptMaxIterationsOverride === null
     ? null
@@ -130,13 +123,6 @@ export async function PATCH(
     }
   }
 
-  if (selectedBackgroundVideoId !== undefined) {
-    const settings = getShortFormBackgroundVideoSettings();
-    if (!settings.backgrounds.some((background) => background.id === selectedBackgroundVideoId)) {
-      return NextResponse.json({ success: false, error: "Selected background video no longer exists" }, { status: 400 });
-    }
-  }
-
   if (soundDesignDecision === "skipped" && !(soundDesignSkipReason || project.soundDesignSkipReason)) {
     return NextResponse.json({ success: false, error: "Add a brief reason before skipping sound design" }, { status: 400 });
   }
@@ -182,7 +168,6 @@ export async function PATCH(
     ...(selectedVoiceId !== undefined ? { selectedVoiceId } : {}),
     ...(selectedMusicId !== undefined ? { selectedMusicId: selectedMusicId === null ? undefined : selectedMusicId } : {}),
     ...(selectedCaptionStyleId !== undefined ? { selectedCaptionStyleId: selectedCaptionStyleId === null ? undefined : selectedCaptionStyleId } : {}),
-    ...(selectedBackgroundVideoId !== undefined ? { selectedBackgroundVideoId } : {}),
     ...(soundDesignDecision !== undefined
       ? {
           soundDesignDecision: soundDesignDecision === null ? undefined : soundDesignDecision,
@@ -195,9 +180,6 @@ export async function PATCH(
       : soundDesignSkipReason !== undefined
         ? { soundDesignSkipReason: soundDesignSkipReason === null ? undefined : soundDesignSkipReason || undefined }
         : {}),
-    ...(chromaKeyEnabledOverride !== undefined
-      ? { chromaKeyEnabledOverride: chromaKeyEnabledOverride === null ? undefined : chromaKeyEnabledOverride }
-      : {}),
     ...(textScriptMaxIterationsOverride !== undefined
       ? { textScriptMaxIterationsOverride: textScriptMaxIterationsOverride === null ? undefined : textScriptMaxIterationsOverride }
       : {}),

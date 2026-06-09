@@ -113,15 +113,6 @@ const DEFAULT_INLINE_SHARED_STYLE_RULES = [
   "Characters should never be cut off unless the crop is clearly motivated by the left, right, or bottom edge of the frame.",
 ];
 
-const DEFAULT_INLINE_GREENSCREEN_STYLE_RULES = [
-  "CRITICAL BACKGROUND RULE: render the character and all foreground props against a uniform pure chroma-key green background (#00FF00 or equivalent vivid studio greenscreen) that fills the entire frame edge to edge.",
-  "The greenscreen should stay distinctly green, not cyan/teal/blue-green: keep blue in the backdrop as close to zero as possible so the background does not drift toward aqua.",
-  "The greenscreen should read like a single flat digital/studio fill: no realistic environment, scenic background, textured backdrop, painted strokes, gradient background, corner darkening, mottled noise, shadows cast onto a wall, floor reflections, haze, smoke, or colored light spill in the green area.",
-  "Keep the subject fully in front of the greenscreen with clean silhouette separation, crisp but natural edges, minimal semi-transparent wisps, and no motion blur or smeared edges that would make chroma keying difficult.",
-  "Avoid green clothing, green accessories, green makeup, green props, or green translucent objects on the subject. Prefer wardrobe and props that contrast strongly against green.",
-  "When greenscreen output is requested, any instruction about background continuation, scenic atmosphere, or matching the reference background is overridden. Match only the artistic treatment on the foreground subject and props, never inherit the reference background itself.",
-];
-
 const DEFAULT_STYLE_INSTRUCTIONS_TEMPLATE = [
   "Visual style must remain consistent across every scene. Use the selected image style and per-style art direction for the actual medium, palette, rendering approach, mood, and finish; do not silently fall back to an unrelated house style.",
   "CRITICAL COMPOSITION RULE: keep roughly the top {{headerPercent}} percent of the vertical frame available for later caption overlay by leaving that area compositionally quieter inside the same full-frame image, not by adding a separate header treatment or boxed panel.",
@@ -130,7 +121,6 @@ const DEFAULT_STYLE_INSTRUCTIONS_TEMPLATE = [
   "If the scene suggests comparison, anatomy emphasis, or multiple ideas, solve it within one cohesive scene using pose, depth, lighting, and integrated visual cues rather than divider lines, before/after cards, boxed inserts, or framed sub-images.",
   "CRITICAL: generate clean artwork only with no text, letters, subtitles, labels, logos, UI chrome, speech bubbles, or watermarks anywhere in the image.",
   ...DEFAULT_INLINE_SHARED_STYLE_RULES,
-  ...DEFAULT_INLINE_GREENSCREEN_STYLE_RULES,
   BASED_ON_REFERENCE_INSTRUCTIONS_BLOCK,
   STYLE_TEMPLATE_PER_STYLE_BLOCK,
 ].join("\n\n");
@@ -433,7 +423,6 @@ function isCharacterPromptTemplateBlock(value: string) {
 
 const OMITTED_IMAGE_GENERATION_BLOCK_KEYS = new Set(
   [
-    ...DEFAULT_INLINE_GREENSCREEN_STYLE_RULES,
     SCENE_TEMPLATE_ASSET_ID_BLOCK,
     "{{assetId}}",
     LEGACY_CONTINUITY_INSTRUCTIONS_PLACEHOLDER,

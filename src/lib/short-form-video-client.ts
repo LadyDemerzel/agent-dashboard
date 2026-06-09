@@ -171,7 +171,6 @@ export interface Scene {
   image?: string;
   previewImage?: string;
   previewVideo?: string;
-  previewVideoBackgroundId?: string;
   visualType?: 'image' | 'motion_graphic';
   motionGraphicId?: string;
   motionGraphicTemplateId?: string;
@@ -329,17 +328,12 @@ export interface ShortFormProjectClient {
   selectedVoiceName?: string;
   selectedMusicId?: string;
   selectedMusicName?: string;
-  selectedBackgroundVideoId?: string;
-  selectedBackgroundVideoName?: string;
   selectedCaptionStyleId?: string;
   selectedCaptionStyleName?: string;
   captionStyleOverrideId?: string;
   soundDesignDecision?: 'approved' | 'skipped';
   soundDesignSkipReason?: string;
   soundDesignApprovalWarning?: string;
-  chromaKeyEnabled: boolean;
-  chromaKeyEnabledSource: 'project' | 'default';
-  chromaKeyEnabledOverride?: boolean;
   captionMaxWordsOverride?: number;
   pauseRemovalMinSilenceDurationSecondsOverride?: number;
   pauseRemovalSilenceThresholdDbOverride?: number;
@@ -729,7 +723,6 @@ function normalizeScene(value: unknown): Scene | null {
     image: asOptionalString(obj.image),
     previewImage: asOptionalString(obj.previewImage),
     previewVideo: asOptionalString(obj.previewVideo),
-    previewVideoBackgroundId: asOptionalString(obj.previewVideoBackgroundId),
     visualType: obj.visualType === 'motion_graphic' ? 'motion_graphic' : obj.visualType === 'image' ? 'image' : undefined,
     motionGraphicId: asOptionalString(obj.motionGraphicId),
     motionGraphicTemplateId: asOptionalString(obj.motionGraphicTemplateId),
@@ -828,17 +821,12 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
     selectedVoiceName: asOptionalString(obj.selectedVoiceName),
     selectedMusicId: asOptionalString(obj.selectedMusicId),
     selectedMusicName: asOptionalString(obj.selectedMusicName),
-    selectedBackgroundVideoId: asOptionalString(obj.selectedBackgroundVideoId),
-    selectedBackgroundVideoName: asOptionalString(obj.selectedBackgroundVideoName),
     selectedCaptionStyleId: asOptionalString(obj.selectedCaptionStyleId),
     selectedCaptionStyleName: asOptionalString(obj.selectedCaptionStyleName),
     captionStyleOverrideId: asOptionalString(obj.captionStyleOverrideId),
     soundDesignDecision: obj.soundDesignDecision === 'approved' || obj.soundDesignDecision === 'skipped' ? obj.soundDesignDecision : undefined,
     soundDesignSkipReason: asOptionalString(obj.soundDesignSkipReason),
     soundDesignApprovalWarning: asOptionalString(obj.soundDesignApprovalWarning),
-    chromaKeyEnabled: asBoolean(obj.chromaKeyEnabled),
-    chromaKeyEnabledSource: obj.chromaKeyEnabledSource === 'project' ? 'project' : 'default',
-    chromaKeyEnabledOverride: typeof obj.chromaKeyEnabledOverride === 'boolean' ? obj.chromaKeyEnabledOverride : undefined,
     captionMaxWordsOverride: typeof obj.captionMaxWordsOverride === 'number' ? obj.captionMaxWordsOverride : undefined,
     pauseRemovalMinSilenceDurationSecondsOverride: typeof obj.pauseRemovalMinSilenceDurationSecondsOverride === 'number'
       ? obj.pauseRemovalMinSilenceDurationSecondsOverride

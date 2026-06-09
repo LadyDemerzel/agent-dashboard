@@ -64,7 +64,7 @@ export const LEGACY_SHORT_FORM_SETTINGS_SECTION_REDIRECTS: Record<string, { sect
   'sound-library': { section: 'plan-sound-design', hash: 'sound-library' },
   images: { section: 'generate-visuals-image-styles' },
   captions: { section: 'plan-captions', hash: 'caption-styles' },
-  backgrounds: { section: 'final-video', hash: 'background-videos' },
+  backgrounds: { section: 'final-video', hash: 'music-library' },
   music: { section: 'final-video', hash: 'music-library' },
   'sound-design': { section: 'plan-sound-design' },
   'generate-visuals': { section: 'generate-visuals-motion-graphics' },
@@ -110,7 +110,5 @@ export const SHORT_FORM_SETTINGS_ANCHOR_TO_SECTION: Record<string, ShortFormSett
   'image-templates': 'generate-visuals-image-generation-prompts',
   'image-styles': 'generate-visuals-image-styles',
   'caption-styles': 'plan-captions',
-  'background-videos': 'final-video',
   'music-library': 'final-video',
-  'final-video-render': 'final-video',
 };

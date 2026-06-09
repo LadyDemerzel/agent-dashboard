@@ -184,11 +184,6 @@ export interface ShortFormResolvedCaptionStyleSelection {
   source: "project" | "default" | "fallback";
 }
 
-export interface ShortFormResolvedChromaKeySelection {
-  enabled: boolean;
-  source: "project" | "default";
-}
-
 export interface ShortFormPauseRemovalSettings {
   minSilenceDurationSeconds: number;
   silenceThresholdDb: number;
@@ -199,7 +194,6 @@ export interface ShortFormVideoRenderSettings {
   voices: ShortFormVoiceLibraryEntry[];
   defaultMusicTrackId?: string;
   musicVolume: number;
-  chromaKeyEnabledByDefault: boolean;
   musicTracks: ShortFormMusicLibraryEntry[];
   defaultCaptionStyleId: string;
   animationPresets: ShortFormCaptionAnimationPresetEntry[];
@@ -225,7 +219,6 @@ const DEFAULT_MUSIC_ID = "music-ambient-piano-loop-120";
 const DEFAULT_MUSIC_PROMPT =
   "instrumental cinematic curiosity underscore, mysterious but pleasant, warm synth pulse, light percussion, airy textures, subtle piano and marimba accents, sense of discovery, modern and polished, no horror, no dread, no dark drones, no jump scares, no vocals, no singing, no choir, no spoken voice";
 const DEFAULT_MUSIC_VOLUME = 0.38;
-const DEFAULT_CHROMA_KEY_ENABLED = false;
 const DEFAULT_MUSIC_PREVIEW_DURATION_SECONDS = 12;
 const DEFAULT_CAPTION_STYLE_ID = "caption-classic-highlight";
 const DEFAULT_CAPTION_HORIZONTAL_PADDING = 80;
@@ -358,7 +351,6 @@ const DEFAULT_SETTINGS: ShortFormVideoRenderSettings = {
   voices: [DEFAULT_SHORT_FORM_VOICE],
   defaultMusicTrackId: DEFAULT_SHORT_FORM_MUSIC.id,
   musicVolume: DEFAULT_MUSIC_VOLUME,
-  chromaKeyEnabledByDefault: DEFAULT_CHROMA_KEY_ENABLED,
   musicTracks: [DEFAULT_SHORT_FORM_MUSIC],
   defaultCaptionStyleId: DEFAULT_SHORT_FORM_CAPTION_STYLE.id,
   animationPresets: DEFAULT_SHORT_FORM_CAPTION_ANIMATION_PRESETS,
@@ -1052,7 +1044,6 @@ function migrateLegacyQwenVoice(value: unknown): ShortFormVideoRenderSettings | 
     voices: [voice],
     defaultMusicTrackId: DEFAULT_SHORT_FORM_MUSIC.id,
     musicVolume: DEFAULT_MUSIC_VOLUME,
-    chromaKeyEnabledByDefault: DEFAULT_CHROMA_KEY_ENABLED,
     musicTracks: [DEFAULT_SHORT_FORM_MUSIC],
     defaultCaptionStyleId: DEFAULT_SHORT_FORM_CAPTION_STYLE.id,
     animationPresets: DEFAULT_SHORT_FORM_CAPTION_ANIMATION_PRESETS,
@@ -1106,7 +1097,6 @@ function normalizeSettings(value: unknown): ShortFormVideoRenderSettings {
     voices,
     ...(resolvedDefaultMusicTrackId ? { defaultMusicTrackId: resolvedDefaultMusicTrackId } : {}),
     musicVolume: clampMusicVolume(obj.musicVolume, DEFAULT_MUSIC_VOLUME),
-    chromaKeyEnabledByDefault: normalizeBoolean(obj.chromaKeyEnabledByDefault, DEFAULT_CHROMA_KEY_ENABLED),
     musicTracks,
     defaultCaptionStyleId: resolvedDefaultCaptionStyleId,
     animationPresets,
@@ -1162,18 +1152,6 @@ export function resolveShortFormMusicSelection(preferredMusicId?: string): Short
   }
 
   return { source: "none" };
-}
-
-export function resolveShortFormChromaKeySelection(preferredEnabled?: boolean): ShortFormResolvedChromaKeySelection {
-  const settings = getShortFormVideoRenderSettings();
-  if (typeof preferredEnabled === "boolean") {
-    return { enabled: preferredEnabled, source: "project" };
-  }
-
-  return {
-    enabled: settings.chromaKeyEnabledByDefault,
-    source: "default",
-  };
 }
 
 export function resolveShortFormCaptionStyleSelection(preferredCaptionStyleId?: string): ShortFormResolvedCaptionStyleSelection {

@@ -16,11 +16,6 @@ import {
   type ShortFormVideoRenderSettings,
 } from "@/lib/short-form-video-render-settings";
 import {
-  getShortFormBackgroundVideoSettings,
-  saveShortFormBackgroundVideoSettings,
-  type ShortFormBackgroundVideoSettings,
-} from "@/lib/short-form-background-videos";
-import {
   getShortFormTextScriptSettings,
   saveShortFormTextScriptSettings,
   type ShortFormTextScriptSettings,
@@ -92,15 +87,6 @@ function mergeVideoRenderPatch(patch: Partial<ShortFormVideoRenderSettings>) {
   } satisfies ShortFormVideoRenderSettings;
 }
 
-function mergeBackgroundVideosPatch(patch: Partial<ShortFormBackgroundVideoSettings>) {
-  const current = getShortFormBackgroundVideoSettings();
-  return {
-    ...current,
-    ...patch,
-    backgrounds: patch.backgrounds || current.backgrounds,
-  } satisfies ShortFormBackgroundVideoSettings;
-}
-
 function mergeSoundDesignPatch(patch: Partial<ShortFormSoundDesignSettings>) {
   const current = getShortFormSoundDesignSettings();
   return {
@@ -122,14 +108,13 @@ export async function PATCH(request: NextRequest) {
   const prompts = body && typeof body === "object" && !Array.isArray(body) ? body.prompts : undefined;
   const imageStyles = body && typeof body === "object" && !Array.isArray(body) ? body.imageStyles : undefined;
   const videoRender = body && typeof body === "object" && !Array.isArray(body) ? body.videoRender : undefined;
-  const backgroundVideos = body && typeof body === "object" && !Array.isArray(body) ? body.backgroundVideos : undefined;
   const textScript = body && typeof body === "object" && !Array.isArray(body) ? body.textScript : undefined;
   const xmlVisualPlanning = body && typeof body === "object" && !Array.isArray(body) ? body.xmlVisualPlanning : undefined;
   const motionGraphics = body && typeof body === "object" && !Array.isArray(body) ? body.motionGraphics : undefined;
   const soundDesign = body && typeof body === "object" && !Array.isArray(body) ? body.soundDesign : undefined;
 
-  if (prompts === undefined && imageStyles === undefined && videoRender === undefined && backgroundVideos === undefined && textScript === undefined && xmlVisualPlanning === undefined && motionGraphics === undefined && soundDesign === undefined) {
-    return NextResponse.json({ success: false, error: "prompts, imageStyles, videoRender, backgroundVideos, textScript, xmlVisualPlanning, motionGraphics, or soundDesign is required" }, { status: 400 });
+  if (prompts === undefined && imageStyles === undefined && videoRender === undefined && textScript === undefined && xmlVisualPlanning === undefined && motionGraphics === undefined && soundDesign === undefined) {
+    return NextResponse.json({ success: false, error: "prompts, imageStyles, videoRender, textScript, xmlVisualPlanning, motionGraphics, or soundDesign is required" }, { status: 400 });
   }
 
   if (prompts !== undefined) {
@@ -207,10 +192,6 @@ export async function PATCH(request: NextRequest) {
     if (typeof candidate.musicVolume !== "number" || Number.isNaN(candidate.musicVolume) || candidate.musicVolume < 0 || candidate.musicVolume > 1) {
       return NextResponse.json({ success: false, error: "Music volume must be a number between 0 and 1" }, { status: 400 });
     }
-    if (typeof candidate.chromaKeyEnabledByDefault !== "boolean") {
-      return NextResponse.json({ success: false, error: "Chroma-key default must be enabled or disabled" }, { status: 400 });
-    }
-
     if (typeof candidate.captionMaxWords !== "number" || Number.isNaN(candidate.captionMaxWords) || candidate.captionMaxWords < 2 || candidate.captionMaxWords > 12) {
       return NextResponse.json({ success: false, error: "Caption max words must be a number between 2 and 12" }, { status: 400 });
     }
@@ -596,39 +577,6 @@ export async function PATCH(request: NextRequest) {
     }
 
     saveShortFormSoundDesignSettings(candidate);
-  }
-
-  if (backgroundVideos !== undefined) {
-    if (!backgroundVideos || typeof backgroundVideos !== "object" || Array.isArray(backgroundVideos)) {
-      return NextResponse.json({ success: false, error: "backgroundVideos must be an object" }, { status: 400 });
-    }
-
-    const candidate = mergeBackgroundVideosPatch(backgroundVideos as Partial<ShortFormBackgroundVideoSettings>);
-    if (!Array.isArray(candidate.backgrounds)) {
-      return NextResponse.json({ success: false, error: "Background library must be an array" }, { status: 400 });
-    }
-    if (candidate.backgrounds.length > 0) {
-      if (typeof candidate.defaultBackgroundVideoId !== "string" || !candidate.defaultBackgroundVideoId.trim()) {
-        return NextResponse.json({ success: false, error: "Default background video must be selected when the library is not empty" }, { status: 400 });
-      }
-      if (!candidate.backgrounds.some((background) => background.id === candidate.defaultBackgroundVideoId)) {
-        return NextResponse.json({ success: false, error: "Default background video must reference an existing library item" }, { status: 400 });
-      }
-    }
-
-    for (const background of candidate.backgrounds) {
-      if (typeof background.id !== "string" || !background.id.trim()) {
-        return NextResponse.json({ success: false, error: "Each background video must have an id" }, { status: 400 });
-      }
-      if (typeof background.name !== "string" || !background.name.trim()) {
-        return NextResponse.json({ success: false, error: "Each background video must have a name" }, { status: 400 });
-      }
-      if (typeof background.videoRelativePath !== "string" || !background.videoRelativePath.trim()) {
-        return NextResponse.json({ success: false, error: `Background video ${background.name} is missing its media path` }, { status: 400 });
-      }
-    }
-
-    saveShortFormBackgroundVideoSettings(candidate);
   }
 
   return NextResponse.json({

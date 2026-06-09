@@ -9,12 +9,10 @@ import {
 } from "@/lib/short-form-image-styles";
 import {
   resolveShortFormCaptionStyleSelection,
-  resolveShortFormChromaKeySelection,
   resolveShortFormMusicSelection,
   resolveShortFormPauseRemovalSettings,
   resolveShortFormVoiceSelection,
 } from "@/lib/short-form-video-render-settings";
-import { resolveShortFormBackgroundVideoSelection } from "@/lib/short-form-background-videos";
 import {
   getXmlScriptDocument,
   getXmlScriptPath,
@@ -138,7 +136,6 @@ export interface SceneImageArtifact {
   image?: string;
   previewImage?: string;
   previewVideo?: string;
-  previewVideoBackgroundId?: string;
   visualType?: "image" | "motion_graphic";
   motionGraphicId?: string;
   motionGraphicTemplateId?: string;
@@ -208,12 +205,10 @@ export interface ShortFormProjectMeta {
   visualGenerationModelIdOverride?: ShortFormVisualGenerationModelId;
   selectedVoiceId?: string;
   selectedMusicId?: string;
-  selectedBackgroundVideoId?: string;
   selectedCaptionStyleId?: string;
   soundDesignDecision?: "approved" | "skipped";
   soundDesignSkipReason?: string;
   soundDesignApprovalWarning?: string;
-  chromaKeyEnabledOverride?: boolean;
   textScriptMaxIterationsOverride?: number;
   captionMaxWordsOverride?: number;
   pauseRemovalMinSilenceDurationSecondsOverride?: number;
@@ -350,17 +345,12 @@ export interface ShortFormProject {
   selectedVoiceName?: string;
   selectedMusicId?: string;
   selectedMusicName?: string;
-  selectedBackgroundVideoId?: string;
-  selectedBackgroundVideoName?: string;
   selectedCaptionStyleId?: string;
   selectedCaptionStyleName?: string;
   captionStyleOverrideId?: string;
   soundDesignDecision?: "approved" | "skipped";
   soundDesignSkipReason?: string;
   soundDesignApprovalWarning?: string;
-  chromaKeyEnabled: boolean;
-  chromaKeyEnabledSource: "project" | "default";
-  chromaKeyEnabledOverride?: boolean;
   captionMaxWordsOverride?: number;
   pauseRemovalMinSilenceDurationSecondsOverride?: number;
   pauseRemovalSilenceThresholdDbOverride?: number;
@@ -1091,7 +1081,6 @@ export function createShortFormProject(topic = "") {
   const now = new Date().toISOString();
   const { resolvedStyleId } = resolveShortFormImageStyle();
   const { resolvedMusicId } = resolveShortFormMusicSelection();
-  const { resolvedBackgroundVideoId } = resolveShortFormBackgroundVideoSelection();
   const meta: ShortFormProjectMeta = {
     id,
     topic,
@@ -1101,7 +1090,6 @@ export function createShortFormProject(topic = "") {
     updatedAt: now,
     selectedImageStyleId: resolvedStyleId,
     ...(resolvedMusicId ? { selectedMusicId: resolvedMusicId } : {}),
-    ...(resolvedBackgroundVideoId ? { selectedBackgroundVideoId: resolvedBackgroundVideoId } : {}),
   };
 
   saveProjectMeta(id, meta);
@@ -1352,7 +1340,6 @@ function readGeneratedSceneManifestResult(projectId: string): JsonReadResult<Gen
       ?? toRelativeProjectMediaPath(projectId, (scene as { raw_legacy?: unknown }).raw_legacy);
     const previewImage = toRelativeProjectMediaPath(projectId, (scene as { captioned?: unknown }).captioned);
     const previewVideo = toRelativeProjectMediaPath(projectId, (scene as { preview_video?: unknown }).preview_video);
-    const previewVideoBackgroundId = (scene as { preview_video_background_id?: unknown }).preview_video_background_id;
     const imagePrompt = (scene as { image_prompt?: unknown }).image_prompt;
     const duration = (scene as { duration?: unknown }).duration;
     const imageId = (scene as { image_id?: unknown }).image_id;
@@ -1397,9 +1384,6 @@ function readGeneratedSceneManifestResult(projectId: string): JsonReadResult<Gen
       ...(image ? { image } : {}),
       ...(previewImage ? { previewImage } : {}),
       ...(previewVideo ? { previewVideo } : {}),
-      ...(typeof previewVideoBackgroundId === "string" && previewVideoBackgroundId.trim()
-        ? { previewVideoBackgroundId: previewVideoBackgroundId.trim() }
-        : {}),
       ...(typeof imagePrompt === "string" && imagePrompt.trim() ? { notes: imagePrompt.trim() } : {}),
       ...(typeof duration === "string" && duration.trim() ? { duration: duration.trim() } : {}),
       ...(typeof imageId === "string" && imageId.trim() ? { imageId: imageId.trim() } : {}),
@@ -1464,7 +1448,6 @@ function sceneManifestNeedsSync(projectId: string, primary: JsonReadResult<Scene
       current.image !== next.image ||
       current.previewImage !== next.previewImage ||
       current.previewVideo !== next.previewVideo ||
-      current.previewVideoBackgroundId !== next.previewVideoBackgroundId ||
       current.visualType !== next.visualType ||
       current.motionGraphicId !== next.motionGraphicId ||
       current.motionGraphicTemplateId !== next.motionGraphicTemplateId ||
@@ -2611,21 +2594,6 @@ function toMediaUrl(projectId: string, relativePath: string, version?: string) {
   return version ? `${basePath}?v=${encodeURIComponent(version)}` : basePath;
 }
 
-function buildScenePreviewVideoUrl(projectId: string, sceneId: string, backgroundVideoId?: string) {
-  if (!backgroundVideoId) return undefined;
-  return `/api/short-form-videos/${projectId}/scene-preview/${encodeURIComponent(sceneId)}?backgroundId=${encodeURIComponent(backgroundVideoId)}`;
-}
-
-function attachScenePreviewVideoUrls(projectId: string, scenes: SceneImageArtifact[], backgroundVideoId?: string) {
-  return scenes.map((scene) => ({
-    ...scene,
-    previewVideo: scene.previewVideo || buildScenePreviewVideoUrl(projectId, scene.id, backgroundVideoId),
-    ...(scene.previewVideo
-      ? { previewVideoBackgroundId: scene.previewVideoBackgroundId }
-      : backgroundVideoId ? { previewVideoBackgroundId: backgroundVideoId } : {}),
-  }));
-}
-
 function getSceneImagesStage(projectId: string, options?: { pending?: boolean }) {
   synchronizeSceneImagesArtifacts(projectId);
   const doc = readStageDocument(projectId, "scene-images", options);
@@ -2688,38 +2656,6 @@ function getFileUpdatedAt(filePath: string) {
   }
 }
 
-function getLatestMatchingFileUpdatedAt(dirPath: string, matcher: (entry: string) => boolean) {
-  if (!fs.existsSync(dirPath)) return undefined;
-
-  try {
-    const latestMs = fs
-      .readdirSync(dirPath)
-      .filter((entry) => matcher(entry))
-      .map((entry) => {
-        try {
-          return fs.statSync(path.join(dirPath, entry)).mtimeMs;
-        } catch {
-          return 0;
-        }
-      })
-      .reduce((latest, value) => Math.max(latest, value), 0);
-
-    return latestMs > 0 ? new Date(latestMs).toISOString() : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function hasFreshMatchingFileAtPath(dirPath: string, requestedAtMs: number, matcher: (entry: string) => boolean) {
-  if (!Number.isFinite(requestedAtMs) || !fs.existsSync(dirPath)) return false;
-
-  try {
-    return fs.readdirSync(dirPath).some((entry) => matcher(entry) && hasFreshFileAtPath(path.join(dirPath, entry), requestedAtMs));
-  } catch {
-    return false;
-  }
-}
-
 function stringifyDebugContent(value: unknown) {
   if (typeof value === "string") return value;
   try {
@@ -2727,25 +2663,6 @@ function stringifyDebugContent(value: unknown) {
   } catch {
     return String(value);
   }
-}
-
-function summarizeAlignmentDebug(value: Record<string, unknown> | undefined) {
-  if (!value) return undefined;
-
-  const strategy = typeof value.alignment_strategy === "string" ? value.alignment_strategy : undefined;
-  const warning = typeof value.alignment_warning === "string" ? value.alignment_warning : undefined;
-  const matched = typeof value.matched_token_count === "number" ? value.matched_token_count : undefined;
-  const expected = typeof value.expected_token_count === "number" ? value.expected_token_count : undefined;
-  const coverageRatio = typeof value.coverage_ratio === "number" ? value.coverage_ratio : undefined;
-
-  const parts = [
-    strategy ? `Strategy: ${strategy}` : undefined,
-    matched !== undefined && expected !== undefined ? `Matched ${matched}/${expected} expected tokens` : undefined,
-    coverageRatio !== undefined ? `Coverage ${(coverageRatio * 100).toFixed(0)}%` : undefined,
-    warning,
-  ].filter(Boolean);
-
-  return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
 function buildVideoPipelineSummary(
@@ -2813,7 +2730,6 @@ function buildVideoPipelineSummary(
   };
 
   const inputArtifactsReady = [xmlVoicePath, xmlAlignmentPath, xmlCaptionsPath].every((filePath) => fs.existsSync(filePath));
-  const backgroundReady = typeof manifest?.background_video === "string" ? fs.existsSync(manifest.background_video) : false;
   const musicReady = typeof manifest?.music === "string" ? stepDone(manifest.music) : stepDone(generatedMusicPath);
   const baseVideoDone = stepDone(baseVideoPath) || (!shouldRequireFreshArtifacts && Boolean(videoArtifactPath && fs.existsSync(videoArtifactPath)));
   const captionsDone = Boolean(
@@ -2907,7 +2823,7 @@ function buildVideoPipelineSummary(
         : renderBaseVideoStatus === "active"
           ? (activeStatusText || "Rendering the base video from the XML scene pipeline.")
           : renderBaseVideoStatus === "completed"
-            ? "Rendered the motion scenes, looping background, narration, and soundtrack into a base video before caption burn-in."
+            ? "Rendered the visual scenes, narration, and soundtrack into a base video before caption burn-in."
             : "Waiting for the base video render to start.",
       updatedAt: getFileUpdatedAt(baseVideoPath) || (videoArtifactPath ? getFileUpdatedAt(videoArtifactPath) : undefined) || getFileUpdatedAt(manifestPath),
       details: manifest
@@ -2919,7 +2835,6 @@ function buildVideoPipelineSummary(
               voice_source: manifest.voice_source,
               alignment_source: manifest.alignment_source,
               timing_source: manifest.timing_source,
-              background_video: manifest.background_video,
               music: manifest.music,
               scene_count: manifest.scene_count,
               scenes: manifest.scenes,
@@ -2954,7 +2869,7 @@ function buildVideoPipelineSummary(
         : finalizeOutputStatus === "active"
           ? (activeStatusText || "Saving final-video metadata and review artifacts.")
           : finalizeOutputStatus === "completed"
-            ? `Final MP4${backgroundReady ? " with background video" : ""}${musicReady ? " and soundtrack" : ""} is ready, and the review document was refreshed.`
+            ? `Final MP4${musicReady ? " with soundtrack" : ""} is ready, and the review document was refreshed.`
             : "Waiting for the final video and review document to be published.",
       updatedAt: (videoArtifactPath ? getFileUpdatedAt(videoArtifactPath) : undefined) || getFileUpdatedAt(videoDocPath),
       details: manifest
@@ -3221,9 +3136,7 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
   );
   const resolvedVoice = resolveShortFormVoiceSelection(nextMeta.selectedVoiceId);
   const resolvedMusic = resolveShortFormMusicSelection(nextMeta.selectedMusicId);
-  const resolvedBackground = resolveShortFormBackgroundVideoSelection(nextMeta.selectedBackgroundVideoId);
   const resolvedCaptionStyle = resolveShortFormCaptionStyleSelection(nextMeta.selectedCaptionStyleId);
-  const resolvedChromaKey = resolveShortFormChromaKeySelection(nextMeta.chromaKeyEnabledOverride);
   const resolvedPauseRemoval = resolveShortFormPauseRemovalSettings({
     ...(typeof nextMeta.pauseRemovalMinSilenceDurationSecondsOverride === "number"
       ? { minSilenceDurationSeconds: nextMeta.pauseRemovalMinSilenceDurationSecondsOverride }
@@ -3241,7 +3154,6 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
   });
   const resolvedSceneImages = {
     ...sceneImages,
-    scenes: attachScenePreviewVideoUrls(projectId, sceneImages.scenes, resolvedBackground.resolvedBackgroundVideoId),
     pending: Boolean(nextMeta.pendingSceneImages || sceneImages.revision?.isPending),
   };
   const resolvedVideo = { ...video, pending: Boolean(nextMeta.pendingVideo || video.revision?.isPending) };
@@ -3265,17 +3177,12 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
     selectedVoiceName: resolvedVoice.voice.name,
     selectedMusicId: resolvedMusic.resolvedMusicId,
     selectedMusicName: resolvedMusic.music?.name,
-    selectedBackgroundVideoId: resolvedBackground.resolvedBackgroundVideoId,
-    selectedBackgroundVideoName: resolvedBackground.background?.name,
     selectedCaptionStyleId: resolvedCaptionStyle.resolvedCaptionStyleId,
     selectedCaptionStyleName: resolvedCaptionStyle.captionStyle.name,
     captionStyleOverrideId: nextMeta.selectedCaptionStyleId,
     soundDesignDecision: nextMeta.soundDesignDecision,
     soundDesignSkipReason: nextMeta.soundDesignDecision === "skipped" ? nextMeta.soundDesignSkipReason : undefined,
     soundDesignApprovalWarning: nextMeta.soundDesignDecision === "approved" ? nextMeta.soundDesignApprovalWarning : undefined,
-    chromaKeyEnabled: resolvedChromaKey.enabled,
-    chromaKeyEnabledSource: resolvedChromaKey.source,
-    chromaKeyEnabledOverride: nextMeta.chromaKeyEnabledOverride,
     captionMaxWordsOverride: nextMeta.captionMaxWordsOverride,
     pauseRemovalMinSilenceDurationSecondsOverride: nextMeta.pauseRemovalMinSilenceDurationSecondsOverride,
     pauseRemovalSilenceThresholdDbOverride: nextMeta.pauseRemovalSilenceThresholdDbOverride,

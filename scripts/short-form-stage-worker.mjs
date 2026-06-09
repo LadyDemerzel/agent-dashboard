@@ -28,7 +28,6 @@ const HOOK_WEBHOOK_TIMEOUT_MS = 30_000;
 const XML_SCENE_IMAGES_SCRIPT = path.join(HOME_DIR, ".openclaw", "skills", "xml-scene-images", "scripts", "generate_from_xml.py");
 const XML_SCENE_VIDEO_SCRIPT = path.join(HOME_DIR, ".openclaw", "skills", "xml-scene-video", "scripts", "generate_video.py");
 const PROVIDER_AWARE_IMAGE_GENERATOR_SCRIPT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard", "scripts", "provider-aware-image-generate.py");
-const STATIC_CAPTION_OVERLAY_SCRIPT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard", "scripts", "render_static_caption_overlays.py");
 const ANIMATED_CAPTION_OVERLAY_SCRIPT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard", "scripts", "render_animated_caption_overlays.py");
 const MOTION_GRAPHIC_RENDERER_SCRIPT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard", "scripts", "render-hyperframes-motion-graphic.mjs");
 const DEFAULT_VISUAL_GENERATION_MODEL_ID = "openclaw-gpt-image-2";
@@ -2029,18 +2028,18 @@ function mergeMotionGraphicConfig(settings, visual) {
 }
 
 function readManifestIfExists(manifestPath) {
-  if (!fs.existsSync(manifestPath)) return { schema_version: "2026-04-greenscreen-background-loop-v1", scenes: [] };
+  if (!fs.existsSync(manifestPath)) return { schema_version: "2026-06-full-frame-visuals-v1", scenes: [] };
   try {
     const parsed = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
     return parsed && typeof parsed === "object" && Array.isArray(parsed.scenes)
       ? parsed
-      : { schema_version: "2026-04-greenscreen-background-loop-v1", scenes: [] };
+      : { schema_version: "2026-06-full-frame-visuals-v1", scenes: [] };
   } catch {
-    return { schema_version: "2026-04-greenscreen-background-loop-v1", scenes: [] };
+    return { schema_version: "2026-06-full-frame-visuals-v1", scenes: [] };
   }
 }
 
-function renderMotionGraphicScenes({ outputDir, runDir, xmlPath, settings, sceneIndexes, backgroundVideoId, backgroundVideoName, backgroundVideoPath, alignmentPath }) {
+function renderMotionGraphicScenes({ outputDir, runDir, xmlPath, settings, sceneIndexes, alignmentPath }) {
   const xml = fs.readFileSync(xmlPath, "utf-8");
   const motionVisuals = parseMotionGraphicVisuals(xml);
   const staleMotionGraphicVideosRemoved = cleanupStaleMotionGraphicVideos(outputDir, motionVisuals);
@@ -2066,9 +2065,6 @@ function renderMotionGraphicScenes({ outputDir, runDir, xmlPath, settings, scene
     const mergedConfig = mergeMotionGraphicConfig(settings, visual);
     fs.writeFileSync(configPath, JSON.stringify({
       ...mergedConfig,
-      backgroundVideoId,
-      backgroundVideoName,
-      backgroundVideoPath,
       ...(alignmentPath && fs.existsSync(alignmentPath) ? { alignmentPath } : {}),
     }, null, 2), "utf-8");
     const result = runCommand(process.execPath, [MOTION_GRAPHIC_RENDERER_SCRIPT, "--config", configPath, "--output", videoPath, "--poster", posterPath]);
@@ -2082,7 +2078,6 @@ function renderMotionGraphicScenes({ outputDir, runDir, xmlPath, settings, scene
       image_prompt: `Deterministic motion graphic: ${visual.asset.templateId}`,
       prompt_source: "motion_graphic",
       uncaptioned: posterPath,
-      greenscreen_image: posterPath,
       raw_legacy: posterPath,
       captioned: captionedPath,
       preview_video: videoPath,
@@ -3127,9 +3122,9 @@ function buildSceneImagesReviewDoc(projectId, scenes, options = {}) {
     "",
     "## Summary",
     "",
-    `${scopeLabel} The direct dashboard workflow now calls the xml-scene-images generator deterministically instead of routing this execution step through Scribe. Each scene should now output a raw green-screen foreground plate for assembly, while dashboard preview videos composite that plate over the project's selected looping background video.`,
+    `${scopeLabel} The direct dashboard workflow now calls the xml-scene-images generator deterministically instead of routing this execution step through Scribe. Each scene should now output full-frame visual art for direct preview and final assembly.`,
     "",
-    `This run ${modeLabel} **${scenes.length} visuals** using **${visualGenerationLabel}** with the selected style **${options.imageStyleName || "Default charcoal"}**: the saved editable style-instructions template plus per-style art direction, XML characterDriven routing for character references, natural top caption-safe headroom, and a hard greenscreen requirement so the final video can chroma-key eligible foreground plates over a persistent looping background video. The generated artwork still contains no baked-in text. Reused XML imageIds stay deterministic, and any XML asset declared with basedOn keeps reference-derived variants explicit in the XML and manifest for debugging.${styleReferenceLine}`,
+    `This run ${modeLabel} **${scenes.length} visuals** using **${visualGenerationLabel}** with the selected style **${options.imageStyleName || "Default charcoal"}**: the saved editable style-instructions template plus per-style art direction, XML characterDriven routing for character references, natural top caption-safe headroom, and full-frame scene artwork for direct preview and final render. The generated artwork still contains no baked-in text. Reused XML imageIds stay deterministic, and any XML asset declared with basedOn keeps reference-derived variants explicit in the XML and manifest for debugging.${styleReferenceLine}`,
     ...(options.notes ? ["", "## Request notes", "", options.notes] : []),
     "",
     "## Scene Breakdown",
@@ -3140,10 +3135,10 @@ function buildSceneImagesReviewDoc(projectId, scenes, options = {}) {
     "",
     "## Files Generated",
     "",
-    "- `scenes/scene-XX-uncaptioned-1080x1920.png` — raw green-screen scene image for chroma-key assembly",
+    "- `scenes/scene-XX-uncaptioned-1080x1920.png` — raw full-frame scene image for final assembly",
     "- `scenes/scene-XX-captioned-1080x1920.png` — captioned image preview for review",
-    "- `scenes/scene-XX.png` — compatibility alias of the raw green-screen scene image",
-    "- dashboard scene preview videos — generated on demand by compositing the raw scene plate over the selected background video",
+    "- `scenes/scene-XX.png` — compatibility alias of the raw full-frame scene image",
+    "- dashboard scene previews — served directly from the generated full-frame scene image or motion-graphic clip",
     "- `scenes/manifest.json` — generator manifest with image prompts and absolute output paths",
     "- `scene-images.json` — dashboard manifest with relative project paths for review UI",
     "",
@@ -3179,7 +3174,6 @@ function syncSceneImageArtifacts(job) {
     image: toRelativeProjectPath(job.projectId, scene?.uncaptioned) || toRelativeProjectPath(job.projectId, scene?.raw_legacy),
     previewImage: toRelativeProjectPath(job.projectId, scene?.captioned),
     previewVideo: toRelativeProjectPath(job.projectId, scene?.preview_video),
-    previewVideoBackgroundId: typeof scene?.preview_video_background_id === "string" && scene.preview_video_background_id.trim() ? scene.preview_video_background_id.trim() : undefined,
     visualType: scene?.visual_type === "motion_graphic" ? "motion_graphic" : undefined,
     motionGraphicId: typeof scene?.motion_graphic_id === "string" && scene.motion_graphic_id.trim() ? scene.motion_graphic_id.trim() : undefined,
     motionGraphicTemplateId: typeof scene?.motion_graphic_template_id === "string" && scene.motion_graphic_template_id.trim() ? scene.motion_graphic_template_id.trim() : undefined,
@@ -3197,7 +3191,7 @@ function syncSceneImageArtifacts(job) {
   fs.writeFileSync(
     path.join(projectDir, "scene-images.json"),
     JSON.stringify({
-      scenes: scenes.map(({ id, number, caption, startTime, endTime, image, previewImage, previewVideo, previewVideoBackgroundId, visualType, motionGraphicId, motionGraphicTemplateId, motionGraphicRendererId, notes, imageId, basedOnImageId, reusedExistingAsset, visualId }) => ({
+      scenes: scenes.map(({ id, number, caption, startTime, endTime, image, previewImage, previewVideo, visualType, motionGraphicId, motionGraphicTemplateId, motionGraphicRendererId, notes, imageId, basedOnImageId, reusedExistingAsset, visualId }) => ({
         id,
         number,
         caption,
@@ -3206,7 +3200,6 @@ function syncSceneImageArtifacts(job) {
         ...(image ? { image } : {}),
         ...(previewImage ? { previewImage } : {}),
         ...(previewVideo ? { previewVideo } : {}),
-        ...(previewVideoBackgroundId ? { previewVideoBackgroundId } : {}),
         ...(visualType ? { visualType } : {}),
         ...(motionGraphicId ? { motionGraphicId } : {}),
         ...(motionGraphicTemplateId ? { motionGraphicTemplateId } : {}),
@@ -3626,71 +3619,6 @@ function writeBaseVideoArtifact(finalVideoPath, videoWorkDir) {
   ensureDir(path.dirname(baseVideoPath));
   fs.copyFileSync(finalVideoPath, baseVideoPath);
   return baseVideoPath;
-}
-
-function renderStaticCaptionOverlays({ captionsJsonPath, videoWorkDir, captionStyleSelection }) {
-  const outputDir = path.join(videoWorkDir, "caption-overlays-static");
-  ensureDir(outputDir);
-  const style = captionStyleSelection.style;
-  runCommand("uv", [
-    "run",
-    "--with",
-    "pillow",
-    "python3",
-    STATIC_CAPTION_OVERLAY_SCRIPT,
-    "--captions-json",
-    captionsJsonPath,
-    "--output-dir",
-    outputDir,
-    "--font-family",
-    style.fontFamily,
-    ...(style.fontPath ? ["--font-path", style.fontPath] : []),
-    "--font-size",
-    String(style.fontSize),
-    "--font-weight",
-    String(style.fontWeight || DEFAULT_CAPTION_FONT_WEIGHT),
-    "--horizontal-padding",
-    String(style.horizontalPadding),
-    "--bottom-margin",
-    String(style.bottomMargin),
-    "--text-color",
-    style.activeWordColor,
-    "--outline-color",
-    style.outlineColor,
-    "--outline-width",
-    String(style.outlineWidth),
-    "--shadow-color",
-    style.shadowColor,
-    "--shadow-strength",
-    String(style.shadowStrength),
-    "--shadow-blur",
-    String(style.shadowBlur),
-    "--shadow-offset-x",
-    String(style.shadowOffsetX),
-    "--shadow-offset-y",
-    String(style.shadowOffsetY),
-    "--background-color",
-    style.backgroundColor,
-    "--background-opacity",
-    String(style.backgroundOpacity),
-    "--background-padding",
-    String(style.backgroundPadding),
-    "--background-radius",
-    String(style.backgroundRadius),
-    ...(style.backgroundEnabled ? ["--background-enabled"] : []),
-  ]);
-
-  const manifestPath = path.join(outputDir, "manifest.json");
-  const manifest = readJson(manifestPath);
-  const entries = Array.isArray(manifest?.entries)
-    ? manifest.entries.filter((entry) => entry && typeof entry === "object")
-    : [];
-
-  return {
-    outputDir,
-    manifestPath,
-    entries,
-  };
 }
 
 function renderAnimatedCaptionOverlays({ captionTimeline, videoWorkDir, captionStyleSelection, fps }) {
@@ -4659,8 +4587,6 @@ function updateVideoManifestCaptionRendering(projectId, config, captionStyleSele
   manifest.caption_rendering = {
     mode: captionRender.mode,
     requestedMode: captionRender.requestedMode,
-    chromaKeyEnabled: Boolean(config.chromaKeyEnabled),
-    chromaKeySource: config.chromaKeySource || 'default',
     captionStyleId: captionStyleSelection.resolvedCaptionStyleId,
     captionStyleName: captionStyleSelection.style.name,
     captionStyleSource: captionStyleSelection.source,
@@ -4731,7 +4657,7 @@ function buildVideoReviewDoc(projectId, config, selectedVoice = createDefaultVoi
     "",
     `${config.mode === "revise" ? "Regenerated" : "Generated"} the final vertical short-form video through the direct dashboard workflow. This execution path now calls the xml-scene-video renderer deterministically instead of routing the render through Scribe.`,
     "",
-    `This run stayed on the default deterministic pipeline: the final renderer reused the narration and forced-alignment artifacts from the XML Script step as the source of truth, then rendered the looping background video track and ${config.chromaKeyEnabled ? 'chroma-keyed the green-screen visual plates as foreground elements' : 'kept the raw foreground plates without chroma keying'}, burned in word-level captions with active, spoken, and upcoming highlighting, reused the saved soundtrack WAV chosen in the short-form settings, and applied any per-visual XML camera motion only to the image layer when explicitly present in the XML (otherwise the visual stays static).`,
+    `This run stayed on the default deterministic pipeline: the final renderer reused the narration and forced-alignment artifacts from the XML Script step as the source of truth, rendered the full-frame visual scenes directly, burned in word-level captions with active, spoken, and upcoming highlighting, reused the saved soundtrack WAV chosen in the short-form settings, and applied any per-visual XML camera motion only to the image layer when explicitly present in the XML (otherwise the visual stays static).`,
     ...(config.notes ? ["", "## Request notes", "", config.notes] : []),
     ...(alignmentWarning ? ["", "## Alignment warning", "", alignmentWarning] : []),
     "",
@@ -4745,9 +4671,7 @@ function buildVideoReviewDoc(projectId, config, selectedVoice = createDefaultVoi
         ? `VoiceDesign \`${selectedVoice.name}\``
         : `legacy custom voice \`${selectedVoice.name}\` / speaker \`${selectedVoice.speaker || DEFAULT_VOICE_SPEAKER}\``}`,
     `- Voice prompt: ${selectedVoice.sourceType === "uploaded-reference" ? "Uses the saved uploaded reference clip for voice-clone narration." : selectedVoice.voiceDesignPrompt}`,
-    `- Looping background video: ${config.backgroundVideoName ? `\`${config.backgroundVideoName}\`` : "Not configured"}`,
     `- Caption style: ${captionStyleSelection?.style?.name ? `\`${captionStyleSelection.style.name}\` (${captionStyleSelection.animationPreset?.name || captionStyleSelection.style.animationPreset || captionStyleSelection.style.animationPresetId || "animation preset"})` : config.captionStyleName ? `\`${config.captionStyleName}\`` : "Default/fallback"}`,
-    `- Chroma key: ${config.chromaKeyEnabled ? 'Enabled' : 'Disabled'}${config.chromaKeySource ? ` (${config.chromaKeySource === 'project' ? 'project override' : 'global default'})` : ''}`,
     `- Music path: ${selectedMusic?.generatedAudioRelativePath ? `\`${selectedMusic.generatedAudioRelativePath}\`` : "Not configured"}`,
     `- Sound design handoff: ${config.soundDesignDecision === "skipped"
       ? "Skipped intentionally. Final render omitted the sound-design mix."
@@ -4861,9 +4785,6 @@ function runDirectSceneImages(job) {
     xmlPath: runtimeXmlPath,
     settings: config.motionGraphicsSettings,
     sceneIndexes: preMotionSceneIndexes,
-    backgroundVideoId: config.backgroundVideoId,
-    backgroundVideoName: config.backgroundVideoName,
-    backgroundVideoPath: config.backgroundVideoPath,
     alignmentPath: existingAlignmentPath,
   });
   if (motionGraphics.motionVisuals.length > 0) {
@@ -4970,7 +4891,6 @@ function runDirectVideo(job) {
   if (!config) {
     throw new Error("Missing direct video config");
   }
-  config.chromaKeyEnabled = config.chromaKeyEnabled !== false;
 
   const projectMeta = readProjectMeta(job.projectId) || {};
   const selectedMusic = resolveMusicSelection(projectMeta.selectedMusicId);
@@ -5019,10 +4939,6 @@ function runDirectVideo(job) {
         };
       })()
     : resolveCaptionStyleSelection(projectMeta.selectedCaptionStyleId);
-  if (!config.backgroundVideoPath) {
-    throw new Error("Missing background video selection for final-video generation. Configure a background video in short-form settings and select one on the project before rendering.");
-  }
-
   const runDir = path.join(getProjectDir(job.projectId), ".workflow-runs", job.runId);
   ensureDir(runDir);
   ensureDir(path.dirname(config.finalVideoPath));
@@ -5069,9 +4985,6 @@ function runDirectVideo(job) {
     config.finalVideoPath,
     "--work-dir",
     config.videoWorkDir,
-    "--background-video",
-    config.backgroundVideoPath,
-    ...(config.chromaKeyEnabled === false ? ["--disable-chroma-key"] : []),
     "--tts-engine",
     "qwen",
     "--qwen-mode",
@@ -5094,7 +5007,7 @@ function runDirectVideo(job) {
     "--force",
   ];
 
-  updateDirectVideoProgress("prepare-inputs", "Loading XML narration, alignment, caption, background, and soundtrack inputs.");
+  updateDirectVideoProgress("prepare-inputs", "Loading XML narration, alignment, caption, visuals, and soundtrack inputs.");
   updateDirectVideoProgress("render-base-video", "Rendering the base final video from the XML scene pipeline.");
   const result = runCommand("uv", args);
   const baseVideoPath = writeBaseVideoArtifact(config.finalVideoPath, config.videoWorkDir);
