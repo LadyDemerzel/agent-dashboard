@@ -10,7 +10,13 @@ import {
   useState,
 } from "react";
 import Link from "next/link";
-import { ChevronDown, RefreshCw, Square, TerminalSquare } from "lucide-react";
+import {
+  ChevronDown,
+  RefreshCw,
+  RotateCcw,
+  Square,
+  TerminalSquare,
+} from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
@@ -845,15 +851,40 @@ function ScenePreviewVideoCard({
 
 function VisualDetailSection({
   title,
+  titleAction,
+  className,
+  titleClassName,
   children,
 }: {
   title?: string;
+  titleAction?: ReactNode;
+  className?: string;
+  titleClassName?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="space-y-2 rounded-md border border-border bg-accent/60 p-2">
-      {title ? (
-        <p className="text-xs font-medium text-muted-foreground">{title}</p>
+    <section
+      className={cn(
+        "space-y-2 rounded-md border border-border bg-accent/60 p-2",
+        className,
+      )}
+    >
+      {title || titleAction ? (
+        <div className="flex items-center justify-between gap-2">
+          {title ? (
+            <p
+              className={cn(
+                "text-xs font-medium text-muted-foreground",
+                titleClassName,
+              )}
+            >
+              {title}
+            </p>
+          ) : (
+            <span />
+          )}
+          {titleAction}
+        </div>
       ) : null}
       <div className="text-[11px] text-foreground">{children}</div>
     </section>
@@ -4983,7 +5014,7 @@ function SceneImagesSection({
                                     ? "Wait for the current render to finish before editing XML"
                                     : "Edit the XML image prompt"
                                 }
-                                className={cn("min-h-[264px]", visualFieldClass)}
+                                className={cn("min-h-[528px]", visualFieldClass)}
                                 disabled={sceneBusy}
                               />
                             </VisualDetailSection>
@@ -5123,15 +5154,29 @@ function SceneImagesSection({
                         )}
                       </div>
                       {visualXmlDirty ? (
-                        <div className="space-y-2">
-                          <div className="flex justify-center">
-                            <Badge
-                              className="border-amber-500 bg-amber-500/10 text-amber-700"
+                        <VisualDetailSection
+                          title="Unsaved changes"
+                          titleClassName="text-amber-700"
+                          className="border-amber-500 bg-amber-500/10"
+                          titleAction={
+                            <Button
+                              type="button"
                               variant="outline"
+                              size="sm"
+                              className="h-6 cursor-pointer gap-1.5 border-amber-500/60 bg-amber-500/10 px-2 text-[11px] text-amber-700 hover:bg-amber-500/20 active:bg-amber-500/25"
+                              onClick={() =>
+                                setVisualXmlDraftByScene((prev) => ({
+                                  ...prev,
+                                  [scene.id]: getSceneVisualXmlDraft(scene),
+                                }))
+                              }
+                              disabled={sceneBusy || savingSceneXml === scene.id}
                             >
-                              Unsaved changes
-                            </Badge>
-                          </div>
+                              <RotateCcw className="h-3 w-3" />
+                              Reset
+                            </Button>
+                          }
+                        >
                           <Button
                             variant="default"
                             className="w-full active:bg-primary/80"
@@ -5140,9 +5185,9 @@ function SceneImagesSection({
                           >
                             {savingSceneXml === scene.id
                               ? "Saving…"
-                              : "Save XML changes"}
+                              : "Save XML Changes"}
                           </Button>
-                        </div>
+                        </VisualDetailSection>
                       ) : null}
                       {isMotionGraphic ? (
                         <Button
