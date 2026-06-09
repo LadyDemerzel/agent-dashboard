@@ -2594,6 +2594,10 @@ function toMediaUrl(projectId: string, relativePath: string, version?: string) {
   return version ? `${basePath}?v=${encodeURIComponent(version)}` : basePath;
 }
 
+function buildScenePreviewVideoUrl(projectId: string, sceneId: string) {
+  return `/api/short-form-videos/${projectId}/scene-preview/${encodeURIComponent(sceneId)}`;
+}
+
 function getSceneImagesStage(projectId: string, options?: { pending?: boolean }) {
   synchronizeSceneImagesArtifacts(projectId);
   const doc = readStageDocument(projectId, "scene-images", options);
@@ -2618,7 +2622,11 @@ function getSceneImagesStage(projectId: string, options?: { pending?: boolean })
       ...(xmlEditState?.motionGraphicXml ? { motionGraphicXml: xmlEditState.motionGraphicXml } : {}),
       image: scene.image ? toMediaUrl(projectId, scene.image, getProjectMediaVersion(projectId, scene.image)) : undefined,
       previewImage: scene.previewImage ? toMediaUrl(projectId, scene.previewImage, getProjectMediaVersion(projectId, scene.previewImage)) : undefined,
-      previewVideo: scene.previewVideo ? toMediaUrl(projectId, scene.previewVideo, getProjectMediaVersion(projectId, scene.previewVideo)) : undefined,
+      previewVideo: scene.previewVideo
+        ? toMediaUrl(projectId, scene.previewVideo, getProjectMediaVersion(projectId, scene.previewVideo))
+        : scene.visualType !== "motion_graphic" && scene.image
+          ? buildScenePreviewVideoUrl(projectId, scene.id)
+          : undefined,
     };
   });
   const progressState = buildSceneImagesProgressState(projectId, manifestScenes, doc);

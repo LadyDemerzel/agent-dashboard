@@ -1200,6 +1200,11 @@ function getSceneDraftSignature(scene: Scene) {
   ].join("\u001f");
 }
 
+function appendCacheBust(url: string, value?: number) {
+  if (!value) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}previewBust=${value}`;
+}
+
 const SUPPRESSED_VIDEO_PIPELINE_WARNINGS = new Set([
   "Caption preset Fluid Pop now renders through the animated overlay renderer so the saved config-driven timing, easing, motion tracks, layout mode, and color-source settings are applied during final render.",
 ]);
@@ -4022,6 +4027,9 @@ function SceneImagesSection({
   const [visualXmlDraftByScene, setVisualXmlDraftByScene] = useState<
     Record<string, VisualXmlDraft>
   >({});
+  const [scenePreviewBustById, setScenePreviewBustById] = useState<
+    Record<string, number>
+  >({});
   const [savingSceneXml, setSavingSceneXml] = useState<string | null>(null);
 
   const { data: imageSettingsPayload } = useSWR<ApiResponse<WorkflowSettingsResponse>>(
@@ -4117,13 +4125,24 @@ function SceneImagesSection({
     }
   }
 
-  async function requestSceneChange(scene: Scene) {
+  async function requestSceneChange(
+    scene: Scene,
+    mode: "regenerate-image" | "preview-camera" = "regenerate-image",
+  ) {
     setSubmittingScene(scene.id);
     setError(null);
 
     try {
       const saved = await saveSceneXml(scene, { keepSavingIndicator: true });
       if (!saved) return;
+      if (mode === "preview-camera") {
+        setScenePreviewBustById((prev) => ({
+          ...prev,
+          [scene.id]: Date.now(),
+        }));
+        await refresh();
+        return;
+      }
       await parseJsonResponse(
         await fetch(
           `/api/short-form-videos/${project.id}/workflow/scene-images`,
@@ -4658,7 +4677,10 @@ function SceneImagesSection({
                       ) : hasRenderableMedia ? (
                         hasPreviewVideo ? (
                           <ScenePreviewVideoCard
-                            src={scene.previewVideo!}
+                            src={appendCacheBust(
+                              scene.previewVideo!,
+                              scenePreviewBustById[scene.id],
+                            )}
                             poster={
                               scene.previewImage || scene.image || undefined
                             }
@@ -4962,6 +4984,14 @@ function SceneImagesSection({
                               onSelect={() => void requestSceneChange(scene)}
                             >
                               Re-generate image
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer transition-colors hover:bg-[#28282d] active:bg-[#2d2d32]"
+                              onSelect={() =>
+                                void requestSceneChange(scene, "preview-camera")
+                              }
+                            >
+                              Re-render preview camera effect changes
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
