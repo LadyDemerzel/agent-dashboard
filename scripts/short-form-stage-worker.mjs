@@ -1341,6 +1341,91 @@ function preserveRuntimeMotionGraphicRendererMetadata(runtimeXmlPath, sceneManif
   return updatedIndexes;
 }
 
+const TIMELINE_VISUAL_ATTRS_SYNC_FROM_SOURCE = [
+  "label",
+  "start",
+  "end",
+  "cameraPanX",
+  "cameraPanY",
+  "cameraZoom",
+  "cameraZoomStart",
+  "cameraZoomEnd",
+  "cameraShake",
+];
+
+const TIMELINE_VISUAL_ATTRS_DELETE_WHEN_SOURCE_OMITS = new Set([
+  "cameraPanX",
+  "cameraPanY",
+  "cameraZoom",
+  "cameraZoomStart",
+  "cameraZoomEnd",
+  "cameraShake",
+]);
+
+function readTimelineVisualAttributeSnapshots(xmlPath) {
+  if (!xmlPath || !fs.existsSync(xmlPath)) return [];
+  const raw = fs.readFileSync(xmlPath, "utf-8");
+  const xml = stripFrontMatter(raw);
+  const document = parseXmlDocument(xml);
+  const root = getXmlRoot(document);
+  const timeline = getFirstDirectXmlChild(root, "timeline");
+  if (!timeline) return [];
+
+  return getDirectXmlChildren(timeline, "visual").map((visual, index) => ({
+    index: index + 1,
+    id: getXmlAttribute(visual, "id") || "",
+    attributes: { ...visual.attributes },
+  }));
+}
+
+function syncRuntimeTimelineVisualAttributesFromSource(runtimeXmlPath, sourceXmlPath) {
+  if (!runtimeXmlPath || !sourceXmlPath || !fs.existsSync(runtimeXmlPath) || !fs.existsSync(sourceXmlPath)) {
+    return [];
+  }
+
+  const sourceVisuals = readTimelineVisualAttributeSnapshots(sourceXmlPath);
+  if (sourceVisuals.length === 0) return [];
+
+  const sourceById = new Map(sourceVisuals.filter((visual) => visual.id).map((visual) => [visual.id, visual]));
+  const sourceByIndex = new Map(sourceVisuals.map((visual) => [visual.index, visual]));
+  const runtimeXml = fs.readFileSync(runtimeXmlPath, "utf-8");
+  const updatedIndexes = [];
+  let visualIndex = 0;
+
+  const nextXml = runtimeXml.replace(/<visual\b([^>]*?)(?:\/>|>([\s\S]*?)<\/visual>)/gi, (full, rawAttrs, body) => {
+    visualIndex += 1;
+    const attrs = parseXmlAttributes(rawAttrs || "");
+    const source = (attrs.id ? sourceById.get(attrs.id) : undefined) || sourceByIndex.get(visualIndex);
+    if (!source) return full;
+
+    let changed = false;
+    for (const attrName of TIMELINE_VISUAL_ATTRS_SYNC_FROM_SOURCE) {
+      const sourceValue = source.attributes[attrName];
+      if (typeof sourceValue === "string" && sourceValue.trim() !== "") {
+        if (attrs[attrName] !== sourceValue) {
+          attrs[attrName] = sourceValue;
+          changed = true;
+        }
+      } else if (TIMELINE_VISUAL_ATTRS_DELETE_WHEN_SOURCE_OMITS.has(attrName) && attrs[attrName] !== undefined) {
+        delete attrs[attrName];
+        changed = true;
+      }
+    }
+
+    if (!changed) return full;
+    const renderedAttrs = renderXmlAttributes(attrs);
+    updatedIndexes.push(visualIndex);
+    return body !== undefined
+      ? `<visual ${renderedAttrs}>${body}</visual>`
+      : `<visual ${renderedAttrs} />`;
+  });
+
+  if (updatedIndexes.length > 0 && nextXml !== runtimeXml) {
+    fs.writeFileSync(runtimeXmlPath, `${nextXml.trimEnd()}\n`, "utf-8");
+  }
+  return updatedIndexes;
+}
+
 function parseSceneIdToIndex(sceneId) {
   if (typeof sceneId !== "string") return undefined;
   const match = sceneId.trim().match(/scene-(\d+)/i);
@@ -4952,6 +5037,7 @@ function runDirectVideo(job) {
   );
   normalizeTimelineImageRuntimeXmlFile(runtimeXmlPath);
   if (sceneImagesRuntimeXmlPath) {
+    syncRuntimeTimelineVisualAttributesFromSource(runtimeXmlPath, config.scriptPath);
     preserveRuntimeMotionGraphicRendererMetadata(runtimeXmlPath, getSceneGeneratorManifestPath(job.projectId));
     restoreMissingMotionGraphicVideosFromSceneImageRun(job.projectId, config.sceneImagesDir);
   }
@@ -5263,6 +5349,17 @@ if (process.env.SHORT_FORM_STAGE_WORKER_TIMELINE_IMAGE_RUNTIME_TEST === "1") {
     visuals: result.visuals,
     assetDependencies: [...result.assetDependencies.entries()],
     xml: result.xml,
+  }, null, 2));
+  process.exit(0);
+}
+
+if (process.env.SHORT_FORM_STAGE_WORKER_RUNTIME_ATTR_SYNC_TEST === "1") {
+  const runtimeXmlPath = process.env.RUNTIME_XML_PATH || jobPath;
+  const sourceXmlPath = process.env.SOURCE_XML_PATH;
+  const updatedIndexes = syncRuntimeTimelineVisualAttributesFromSource(runtimeXmlPath, sourceXmlPath);
+  console.log(JSON.stringify({
+    updatedIndexes,
+    xml: fs.readFileSync(runtimeXmlPath, "utf-8"),
   }, null, 2));
   process.exit(0);
 }

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -86,9 +87,55 @@ assert.match(hydratedRuntimeXml, /<motionGraphic id="mg-two"/);
 
 const runDirectVideoBody = stageWorkerSource.match(/function runDirectVideo\(job\) \{[\s\S]*?\n\}\n\nasync function main/)?.[0] || "";
 assert.match(runDirectVideoBody, /getLatestSceneImagesRuntimeXmlPath/, "Final-video should consume the scene-images runtime XML that already maps motion graphics to renderable placeholder imageIds.");
+assert.match(runDirectVideoBody, /syncRuntimeTimelineVisualAttributesFromSource\(runtimeXmlPath, config\.scriptPath\)/, "Final-video should sync mutable visual timeline attrs from the current XML before rendering stale scene-images runtime XML.");
 assert.match(runDirectVideoBody, /preserveRuntimeMotionGraphicRendererMetadata/, "Final-video should repair older scene-images runtime XML so motion graphics keep renderer-facing metadata.");
 assert.doesNotMatch(runDirectVideoBody, /hydrateRuntimeXmlMotionGraphicsFromManifest/, "Final-video must not rehydrate renderer-facing XML back to inline motion graphics before calling xml-scene-video.");
 assert.match(stageWorkerSource, /attrs\.visualType = "motion_graphic"/, "Renderer-facing scene-images runtime XML must preserve motion-graphic visualType metadata for final-video substitution and caption suppression.");
 assert.match(stageWorkerSource, /attrs\.motionGraphicId = motionVisual\.asset\.id/, "Renderer-facing scene-images runtime XML must preserve motionGraphicId while using a poster imageId placeholder.");
+
+const staleFinalRuntimePath = path.join(tempDir, "stale-video-runtime.xml");
+const currentSourceXmlPath = path.join(tempDir, "current-xml-script.md");
+fs.writeFileSync(staleFinalRuntimePath, `<video>
+  <assets>
+    <image id="scene-one"><prompt>Scene one</prompt></image>
+    <image id="scene-two"><prompt>Scene two</prompt></image>
+  </assets>
+  <timeline>
+    <visual id="visual-001" label="Old label" start="0" end="1" cameraZoomStart="1.00" cameraZoomEnd="1.18" imageId="scene-one" />
+    <visual id="visual-002" label="Scene two" start="1" end="2" cameraZoom="1.30" imageId="scene-two" />
+  </timeline>
+</video>
+`);
+fs.writeFileSync(currentSourceXmlPath, `---
+title: Current
+---
+<video>
+  <timeline>
+    <visual id="visual-001" label="New label" start="0.00" end="1.25" cameraZoomStart="1.00" cameraZoomEnd="1.90">
+      <image id="scene-one"><prompt>Scene one</prompt></image>
+    </visual>
+    <visual id="visual-002" label="Scene two" start="1.25" end="2.00">
+      <image id="scene-two"><prompt>Scene two</prompt></image>
+    </visual>
+  </timeline>
+</video>
+`);
+execFileSync(process.execPath, [path.join(repoRoot, "scripts", "short-form-stage-worker.mjs"), staleFinalRuntimePath], {
+  cwd: repoRoot,
+  env: {
+    ...process.env,
+    SHORT_FORM_STAGE_WORKER_RUNTIME_ATTR_SYNC_TEST: "1",
+    RUNTIME_XML_PATH: staleFinalRuntimePath,
+    SOURCE_XML_PATH: currentSourceXmlPath,
+  },
+  encoding: "utf-8",
+});
+const syncedRuntimeXml = fs.readFileSync(staleFinalRuntimePath, "utf-8");
+assert.match(syncedRuntimeXml, /visual-001[^>]*label="New label"/);
+assert.match(syncedRuntimeXml, /visual-001[^>]*end="1.25"/);
+assert.match(syncedRuntimeXml, /visual-001[^>]*cameraZoomEnd="1.90"/);
+assert.match(syncedRuntimeXml, /visual-001[^>]*imageId="scene-one"/);
+assert.doesNotMatch(syncedRuntimeXml, /visual-001[^>]*cameraZoomEnd="1.18"/);
+assert.doesNotMatch(syncedRuntimeXml, /visual-002[^>]*cameraZoom="1.30"/);
 
 console.log("short-form motion graphic runtime hydration tests passed");
