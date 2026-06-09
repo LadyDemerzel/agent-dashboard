@@ -1263,7 +1263,7 @@
   ],
   "captionMaxWords": 3,
   "pauseRemoval": {
-    "minSilenceDurationSeconds": 0.1,
+    "minSilenceDurationSeconds": 0.2,
     "silenceThresholdDb": -40
   }
 }
