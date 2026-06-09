@@ -871,6 +871,168 @@ const visualSelectClass =
 const visualRerenderButtonClass =
   "w-full border-[#343439] bg-[#29292e] text-foreground hover:bg-[#33333a] active:bg-[#37373d]";
 
+interface VisualDependencyTreeNode {
+  scene: Scene;
+  relation: "ancestor" | "current" | "descendant";
+  children: VisualDependencyTreeNode[];
+}
+
+interface VisualDependencyTree {
+  root: VisualDependencyTreeNode;
+  hasAncestors: boolean;
+  hasDescendants: boolean;
+}
+
+function getImageVisualReferenceValues(scene: Scene): string[] {
+  return [scene.visualId, scene.imageId, scene.id].filter(
+    (value): value is string => Boolean(value),
+  );
+}
+
+function getImageVisualBasedOnValue(scene: Scene): string {
+  return scene.xmlBasedOn ?? scene.basedOnImageId ?? "";
+}
+
+function buildVisualDependencyTree(
+  scenes: Scene[],
+  currentScene: Scene,
+): VisualDependencyTree {
+  const imageScenes = scenes.filter(
+    (scene) => scene.visualType !== "motion_graphic",
+  );
+  const sceneByReference = new Map<string, Scene>();
+  for (const scene of imageScenes) {
+    for (const value of getImageVisualReferenceValues(scene)) {
+      sceneByReference.set(value, scene);
+    }
+  }
+
+  const getParent = (scene: Scene): Scene | undefined => {
+    const basedOn = getImageVisualBasedOnValue(scene).trim();
+    if (!basedOn) {
+      return undefined;
+    }
+    const parent = sceneByReference.get(basedOn);
+    return parent && parent.id !== scene.id ? parent : undefined;
+  };
+
+  const childrenByParentId = new Map<string, Scene[]>();
+  for (const scene of imageScenes) {
+    const parent = getParent(scene);
+    if (!parent) {
+      continue;
+    }
+    const children = childrenByParentId.get(parent.id) ?? [];
+    children.push(scene);
+    childrenByParentId.set(parent.id, children);
+  }
+
+  const buildDescendants = (
+    scene: Scene,
+    visited: Set<string>,
+  ): VisualDependencyTreeNode[] => {
+    const children = childrenByParentId.get(scene.id) ?? [];
+    return children
+      .filter((child) => !visited.has(child.id))
+      .map((child) => {
+        const nextVisited = new Set(visited);
+        nextVisited.add(child.id);
+        return {
+          scene: child,
+          relation: "descendant" as const,
+          children: buildDescendants(child, nextVisited),
+        };
+      });
+  };
+
+  const ancestorScenes: Scene[] = [];
+  const ancestorVisited = new Set<string>([currentScene.id]);
+  let parent = getParent(currentScene);
+  while (parent && !ancestorVisited.has(parent.id)) {
+    ancestorScenes.unshift(parent);
+    ancestorVisited.add(parent.id);
+    parent = getParent(parent);
+  }
+
+  const currentDescendants = buildDescendants(
+    currentScene,
+    new Set([currentScene.id]),
+  );
+
+  let root: VisualDependencyTreeNode = {
+    scene: currentScene,
+    relation: "current",
+    children: currentDescendants,
+  };
+
+  for (const ancestor of [...ancestorScenes].reverse()) {
+    root = {
+      scene: ancestor,
+      relation: "ancestor",
+      children: [root],
+    };
+  }
+
+  return {
+    root,
+    hasAncestors: ancestorScenes.length > 0,
+    hasDescendants: currentDescendants.length > 0,
+  };
+}
+
+function VisualDependencyTreeView({
+  node,
+  depth = 0,
+}: {
+  node: VisualDependencyTreeNode;
+  depth?: number;
+}) {
+  const isCurrent = node.relation === "current";
+  return (
+    <div
+      className={cn(
+        "space-y-1",
+        depth > 0 && "border-l border-[#343439] pl-2",
+      )}
+    >
+      <div
+        className={cn(
+          "rounded-md border px-2 py-1.5",
+          isCurrent
+            ? "border-primary/70 bg-primary/15 text-foreground shadow-sm shadow-primary/10"
+            : "border-[#343439] bg-[#242428] text-muted-foreground",
+        )}
+      >
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              "h-1.5 w-1.5 shrink-0 rounded-full",
+              isCurrent ? "bg-primary" : "bg-muted-foreground/60",
+            )}
+          />
+          <span className={cn("font-medium", isCurrent && "text-primary")}>
+            Visual {node.scene.number}
+          </span>
+        </div>
+        <p className="mt-0.5 break-words text-[10px] leading-snug">
+          {node.scene.caption}
+        </p>
+      </div>
+      {node.children.length > 0 ? (
+        <div className="space-y-1">
+          {node.children.map((child) => (
+            <VisualDependencyTreeView
+              key={child.scene.id}
+              node={child}
+              depth={depth + 1}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function getSceneVisualXmlDraft(scene: Scene): VisualXmlDraft {
   const cameraZoomStart = scene.cameraZoomStart ?? "";
   const cameraZoomEnd = scene.cameraZoomEnd ?? "";
@@ -4522,19 +4684,9 @@ function SceneImagesSection({
                       visualXmlDraft.cameraZoom.trim() !== currentCameraZoom.trim() ||
                       visualXmlDraft.cameraZoomStart.trim() !== currentCameraZoomStart.trim() ||
                       visualXmlDraft.cameraZoomEnd.trim() !== currentCameraZoomEnd.trim();
-                  const dependentImageVisuals = project.sceneImages.scenes.filter(
-                    (candidate) =>
-                      !isMotionGraphic &&
-                      candidate.id !== scene.id &&
-                      candidate.visualType !== "motion_graphic" &&
-                      Boolean(scene.imageId || scene.visualId) &&
-                      (
-                        candidate.xmlBasedOn === scene.imageId ||
-                        candidate.xmlBasedOn === scene.visualId ||
-                        candidate.basedOnImageId === scene.imageId ||
-                        candidate.basedOnImageId === scene.visualId
-                      ),
-                  );
+                  const dependencyTree = !isMotionGraphic
+                    ? buildVisualDependencyTree(project.sceneImages.scenes, scene)
+                    : null;
 
                   return (
                     <div
@@ -4752,17 +4904,12 @@ function SceneImagesSection({
                               </Select>
                             </VisualDetailSection>
                             <VisualDetailSection title="Based-on dependents">
-                              {dependentImageVisuals.length > 0 ? (
-                                <ul className="space-y-1">
-                                  {dependentImageVisuals.map((dependent) => (
-                                    <li key={dependent.id}>
-                                      Visual {dependent.number}
-                                      {dependent.visualId
-                                        ? ` (${dependent.visualId})`
-                                        : ""}
-                                    </li>
-                                  ))}
-                                </ul>
+                              {dependencyTree &&
+                              (dependencyTree.hasAncestors ||
+                                dependencyTree.hasDescendants) ? (
+                                <VisualDependencyTreeView
+                                  node={dependencyTree.root}
+                                />
                               ) : (
                                 <p className="text-muted-foreground">
                                   No other image visuals are based on this
