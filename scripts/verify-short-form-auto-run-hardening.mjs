@@ -116,6 +116,18 @@ assertIncludes(
   "waitForXmlScriptRunVerified(projectId, signal, step, runId)",
   "Plan Visuals auto-run must wait for the XML worker's final verified marker before approving XML.",
 );
+assertIncludes(
+  "waitForActiveXmlPipelineToSettle",
+  "Auto-run must wait for an already-running XML pipeline instead of retrying into a 409 conflict.",
+);
+assertIncludes(
+  "if (current.xmlScript.audioUrl) return current;",
+  "Narration auto-run retry must reuse fresh audio after an existing XML pipeline completes.",
+);
+assertIncludes(
+  "if (current.xmlScript.captions?.length) return current;",
+  "Caption auto-run retry must reuse fresh captions after an existing XML pipeline completes.",
+);
 const perStepApprovalMatches = source.match(/await reconcileCompletedAutoRunApprovals\(/g) || [];
 if (perStepApprovalMatches.length < 3) {
   throw new Error(

@@ -35,11 +35,11 @@ const templateConfigs = [
   { rendererId: "pie_chart", defaultArgs: { title: "Split", data: [{ label: "A", value: 40, displayValue: "40%" }, { label: "B", value: 60, displayValue: "60%" }] } },
   { rendererId: "line_growth_chart", defaultArgs: { title: "Growth trend", direction: "increase", startLabel: "Start", endLabel: "Now", valueLabel: "86" } },
   { rendererId: "comparison_before_after", defaultArgs: { before: "Problem state", after: "Improved state" } },
-  { rendererId: "timeline", defaultArgs: { steps: ["Setup", "Signal", "Visible change"] } },
+  { rendererId: "timeline", defaultArgs: { steps: [{ label: "MONTH 12 CHECKPOINT", text: "Setup" }, { label: "DAY 7", text: "Signal" }, { label: "DAY 30", text: "Visible change" }] } },
   { rendererId: "cause_effect", defaultArgs: { cause: "Small habit", effect: "Visible change" } },
   { rendererId: "ranked_podium", defaultArgs: { items: ["Most visible change", "Faster feedback", "Cleaner routine"] } },
   { rendererId: "checklist", defaultArgs: { items: ["Set the baseline", "Make the small adjustment", "Repeat it daily"] } },
-  { rendererId: "scorecard", defaultArgs: { title: "Scorecard", data: [{ label: "Clarity", value: 92, displayValue: "92" }] } },
+  { rendererId: "scorecard", defaultArgs: { title: "Scorecard", data: [{ label: "Clarity", value: 92, displayValue: "1,234,567 people" }] } },
   { rendererId: "research_paper_card", defaultArgs: { source: "Study", title: "Research finding", finding: "One finding changes how this should be read." } },
   { rendererId: "good_bad_indicator", defaultArgs: { indicatorType: "good", text: "Do this" } },
   { rendererId: "caption_word_wall", allowSyntheticTiming: true, defaultArgs: { lines: [{ text: "miss this" }, { text: "words visual", size: "large" }, { text: "extra row", size: "extra_large" }] } },
@@ -71,12 +71,26 @@ try {
       assert.ok(html.includes("timeline-connector-0"), "timeline must preserve short center-out connectors");
       assert.ok(html.includes("width:62px;height:4px"), "timeline connectors must match the old compact rule geometry");
       assert.ok(html.includes("left:260px"), "timeline vertical rule must use the old left-side rule position");
+      assert.ok(html.includes("MONTH 12 CHECKPOINT"), "timeline fixture must keep a long label for no-wrap coverage");
+      assert.ok(html.includes("timeline-label-0"), "timeline must render the step label");
+      assert.ok(html.includes("width:max-content"), "timeline step labels should use intrinsic width instead of a fixed label column");
+      assert.ok(html.includes("font-size:38px"), "timeline step labels must keep the configured font size instead of shrinking to fit");
+      assert.ok(html.includes("white-space:nowrap"), "timeline step labels must not wrap when they are long");
+      assert.ok(html.includes('tl.set("#timeline-rule", {opacity:1, scaleY:0}, 1.000);'), "timeline vertical rule should start growing after the first step finishes revealing");
+      assert.ok(html.includes('tl.to("#timeline-rule", {scaleY:0.5000, duration:0.660, ease:"none"}, 1.000);'), "timeline vertical rule should reach the second step exactly when that step finishes revealing");
+      assert.ok(html.includes('tl.to("#timeline-rule", {scaleY:1.0000, duration:0.660, ease:"none"}, 1.660);'), "timeline vertical rule should reach the third step exactly when that step finishes revealing");
+      assert.ok(!html.includes('tl.fromTo("#timeline-rule", {opacity:0, scaleY:0}'), "timeline vertical rule must not use one arbitrary full-height growth tween");
     }
     if (config.rendererId === "scorecard") {
       assert.ok(html.includes("score-track-0"), "scorecard must preserve the old thin background track");
       assert.ok(html.includes("score-bar-0"), "scorecard must preserve the old animated score bar");
       assert.ok(html.includes("height:8px"), "scorecard bars must match the old 8px rule weight");
       assert.ok(!html.includes("score-row"), "scorecard must not use the newer bordered-row visual style");
+      assert.ok(html.includes("single-line-text"), "scorecard displayValue must render as a single-line value");
+      assert.ok(html.includes("white-space:nowrap"), "scorecard displayValue must not wrap when it is long");
+      assert.ok(html.includes("width:max-content"), "scorecard displayValue should use intrinsic width instead of a fixed value column");
+      assert.ok(html.includes("font-size:40px"), "scorecard displayValue must keep the configured font size instead of shrinking to fit");
+      assert.ok(html.includes("1,234,567 people"), "scorecard fixture must keep a long displayValue for no-wrap coverage");
     }
     if (config.rendererId === "cause_effect") {
       assert.ok(html.includes("cause-card"), "cause_effect must render the cause text group");

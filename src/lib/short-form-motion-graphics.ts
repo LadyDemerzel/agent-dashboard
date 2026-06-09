@@ -28,7 +28,7 @@ export interface MotionGraphicTemplateField {
   type: MotionGraphicFieldType;
   required?: boolean;
   description?: string;
-  defaultValue?: string | number | string[] | Array<{ label: string; text: string }> | Array<{ label: string; value: number | string; displayValue?: string }> | Array<{ text?: string; size?: "regular" | "large" | "extra_large"; emphasized?: boolean; blank?: boolean }>;
+  defaultValue?: string | number | string[] | Array<{ label?: string; text: string; animateIn?: number }> | Array<{ label: string; value: number | string; displayValue?: string }> | Array<{ text?: string; size?: "regular" | "large" | "extra_large"; emphasized?: boolean; blank?: boolean }>;
 }
 
 export interface MotionGraphicDeterministicSoundCue {
@@ -94,18 +94,21 @@ const DEFAULT_XML_INSTRUCTIONS_BY_RENDERER: Record<MotionGraphicRendererId, stri
     "Keep the title compact; this template is for one dominant quantified idea, not a multi-line explanation.",
   ].join("\n"),
   bar_chart: [
-    "Use repeated <item label=\"...\" value=\"...\" displayValue=\"...\" /> entries for the data field.",
+    "Use repeated <item label=\"...\" value=\"...\" displayValue=\"...\" animateIn=\"absolute_video_timestamp_seconds\" /> entries for the data field.",
     "Use 2-5 items. The numeric value controls bar height; displayValue is what viewers read.",
+    "Put reveal timings on each bar's animateIn attribute; do not use one shared <timing item=\"data\" ... /> for the whole data set.",
     "If one bar is the key reveal, put it later in the item order so its animation lands last.",
   ].join("\n"),
   pie_chart: [
-    "Use repeated <item label=\"...\" value=\"...\" displayValue=\"...\" /> entries for the data field.",
+    "Use repeated <item label=\"...\" value=\"...\" displayValue=\"...\" animateIn=\"absolute_video_timestamp_seconds\" /> entries for the data field.",
     "Values should be positive parts of a whole. displayValue should usually be a compact percent or share label.",
+    "Put reveal timings on each slice item's animateIn attribute; do not use one shared <timing item=\"data\" ... /> for the whole pie.",
     "Use 2-5 slices and keep labels short enough for the legend.",
   ].join("\n"),
   line_growth_chart: [
     "Set <arg name=\"direction\">increase</arg> for an up/right trend or <arg name=\"direction\">decrease</arg> for a down/right trend.",
     "Optional dataSeries points should match the chosen direction.",
+    "Use <timing item=\"title\" ... /> for the headline and <timing item=\"chart\" ... /> for the chart line/counter reveal.",
     "To show units on the moving counter, set <arg name=\"valueLabel\">90</arg> and optional <arg name=\"units\">homes</arg>; the renderer appends the unit text throughout the count-up.",
     "Leave valueLabel and units blank when there is no clear metric to display.",
   ].join("\n"),
@@ -114,37 +117,44 @@ const DEFAULT_XML_INSTRUCTIONS_BY_RENDERER: Record<MotionGraphicRendererId, stri
     "Keep before and after copy parallel so the visual reads as one clear transformation.",
   ].join("\n"),
   timeline: [
-    "Use repeated <step label=\"custom left label\">step text</step> entries.",
+    "Use repeated <step label=\"custom left label\" animateIn=\"absolute_video_timestamp_seconds\">step text</step> entries.",
+    "Put reveal timings on each timeline step's animateIn attribute; do not use one shared <timing item=\"steps\" ... /> for the whole timeline.",
     "Omit label only when you want the renderer to auto-label steps as 01, 02, 03.",
     "Keep all step labels in the same semantic category, such as all dates, all phases, or all percentages.",
   ].join("\n"),
   cause_effect: [
     "Use <arg name=\"cause\">...</arg> for the input or mechanism and <arg name=\"effect\">...</arg> for the outcome.",
+    "Use <timing item=\"cause\" ... />, <timing item=\"arrow\" ... />, and <timing item=\"effect\" ... /> when those three beats should reveal separately.",
     "Keep each side short and concrete so the downward causal relationship is obvious.",
   ].join("\n"),
   caption_word_wall: [
-    "Use ordered <line size=\"regular\">spoken words for this row</line>, <line size=\"large\">...</line>, <line size=\"extra_large\">...</line>, and <blankLine /> entries.",
+    "Use ordered <line size=\"regular\" animateIn=\"absolute_video_timestamp_seconds\">spoken words for this row</line>, <line size=\"large\" animateIn=\"...\">...</line>, <line size=\"extra_large\" animateIn=\"...\">...</line>, and <blankLine animateIn=\"...\" /> entries.",
     "Line size applies to the whole line; do not size individual inline words.",
     "Line text must be exact spoken narration words in order from that visual's time range.",
+    "Use per-line animateIn timestamps for line entrance timing; word highlighting still follows forced alignment.",
     "This template replaces ordinary bottom captions for that visual and should not be paired with normal captions.",
   ].join("\n"),
   ranked_podium: [
-    "Use repeated <step>...</step> entries for ranked items. Optional labels are rank markers; omit them for 01, 02, 03 auto-labels.",
+    "Use repeated <step label=\"01\" animateIn=\"absolute_video_timestamp_seconds\">ranked item</step> entries. Optional labels are rank markers; omit them for 01, 02, 03 auto-labels.",
+    "Put reveal timings on each ranked item's animateIn attribute; do not use one shared <timing item=\"items\" ... /> for the whole list.",
     "For split multi-visual sequences, set <arg name=\"startIndex\">2</arg> to render earlier ranks already present and animate from rank 2.",
     "Set <arg name=\"futureItemsMode\">hidden</arg> or <arg name=\"futureItemsMode\">blurred</arg> to control unrevealed later ranks.",
   ].join("\n"),
   checklist: [
-    "Use repeated <step>...</step> entries for checklist items. Labels are ignored by this template.",
+    "Use repeated <step animateIn=\"absolute_video_timestamp_seconds\">...</step> entries for checklist items. Labels are ignored by this template.",
+    "Put reveal timings on each checklist step's animateIn attribute; do not use one shared <timing item=\"items\" ... /> for the whole checklist.",
     "For split multi-visual sequences, set <arg name=\"startIndex\">2</arg> to render earlier items already checked and animate from item 2.",
     "Set <arg name=\"futureItemsMode\">hidden</arg> or <arg name=\"futureItemsMode\">blurred</arg> to control unrevealed later items.",
   ].join("\n"),
   scorecard: [
-    "Use <arg name=\"title\">...</arg> plus repeated <item label=\"...\" value=\"...\" displayValue=\"...\" /> score rows.",
+    "Use <arg name=\"title\">...</arg> plus repeated <item label=\"...\" value=\"...\" displayValue=\"...\" animateIn=\"absolute_video_timestamp_seconds\" /> score rows.",
     "Values are normalized against the largest row, so keep numeric values comparable.",
+    "Put reveal timings on each score row's animateIn attribute; do not use one shared <timing item=\"data\" ... /> for the whole scorecard.",
     "Use displayValue for the readable score, such as 82/100, High, or 4.5x.",
   ].join("\n"),
   research_paper_card: [
     "Use source, year, title, and finding args to create a compact citation-style card.",
+    "Use <timing item=\"paper\" ... />, <timing item=\"source\" ... />, <timing item=\"title\" ... />, and <timing item=\"finding\" ... /> when those citation beats should reveal separately.",
     "Keep the finding to one plain-English takeaway; do not write a full abstract.",
   ].join("\n"),
   good_bad_indicator: [
@@ -169,10 +179,9 @@ const DEFAULT_EXAMPLE_XML_BY_RENDERER: Record<MotionGraphicRendererId, string> =
     `<visual id=\"visual-5\" label=\"Outcome comparison\" start=\"12.00\" end=\"18.00\" visualType=\"motion_graphic\">`,
     `  <motionGraphic templateId=\"bar_chart\">`,
     `    <timing item=\"title\" at=\"12.20\" />`,
-    `    <timing item=\"data\" at=\"12.90\" />`,
     `    <arg name=\"title\">What changed most</arg>`,
-    `    <item label=\"Before\" value=\"35\" displayValue=\"35%\" />`,
-    `    <item label=\"After\" value=\"82\" displayValue=\"82%\" />`,
+    `    <item label=\"Before\" value=\"35\" displayValue=\"35%\" animateIn=\"12.90\" />`,
+    `    <item label=\"After\" value=\"82\" displayValue=\"82%\" animateIn=\"13.70\" />`,
     `  </motionGraphic>`,
     `</visual>`,
   ].join("\n"),
@@ -180,11 +189,10 @@ const DEFAULT_EXAMPLE_XML_BY_RENDERER: Record<MotionGraphicRendererId, string> =
     `<visual id=\"visual-5\" label=\"Time split\" start=\"12.00\" end=\"18.00\" visualType=\"motion_graphic\">`,
     `  <motionGraphic templateId=\"pie_chart\">`,
     `    <timing item=\"title\" at=\"12.20\" />`,
-    `    <timing item=\"data\" at=\"12.85\" />`,
     `    <arg name=\"title\">Where time goes</arg>`,
-    `    <item label=\"Practice\" value=\"50\" displayValue=\"50%\" />`,
-    `    <item label=\"Recovery\" value=\"30\" displayValue=\"30%\" />`,
-    `    <item label=\"Setup\" value=\"20\" displayValue=\"20%\" />`,
+    `    <item label=\"Practice\" value=\"50\" displayValue=\"50%\" animateIn=\"12.85\" />`,
+    `    <item label=\"Recovery\" value=\"30\" displayValue=\"30%\" animateIn=\"13.35\" />`,
+    `    <item label=\"Setup\" value=\"20\" displayValue=\"20%\" animateIn=\"13.85\" />`,
     `  </motionGraphic>`,
     `</visual>`,
   ].join("\n"),
@@ -192,7 +200,7 @@ const DEFAULT_EXAMPLE_XML_BY_RENDERER: Record<MotionGraphicRendererId, string> =
     `<visual id=\"visual-6\" label=\"Trend rising\" start=\"18.00\" end=\"24.00\" visualType=\"motion_graphic\">`,
     `  <motionGraphic templateId=\"line_growth_chart\">`,
     `    <timing item=\"title\" at=\"18.15\" />`,
-    `    <timing item=\"line\" at=\"18.80\" />`,
+    `    <timing item=\"chart\" at=\"18.80\" />`,
     `    <arg name=\"title\">Growth trend</arg>`,
     `    <arg name=\"direction\">increase</arg>`,
     `    <arg name=\"startLabel\">Start</arg>`,
@@ -219,10 +227,9 @@ const DEFAULT_EXAMPLE_XML_BY_RENDERER: Record<MotionGraphicRendererId, string> =
   timeline: [
     `<visual id=\"visual-8\" label=\"Three-step timeline\" start=\"30.00\" end=\"38.00\" visualType=\"motion_graphic\">`,
     `  <motionGraphic templateId=\"timeline\">`,
-    `    <timing item=\"steps\" at=\"30.50\" />`,
-    `    <step label=\"DAY 1\">Setup</step>`,
-    `    <step label=\"DAY 7\">Signal</step>`,
-    `    <step label=\"DAY 30\">Visible change</step>`,
+    `    <step label=\"DAY 1\" animateIn=\"30.50\">Setup</step>`,
+    `    <step label=\"DAY 7\" animateIn=\"32.10\">Signal</step>`,
+    `    <step label=\"DAY 30\" animateIn=\"34.00\">Visible change</step>`,
     `  </motionGraphic>`,
     `</visual>`,
   ].join("\n"),
@@ -230,6 +237,7 @@ const DEFAULT_EXAMPLE_XML_BY_RENDERER: Record<MotionGraphicRendererId, string> =
     `<visual id=\"visual-9\" label=\"Cause and effect\" start=\"38.00\" end=\"44.00\" visualType=\"motion_graphic\">`,
     `  <motionGraphic templateId=\"cause_effect\">`,
     `    <timing item=\"cause\" at=\"38.30\" />`,
+    `    <timing item=\"arrow\" at=\"39.25\" />`,
     `    <timing item=\"effect\" at=\"40.10\" />`,
     `    <arg name=\"cause\">Small daily tension</arg>`,
     `    <arg name=\"effect\">Jaw and neck read tighter</arg>`,
@@ -239,35 +247,33 @@ const DEFAULT_EXAMPLE_XML_BY_RENDERER: Record<MotionGraphicRendererId, string> =
   caption_word_wall: [
     `<visual id=\"visual-10\" label=\"Caption wall emphasis\" start=\"44.00\" end=\"49.00\" visualType=\"motion_graphic\">`,
     `  <motionGraphic templateId=\"caption_word_wall\">`,
-    `    <line size=\"regular\">most people miss this part</line>`,
-    `    <line size=\"large\">the words become the visual</line>`,
-    `    <line size=\"extra_large\">with one extra large row</line>`,
-    `    <blankLine />`,
-    `    <line size=\"regular\">and every highlight follows the voice</line>`,
+    `    <line size=\"regular\" animateIn=\"44.20\">most people miss this part</line>`,
+    `    <line size=\"large\" animateIn=\"45.05\">the words become the visual</line>`,
+    `    <line size=\"extra_large\" animateIn=\"46.05\">with one extra large row</line>`,
+    `    <blankLine animateIn=\"46.70\" />`,
+    `    <line size=\"regular\" animateIn=\"47.20\">and every highlight follows the voice</line>`,
     `  </motionGraphic>`,
     `</visual>`,
   ].join("\n"),
   ranked_podium: [
     `<visual id=\"visual-11\" label=\"Ranked priorities\" start=\"49.00\" end=\"56.00\" visualType=\"motion_graphic\">`,
     `  <motionGraphic templateId=\"ranked_podium\">`,
-    `    <timing item=\"items\" at=\"49.40\" />`,
     `    <arg name=\"startIndex\">1</arg>`,
     `    <arg name=\"futureItemsMode\">hidden</arg>`,
-    `    <step>Most visible change</step>`,
-    `    <step>Faster feedback</step>`,
-    `    <step>Cleaner routine</step>`,
+    `    <step label=\"01\" animateIn=\"49.40\">Most visible change</step>`,
+    `    <step label=\"02\" animateIn=\"50.25\">Faster feedback</step>`,
+    `    <step label=\"03\" animateIn=\"51.10\">Cleaner routine</step>`,
     `  </motionGraphic>`,
     `</visual>`,
   ].join("\n"),
   checklist: [
     `<visual id=\"visual-12\" label=\"Routine checklist\" start=\"56.00\" end=\"63.00\" visualType=\"motion_graphic\">`,
     `  <motionGraphic templateId=\"checklist\">`,
-    `    <timing item=\"items\" at=\"56.40\" />`,
     `    <arg name=\"startIndex\">1</arg>`,
     `    <arg name=\"futureItemsMode\">hidden</arg>`,
-    `    <step>Set the baseline</step>`,
-    `    <step>Make the small adjustment</step>`,
-    `    <step>Repeat it daily</step>`,
+    `    <step animateIn=\"56.40\">Set the baseline</step>`,
+    `    <step animateIn=\"57.45\">Make the small adjustment</step>`,
+    `    <step animateIn=\"58.55\">Repeat it daily</step>`,
     `  </motionGraphic>`,
     `</visual>`,
   ].join("\n"),
@@ -275,18 +281,19 @@ const DEFAULT_EXAMPLE_XML_BY_RENDERER: Record<MotionGraphicRendererId, string> =
     `<visual id=\"visual-13\" label=\"Scorecard\" start=\"63.00\" end=\"69.00\" visualType=\"motion_graphic\">`,
     `  <motionGraphic templateId=\"scorecard\">`,
     `    <timing item=\"title\" at=\"63.20\" />`,
-    `    <timing item=\"data\" at=\"63.90\" />`,
     `    <arg name=\"title\">Scorecard</arg>`,
-    `    <item label=\"Clarity\" value=\"82\" displayValue=\"82/100\" />`,
-    `    <item label=\"Consistency\" value=\"68\" displayValue=\"68/100\" />`,
-    `    <item label=\"Effort\" value=\"91\" displayValue=\"91/100\" />`,
+    `    <item label=\"Clarity\" value=\"82\" displayValue=\"82/100\" animateIn=\"63.90\" />`,
+    `    <item label=\"Consistency\" value=\"68\" displayValue=\"68/100\" animateIn=\"64.65\" />`,
+    `    <item label=\"Effort\" value=\"91\" displayValue=\"91/100\" animateIn=\"65.40\" />`,
     `  </motionGraphic>`,
     `</visual>`,
   ].join("\n"),
   research_paper_card: [
     `<visual id=\"visual-14\" label=\"Study finding\" start=\"69.00\" end=\"75.00\" visualType=\"motion_graphic\">`,
     `  <motionGraphic templateId=\"research_paper_card\">`,
+    `    <timing item=\"paper\" at=\"69.15\" />`,
     `    <timing item=\"source\" at=\"69.25\" />`,
+    `    <timing item=\"title\" at=\"69.75\" />`,
     `    <timing item=\"finding\" at=\"70.60\" />`,
     `    <arg name=\"source\">Journal of Applied Research</arg>`,
     `    <arg name=\"year\">2024</arg>`,
@@ -482,15 +489,15 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     durationSeconds: 7,
     durationGuidance: "Around 3 seconds for each step on the timeline, e.g. 4 steps should be around 12 seconds.",
     stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: { steps: [{ label: "DAY 1", text: "Setup" }, { label: "DAY 7", text: "Signal" }, { label: "DAY 30", text: "Visible change" }] },
+    defaultArgs: { steps: [{ label: "DAY 1", text: "Setup", animateIn: 0.5 }, { label: "DAY 7", text: "Signal", animateIn: 2.1 }, { label: "DAY 30", text: "Visible change", animateIn: 4 }] },
     fields: [
       {
         name: "steps",
         label: "Timeline steps",
         type: "timelineSteps",
         required: true,
-        description: "Array of { label, text } objects. Legacy string arrays still work and auto-label as 01, 02, 03.",
-        defaultValue: [{ label: "DAY 1", text: "Setup" }, { label: "DAY 7", text: "Signal" }, { label: "DAY 30", text: "Visible change" }],
+        description: "Array of { label, text, animateIn } objects. Legacy string arrays still work and auto-label as 01, 02, 03.",
+        defaultValue: [{ label: "DAY 1", text: "Setup", animateIn: 0.5 }, { label: "DAY 7", text: "Signal", animateIn: 2.1 }, { label: "DAY 30", text: "Visible change", animateIn: 4 }],
       },
     ],
     deterministicSoundEffects: [
@@ -624,9 +631,9 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     stylePreset: DEFAULT_STYLE_PRESET,
     defaultArgs: {
       items: [
-        { text: "Set the baseline" },
-        { text: "Make the small adjustment" },
-        { text: "Repeat it daily" },
+        { text: "Set the baseline", animateIn: 0.4 },
+        { text: "Make the small adjustment", animateIn: 1.45 },
+        { text: "Repeat it daily", animateIn: 2.55 },
       ],
       startIndex: 1,
       futureItemsMode: "hidden",
@@ -637,11 +644,11 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         label: "Checklist items",
         type: "timelineSteps",
         required: true,
-        description: "Use ordered <step>copy</step> entries. Labels are ignored by this template.",
+        description: "Use ordered <step animateIn=\"absolute_video_timestamp_seconds\">copy</step> entries. Labels are ignored by this template.",
         defaultValue: [
-          { text: "Set the baseline" },
-          { text: "Make the small adjustment" },
-          { text: "Repeat it daily" },
+          { text: "Set the baseline", animateIn: 0.4 },
+          { text: "Make the small adjustment", animateIn: 1.45 },
+          { text: "Repeat it daily", animateIn: 2.55 },
         ],
       },
       {
@@ -788,18 +795,26 @@ function cleanOptionalString(value: unknown, fallback = "") {
   return typeof value === "string" ? value.trim() : fallback;
 }
 
+function cleanOptionalNumber(value: unknown) {
+  if (value === undefined || value === null || value === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.round(Math.max(0, parsed) * 1000) / 1000 : undefined;
+}
+
 function autoTimelineStepLabel(index: number) {
   return String(index + 1).padStart(2, "0");
 }
 
 function normalizeTimelineStep(value: unknown, index: number) {
   if (value && typeof value === "object" && !Array.isArray(value)) {
-    const candidate = value as { label?: unknown; leftLabel?: unknown; marker?: unknown; text?: unknown; copy?: unknown; title?: unknown; step?: unknown; value?: unknown };
+    const candidate = value as { label?: unknown; leftLabel?: unknown; marker?: unknown; text?: unknown; copy?: unknown; title?: unknown; step?: unknown; value?: unknown; animateIn?: unknown; revealAt?: unknown; startAt?: unknown; at?: unknown; time?: unknown };
     const text = cleanString(candidate.text ?? candidate.copy ?? candidate.title ?? candidate.step ?? candidate.value, "");
     if (!text) return null;
+    const animateIn = cleanOptionalNumber(candidate.animateIn ?? candidate.revealAt ?? candidate.startAt ?? candidate.at ?? candidate.time);
     return {
       label: cleanString(candidate.label ?? candidate.leftLabel ?? candidate.marker, autoTimelineStepLabel(index)),
       text,
+      ...(animateIn !== undefined ? { animateIn } : {}),
     };
   }
   const text = cleanString(value, "");
@@ -808,12 +823,12 @@ function normalizeTimelineStep(value: unknown, index: number) {
 
 function normalizeTimelineSteps(value: unknown) {
   return Array.isArray(value)
-    ? value.map((step, index) => normalizeTimelineStep(step, index)).filter((step): step is { label: string; text: string } => Boolean(step))
+    ? value.map((step, index) => normalizeTimelineStep(step, index)).filter((step): step is { label: string; text: string; animateIn?: number } => Boolean(step))
     : [];
 }
 
 function normalizeChecklistItems(value: unknown) {
-  return normalizeTimelineSteps(value).map((item) => ({ text: item.text }));
+  return normalizeTimelineSteps(value).map((item) => ({ text: item.text, ...(item.animateIn !== undefined ? { animateIn: item.animateIn } : {}) }));
 }
 
 function normalizeCaptionWordWallLineSize(value: unknown, candidate: { emphasized?: unknown; emphasis?: unknown } = {}) {
@@ -1057,7 +1072,7 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
         return {
           ...field,
           type: "timelineSteps" as const,
-          description: field.description || "Array of { label, text } objects. Legacy string arrays still work and auto-label as 01, 02, 03.",
+          description: field.description || "Array of { label, text, animateIn } objects. Legacy string arrays still work and auto-label as 01, 02, 03.",
           defaultValue: defaultValue.length > 0 ? defaultValue : field.defaultValue,
         };
       });
@@ -1074,7 +1089,7 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
           label: "Checklist items",
           type: "timelineSteps" as const,
           required: true,
-          description: "Use ordered <step>copy</step> entries. Labels are ignored by this template.",
+          description: "Use ordered <step animateIn=\"absolute_video_timestamp_seconds\">copy</step> entries. Labels are ignored by this template.",
           defaultValue: normalizeChecklistItems(legacyItemsField?.defaultValue).length > 0
             ? normalizeChecklistItems(legacyItemsField?.defaultValue)
             : fallbackByName.get("items")?.defaultValue,

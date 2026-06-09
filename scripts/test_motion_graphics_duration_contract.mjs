@@ -8,10 +8,6 @@ const motionGraphicsSource = fs.readFileSync(
   path.join(repoRoot, "src/lib/short-form-motion-graphics.ts"),
   "utf-8",
 );
-const visualPlanningSource = fs.readFileSync(
-  path.join(repoRoot, "src/lib/short-form-xml-visual-planning-settings.ts"),
-  "utf-8",
-);
 const stageWorkerSource = fs.readFileSync(
   path.join(repoRoot, "scripts/short-form-stage-worker.mjs"),
   "utf-8",
@@ -69,9 +65,9 @@ assert.match(
   "Line growth chart template must expose optional counter units to Scribe.",
 );
 assert.match(
-  visualPlanningSource,
+  motionGraphicsSource,
   /<arg name=\\"units\\">homes<\/arg>/,
-  "Editable XML visual-planning guidance must document line_growth_chart counter units.",
+  "Individual line_growth_chart template guidance must document counter units.",
 );
 assert.match(
   motionGraphicsSource,

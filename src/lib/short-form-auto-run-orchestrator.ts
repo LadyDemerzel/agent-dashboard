@@ -102,6 +102,30 @@ function hasActiveXmlPipeline(project: ShortFormProject) {
   );
 }
 
+async function waitForActiveXmlPipelineToSettle(
+  projectId: string,
+  autoRunId: string,
+  signal: AbortSignal,
+  step: ShortFormAutoRunStepDefinition,
+  current: ShortFormProject,
+) {
+  if (!hasActiveXmlPipeline(current)) return current;
+
+  const runId = current.xmlScript.pipeline?.runId;
+  return waitForProject(
+    projectId,
+    autoRunId,
+    signal,
+    step,
+    (nextProject) => !hasActiveXmlPipeline(nextProject),
+    (nextProject) =>
+      runId
+        ? nextProject.xmlScript.pipeline?.runId === runId &&
+          nextProject.xmlScript.pipeline?.status === "failed"
+        : nextProject.xmlScript.pipeline?.status === "failed",
+  );
+}
+
 function stageFailed(project: ShortFormProject, stepId: ShortFormAutoRunStepId) {
   if (stepId === "generate-narration-audio") {
     return project.xmlScript.pipeline?.steps.some(
@@ -1286,10 +1310,12 @@ async function runNarrationAudio(
   signal: AbortSignal,
   step: ShortFormAutoRunStepDefinition,
 ) {
-  const current = assertAutoRunActive(projectId, autoRunId, signal);
+  let current = assertAutoRunActive(projectId, autoRunId, signal);
   if (!approved(current.script.status)) {
     throw new Error("Approve Text Script before auto-running Narration Audio.");
   }
+  current = await waitForActiveXmlPipelineToSettle(projectId, autoRunId, signal, step, current);
+  if (current.xmlScript.audioUrl) return current;
 
   const response = await postJson(
     baseUrl,
@@ -1321,6 +1347,10 @@ async function runPlanCaptions(
   signal: AbortSignal,
   step: ShortFormAutoRunStepDefinition,
 ) {
+  let current = assertAutoRunActive(projectId, autoRunId, signal);
+  current = await waitForActiveXmlPipelineToSettle(projectId, autoRunId, signal, step, current);
+  if (current.xmlScript.captions?.length) return current;
+
   const response = await postJson(
     baseUrl,
     `/api/short-form-videos/${projectId}/xml-script`,
@@ -1353,6 +1383,8 @@ async function runPlanVisuals(
   current: ShortFormProject,
   options?: AutoRunStepRunOptions,
 ) {
+  current = await waitForActiveXmlPipelineToSettle(projectId, autoRunId, signal, step, current);
+
   if (!current.xmlScript.captions?.length) {
     throw new Error("Plan Captions before auto-running Plan Visuals.");
   }

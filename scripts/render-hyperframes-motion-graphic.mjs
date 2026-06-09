@@ -311,6 +311,20 @@ function textBlock(id, lines, x, y, options = {}) {
   );
 }
 
+function singleLineTextBlock(id, text, _x, y, options = {}) {
+  const size = options.size ?? 58;
+  const right = options.right ?? 0;
+  const normalized = asText(text);
+  const align = options.align || "left";
+  const color = options.color || PALETTE.offWhite;
+  return htmlElement(
+    id,
+    `text-block single-line-text ${options.className || ""}`,
+    `right:${right}px;top:${y}px;width:max-content;font-size:${size}px;line-height:${size + (options.lineGap ?? 16)}px;text-align:${align};color:${color};white-space:nowrap;overflow:visible;`,
+    `<div>${escapeHtml(normalized)}</div>`,
+  );
+}
+
 function reveal(timeline, selector, at, options = {}) {
   const duration = options.duration ?? 0.42;
   const y = options.y ?? 34;
@@ -461,24 +475,9 @@ function valueLabelWithUnits(valueLabel, units) {
 }
 
 function timelineLabelLayout(value) {
-  const maxCharsPerLine = 8;
-  const maxLines = 2;
-  let lines = wrap(value, maxCharsPerLine, maxLines);
-  if (lines.length === 0) lines = ["01"];
-  const hadOverflow = lines.length > maxLines || lines.some((line) => line.length > maxCharsPerLine + 2);
-  lines = lines.slice(0, maxLines).map((line) => {
-    if (line.length <= maxCharsPerLine) return line;
-    return `${line.slice(0, Math.max(0, maxCharsPerLine - 3))}...`;
-  });
-  if (hadOverflow && lines.length > 0 && !lines[lines.length - 1].endsWith("...")) {
-    const line = lines[lines.length - 1];
-    lines[lines.length - 1] = `${line.slice(0, Math.max(0, maxCharsPerLine - 3))}...`;
-  }
-  const longestLineLength = Math.max(...lines.map((line) => line.length));
-  const fontSize = lines.length > 1 ? 26 : longestLineLength >= 7 ? 30 : longestLineLength >= 6 ? 34 : 38;
-  const lineGap = lines.length > 1 ? 6 : 0;
-  const blockHeight = lines.length * fontSize + Math.max(0, lines.length - 1) * lineGap;
-  return { lines, fontSize, lineGap, blockHeight };
+  const text = asText(value, "01");
+  const fontSize = 38;
+  return { text, fontSize, lineGap: 0, blockHeight: fontSize };
 }
 
 function lineGrowthChart(args, timeline) {
@@ -735,11 +734,6 @@ function timelineGraphic(args, timeline) {
   const stepRevealTimes = steps.map((step, index) =>
     itemTiming(args, "steps", step, index, fixedRevealTiming(index, { firstRevealAt, revealDuration: stepRevealDuration, gapAfterReveal: gapAfterStepReveal }).revealAt, ["items", "timeline"]),
   );
-  const firstStepRevealAt = Math.min(...stepRevealTimes, firstRevealAt);
-  const lastRevealFinish = Math.max(
-    firstRevealAt + (steps.length - 1) * (stepRevealDuration + gapAfterStepReveal) + stepRevealDuration,
-    ...stepRevealTimes.map((revealAt) => revealAt + stepRevealDuration),
-  );
   const stepGap = steps.length <= 3 ? 266 : steps.length === 4 ? 218 : 180;
   const stepFontSize = steps.length <= 3 ? 54 : 48;
   const stepTextTopOffset = -14;
@@ -774,12 +768,24 @@ function timelineGraphic(args, timeline) {
   const groupTop = Math.min(...stepExtents.map((extent) => extent.top));
   const groupBottom = Math.max(...stepExtents.map((extent) => extent.bottom));
   const startY = Math.round(HEIGHT / 2 - (groupTop + groupBottom) / 2);
-  const firstRuleCenterY = startY + stepExtents[0].ruleCenterY;
-  const lastRuleCenterY = startY + stepExtents[stepExtents.length - 1].ruleCenterY;
+  const ruleCenterYs = stepExtents.map((extent) => startY + extent.ruleCenterY);
+  const firstRuleCenterY = ruleCenterYs[0];
+  const lastRuleCenterY = ruleCenterYs[ruleCenterYs.length - 1];
+  const verticalRuleHeight = Math.max(1, lastRuleCenterY - firstRuleCenterY);
+  const stepRevealFinishTimes = stepRevealTimes.map((revealAt) => revealAt + stepRevealDuration);
   const html = [
-    htmlElement("timeline-rule", "rule", `left:${verticalRuleX}px;top:${firstRuleCenterY}px;width:${verticalRuleW}px;height:${Math.max(1, lastRuleCenterY - firstRuleCenterY)}px;background:${PALETTE.faintGrey};transform-origin:center top;`),
+    htmlElement("timeline-rule", "rule", `left:${verticalRuleX}px;top:${firstRuleCenterY}px;width:${verticalRuleW}px;height:${verticalRuleHeight}px;background:${PALETTE.faintGrey};transform-origin:center top;`),
   ];
-  timeline.push(`tl.fromTo("#timeline-rule", {opacity:0, scaleY:0}, {opacity:1, scaleY:1, duration:${Math.max(0.1, lastRevealFinish - firstStepRevealAt)}, ease:"power2.out"}, ${firstStepRevealAt.toFixed(3)});`);
+  timeline.push(`tl.set("#timeline-rule", {opacity:0, scaleY:0}, 0);`);
+  if (steps.length > 1) {
+    timeline.push(`tl.set("#timeline-rule", {opacity:1, scaleY:0}, ${stepRevealFinishTimes[0].toFixed(3)});`);
+    for (let index = 1; index < steps.length; index += 1) {
+      const startAt = stepRevealFinishTimes[index - 1];
+      const endAt = Math.max(startAt + 0.001, stepRevealFinishTimes[index]);
+      const targetScale = Math.max(0, Math.min(1, (ruleCenterYs[index] - firstRuleCenterY) / verticalRuleHeight));
+      timeline.push(`tl.to("#timeline-rule", {scaleY:${targetScale.toFixed(4)}, duration:${(endAt - startAt).toFixed(3)}, ease:"none"}, ${startAt.toFixed(3)});`);
+    }
+  }
   steps.forEach((step, index) => {
     const at = stepRevealTimes[index] ?? fixedRevealTiming(index, { firstRevealAt, revealDuration: stepRevealDuration, gapAfterReveal: gapAfterStepReveal }).revealAt;
     const y = startY + index * stepGap;
@@ -787,7 +793,7 @@ function timelineGraphic(args, timeline) {
     html.push(htmlElement(`timeline-connector-${index}`, "rule", `left:${ruleX}px;top:${connectorY}px;width:${ruleW}px;height:${ruleH}px;background:${index % 2 ? PALETTE.mutedSage : PALETTE.mutedPeach};transform-origin:center center;`));
     const labelLayout = labelLayouts[index];
     const labelTop = y + labelCenterOffset - labelLayout.blockHeight / 2;
-    html.push(textBlock(`timeline-label-${index}`, labelLayout.lines, labelRightX - 120, labelTop, { width: 120, size: labelLayout.fontSize, lineGap: labelLayout.lineGap, align: "right", color: PALETTE.dimGrey }));
+    html.push(singleLineTextBlock(`timeline-label-${index}`, labelLayout.text, labelRightX, labelTop, { right: WIDTH - labelRightX, size: labelLayout.fontSize, lineGap: labelLayout.lineGap, align: "right", color: PALETTE.dimGrey }));
     html.push(textBlock(`timeline-text-${index}`, wrap(step.text, stepTextMaxChars), stepTextX, y + stepTextTopOffset, { width: 660, size: stepFontSize, lineGap: stepTextLineGap }));
     timeline.push(`tl.fromTo("#timeline-connector-${index}", {opacity:0, scaleX:0}, {opacity:1, scaleX:1, duration:${stepRevealDuration}, ease:"power3.out"}, ${at.toFixed(3)});`);
     reveal(timeline, `#timeline-label-${index}`, at, { y: 28, duration: stepRevealDuration });
@@ -859,7 +865,7 @@ function scorecard(args, timeline) {
     const y = startY + index * (rowH + gap);
     const scoreW = Math.max(18, Math.round((Math.abs(item.value) / max) * barW));
     html.push(textBlock(`score-label-${index}`, [item.label], labelX, y, { width: 620, size: 40 }));
-    html.push(textBlock(`score-value-${index}`, [item.displayValue || String(item.value)], valueRightX - 220, y, { width: 220, size: 40, align: "right", color: PALETTE.dimGrey }));
+    html.push(singleLineTextBlock(`score-value-${index}`, item.displayValue || String(item.value), valueRightX, y, { right: WIDTH - valueRightX, size: 40, align: "right", color: PALETTE.dimGrey }));
     html.push(htmlElement(`score-track-${index}`, "score-track", `left:${barX}px;top:${y + 72}px;width:${barW}px;height:8px;background:${PALETTE.faintGrey};`));
     html.push(htmlElement(`score-bar-${index}`, "score-bar", `left:${barX}px;top:${y + 72}px;width:${scoreW}px;height:8px;background:${ACCENTS[index % ACCENTS.length]};transform-origin:left center;`));
     reveal(timeline, `#score-label-${index}`, at, { y: 30, duration: 0.42 });
