@@ -42,7 +42,7 @@ const templateConfigs = [
   { rendererId: "scorecard", defaultArgs: { title: "Scorecard", data: [{ label: "Clarity", value: 92, displayValue: "1,234,567 people" }] } },
   { rendererId: "research_paper_card", defaultArgs: { source: "Study", title: "Research finding", finding: "One finding changes how this should be read." } },
   { rendererId: "good_bad_indicator", defaultArgs: { indicatorType: "good", text: "Do this" } },
-  { rendererId: "caption_word_wall", allowSyntheticTiming: true, defaultArgs: { lines: [{ text: "miss this" }, { text: "words visual", size: "large" }, { text: "extra row", size: "extra_large" }] } },
+  { rendererId: "caption_word_wall", allowSyntheticTiming: true, defaultArgs: { text: "miss <large>this,</large> words <extraLarge>visual.</extraLarge>" } },
 ];
 
 try {
@@ -123,24 +123,27 @@ try {
       assert.ok(!html.includes("drawSVG"), "cause_effect must not depend on non-installed GSAP plugins");
     }
     if (config.rendererId === "caption_word_wall") {
-      assert.ok(html.includes("align-content:flex-start"), "caption_word_wall wrapped rows should avoid extra centered vertical air");
+      assert.ok(html.includes("caption-word-wall-flow"), "caption_word_wall should render one continuous caption flow");
+      assert.ok(!html.includes("word-line-"), "caption_word_wall must not render configured separate line rows");
+      assert.ok(html.includes("align-content:flex-start"), "caption_word_wall wrapped flow should avoid extra centered vertical air");
       assert.ok(html.includes("--caption-row-gap"), "caption_word_wall should keep row spacing explicit for wrapped lines");
       assert.ok(html.includes("left:108px"), "caption_word_wall should use 10% left padding");
       assert.ok(html.includes("width:864px"), "caption_word_wall should use an 80% text region");
-      const lineMetrics = [...html.matchAll(/id="word-line-\d+"[\s\S]*?top:(\d+)px[\s\S]*?height:(\d+)px[\s\S]*?font-weight:(\d+)[\s\S]*?font-size:(\d+)px/g)]
+      assert.ok(html.includes("display:none"), "caption_word_wall should hide unspoken future words instead of rendering them dimmed");
+      assert.ok(!html.includes("--caption-upcoming"), "caption_word_wall should not configure a darker upcoming-word color");
+      assert.ok(html.includes("scale:1.16"), "caption_word_wall active word pop should use transform scale");
+      assert.ok(!html.includes("fontSize:"), "caption_word_wall active word pop must not animate font-size and change wrapping");
+      assert.ok(html.includes("this,"), "caption_word_wall should preserve punctuation in displayed word tokens");
+      assert.ok(html.includes("visual."), "caption_word_wall should preserve sentence punctuation in displayed word tokens");
+      const wordMetrics = [...html.matchAll(/class="word-token word-size-(?:large|extra_large)"[^>]*style="([^"]*)"/g)]
         .map((match) => ({
-          top: Number(match[1]),
-          height: Number(match[2]),
-          weight: Number(match[3]),
-          fontSize: Number(match[4]),
+          weight: Number(match[1].match(/font-weight:(\d+)/)?.[1]),
+          fontSize: Number(match[1].match(/font-size:(\d+)px/)?.[1]),
         }));
-      const lineFontSizes = lineMetrics.map((line) => line.fontSize);
-      assert.ok(lineFontSizes.length >= 3, "caption_word_wall fixture should render regular, large, and extra large lines");
-      assert.ok(lineFontSizes[1] > lineFontSizes[0] * 1.25, "large captions should remain clearly larger than regular captions");
-      assert.ok(lineFontSizes[2] > lineFontSizes[1] * 1.55, "extra large captions should be much larger than large captions");
-      assert.equal(lineMetrics[1].weight, 600, "large captions should use the requested 600 font weight");
-      assert.ok(lineMetrics[2].weight > lineMetrics[1].weight, "extra large captions should remain heavier than large captions");
-      assert.equal(lineMetrics[1].top - (lineMetrics[0].top + lineMetrics[0].height), 16, "caption_word_wall should keep a 16px gap between configured lines");
+      assert.equal(wordMetrics.length, 2, "caption_word_wall fixture should render one large and one extra-large inline token");
+      assert.ok(wordMetrics[1].fontSize > wordMetrics[0].fontSize, "extra-large inline words should render larger than large inline words");
+      assert.equal(wordMetrics[0].weight, 600, "large inline words should use the requested 600 font weight");
+      assert.ok(wordMetrics[1].weight > wordMetrics[0].weight, "extra-large inline words should remain heavier than large inline words");
     }
     fs.writeFileSync(path.join(templateDir, "index.html"), html, "utf-8");
     fs.writeFileSync(path.join(templateDir, "hyperframes.json"), JSON.stringify({ entry: "index.html" }), "utf-8");

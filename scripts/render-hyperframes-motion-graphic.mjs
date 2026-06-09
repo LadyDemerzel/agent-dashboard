@@ -999,19 +999,62 @@ function asCaptionWordWallLines(value, fallback = []) {
   }).filter((line) => line.blank || line.text);
 }
 
-function buildCaptionWordWallTimeline({ lines, alignmentWords, visualStartSeconds, durationSeconds, allowSyntheticTiming = false }) {
-  const normalizedLines = asCaptionWordWallLines(lines, [
-    { text: "most people miss this part" },
-    { text: "the words become the visual", size: "large" },
-    { text: "with one extra large row", size: "extra_large" },
-    { blank: true },
-    { text: "and every highlight follows the voice" },
-  ]);
-  if (normalizedLines.length === 0) throw new Error("caption_word_wall requires at least one <line> or <blankLine /> entry.");
+function normalizeCaptionWordWallInlineSize(tagName) {
+  const key = String(tagName || "").trim().toLowerCase().replace(/[\s:-]+/g, "_");
+  if (key === "large" || key === "big") return "large";
+  if (key === "extra_large" || key === "extralarge" || key === "extra" || key === "xl" || key === "xlarge" || key === "extra_large_word" || key === "extralargeword") return "extra_large";
+  return "";
+}
+
+function captionWordWallLegacyLinesToText(lines) {
+  return asCaptionWordWallLines(lines, [])
+    .filter((line) => !line.blank && line.text)
+    .map((line) => {
+      if (line.size === "extra_large") return `<extraLarge>${line.text}</extraLarge>`;
+      if (line.size === "large") return `<large>${line.text}</large>`;
+      return line.text;
+    })
+    .join(" ");
+}
+
+function parseCaptionWordWallText(value) {
+  const source = asText(value, "Most people miss this part, because the words become the visual.");
+  const tokens = [];
+  const sizeStack = ["regular"];
+  const tagPattern = /<\/?([A-Za-z][\w:.-]*)(?:\s[^>]*)?>/g;
+  let cursor = 0;
+  const pushText = (chunk) => {
+    splitDisplayWords(chunk).forEach((word) => {
+      tokens.push({ text: word, size: sizeStack[sizeStack.length - 1] || "regular" });
+    });
+  };
+  for (const match of source.matchAll(tagPattern)) {
+    const rawTag = match[0];
+    const index = match.index || 0;
+    pushText(source.slice(cursor, index));
+    const size = normalizeCaptionWordWallInlineSize(match[1]);
+    if (size) {
+      if (/^<\s*\//.test(rawTag)) {
+        const stackIndex = sizeStack.lastIndexOf(size);
+        if (stackIndex > 0) sizeStack.splice(stackIndex, 1);
+      } else if (!/\/\s*>$/.test(rawTag)) {
+        sizeStack.push(size);
+      }
+    }
+    cursor = index + rawTag.length;
+  }
+  pushText(source.slice(cursor));
+  return tokens;
+}
+
+function buildCaptionWordWallTimeline({ text, lines, alignmentWords, visualStartSeconds, durationSeconds, allowSyntheticTiming = false }) {
+  const sourceText = asText(text) || captionWordWallLegacyLinesToText(lines);
+  const sourceTokens = parseCaptionWordWallText(sourceText);
+  if (sourceTokens.length === 0) throw new Error("caption_word_wall requires text in <arg name=\"text\">...</arg>.");
   let wordsSource = alignmentWords;
   if (wordsSource.length === 0) {
     if (!allowSyntheticTiming) throw new Error("caption_word_wall requires forced-alignment word timestamps. Run the XML Script narration/alignment steps before rendering this motion graphic.");
-    const fallbackWords = normalizedLines.filter((line) => !line.blank).flatMap((line) => splitDisplayWords(line.text));
+    const fallbackWords = sourceTokens.map((token) => token.text);
     const step = Math.max(0.08, durationSeconds / Math.max(1, fallbackWords.length));
     wordsSource = fallbackWords.map((word, index) => ({ text: word, normalized: normalizeWordToken(word), start: index * step, end: Math.min(durationSeconds, (index + 0.82) * step) }));
     visualStartSeconds = 0;
@@ -1021,39 +1064,32 @@ function buildCaptionWordWallTimeline({ lines, alignmentWords, visualStartSecond
     ? Math.max(0, wordsSource.findIndex((word) => word.end >= visualStartSeconds - rangeToleranceSeconds))
     : 0;
   if (cursor < 0) cursor = wordsSource.length;
-  const entries = [];
-  const resolvedLines = normalizedLines.map((line, lineIndex) => {
-    if (line.blank) return { blank: true, size: "regular", words: [] };
-    const lineWords = splitDisplayWords(line.text).map((wordText) => {
-      const normalized = normalizeWordToken(wordText);
-      let matchIndex = -1;
-      for (let searchIndex = cursor; searchIndex < wordsSource.length; searchIndex += 1) {
-        if (wordsSource[searchIndex]?.normalized === normalized) {
-          matchIndex = searchIndex;
-          break;
-        }
+  const entries = sourceTokens.map((token, tokenIndex) => {
+    const normalized = normalizeWordToken(token.text);
+    let matchIndex = -1;
+    for (let searchIndex = cursor; searchIndex < wordsSource.length; searchIndex += 1) {
+      if (wordsSource[searchIndex]?.normalized === normalized) {
+        matchIndex = searchIndex;
+        break;
       }
-      if (matchIndex === -1) throw new Error(`caption_word_wall could not match spoken word "${wordText}" in forced-alignment data. Keep <line> text exact and in narration order.`);
-      const matched = wordsSource[matchIndex];
-      cursor = matchIndex + 1;
-      const localStart = matched.start - visualStartSeconds;
-      const localEnd = matched.end - visualStartSeconds;
-      if (localEnd < -rangeToleranceSeconds || localStart > durationSeconds + rangeToleranceSeconds) {
-        throw new Error(`caption_word_wall word "${wordText}" is outside the visual start/end range. Align the motion graphic visual range with the spoken words it displays.`);
-      }
-      const entry = {
-        text: wordText,
-        start: Math.max(0, localStart),
-        end: Math.min(durationSeconds, Math.max(localStart + 0.05, localEnd)),
-        lineIndex,
-        globalIndex: entries.length,
-      };
-      entries.push(entry);
-      return entry;
-    });
-    return { ...line, words: lineWords, lineStart: line.animateIn ?? lineWords[0]?.start ?? 0 };
+    }
+    if (matchIndex === -1) throw new Error(`caption_word_wall could not match spoken word "${token.text}" in forced-alignment data. Keep <arg name="text"> words exact and in narration order.`);
+    const matched = wordsSource[matchIndex];
+    cursor = matchIndex + 1;
+    const localStart = matched.start - visualStartSeconds;
+    const localEnd = matched.end - visualStartSeconds;
+    if (localEnd < -rangeToleranceSeconds || localStart > durationSeconds + rangeToleranceSeconds) {
+      throw new Error(`caption_word_wall word "${token.text}" is outside the visual start/end range. Align the motion graphic visual range with the spoken words it displays.`);
+    }
+    return {
+      text: token.text,
+      size: token.size || "regular",
+      start: Math.max(0, localStart),
+      end: Math.min(durationSeconds, Math.max(localStart + 0.05, localEnd)),
+      globalIndex: tokenIndex,
+    };
   });
-  return { lines: resolvedLines, words: entries };
+  return { words: entries };
 }
 
 function readDefaultCaptionStyle() {
@@ -1089,9 +1125,9 @@ function captionStyleNumber(style, key, fallback, min, max) {
 }
 
 function captionWallSizeRatio(size) {
-  if (size === "extra_large") return 3.1;
-  if (size === "large") return 1.18;
-  return 0.82;
+  if (size === "extra_large") return 1.62;
+  if (size === "large") return 1.24;
+  return 1;
 }
 
 function captionWallFontWeight(size, baseFontWeight) {
@@ -1100,32 +1136,26 @@ function captionWallFontWeight(size, baseFontWeight) {
   return Math.max(500, Math.min(650, baseFontWeight - 300));
 }
 
-function estimateCaptionLineWidth(text, fontSize) {
-  const words = splitDisplayWords(text);
-  const letters = words.join("").length;
-  const tokenGaps = Math.max(0, words.length - 1);
-  return (letters * fontSize * 0.57) + (tokenGaps * fontSize * 0.95);
-}
-
 function estimateCaptionWordWidth(word, fontSize) {
   return Math.max(fontSize * 0.42, word.length * fontSize * 0.57);
 }
 
-function estimateCaptionWrappedRows(text, fontSize, wordGap, safeWidth) {
-  const words = splitDisplayWords(text);
-  if (words.length === 0) return 1;
-  let rows = 1;
-  let rowWidth = 0;
+function estimateCaptionWordWallRows(words, metricsBySize, safeWidth) {
+  const rows = [];
+  let current = { width: 0, height: 0 };
   words.forEach((word) => {
-    const wordWidth = estimateCaptionWordWidth(word, fontSize);
-    const nextWidth = rowWidth <= 0 ? wordWidth : rowWidth + wordGap + wordWidth;
-    if (rowWidth > 0 && nextWidth > safeWidth) {
-      rows += 1;
-      rowWidth = wordWidth;
+    const metrics = metricsBySize[word.size] || metricsBySize.regular;
+    const wordWidth = estimateCaptionWordWidth(word.text, metrics.fontSize) + metrics.wordGap;
+    const nextWidth = current.width <= 0 ? wordWidth : current.width + wordWidth;
+    if (current.width > 0 && nextWidth > safeWidth) {
+      rows.push(current);
+      current = { width: wordWidth, height: metrics.lineHeight };
       return;
     }
-    rowWidth = nextWidth;
+    current.width = nextWidth;
+    current.height = Math.max(current.height, metrics.lineHeight);
   });
+  if (current.width > 0) rows.push(current);
   return rows;
 }
 
@@ -1139,90 +1169,55 @@ function captionTextShadow(style, multiplier = 1) {
   return `${offsetX.toFixed(1)}px ${heavyOffsetY.toFixed(1)}px ${blur.toFixed(1)}px ${shadowColor}`;
 }
 
-function buildCaptionWordWallLayout(lines, style) {
+function buildCaptionWordWallLayout(words, style) {
   const safeWidth = CAPTION_WORD_WALL_TEXT_WIDTH;
-  const baseFontSize = captionStyleNumber(style, "fontSize", 90, 36, 180);
+  const baseFontSize = captionStyleNumber(style, "fontSize", 90, 36, 126);
   const baseOutlineWidth = captionStyleNumber(style, "outlineWidth", 12, 0, 28);
   const baseFontWeight = Math.round(captionStyleNumber(style, "fontWeight", 900, 100, 1000));
-  const rawItems = lines.map((line) => {
-    if (line.blank) {
-      return {
-        ...line,
-        height: Math.round(baseFontSize * 0.54),
-        gapAfter: Math.round(baseFontSize * 0.08),
-      };
-    }
-    const ratio = captionWallSizeRatio(line.size);
-    const rawFontSize = baseFontSize * ratio;
-    const longestWordWidth = splitDisplayWords(line.text).reduce((max, word) => Math.max(max, estimateCaptionWordWidth(word, rawFontSize * 1.18)), 1);
-    const widthScale = Math.min(1, safeWidth / longestWordWidth);
-    return {
-      ...line,
+  const sizes = ["regular", "large", "extra_large"];
+  const metricsFor = (stackScale) => Object.fromEntries(sizes.map((size) => {
+    const ratio = captionWallSizeRatio(size);
+    const fontSize = Math.max(40, Math.round(baseFontSize * ratio * stackScale));
+    const outlineWidth = Math.max(1, Math.round(baseOutlineWidth * ratio * stackScale * 10) / 10);
+    const wordGap = Math.max(18, Math.round((fontSize * 0.16) + (outlineWidth * 1.5)));
+    const lineHeight = Math.ceil((fontSize * 1.06) + (outlineWidth * 1.2));
+    return [size, {
       ratio,
-      rawFontSize,
-      widthScale,
-      fontWeight: captionWallFontWeight(line.size, baseFontWeight),
-    };
-  });
-  const measureItems = (stackScale) => rawItems.map((item) => {
-    const uniformLineGap = Math.max(16, Math.round(baseFontSize * 0.03 * stackScale));
-    if (item.blank) {
-      return {
-        ...item,
-        height: 0,
-        gapAfter: uniformLineGap,
-      };
-    }
-    const fontSize = Math.max(42, Math.round(item.rawFontSize * item.widthScale * stackScale));
-    const outlineWidth = Math.max(1, Math.round(baseOutlineWidth * item.ratio * item.widthScale * stackScale * 10) / 10);
-    const activeFontSize = Math.round(fontSize * 1.16);
-    const wordGap = Math.max(28, Math.round((fontSize * 0.18) + (outlineWidth * 2.2)));
-    const rowGap = Math.max(2, Math.round(fontSize * 0.018));
-    const wrappedRows = estimateCaptionWrappedRows(item.text, activeFontSize, wordGap, safeWidth);
-    const rowHeight = Math.ceil((fontSize * 0.9) + (outlineWidth * 1.1));
-    return {
-      ...item,
       fontSize,
       outlineWidth,
       wordGap,
-      rowGap,
-      wrappedRows,
-      lineHeight: rowHeight,
-      height: (wrappedRows * rowHeight) + ((wrappedRows - 1) * rowGap),
-      gapAfter: uniformLineGap,
-    };
-  });
-  const heightThrough = (items, index) => {
-    let height = 0;
-    for (let lineIndex = 0; lineIndex <= index; lineIndex += 1) {
-      const item = items[lineIndex];
-      if (!item) continue;
-      height += item.height;
-      if (lineIndex < index) height += item.gapAfter;
-    }
-    return height;
-  };
-  const initialItems = measureItems(1);
-  const lastVisibleIndex = initialItems.reduce((last, item, index) => item.blank ? last : index, -1);
-  const maxVisibleHeight = lastVisibleIndex >= 0 ? heightThrough(initialItems, lastVisibleIndex) : 0;
-  const stackScale = Math.min(1, (HEIGHT - 360) / Math.max(1, maxVisibleHeight));
-  const measured = measureItems(stackScale);
-  let cursorY = 0;
-  return measured.map((item, index) => {
-    const y = cursorY;
-    cursorY += item.height + item.gapAfter;
+      lineHeight,
+      fontWeight: captionWallFontWeight(size, baseFontWeight),
+    }];
+  }));
+  const measure = (stackScale) => {
+    const metricsBySize = metricsFor(stackScale);
+    const rowGap = Math.max(14, Math.round(baseFontSize * 0.12 * stackScale));
+    const rows = estimateCaptionWordWallRows(words, metricsBySize, safeWidth);
+    const height = rows.reduce((total, row, index) => total + row.height + (index > 0 ? rowGap : 0), 0);
     return {
-      ...item,
-      y,
-      visibleHeight: item.blank ? 0 : heightThrough(measured, index),
+      metricsBySize,
+      rowGap,
+      rows,
+      height,
     };
+  };
+  const initial = measure(1);
+  const maxVisibleHeight = initial.height;
+  const stackScale = Math.min(1, (HEIGHT - 360) / Math.max(1, maxVisibleHeight));
+  const measured = measure(stackScale);
+  const visibleHeights = words.map((_word, index) => {
+    const rows = estimateCaptionWordWallRows(words.slice(0, index + 1), measured.metricsBySize, safeWidth);
+    return rows.reduce((total, row, rowIndex) => total + row.height + (rowIndex > 0 ? measured.rowGap : 0), 0);
   });
+  return { ...measured, visibleHeights };
 }
 
 function captionWordWall(args, config, timeline) {
   const duration = Math.max(0.1, asNumber(config.durationSeconds, 6));
   const visualStartSeconds = Number.isFinite(Number(config.visualStartSeconds)) ? Number(config.visualStartSeconds) : 0;
   const data = buildCaptionWordWallTimeline({
+    text: args.text ?? args.caption ?? args.captionText,
     lines: args.lines,
     alignmentWords: readAlignmentWords(config.alignmentPath),
     visualStartSeconds,
@@ -1232,83 +1227,58 @@ function captionWordWall(args, config, timeline) {
   const captionStyle = readDefaultCaptionStyle();
   const activeColor = cssString(captionStyle.activeWordColor, "#FFFFFF");
   const spokenColor = cssString(captionStyle.spokenWordColor, "#D0D0D0");
-  const upcomingColor = cssString(captionStyle.upcomingWordColor, "#5E5E5E");
   const outlineColor = cssString(captionStyle.outlineColor, "#111111");
   const fontFamily = cssString(captionStyle.fontFamily, "Arial");
-  const layout = buildCaptionWordWallLayout(data.lines, captionStyle);
+  const layout = buildCaptionWordWallLayout(data.words, captionStyle);
   const html = [];
   const visibleTargets = [];
-  data.lines.forEach((line, lineIndex) => {
-    const metrics = layout[lineIndex];
-    if (!metrics || line.blank) return;
-    const id = `word-line-${lineIndex}`;
-    const targetY = Math.round((HEIGHT - metrics.visibleHeight) / 2);
-    visibleTargets.push({ at: line.lineStart ?? 0, y: targetY });
-    const lineShadow = captionTextShadow(captionStyle, metrics.fontSize / captionStyleNumber(captionStyle, "fontSize", 90, 36, 180));
-    const tokenStyle = [
+  data.words.forEach((word, index) => {
+    const targetY = Math.round((HEIGHT - (layout.visibleHeights[index] || layout.height)) / 2);
+    visibleTargets.push({ at: word.start ?? 0, y: targetY });
+  });
+  html.push(htmlElement(
+    "caption-word-wall-flow",
+    "caption-word-wall-flow",
+    [
+      `left:${CAPTION_WORD_WALL_HORIZONTAL_PADDING}px`,
+      `top:0`,
+      `width:${CAPTION_WORD_WALL_TEXT_WIDTH}px`,
+      `min-height:${layout.height}px`,
+      `font-family:${fontFamily}, Arial, sans-serif`,
+      `text-align:left`,
+      `white-space:normal`,
+      `--caption-row-gap:${layout.rowGap}px`,
       `--caption-active:${activeColor}`,
       `--caption-spoken:${spokenColor}`,
-      `--caption-upcoming:${upcomingColor}`,
       `--caption-outline:${outlineColor}`,
-      `--caption-outline-width:${metrics.outlineWidth}px`,
-      `--caption-shadow:${lineShadow}`,
-      `--caption-word-gap:${metrics.wordGap || 8}px`,
-      `--caption-row-gap:${metrics.rowGap || 8}px`,
-    ].join(";");
-    html.push(htmlElement(
-      id,
-      "word-line",
-      [
-        `left:${CAPTION_WORD_WALL_HORIZONTAL_PADDING}px`,
-        `top:${metrics.y}px`,
-        `width:${CAPTION_WORD_WALL_TEXT_WIDTH}px`,
-        `height:${metrics.height}px`,
-        `font-family:${fontFamily}, Arial, sans-serif`,
-        `font-weight:${metrics.fontWeight}`,
+    ].join(";"),
+    data.words.map((word) => {
+      const metrics = layout.metricsBySize[word.size] || layout.metricsBySize.regular;
+      const wordShadow = captionTextShadow(captionStyle, metrics.fontSize / captionStyleNumber(captionStyle, "fontSize", 90, 36, 126));
+      return `<span id="word-${word.globalIndex}" class="word-token word-size-${word.size}" style="${[
         `font-size:${metrics.fontSize}px`,
+        `font-weight:${metrics.fontWeight}`,
         `line-height:${metrics.lineHeight}px`,
-        `text-align:left`,
-        `white-space:normal`,
-        `color:${upcomingColor}`,
-        tokenStyle,
-      ].join(";"),
-      line.words.map((word) => `<span id="word-${word.globalIndex}" class="word-token">${escapeHtml(word.text)}</span>`).join(""),
-    ));
-    reveal(timeline, `#${id}`, line.lineStart ?? 0, { y: Math.round(metrics.fontSize * 0.22), duration: 0.28 });
-  });
+        `padding-right:${metrics.wordGap}px`,
+        `-webkit-text-stroke:${metrics.outlineWidth}px ${outlineColor}`,
+        `text-shadow:${wordShadow}`,
+      ].join(";")}">${escapeHtml(word.text)}</span>`;
+    }).join(""),
+  ));
+  reveal(timeline, "#caption-word-wall-flow", 0, { y: 18, duration: 0.18 });
   const firstTarget = visibleTargets[0]?.y ?? Math.round(HEIGHT / 2);
   timeline.push(`tl.set("#caption-word-wall-stack", {y:${firstTarget}}, 0);`);
   let lastY = firstTarget;
   visibleTargets.forEach((target, index) => {
     if (target.y === lastY) return;
     const at = Math.max(0, target.at - (index === 0 ? 0 : 0.02));
-    timeline.push(`tl.to("#caption-word-wall-stack", {y:${target.y}, duration:${index === 0 ? "0.001" : "0.42"}, ease:"power3.inOut"}, ${at.toFixed(3)});`);
+    timeline.push(`tl.to("#caption-word-wall-stack", {y:${target.y}, duration:${index === 0 ? "0.001" : "0.30"}, ease:"power3.inOut"}, ${at.toFixed(3)});`);
     lastY = target.y;
   });
   data.words.forEach((word) => {
     const durationSeconds = Math.max(0.08, word.end - word.start);
-    const metrics = layout[word.lineIndex] || {};
-    const activeOutline = Math.round(((metrics.outlineWidth || 8) * 1.12) * 10) / 10;
-    const activeFontSize = Math.round((metrics.fontSize || 90) * 1.16);
-    const activeShadow = captionTextShadow(captionStyle, (metrics.fontSize || 90) / captionStyleNumber(captionStyle, "fontSize", 90, 36, 180) * 1.08);
-    const beforeWordsByLine = new Map();
-    const afterWordsByLine = new Map();
-    data.words.forEach((entry) => {
-      if (entry.globalIndex === word.globalIndex) return;
-      const bucket = entry.globalIndex < word.globalIndex ? beforeWordsByLine : afterWordsByLine;
-      const ids = bucket.get(entry.lineIndex) || [];
-      ids.push(`#word-${entry.globalIndex}`);
-      bucket.set(entry.lineIndex, ids);
-    });
-    beforeWordsByLine.forEach((ids, lineIndex) => {
-      const lineMetrics = layout[lineIndex] || {};
-      timeline.push(`tl.set("${ids.join(",")}", {color:${JSON.stringify(spokenColor)}, fontSize:"${lineMetrics.fontSize || 90}px", y:0, webkitTextStrokeWidth:"${lineMetrics.outlineWidth || 8}px", textShadow:"var(--caption-shadow)"}, ${word.start.toFixed(3)});`);
-    });
-    afterWordsByLine.forEach((ids, lineIndex) => {
-      const lineMetrics = layout[lineIndex] || {};
-      timeline.push(`tl.set("${ids.join(",")}", {color:${JSON.stringify(upcomingColor)}, fontSize:"${lineMetrics.fontSize || 90}px", y:0, webkitTextStrokeWidth:"${lineMetrics.outlineWidth || 8}px", textShadow:"var(--caption-shadow)"}, ${word.start.toFixed(3)});`);
-    });
-    timeline.push(`tl.fromTo("#word-${word.globalIndex}", {color:${JSON.stringify(activeColor)}, opacity:1, fontSize:"${activeFontSize}px", y:${-Math.round((metrics.fontSize || 90) * 0.08)}, webkitTextStrokeWidth:"${activeOutline}px", textShadow:${JSON.stringify(activeShadow)}}, {color:${JSON.stringify(spokenColor)}, fontSize:"${metrics.fontSize || 90}px", y:0, webkitTextStrokeWidth:"${metrics.outlineWidth || 8}px", textShadow:"var(--caption-shadow)", duration:${durationSeconds.toFixed(3)}, ease:"power3.out"}, ${word.start.toFixed(3)});`);
+    timeline.push(`tl.set("#word-${word.globalIndex}", {display:"inline-block", opacity:1, color:${JSON.stringify(activeColor)}, scale:1.16, y:-8}, ${word.start.toFixed(3)});`);
+    timeline.push(`tl.to("#word-${word.globalIndex}", {color:${JSON.stringify(spokenColor)}, scale:1, y:0, duration:${durationSeconds.toFixed(3)}, ease:"power3.out"}, ${word.start.toFixed(3)});`);
   });
   return htmlElement(
     "caption-word-wall-stack",
@@ -1393,18 +1363,15 @@ function buildCompositionHtml(config) {
       .massive { font-weight: 400; }
       .rule, .bar, .swatch, .dot, .check-box, .check-mark, .indicator-circle, .paper-card, .arrow { opacity: 0; }
       .caption-word-wall-stack { overflow: visible; will-change: transform; }
-      .word-line { opacity: 0; overflow: visible; text-shadow: var(--caption-shadow); display:flex; flex-wrap:wrap; align-content:flex-start; align-items:flex-start; justify-content:flex-start; row-gap:var(--caption-row-gap); }
+      .caption-word-wall-flow { opacity: 0; overflow: visible; display:flex; flex-wrap:wrap; align-content:flex-start; align-items:baseline; justify-content:flex-start; row-gap:var(--caption-row-gap); }
       .word-token {
-        display:inline-block;
+        display:none;
         line-height: 1;
         margin: 0;
-        padding-right: var(--caption-word-gap);
-        opacity:1;
-        color: var(--caption-upcoming);
-        transform-origin:center center;
-        -webkit-text-stroke: var(--caption-outline-width) var(--caption-outline);
+        opacity:0;
+        color: var(--caption-spoken);
+        transform-origin:center bottom;
         paint-order: stroke fill;
-        text-shadow: var(--caption-shadow);
         will-change: transform, color;
       }
       .word-token:last-child { padding-right: 0; }

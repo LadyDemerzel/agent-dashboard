@@ -128,10 +128,10 @@ const DEFAULT_XML_INSTRUCTIONS_BY_RENDERER: Record<MotionGraphicRendererId, stri
     "Keep each side short and concrete so the downward causal relationship is obvious.",
   ].join("\n"),
   caption_word_wall: [
-    "Use ordered <line size=\"regular\" animateIn=\"absolute_video_timestamp_seconds\">spoken words for this row</line>, <line size=\"large\" animateIn=\"...\">...</line>, <line size=\"extra_large\" animateIn=\"...\">...</line>, and <blankLine animateIn=\"...\" /> entries.",
-    "Line size applies to the whole line; do not size individual inline words.",
-    "Line text must be exact spoken narration words in order from that visual's time range.",
-    "Use per-line animateIn timestamps for line entrance timing; word highlighting still follows forced alignment.",
+    "Use one <arg name=\"text\">...</arg> containing the exact spoken narration text for this visual, including punctuation.",
+    "Do not split the text into separate <line> rows; the renderer lays it out as one wrapping caption wall.",
+    "Regular words need no tag. Wrap individual emphasized words or phrases in <large>...</large> or <extraLarge>...</extraLarge>.",
+    "Words that have not been spoken yet are hidden, not dimmed; word reveal/highlighting follows forced alignment.",
     "This template replaces ordinary bottom captions for that visual and should not be paired with normal captions.",
   ].join("\n"),
   ranked_podium: [
@@ -247,11 +247,7 @@ const DEFAULT_EXAMPLE_XML_BY_RENDERER: Record<MotionGraphicRendererId, string> =
   caption_word_wall: [
     `<visual id=\"visual-10\" label=\"Caption wall emphasis\" start=\"44.00\" end=\"49.00\" visualType=\"motion_graphic\">`,
     `  <motionGraphic templateId=\"caption_word_wall\">`,
-    `    <line size=\"regular\" animateIn=\"44.20\">most people miss this part</line>`,
-    `    <line size=\"large\" animateIn=\"45.05\">the words become the visual</line>`,
-    `    <line size=\"extra_large\" animateIn=\"46.05\">with one extra large row</line>`,
-    `    <blankLine animateIn=\"46.70\" />`,
-    `    <line size=\"regular\" animateIn=\"47.20\">and every highlight follows the voice</line>`,
+    `    <arg name=\"text\">most people miss <large>this part,</large> because <extraLarge>the words</extraLarge> become the visual.</arg>`,
     `  </motionGraphic>`,
     `</visual>`,
   ].join("\n"),
@@ -535,36 +531,22 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     whenToUse: "Use for retention-heavy moments where the spoken words should take over the full frame as a kinetic caption wall instead of sitting over a generated image.",
     additionalUsageInstructions: "",
     durationSeconds: 6,
-    durationGuidance: "Match the exact spoken narration range for the caption wall. The start/end times should cover only the words represented by the configured lines.",
+    durationGuidance: "Match the exact spoken narration range for the caption wall. The start/end times should cover only the words represented by the configured text.",
     stylePreset: DEFAULT_STYLE_PRESET,
     defaultArgs: {
-      lines: [
-        { text: "most people miss this part" },
-        { text: "the words become the visual", size: "large" },
-        { text: "with one extra large row", size: "extra_large" },
-        { blank: true },
-        { text: "and every highlight follows the voice" },
-      ],
+      text: "most people miss <large>this part,</large> because <extraLarge>the words</extraLarge> become the visual.",
     },
     fields: [
       {
-        name: "lines",
-        label: "Caption lines",
-        type: "captionWordWallLines",
+        name: "text",
+        label: "Caption text",
+        type: "textarea",
         required: true,
-        description: "Ordered caption wall lines. Use blank entries for intentional empty spacer lines. Set size=\"regular\", size=\"large\", or size=\"extra_large\" per whole line.",
-        defaultValue: [
-          { text: "most people miss this part" },
-          { text: "the words become the visual", size: "large" },
-          { text: "with one extra large row", size: "extra_large" },
-          { blank: true },
-          { text: "and every highlight follows the voice" },
-        ],
+        description: "Exact spoken narration text for this visual, with punctuation. Use inline <large>...</large> or <extraLarge>...</extraLarge> tags around individual words or phrases to enlarge them.",
+        defaultValue: "most people miss <large>this part,</large> because <extraLarge>the words</extraLarge> become the visual.",
       },
     ],
-    deterministicSoundEffects: [
-      { id: "line-appear", type: "click", repeat: { source: "lines", firstOffsetSeconds: 0.35, stepSeconds: 0.5, maxCount: 4 }, durationSeconds: 0.12, gainDb: -13, fadeOutMs: 70, description: "Very subtle tick as caption-wall lines become visible", searchQuery: "minimal kinetic typography tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "optional" },
-    ],
+    deterministicSoundEffects: [],
     enabled: true,
   },
   {
@@ -858,6 +840,20 @@ function normalizeCaptionWordWallLines(value: unknown) {
     .filter((line) => ("blank" in line && line.blank) || ("text" in line && Boolean(line.text)));
 }
 
+function captionWordWallLinesToInlineText(value: unknown) {
+  return normalizeCaptionWordWallLines(value)
+    .filter((line) => !("blank" in line && line.blank) && "text" in line && line.text)
+    .map((line) => {
+      const text = "text" in line ? line.text : "";
+      if (!text) return "";
+      if ("size" in line && line.size === "extra_large") return `<extraLarge>${text}</extraLarge>`;
+      if ("size" in line && line.size === "large") return `<large>${text}</large>`;
+      return text;
+    })
+    .filter(Boolean)
+    .join(" ");
+}
+
 function normalizeIndicatorType(value: unknown) {
   const raw = String(value || "").trim().toLowerCase().replace(/[’']/g, "").replace(/[\s/-]+/g, "_");
   if (raw === "bad" || raw === "negative" || raw === "dont" || raw === "dont_stop" || raw === "do_not" || raw === "stop" || raw === "no") return "bad";
@@ -1010,8 +1006,8 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
     ? normalizeTimelineDefaultArgs(defaultArgs)
     : rendererId === "checklist"
       ? normalizeChecklistDefaultArgs(defaultArgs, fallback.defaultArgs)
-    : rendererId === "caption_word_wall" && normalizeCaptionWordWallLines(defaultArgs.lines).length > 0
-      ? { ...defaultArgs, lines: normalizeCaptionWordWallLines(defaultArgs.lines) }
+    : rendererId === "caption_word_wall"
+      ? { text: cleanString(defaultArgs.text ?? defaultArgs.caption ?? defaultArgs.captionText, captionWordWallLinesToInlineText(defaultArgs.lines) || cleanString(fallback.defaultArgs.text, "most people miss <large>this part,</large> because <extraLarge>the words</extraLarge> become the visual.")) }
       : rendererId === "good_bad_indicator"
         ? { indicatorType: normalizeIndicatorType(defaultArgs.indicatorType ?? defaultArgs.instructionType), text: cleanString(defaultArgs.text, cleanString((defaultArgs as { title?: unknown; body?: unknown }).title ?? (defaultArgs as { body?: unknown }).body, "Lift from the lower lid")) }
         : rendererId === "line_growth_chart"
@@ -1118,17 +1114,18 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
       return comparisonFields.length > 0 ? comparisonFields : fallbackComparisonFields;
     }
     if (rendererId === "caption_word_wall") {
-      const wordWallFields = fields.filter((field) => field.name === "lines");
-      const fallbackWordWallFields = fallback.fields.filter((field) => field.name === "lines");
-      const selectedFields = wordWallFields.length > 0 ? wordWallFields : fallbackWordWallFields;
-      return selectedFields.map((field) => ({
-        ...field,
-        type: "captionWordWallLines" as const,
-        description: "Ordered line objects: { text, size?: \"regular\" | \"large\" | \"extra_large\" } or { blank: true }. Size is whole-line only; do not size individual inline words. Legacy emphasized=true maps to size=\"extra_large\".",
-        defaultValue: normalizeCaptionWordWallLines(field.defaultValue).length > 0
-          ? normalizeCaptionWordWallLines(field.defaultValue)
-          : field.defaultValue,
-      }));
+      const textField = fields.find((field) => field.name === "text" || field.name === "caption" || field.name === "captionText");
+      const legacyLinesField = fields.find((field) => field.name === "lines");
+      const fallbackTextField = fallback.fields.find((field) => field.name === "text") || fallback.fields[0];
+      return [{
+        ...(textField || fallbackTextField),
+        name: "text",
+        label: "Caption text",
+        type: "textarea" as const,
+        required: true,
+        description: "Exact spoken narration text for this visual, including punctuation. Use inline <large>...</large> or <extraLarge>...</extraLarge> tags around individual words or phrases to enlarge them.",
+        defaultValue: cleanString(textField?.defaultValue, captionWordWallLinesToInlineText(legacyLinesField?.defaultValue) || cleanString(fallbackTextField?.defaultValue, "most people miss <large>this part,</large> because <extraLarge>the words</extraLarge> become the visual.")),
+      }];
     }
     if (rendererId === "good_bad_indicator") {
       const selectedFields = fields.filter((field) => field.name === "indicatorType" || field.name === "instructionType" || field.name === "text");

@@ -32,6 +32,11 @@ try {
         <blankLine time="11.10" />
       </motionGraphic>
     </visual>
+    <visual id="visual-2" label="Caption wall" start="12.00" end="14.00" visualType="motion_graphic">
+      <motionGraphic templateId="caption_word_wall">
+        <arg name="text">most people miss <large>this part,</large> because <extraLarge>the words</extraLarge> become the visual.</arg>
+      </motionGraphic>
+    </visual>
   </timeline>
 </video>
 `, "utf-8");
@@ -54,6 +59,8 @@ try {
   assert.equal(parsedMotionGraphics[0].args.data[0].animateIn, 0.62);
   assert.equal(parsedMotionGraphics[0].args.steps[0].animateIn, 0.5);
   assert.equal(parsedMotionGraphics[0].args.lines[0].animateIn, 0.7);
+  assert.equal(parsedMotionGraphics[1].args.text, "most people miss <large>this part,</large> because <extraLarge>the words</extraLarge> become the visual.");
+  assert.equal(parsedMotionGraphics[1].args.lines, undefined);
 
   assert.match(motionGraphicsSource, /Controllable animation-in timing items:/, "Scribe motion graphic prompt injection must list controllable timing items per template.");
   assert.match(motionGraphicsSource, /formatMotionGraphicAnimationTimingControls\(template\.rendererId\)/, "Scribe motion graphic prompt injection must render timing controls through the shared formatter.");
@@ -61,6 +68,7 @@ try {
   assert.doesNotMatch(timingControlsSource, /bar_chart:[\s\S]*controls:\s*\["title",\s*"data"\]/, "Bar chart timing controls must not regress to raw title/data labels.");
   assert.match(timingControlsSource, /timeline:[\s\S]*each <step> timeline item/, "Timeline timing controls must describe independently timed step items.");
   assert.match(timingControlsSource, /good_bad_indicator:[\s\S]*fields:\s*\["text"\][\s\S]*controls:\s*\["text"\]/, "Good/bad indicator must expose only indicator text as Scribe-controllable timing.");
+  assert.match(timingControlsSource, /caption_word_wall:[\s\S]*fields:\s*\["text"\][\s\S]*forced-alignment word reveal\/highlight/, "Caption word wall must expose one text field with forced-alignment word timing.");
   assert.match(motionGraphicsSource, /<step label=\\"DAY 1\\" animateIn=\\"30\.50\\">Setup<\/step>/, "Timeline example XML must show per-step absolute animateIn timing.");
   assert.doesNotMatch(motionGraphicsSource, /<timing item=\\"steps\\" at=\\"30\.50\\"/, "Timeline example XML must not imply all timeline steps share one timing.");
   assert.match(motionGraphicsSource, /Array of \{ label, text, animateIn \} objects/, "Timeline step field guidance must document editable per-step animateIn values.");
@@ -73,7 +81,8 @@ try {
   assert.match(motionGraphicsSource, /<item label=\\"Practice\\" value=\\"50\\" displayValue=\\"50%\\" animateIn=\\"12\.85\\" \/>/, "Pie chart example XML must show per-slice animateIn timing.");
   assert.match(motionGraphicsSource, /<step label=\\"01\\" animateIn=\\"49\.40\\">Most visible change<\/step>/, "Ranked podium example XML must show per-rank animateIn timing.");
   assert.match(motionGraphicsSource, /<item label=\\"Clarity\\" value=\\"82\\" displayValue=\\"82\/100\\" animateIn=\\"63\.90\\" \/>/, "Scorecard example XML must show per-row animateIn timing.");
-  assert.match(motionGraphicsSource, /<line size=\\"regular\\" animateIn=\\"44\.20\\">most people miss this part<\/line>/, "Caption word wall example XML must show per-line animateIn timing.");
+  assert.match(motionGraphicsSource, /<arg name=\\"text\\">most people miss <large>this part,<\/large> because <extraLarge>the words<\/extraLarge> become the visual\.<\/arg>/, "Caption word wall example XML must use one text arg with inline size tags and punctuation.");
+  assert.doesNotMatch(motionGraphicsSource, /caption_word_wall:[\s\S]*<line size=/, "Caption word wall instructions/examples must not use line-based rows.");
   assert.match(motionGraphicsSource, /<timing item=\\"arrow\\" at=\\"39\.25\\" \/>/, "Cause/effect example XML must expose the separately controllable arrow timing.");
   assert.match(motionGraphicsSource, /<timing item=\\"paper\\" at=\\"69\.15\\" \/>[\s\S]*<timing item=\\"title\\" at=\\"69\.75\\" \/>/, "Research paper card example XML must expose paper and title timings.");
   assert.doesNotMatch(motionGraphicsSource, /only use one <timing item=\\"(?:data|items|steps)\\"/, "Repeatable motion templates must not tell Scribe to use shared collection timings.");
@@ -84,6 +93,8 @@ try {
   assert.match(motionGraphicsSettingsSource, /<item label=\\"Before\\" value=\\"35\\" displayValue=\\"35%\\" animateIn=\\"12\.90\\" \/>/, "Saved bar chart example XML must show per-bar animateIn timing.");
   assert.match(motionGraphicsSettingsSource, /<step label=\\"01\\" animateIn=\\"49\.40\\">Most visible change<\/step>/, "Saved ranked podium example XML must show per-rank animateIn timing.");
   assert.match(motionGraphicsSettingsSource, /<item label=\\"Clarity\\" value=\\"82\\" displayValue=\\"82\/100\\" animateIn=\\"63\.90\\" \/>/, "Saved scorecard example XML must show per-row animateIn timing.");
+  assert.match(motionGraphicsSettingsSource, /<arg name=\\"text\\">most people miss <large>this part,<\/large> because <extraLarge>the words<\/extraLarge> become the visual\.<\/arg>/, "Saved caption word wall example XML must use one text arg with inline size tags and punctuation.");
+  assert.doesNotMatch(motionGraphicsSettingsSource, /<line size=\\"(?:regular|large|extra_large)\\"/, "Saved caption word wall settings must not use line-based caption rows.");
   assert.doesNotMatch(motionGraphicsSettingsSource, /only use one <timing item=\\"(?:data|items|steps)\\"/, "Saved repeatable motion template instructions must not tell Scribe to use shared collection timings.");
   assert.doesNotMatch(motionGraphicsSettingsSource, /<timing item=\\"(?:data|items)\\" at=\\"(?:12\.85|12\.90|49\.40|63\.90)\\"/, "Saved repeated-item examples must not imply shared collection timings.");
   assert.match(visualPlanningSource, /<timing item=\\"title\\" at=\\"12\.20\\"/, "Editable XML visual planning guidance must document named absolute timing controls.");

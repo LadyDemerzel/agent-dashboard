@@ -39,9 +39,9 @@ export const MOTION_GRAPHIC_TIMING_CONTROL_CONFIGS: Record<
     extraTargets: ["Arrow"],
   },
   caption_word_wall: {
-    fields: ["lines"],
+    fields: ["text"],
     controls: [
-      "each <line> caption row; word highlighting still follows forced alignment",
+      "forced-alignment word reveal/highlight",
     ],
     extraTargets: ["Forced-alignment word highlight"],
   },
