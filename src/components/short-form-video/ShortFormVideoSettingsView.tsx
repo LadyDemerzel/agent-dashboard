@@ -7683,83 +7683,8 @@ export function ShortFormVideoSettingsView({
 	                    </div>
 
 	                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
-	                      <h4 className="text-sm font-medium text-foreground">Basic</h4>
-	                      <div className="grid gap-4 md:grid-cols-[220px,1fr]">
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            Music type
-                          </label>
-                          <Select
-                            value={getMusicSourceType(selectedMusic)}
-                            onChange={(event) => {
-                              const sourceType =
-                                event.target.value === "imported"
-                                  ? "imported"
-                                  : "ai-generated";
-                              updateSelectedMusic((track) => ({
-                                ...track,
-                                sourceType,
-                              }));
-                            }}
-                          >
-                            <option value="ai-generated">AI-generated</option>
-                            <option value="imported">Imported/manual</option>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            Description and notes
-                          </label>
-                          <Textarea
-                            value={selectedMusic.notes}
-                            onChange={(event) =>
-                              updateSelectedMusic((track) => ({
-                                ...track,
-                                notes: event.target.value,
-                              }))
-                            }
-                            className="min-h-[90px] text-xs"
-                          />
-                        </div>
-                      </div>
-                      {getMusicSourceType(selectedMusic) === "imported" ? (
-                        <div className="grid gap-4 md:grid-cols-3">
-                          <div className="space-y-2 md:col-span-2">
-                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                              Source
-                            </label>
-                            <Input
-                              value={selectedMusic.source || ""}
-                              onChange={(event) =>
-                                updateSelectedMusic((track) => ({
-                                  ...track,
-                                  source: event.target.value,
-                                }))
-                              }
-                              placeholder="freesound URL, internal, uploaded file"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                              License
-                            </label>
-                            <Input
-                              value={selectedMusic.license || ""}
-                              onChange={(event) =>
-                                updateSelectedMusic((track) => ({
-                                  ...track,
-                                  license: event.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
+	                      <div className="flex flex-wrap items-start justify-between gap-3">
+	                        <div>
                           <h4 className="text-sm font-medium text-foreground">
                             Audio
                           </h4>
@@ -7783,12 +7708,45 @@ export function ShortFormVideoSettingsView({
                               : hasGeneratedSoundtrack(selectedMusic)
                                 ? "Regenerate soundtrack"
                                 : "Generate soundtrack"}
-                          </Button>
-                        ) : null}
-                      </div>
-                      <div className="grid gap-4 md:grid-cols-[1fr,160px]">
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                          </Button>
+	                        ) : null}
+	                      </div>
+	                      {getMusicSourceType(selectedMusic) === "imported" ? (
+	                        <div className="grid gap-4 md:grid-cols-3">
+	                          <div className="space-y-2 md:col-span-2">
+	                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                              Source
+	                            </label>
+	                            <Input
+	                              value={selectedMusic.source || ""}
+	                              onChange={(event) =>
+	                                updateSelectedMusic((track) => ({
+	                                  ...track,
+	                                  source: event.target.value,
+	                                }))
+	                              }
+	                              placeholder="freesound URL, internal, uploaded file"
+	                            />
+	                          </div>
+	                          <div className="space-y-2">
+	                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                              License
+	                            </label>
+	                            <Input
+	                              value={selectedMusic.license || ""}
+	                              onChange={(event) =>
+	                                updateSelectedMusic((track) => ({
+	                                  ...track,
+	                                  license: event.target.value,
+	                                }))
+	                              }
+	                            />
+	                          </div>
+	                        </div>
+	                      ) : null}
+	                      <div className="grid gap-4 md:grid-cols-[1fr,160px]">
+	                        <div className="space-y-2">
+	                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                             {getMusicSourceType(selectedMusic) === "ai-generated"
                               ? "Generated audio file path"
                               : "Audio file path"}
@@ -7874,10 +7832,25 @@ export function ShortFormVideoSettingsView({
                     </div>
 
                     <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
-                      <h4 className="text-sm font-medium text-foreground">
-                        Planning hints
-                      </h4>
-                      <div className="grid gap-4 md:grid-cols-4">
+	                      <h4 className="text-sm font-medium text-foreground">
+	                        Planning hints
+	                      </h4>
+	                      <div className="space-y-2">
+	                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                          Description and notes
+	                        </label>
+	                        <Textarea
+	                          value={selectedMusic.notes}
+	                          onChange={(event) =>
+	                            updateSelectedMusic((track) => ({
+	                              ...track,
+	                              notes: event.target.value,
+	                            }))
+	                          }
+	                          className="min-h-[90px] text-xs"
+	                        />
+	                      </div>
+	                      <div className="grid gap-4 md:grid-cols-4">
                         <div className="space-y-2">
                           <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                             Mood
