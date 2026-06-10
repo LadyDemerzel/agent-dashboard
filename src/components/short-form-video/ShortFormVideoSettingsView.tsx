@@ -766,12 +766,6 @@ interface SoundLibraryCategorySummary {
   missingAudioCount: number;
 }
 
-interface SoundLibraryListGroup {
-  key: string;
-  label: string;
-  sounds: SoundLibraryEntry[];
-}
-
 interface SettingsResponse {
   success: boolean;
   data?: {
@@ -5156,38 +5150,13 @@ export function ShortFormVideoSettingsView({
         sounds.filter((sound) => isReadyAudioAsset(getSoundReadiness(sound))).length,
     };
   }, [soundDesignSettings, videoRender]);
-  const filteredSoundLibraryGroups = useMemo<SoundLibraryListGroup[]>(() => {
-    const grouped = new Map<string, SoundLibraryListGroup>();
-    filteredSoundLibrary.forEach((sound) => {
-      const key = getSoundLibraryCategoryKey(sound.category);
-      const existing = grouped.get(key);
-      if (existing) {
-        existing.sounds.push(sound);
-        return;
-      }
-      grouped.set(key, {
-        key,
-        label: getSoundLibraryCategoryLabel(sound.category),
-        sounds: [sound],
-      });
-    });
-    return Array.from(grouped.values())
-      .map((group) => ({
-        ...group,
-        sounds: [...group.sounds].sort((left, right) =>
-          left.name.localeCompare(right.name),
-        ),
-      }))
-      .sort((left, right) => {
-        if (
-          left.key === "__uncategorized__" ||
-          right.key === "__uncategorized__"
-        ) {
-          return left.key === "__uncategorized__" ? 1 : -1;
-        }
-        return left.label.localeCompare(right.label);
-      });
-  }, [filteredSoundLibrary]);
+  const sortedFilteredSoundLibrary = useMemo(
+    () =>
+      [...filteredSoundLibrary].sort((left, right) =>
+        left.name.localeCompare(right.name),
+      ),
+    [filteredSoundLibrary],
+  );
   const selectedSoundFilteredIndex = useMemo(
     () =>
       selectedSound
@@ -5206,15 +5175,6 @@ export function ShortFormVideoSettingsView({
         Boolean(track.generatedAudioRelativePath),
       ).length,
     [soundDesignSettings, videoRender],
-  );
-  const filteredSoundLibraryWithAudioCount = useMemo(
-    () =>
-      filteredSoundLibrary.filter((sound) => Boolean(sound.audioRelativePath))
-        .length +
-      filteredMusicLibrary.filter((track) =>
-        Boolean(track.generatedAudioRelativePath),
-      ).length,
-    [filteredMusicLibrary, filteredSoundLibrary],
   );
   const selectedSoundCategorySummary = useMemo(() => {
     if (!selectedSound) return null;
@@ -6389,19 +6349,19 @@ export function ShortFormVideoSettingsView({
                   open={audioLibraryPickerOpen}
                   onClick={() => setAudioLibraryPickerOpen(false)}
                 >
-                  <DialogContent
-                    size="lg"
-                    className="max-h-[88vh] max-w-5xl overflow-y-auto"
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    <DialogHeader>
-                      <DialogTitle>Select an audio clip</DialogTitle>
-                    </DialogHeader>
+	                  <DialogContent
+	                    size="lg"
+	                    className="flex h-[88vh] max-h-[88vh] w-[min(96vw,80rem)] max-w-none flex-col overflow-hidden"
+	                    onClick={(event) => event.stopPropagation()}
+	                  >
+	                    <DialogHeader className="mb-4 shrink-0">
+	                      <DialogTitle>Select an audio clip</DialogTitle>
+	                    </DialogHeader>
 
-                    <div
-                      className="space-y-4"
-                      data-audio-library-pane="browser"
-                    >
+	                    <div
+	                      className="flex min-h-0 flex-1 flex-col gap-4"
+	                      data-audio-library-pane="browser"
+	                    >
                       <div className="relative">
                         <Search
                           aria-hidden="true"
@@ -6417,292 +6377,215 @@ export function ShortFormVideoSettingsView({
                     />
                   </div>
 
-                  <div className="space-y-2 rounded-lg border border-border bg-background/50 p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Filters
-                      </label>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setSoundLibrarySearchQuery("");
-                          setAudioLibraryTypeFilter("all");
-                          setSoundLibraryCategoryFilter("all");
-                          setSoundLibraryFileFilter("all");
-                          setMusicMoodFilter("all");
-                          setMusicEnergyFilter("all");
-                        }}
-                        disabled={
-                          !soundLibrarySearchQuery &&
-                          audioLibraryTypeFilter === "all" &&
-                          soundLibraryCategoryFilter === "all" &&
-                          soundLibraryFileFilter === "all" &&
-                          musicMoodFilter === "all" &&
-                          musicEnergyFilter === "all"
-                        }
-                      >
-                        Clear filters
-                      </Button>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { value: "all", label: "All" },
-                        { value: "music", label: "Music" },
-                        { value: "sfx", label: "SFX" },
-                      ].map((filter) => (
-                        <Button
-                          key={filter.value}
-                          type="button"
-                          size="sm"
-                          variant={
-                            audioLibraryTypeFilter === filter.value
-                              ? "default"
-                              : "outline"
-                          }
-                          onClick={() =>
-                            setAudioLibraryTypeFilter(
-                              filter.value as AudioLibraryTypeFilter,
-                            )
-                          }
-                        >
-                          {filter.label}
-                        </Button>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={
-                          soundLibraryFileFilter === "all"
-                            ? "default"
-                            : "outline"
-                        }
-                        onClick={() => setSoundLibraryFileFilter("all")}
-                      >
-                        All files ({soundLibraryItemCount})
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={
-                          soundLibraryFileFilter === "with-audio"
-                            ? "default"
-                            : "outline"
-                        }
-                        onClick={() => setSoundLibraryFileFilter("with-audio")}
-                      >
-                        Audio ready ({soundLibraryTotalWithAudioCount})
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={
-                          soundLibraryFileFilter === "missing-audio"
-                            ? "default"
-                            : "outline"
-                        }
-                        onClick={() =>
-                          setSoundLibraryFileFilter("missing-audio")
-                        }
-                      >
-                        Needs audio (
-                        {soundLibraryItemCount - soundLibraryTotalWithAudioCount}
-                        )
-                      </Button>
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                          Mood
-                        </label>
-                        <Select
-                          value={musicMoodFilter}
-                          onChange={(event) =>
-                            setMusicMoodFilter(event.target.value)
-                          }
-                        >
-                          <option value="all">All music moods</option>
-                          {musicMoodOptions.map((mood) => (
-                            <option key={mood} value={mood}>
-                              {mood}
-                            </option>
-                          ))}
-                        </Select>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                          Energy
-                        </label>
-                        <Select
-                          value={musicEnergyFilter}
-                          onChange={(event) =>
-                            setMusicEnergyFilter(event.target.value)
-                          }
-                        >
-                          <option value="all">All energy levels</option>
-                          {musicEnergyOptions.map((energy) => (
-                            <option key={energy} value={energy}>
-                              {energy}
-                            </option>
-                          ))}
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <div className="rounded-md border border-border/70 bg-background/70 px-3 py-2 text-[11px] text-muted-foreground">
-                        <span className="font-medium text-foreground">
-                          Matches
-                        </span>{" "}
-                        {filteredSoundLibraryItemCount} /{" "}
-                        {soundLibraryItemCount}
-                      </div>
-                      <div className="rounded-md border border-border/70 bg-background/70 px-3 py-2 text-[11px] text-muted-foreground">
-                        <span className="font-medium text-foreground">
-                          Audio in view
-                        </span>{" "}
-                        {filteredSoundLibraryWithAudioCount} /{" "}
-                        {filteredSoundLibraryItemCount || 0}
-                      </div>
-                    </div>
-                    <label className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Category
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setSoundLibraryCategoryFilter("all")}
-                        className={`rounded-full border px-3 py-1.5 text-left text-xs transition ${soundLibraryCategoryFilter === "all" ? "border-primary/50 bg-primary/10 text-foreground" : "border-border/70 bg-background/70 text-muted-foreground hover:border-primary/30 hover:text-foreground"}`}
-                      >
-                        <span className="font-medium">All categories</span>
-                        <span className="ml-2 text-[11px] text-muted-foreground">
-                          {soundLibraryBaseMatches.length +
-                            musicLibraryBaseMatches.length}
-                        </span>
-                      </button>
-                      {soundLibraryCategorySummaries.map((summary) => {
-                        const active =
-                          summary.key ===
-                          (soundLibraryCategoryFilter === "all"
-                            ? "all"
-                            : soundLibraryCategoryFilter.trim().toLowerCase());
-                        return (
-                          <button
-                            key={summary.key}
-                            type="button"
-                            onClick={() =>
-                              setSoundLibraryCategoryFilter(summary.value)
-                            }
-                            className={`rounded-full border px-3 py-1.5 text-left text-xs transition ${active ? "border-primary/50 bg-primary/10 text-foreground" : "border-border/70 bg-background/70 text-muted-foreground hover:border-primary/30 hover:text-foreground"} ${summary.matchingCount === 0 && !active ? "opacity-60" : ""}`}
-                          >
-                            <span className="font-medium">{summary.label}</span>
-                            <span className="ml-2 text-[11px] text-muted-foreground">
-                              {summary.matchingCount}/{summary.totalCount}
-                            </span>
-                            {summary.missingAudioCount > 0 ? (
-                              <span className="ml-2 text-[11px] text-amber-100">
-                                {summary.missingAudioCount} need audio
-                              </span>
-                            ) : null}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+	                  <div className="space-y-3 rounded-lg border border-border bg-background/50 p-3">
+	                    <div className="flex flex-wrap items-center justify-between gap-2">
+	                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                        Filters
+	                      </label>
+	                      <Button
+	                        type="button"
+	                        variant="ghost"
+	                        size="sm"
+	                        onClick={() => {
+	                          setSoundLibrarySearchQuery("");
+	                          setAudioLibraryTypeFilter("all");
+	                          setSoundLibraryCategoryFilter("all");
+	                          setSoundLibraryFileFilter("all");
+	                          setMusicMoodFilter("all");
+	                          setMusicEnergyFilter("all");
+	                        }}
+	                        disabled={
+	                          !soundLibrarySearchQuery &&
+	                          audioLibraryTypeFilter === "all" &&
+	                          soundLibraryCategoryFilter === "all" &&
+	                          soundLibraryFileFilter === "all" &&
+	                          musicMoodFilter === "all" &&
+	                          musicEnergyFilter === "all"
+	                        }
+	                      >
+	                        Clear filters
+	                      </Button>
+	                    </div>
+	                    <div className="flex flex-wrap items-center gap-3">
+	                      <TabsList>
+	                        {[
+	                          { value: "all", label: "All" },
+	                          { value: "music", label: "Music" },
+	                          { value: "sfx", label: "SFX" },
+	                        ].map((filter) => (
+	                          <TabsTrigger
+	                            key={filter.value}
+	                            type="button"
+	                            active={audioLibraryTypeFilter === filter.value}
+	                            onClick={() =>
+	                              setAudioLibraryTypeFilter(
+	                                filter.value as AudioLibraryTypeFilter,
+	                              )
+	                            }
+	                          >
+	                            {filter.label}
+	                          </TabsTrigger>
+	                        ))}
+	                      </TabsList>
+	                      <TabsList>
+	                        {[
+	                          {
+	                            value: "all",
+	                            label: `All files (${soundLibraryItemCount})`,
+	                          },
+	                          {
+	                            value: "with-audio",
+	                            label: `Audio ready (${soundLibraryTotalWithAudioCount})`,
+	                          },
+	                          {
+	                            value: "missing-audio",
+	                            label: `Needs audio (${soundLibraryItemCount - soundLibraryTotalWithAudioCount})`,
+	                          },
+	                        ].map((filter) => (
+	                          <TabsTrigger
+	                            key={filter.value}
+	                            type="button"
+	                            active={soundLibraryFileFilter === filter.value}
+	                            onClick={() =>
+	                              setSoundLibraryFileFilter(
+	                                filter.value as SoundLibraryFileFilter,
+	                              )
+	                            }
+	                          >
+	                            {filter.label}
+	                          </TabsTrigger>
+	                        ))}
+	                      </TabsList>
+	                    </div>
+	                    <div className="grid gap-2 md:grid-cols-3">
+	                      <div className="space-y-1">
+	                        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+	                          Mood
+	                        </label>
+	                        <Select
+	                          value={musicMoodFilter}
+	                          onChange={(event) =>
+	                            setMusicMoodFilter(event.target.value)
+	                          }
+	                        >
+	                          <option value="all">All music moods</option>
+	                          {musicMoodOptions.map((mood) => (
+	                            <option key={mood} value={mood}>
+	                              {mood}
+	                            </option>
+	                          ))}
+	                        </Select>
+	                      </div>
+	                      <div className="space-y-1">
+	                        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+	                          Energy
+	                        </label>
+	                        <Select
+	                          value={musicEnergyFilter}
+	                          onChange={(event) =>
+	                            setMusicEnergyFilter(event.target.value)
+	                          }
+	                        >
+	                          <option value="all">All energy levels</option>
+	                          {musicEnergyOptions.map((energy) => (
+	                            <option key={energy} value={energy}>
+	                              {energy}
+	                            </option>
+	                          ))}
+	                        </Select>
+	                      </div>
+	                      <div className="space-y-1">
+	                        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+	                          Category
+	                        </label>
+	                        <Select
+	                          value={soundLibraryCategoryFilter}
+	                          onChange={(event) =>
+	                            setSoundLibraryCategoryFilter(
+	                              event.target.value as SoundLibraryCategoryFilter,
+	                            )
+	                          }
+	                        >
+	                          <option value="all">All categories</option>
+	                          {soundLibraryCategorySummaries.map((summary) => (
+	                            <option key={summary.key} value={summary.value}>
+	                              {summary.label}
+	                            </option>
+	                          ))}
+	                        </Select>
+	                      </div>
+	                    </div>
+	                  </div>
 
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Assets
-                      </label>
-                      <span className="text-[11px] text-muted-foreground">
-                        {filteredSoundLibraryItemCount} shown
-                      </span>
-                    </div>
-                    <div className="max-h-[42vh] space-y-3 overflow-y-auto rounded-lg border border-border bg-background/40 p-2">
-                      {filteredSoundLibraryGroups.map((group) => (
-                        <div key={group.key} className="space-y-2">
-                          {soundLibraryCategoryFilter === "all" ? (
-                            <div className="flex items-center justify-between gap-2 px-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-                              <span>{group.label}</span>
-                              <span className="normal-case tracking-normal">
-                                {group.sounds.length} match
-                                {group.sounds.length === 1 ? "" : "es"}
-                              </span>
-                            </div>
-                          ) : null}
-                          {group.sounds.map((sound) => {
-                            const selected =
-                              pendingAudioLibrarySelection?.kind === "sfx" &&
-                              pendingAudioLibrarySelection.id === sound.id;
-                            const readiness = getSoundReadiness(sound);
-                            const categoryLabel = getSoundLibraryCategoryLabel(
-                              sound.category,
-                            );
-                            return (
-                              <button
-                                key={sound.id}
-                                type="button"
-                                data-audio-asset-id={sound.id}
-                                data-audio-asset-kind="sfx"
-                                onClick={() => {
-                                  setPendingAudioLibrarySelection({
-                                    kind: "sfx",
-                                    id: sound.id,
-                                  });
-                                }}
-                                className={`w-full cursor-pointer rounded-lg border px-3 py-3 text-left transition active:scale-[0.997] active:bg-primary/15 ${selected ? "border-primary/70 bg-primary/15 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/50 hover:bg-primary/5 hover:shadow-sm"}`}
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <div className="truncate text-sm font-medium text-foreground">
-                                      {sound.name}
-                                    </div>
-                                  </div>
-                                  <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
-                                    <Badge variant="outline">
-                                      {categoryLabel}
-                                    </Badge>
-                                    {readiness !== "ready" ? (
-                                      <Badge variant="outline">
-                                        {readiness}
-                                      </Badge>
-                                    ) : null}
-                                  </div>
-                                </div>
-                                {sound.tags.length > 0 ? (
-                                  <div className="mt-2 flex flex-wrap gap-1.5">
-                                    {sound.tags.map((tag) => (
-                                      <span
-                                        key={tag}
-                                        className="rounded-full bg-muted/70 px-2 py-0.5 text-[11px] text-muted-foreground"
-                                      >
-                                        {tag}
-                                      </span>
-                                    ))}
-                                  </div>
-                                ) : null}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ))}
-                      {filteredMusicLibrary.length > 0 ? (
-                        <div className="space-y-2">
-                          {soundLibraryCategoryFilter === "all" ? (
-                            <div className="flex items-center justify-between gap-2 px-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-                              <span>Music</span>
-                              <span className="normal-case tracking-normal">
-                                {filteredMusicLibrary.length} match
-                                {filteredMusicLibrary.length === 1 ? "" : "es"}
-                              </span>
-                            </div>
-                          ) : null}
-                          {filteredMusicLibrary.map((track) => {
-                            const audioUrl = buildSavedMusicAudioUrl(
-                              track,
+	                  <div className="flex min-h-0 flex-1 flex-col gap-2">
+	                    <div className="flex items-center justify-between gap-2">
+	                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                        Assets
+	                      </label>
+	                      <span className="text-[11px] text-muted-foreground">
+	                        {filteredSoundLibraryItemCount} shown
+	                      </span>
+	                    </div>
+	                    <div className="min-h-0 flex-1 space-y-2 overflow-y-auto rounded-lg border border-border bg-background/40 p-2">
+	                      {sortedFilteredSoundLibrary.map((sound) => {
+	                        const selected =
+	                          pendingAudioLibrarySelection?.kind === "sfx" &&
+	                          pendingAudioLibrarySelection.id === sound.id;
+	                        const readiness = getSoundReadiness(sound);
+	                        const categoryLabel = getSoundLibraryCategoryLabel(
+	                          sound.category,
+	                        );
+	                        return (
+	                          <button
+	                            key={sound.id}
+	                            type="button"
+	                            data-audio-asset-id={sound.id}
+	                            data-audio-asset-kind="sfx"
+	                            onClick={() => {
+	                              setPendingAudioLibrarySelection({
+	                                kind: "sfx",
+	                                id: sound.id,
+	                              });
+	                            }}
+	                            className={`w-full cursor-pointer rounded-lg border px-3 py-3 text-left transition active:scale-[0.997] active:bg-primary/15 ${selected ? "border-primary/70 bg-primary/15 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/50 hover:bg-primary/5 hover:shadow-sm"}`}
+	                          >
+	                            <div className="flex items-start justify-between gap-3">
+	                              <div className="min-w-0">
+	                                <div className="truncate text-sm font-medium text-foreground">
+	                                  {sound.name}
+	                                </div>
+	                              </div>
+	                              <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+	                                <Badge variant="outline">
+	                                  {categoryLabel}
+	                                </Badge>
+	                                {readiness !== "ready" ? (
+	                                  <Badge variant="outline">
+	                                    {readiness}
+	                                  </Badge>
+	                                ) : null}
+	                              </div>
+	                            </div>
+	                            {sound.tags.length > 0 ? (
+	                              <div className="mt-2 flex flex-wrap gap-1.5">
+	                                {sound.tags.map((tag) => (
+	                                  <span
+	                                    key={tag}
+	                                    className="rounded-full bg-muted/70 px-2 py-0.5 text-[11px] text-muted-foreground"
+	                                  >
+	                                    {tag}
+	                                  </span>
+	                                ))}
+	                              </div>
+	                            ) : null}
+	                          </button>
+	                        );
+	                      })}
+	                      {filteredMusicLibrary.length > 0 ? (
+	                        <>
+	                          {filteredMusicLibrary.map((track) => {
+	                            const audioUrl = buildSavedMusicAudioUrl(
+	                              track,
                               track.generatedAt
                                 ? new Date(track.generatedAt).getTime()
                                 : undefined,
@@ -6816,11 +6699,11 @@ export function ShortFormVideoSettingsView({
                                     .filter(Boolean)
                                     .join(" · ") || "Saved music track"}
                                 </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : null}
+	                              </button>
+	                            );
+	                          })}
+	                        </>
+	                      ) : null}
                       {filteredSoundLibraryItemCount === 0 ? (
                         <div className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
                           No library entries match the current search/filter
@@ -6830,7 +6713,7 @@ export function ShortFormVideoSettingsView({
                     </div>
                   </div>
                 </div>
-                    <DialogFooter>
+	                    <DialogFooter className="mt-4 shrink-0">
                       <Button
                         type="button"
                         variant="outline"
