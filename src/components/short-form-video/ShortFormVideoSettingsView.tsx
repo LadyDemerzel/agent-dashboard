@@ -11,7 +11,7 @@ import {
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
-import { ChevronDown, Search, Trash2 } from "lucide-react";
+import { ChevronDown, MoreVertical, Pencil, Search, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { RefreshIconButton } from "@/components/RefreshIconButton";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,12 @@ import {
   DialogOverlay,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -4201,6 +4207,12 @@ export function ShortFormVideoSettingsView({
   const [audioLibraryPickerOpen, setAudioLibraryPickerOpen] = useState(false);
   const [pendingAudioLibrarySelection, setPendingAudioLibrarySelection] =
     useState<AudioLibraryPickerSelection | null>(null);
+  const [audioClipNameDialogOpen, setAudioClipNameDialogOpen] = useState(false);
+  const [audioClipNameDraft, setAudioClipNameDraft] = useState("");
+  const [audioClipTagsDialogOpen, setAudioClipTagsDialogOpen] = useState(false);
+  const [audioClipTagDrafts, setAudioClipTagDrafts] = useState<string[]>([]);
+  const [audioClipNewTagDraft, setAudioClipNewTagDraft] = useState("");
+  const [audioClipDeleteDialogOpen, setAudioClipDeleteDialogOpen] = useState(false);
   const [audioLibraryTypeFilter, setAudioLibraryTypeFilter] =
     useState<AudioLibraryTypeFilter>("all");
   const [soundLibrarySearchQuery, setSoundLibrarySearchQuery] = useState("");
@@ -4897,10 +4909,10 @@ export function ShortFormVideoSettingsView({
       ) || null,
     [initialVideoRender, selectedMusicId],
   );
-  const selectedAudioClip = useMemo(() => {
-    if (selectedAudioLibraryKind === "music" && selectedMusic) {
-      return {
-        name: selectedMusic.name,
+	  const selectedAudioClip = useMemo(() => {
+	    if (selectedAudioLibraryKind === "music" && selectedMusic) {
+	      return {
+	        name: selectedMusic.name,
         kindLabel: "Music",
         status: getMusicTrackReadiness(selectedMusic),
       };
@@ -4911,10 +4923,19 @@ export function ShortFormVideoSettingsView({
         kindLabel: getSoundLibraryCategoryLabel(selectedSound.category),
         status: getSoundReadiness(selectedSound),
       };
-    }
-    return null;
-  }, [selectedAudioLibraryKind, selectedMusic, selectedSound]);
-  const mixDefaultsDirty =
+	    }
+	    return null;
+	  }, [selectedAudioLibraryKind, selectedMusic, selectedSound]);
+	  const selectedAudioClipTags = useMemo(() => {
+	    if (selectedAudioLibraryKind === "music" && selectedMusic) {
+	      return selectedMusic.tags || [];
+	    }
+	    if (selectedAudioLibraryKind === "sfx" && selectedSound) {
+	      return selectedSound.tags || [];
+	    }
+	    return [];
+	  }, [selectedAudioLibraryKind, selectedMusic, selectedSound]);
+	  const mixDefaultsDirty =
     serializeForCompare(pickSoundMixDefaults(soundDesignSettings)) !==
     serializeForCompare(pickSoundMixDefaults(initialSoundDesignSettings));
   const selectedSoundDirty =
@@ -5095,9 +5116,9 @@ export function ShortFormVideoSettingsView({
   const soundLibraryItemCount =
     (soundDesignSettings?.library.length || 0) +
     (videoRender?.musicTracks.length || 0);
-  const audioLibraryHealth = useMemo(() => {
-    const musicTracks = videoRender?.musicTracks || [];
-    const sounds = soundDesignSettings?.library || [];
+	  const audioLibraryHealth = useMemo(() => {
+	    const musicTracks = videoRender?.musicTracks || [];
+	    const sounds = soundDesignSettings?.library || [];
     const musicMissingAudio = musicTracks.filter(
       (track) => !track.generatedAudioRelativePath,
     ).length;
@@ -5115,10 +5136,27 @@ export function ShortFormVideoSettingsView({
       missingMetadataCount: musicMissingMetadata + sfxMissingMetadata,
       readyCount:
         musicTracks.filter((track) => isReadyAudioAsset(getMusicTrackReadiness(track))).length +
-        sounds.filter((sound) => isReadyAudioAsset(getSoundReadiness(sound))).length,
-    };
-  }, [soundDesignSettings, videoRender]);
-  const sortedFilteredSoundLibrary = useMemo(
+	        sounds.filter((sound) => isReadyAudioAsset(getSoundReadiness(sound))).length,
+	    };
+	  }, [soundDesignSettings, videoRender]);
+	  const audioClipTagOptions = useMemo(() => {
+	    const tagsByKey = new Map<string, string>();
+	    const addTags = (tags: string[] | undefined) => {
+	      (tags || []).forEach((tag) => {
+	        const trimmed = tag.trim();
+	        if (!trimmed) return;
+	        const key = trimmed.toLowerCase();
+	        if (!tagsByKey.has(key)) tagsByKey.set(key, trimmed);
+	      });
+	    };
+	    (soundDesignSettings?.library || []).forEach((sound) => addTags(sound.tags));
+	    (videoRender?.musicTracks || []).forEach((track) => addTags(track.tags));
+	    audioClipTagDrafts.forEach((tag) => addTags([tag]));
+	    return [...tagsByKey.values()].sort((left, right) =>
+	      left.localeCompare(right, undefined, { sensitivity: "base" }),
+	    );
+	  }, [audioClipTagDrafts, soundDesignSettings, videoRender]);
+	  const sortedFilteredSoundLibrary = useMemo(
     () =>
       [...filteredSoundLibrary].sort((left, right) =>
         left.name.localeCompare(right.name),
@@ -6607,18 +6645,212 @@ export function ShortFormVideoSettingsView({
                         Select
                       </Button>
                     </DialogFooter>
-                  </DialogContent>
-                </DialogOverlay>
+	                  </DialogContent>
+	                </DialogOverlay>
 
-		                {selectedAudioLibraryKind === "sfx" && selectedSound ? (
-		                  <Card className="space-y-4 p-5" data-audio-library-pane="detail">
-		                    <div className="flex flex-wrap items-start justify-between gap-3">
-		                      <h3 className="text-base font-semibold text-foreground">
-		                        {selectedSound.name}
-		                      </h3>
-		                      <div className="flex flex-wrap items-center justify-end gap-2">
-		                        {getSoundReadiness(selectedSound) !== "ready" ? (
-		                          <Badge variant="warning">
+	                <DialogOverlay
+	                  open={audioClipNameDialogOpen}
+	                  onClick={() => setAudioClipNameDialogOpen(false)}
+	                >
+	                  <DialogContent
+	                    size="sm"
+	                    onClick={(event) => event.stopPropagation()}
+	                  >
+	                    <DialogHeader>
+	                      <DialogTitle>Edit clip name</DialogTitle>
+	                    </DialogHeader>
+	                    <div className="space-y-2">
+	                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                        Name
+	                      </label>
+	                      <Input
+	                        value={audioClipNameDraft}
+	                        onChange={(event) => setAudioClipNameDraft(event.target.value)}
+	                        onKeyDown={(event) => {
+	                          if (event.key === "Enter") saveSelectedAudioClipName();
+	                        }}
+	                        autoFocus
+	                      />
+	                    </div>
+	                    <DialogFooter>
+	                      <Button
+	                        type="button"
+	                        variant="outline"
+	                        onClick={() => setAudioClipNameDialogOpen(false)}
+	                      >
+	                        Cancel
+	                      </Button>
+	                      <Button
+	                        type="button"
+	                        onClick={saveSelectedAudioClipName}
+	                        disabled={!audioClipNameDraft.trim()}
+	                      >
+	                        Save name
+	                      </Button>
+	                    </DialogFooter>
+	                  </DialogContent>
+	                </DialogOverlay>
+
+	                <DialogOverlay
+	                  open={audioClipTagsDialogOpen}
+	                  onClick={() => setAudioClipTagsDialogOpen(false)}
+	                >
+	                  <DialogContent
+	                    size="md"
+	                    className="max-h-[80vh] overflow-hidden"
+	                    onClick={(event) => event.stopPropagation()}
+	                  >
+	                    <DialogHeader>
+	                      <DialogTitle>Edit clip tags</DialogTitle>
+	                    </DialogHeader>
+	                    <div className="space-y-4">
+	                      <div className="flex gap-2">
+	                        <Input
+	                          value={audioClipNewTagDraft}
+	                          onChange={(event) => setAudioClipNewTagDraft(event.target.value)}
+	                          onKeyDown={(event) => {
+	                            if (event.key === "Enter") {
+	                              event.preventDefault();
+	                              addAudioClipTagDraft();
+	                            }
+	                          }}
+	                          placeholder="Add tag"
+	                        />
+	                        <Button
+	                          type="button"
+	                          variant="outline"
+	                          onClick={addAudioClipTagDraft}
+	                          disabled={!audioClipNewTagDraft.trim()}
+	                        >
+	                          Add
+	                        </Button>
+	                      </div>
+	                      <div className="max-h-[44vh] space-y-2 overflow-y-auto rounded-md border border-border p-2">
+	                        {audioClipTagOptions.length > 0 ? (
+	                          audioClipTagOptions.map((tag) => {
+	                            const selected = audioClipTagDrafts.some(
+	                              (item) => item.toLowerCase() === tag.toLowerCase(),
+	                            );
+	                            return (
+	                              <button
+	                                key={tag}
+	                                type="button"
+	                                className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition ${selected ? "border-primary/60 bg-primary/10 text-foreground" : "border-border bg-background hover:bg-accent"}`}
+	                                onClick={() => toggleAudioClipTagDraft(tag)}
+	                              >
+	                                <span>{tag}</span>
+	                                {selected ? (
+	                                  <Badge variant="secondary">Selected</Badge>
+	                                ) : null}
+	                              </button>
+	                            );
+	                          })
+	                        ) : (
+	                          <p className="px-2 py-4 text-sm text-muted-foreground">
+	                            No tags yet. Add one above.
+	                          </p>
+	                        )}
+	                      </div>
+	                    </div>
+	                    <DialogFooter>
+	                      <Button
+	                        type="button"
+	                        variant="outline"
+	                        onClick={() => setAudioClipTagsDialogOpen(false)}
+	                      >
+	                        Cancel
+	                      </Button>
+	                      <Button type="button" onClick={saveSelectedAudioClipTags}>
+	                        Save tags
+	                      </Button>
+	                    </DialogFooter>
+	                  </DialogContent>
+	                </DialogOverlay>
+
+	                <DialogOverlay
+	                  open={audioClipDeleteDialogOpen}
+	                  onClick={() => setAudioClipDeleteDialogOpen(false)}
+	                >
+	                  <DialogContent
+	                    size="sm"
+	                    onClick={(event) => event.stopPropagation()}
+	                  >
+	                    <DialogHeader>
+	                      <DialogTitle>Delete audio clip?</DialogTitle>
+	                    </DialogHeader>
+	                    <p className="text-sm text-muted-foreground">
+	                      This removes{" "}
+	                      <span className="font-medium text-foreground">
+	                        {selectedAudioClip?.name || "this audio clip"}
+	                      </span>{" "}
+	                      from the saved audio library metadata. This cannot be undone
+	                      from this dialog.
+	                    </p>
+	                    <DialogFooter>
+	                      <Button
+	                        type="button"
+	                        variant="outline"
+	                        onClick={() => setAudioClipDeleteDialogOpen(false)}
+	                      >
+	                        Cancel
+	                      </Button>
+	                      <Button
+	                        type="button"
+	                        variant="destructive"
+	                        onClick={confirmDeleteSelectedAudioClip}
+	                      >
+	                        Delete
+	                      </Button>
+	                    </DialogFooter>
+	                  </DialogContent>
+	                </DialogOverlay>
+
+			                {selectedAudioLibraryKind === "sfx" && selectedSound ? (
+			                  <Card className="space-y-4 p-5" data-audio-library-pane="detail">
+			                    <div className="flex flex-wrap items-start justify-between gap-3">
+			                      <div className="min-w-0 space-y-2">
+			                        <div className="flex min-w-0 items-center gap-2">
+			                          <h3 className="truncate text-base font-semibold text-foreground">
+			                            {selectedSound.name}
+			                          </h3>
+			                          <Button
+			                            type="button"
+			                            variant="ghost"
+			                            size="icon"
+			                            className="h-7 w-7 shrink-0"
+			                            onClick={openSelectedAudioClipNameDialog}
+			                            aria-label="Edit sound name"
+			                          >
+			                            <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
+			                          </Button>
+			                        </div>
+			                        <div className="flex flex-wrap items-center gap-1.5">
+			                          {selectedAudioClipTags.length > 0 ? (
+			                            selectedAudioClipTags.map((tag) => (
+			                              <Badge key={tag} variant="secondary">
+			                                {tag}
+			                              </Badge>
+			                            ))
+			                          ) : (
+			                            <span className="text-xs text-muted-foreground">
+			                              No tags
+			                            </span>
+			                          )}
+			                          <Button
+			                            type="button"
+			                            variant="ghost"
+			                            size="icon"
+			                            className="h-7 w-7"
+			                            onClick={openSelectedAudioClipTagsDialog}
+			                            aria-label="Edit sound tags"
+			                          >
+			                            <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
+			                          </Button>
+			                        </div>
+			                      </div>
+			                      <div className="flex flex-wrap items-center justify-end gap-2">
+			                        {getSoundReadiness(selectedSound) !== "ready" ? (
+			                          <Badge variant="warning">
 		                            {getSoundReadiness(selectedSound)}
 		                          </Badge>
 		                        ) : null}
@@ -6628,31 +6860,38 @@ export function ShortFormVideoSettingsView({
 		                            saving={sectionFeedback["sound-library"].saving}
 		                            saveLabel="Save audio clip"
 		                            onSave={() => void saveSelectedAudioClip()}
-		                            onReset={resetSelectedAudioClip}
-		                          />
-		                        ) : null}
-		                      </div>
-		                    </div>
+			                            onReset={resetSelectedAudioClip}
+			                          />
+			                        ) : null}
+			                        <DropdownMenu>
+			                          <DropdownMenuTrigger asChild>
+			                            <Button
+			                              type="button"
+			                              variant="ghost"
+			                              size="icon"
+			                              aria-label="Sound actions"
+			                            >
+			                              <MoreVertical aria-hidden="true" className="h-4 w-4" />
+			                            </Button>
+			                          </DropdownMenuTrigger>
+			                          <DropdownMenuContent align="end" className="min-w-40">
+			                            <DropdownMenuItem
+			                              className="text-destructive focus:text-destructive"
+			                              disabled={soundDesignSettings.library.length <= 1}
+			                              onSelect={() => setAudioClipDeleteDialogOpen(true)}
+			                            >
+			                              <Trash2 aria-hidden="true" className="mr-2 h-4 w-4" />
+			                              Delete sound
+			                            </DropdownMenuItem>
+			                          </DropdownMenuContent>
+			                        </DropdownMenu>
+			                      </div>
+			                    </div>
 
                     <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Sound name
-                        </label>
-                        <Input
-                          value={selectedSound.name}
-                          onChange={(event) =>
-                            updateSelectedSound((sound) => ({
-                              ...sound,
-                              name: event.target.value,
-                            }))
-                          }
-                          placeholder="Sharp whoosh"
-                        />
-                      </div>
-	                      <div className="space-y-2">
-	                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-	                          Category
+		                      <div className="space-y-2">
+		                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+		                          Category
 	                        </label>
 	                        <Select
 	                          value={selectedSound.category}
@@ -6680,18 +6919,10 @@ export function ShortFormVideoSettingsView({
 	                            ))}
 	                        </Select>
 	                      </div>
-                    </div>
+	                    </div>
 
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => deleteSound(selectedSound.id)}
-                        disabled={soundDesignSettings.library.length <= 1}
-                      >
-                        Delete sound
-                      </Button>
-	                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-background/80">
+	                    <div className="flex flex-wrap items-center gap-2 text-xs">
+		                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-background/80">
                         <span>
                           {selectedSoundUpload?.isUploading
                             ? "Uploading…"
@@ -6864,26 +7095,7 @@ export function ShortFormVideoSettingsView({
                       />
                     </div>
 
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Tags (comma separated)
-                      </label>
-                      <Input
-                        value={selectedSound.tags.join(", ")}
-                        onChange={(event) =>
-                          updateSelectedSound((sound) => ({
-                            ...sound,
-                            tags: event.target.value
-                              .split(",")
-                              .map((tag) => tag.trim())
-                              .filter(Boolean),
-                          }))
-                        }
-                        placeholder="sharp, clean, short"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
+	                    <div className="space-y-2">
                       <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                         Availability
                       </label>
@@ -7180,23 +7392,92 @@ export function ShortFormVideoSettingsView({
                   </Card>
                 ) : null}
 
-	                {selectedAudioLibraryKind === "music" && selectedMusic && videoRender ? (
-	                  <Card className="space-y-4 p-5" data-audio-library-pane="detail">
-	                    <div className="flex flex-wrap items-start justify-between gap-3">
-	                      <h3 className="text-base font-semibold text-foreground">
-	                        {selectedMusic.name}
-	                      </h3>
-	                      {selectedAudioClipDirty ? (
-	                        <SectionActions
-	                          dirty={selectedAudioClipDirty}
-	                          saving={sectionFeedback["music-library"].saving}
-	                          saveLabel="Save audio clip"
-	                          onSave={() => void saveSelectedAudioClip()}
-	                          onReset={resetSelectedAudioClip}
-	                        />
-	                      ) : null}
-	                    </div>
-	                    <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/70 bg-background/60 p-3">
+		                {selectedAudioLibraryKind === "music" && selectedMusic && videoRender ? (
+		                  <Card className="space-y-4 p-5" data-audio-library-pane="detail">
+		                    <div className="flex flex-wrap items-start justify-between gap-3">
+		                      <div className="min-w-0 space-y-2">
+		                        <div className="flex min-w-0 items-center gap-2">
+		                          <h3 className="truncate text-base font-semibold text-foreground">
+		                            {selectedMusic.name}
+		                          </h3>
+		                          <Button
+		                            type="button"
+		                            variant="ghost"
+		                            size="icon"
+		                            className="h-7 w-7 shrink-0"
+		                            onClick={openSelectedAudioClipNameDialog}
+		                            aria-label="Edit music name"
+		                          >
+		                            <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
+		                          </Button>
+		                        </div>
+		                        <div className="flex flex-wrap items-center gap-1.5">
+		                          {selectedAudioClipTags.length > 0 ? (
+		                            selectedAudioClipTags.map((tag) => (
+		                              <Badge key={tag} variant="secondary">
+		                                {tag}
+		                              </Badge>
+		                            ))
+		                          ) : (
+		                            <span className="text-xs text-muted-foreground">
+		                              No tags
+		                            </span>
+		                          )}
+		                          <Button
+		                            type="button"
+		                            variant="ghost"
+		                            size="icon"
+		                            className="h-7 w-7"
+		                            onClick={openSelectedAudioClipTagsDialog}
+		                            aria-label="Edit music tags"
+		                          >
+		                            <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
+		                          </Button>
+		                        </div>
+		                      </div>
+		                      <div className="flex flex-wrap items-center justify-end gap-2">
+		                        {getMusicTrackReadiness(selectedMusic) !== "ready" ? (
+		                          <Badge variant="warning">
+		                            {getMusicTrackReadiness(selectedMusic)}
+		                          </Badge>
+		                        ) : null}
+		                        {selectedMusic.id === videoRender.defaultMusicTrackId ? (
+		                          <Badge variant="secondary">Default</Badge>
+		                        ) : null}
+		                        {selectedAudioClipDirty ? (
+		                          <SectionActions
+		                            dirty={selectedAudioClipDirty}
+		                            saving={sectionFeedback["music-library"].saving}
+		                            saveLabel="Save audio clip"
+		                            onSave={() => void saveSelectedAudioClip()}
+		                            onReset={resetSelectedAudioClip}
+		                          />
+		                        ) : null}
+		                        <DropdownMenu>
+		                          <DropdownMenuTrigger asChild>
+		                            <Button
+		                              type="button"
+		                              variant="ghost"
+		                              size="icon"
+		                              aria-label="Music actions"
+		                            >
+		                              <MoreVertical aria-hidden="true" className="h-4 w-4" />
+		                            </Button>
+		                          </DropdownMenuTrigger>
+		                          <DropdownMenuContent align="end" className="min-w-40">
+		                            <DropdownMenuItem
+		                              className="text-destructive focus:text-destructive"
+		                              disabled={videoRender.musicTracks.length <= 1}
+		                              onSelect={() => setAudioClipDeleteDialogOpen(true)}
+		                            >
+		                              <Trash2 aria-hidden="true" className="mr-2 h-4 w-4" />
+		                              Delete music
+		                            </DropdownMenuItem>
+		                          </DropdownMenuContent>
+		                        </DropdownMenu>
+		                      </div>
+		                    </div>
+		                    <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/70 bg-background/60 p-3">
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2 text-xs">
                           <Badge
@@ -7243,55 +7524,12 @@ export function ShortFormVideoSettingsView({
                             ? "Default music"
                             : "Set default"}
                         </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => deleteMusic(selectedMusic.id)}
-                          disabled={videoRender.musicTracks.length <= 1}
-                        >
-                          Delete music
-                        </Button>
-                      </div>
-                    </div>
+	                      </div>
+	                    </div>
 
-                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
-                      <h4 className="text-sm font-medium text-foreground">Basic</h4>
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            Name
-                          </label>
-                          <Input
-                            value={selectedMusic.name}
-                            onChange={(event) =>
-                              updateSelectedMusic((track) => ({
-                                ...track,
-                                name: event.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            Tags
-                          </label>
-                          <Input
-                            value={(selectedMusic.tags || []).join(", ")}
-                            onChange={(event) =>
-                              updateSelectedMusic((track) => ({
-                                ...track,
-                                tags: event.target.value
-                                  .split(",")
-                                  .map((item) => item.trim())
-                                  .filter(Boolean),
-                              }))
-                            }
-                            placeholder="hook, proof, warm, payoff"
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
+	                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+	                      <h4 className="text-sm font-medium text-foreground">Basic</h4>
+	                      <div className="space-y-2">
                         <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                           Description and notes
                         </label>
@@ -9352,20 +9590,106 @@ export function ShortFormVideoSettingsView({
     });
   }
 
-  function updateSelectedSound(
-    updater: (sound: SoundLibraryEntry) => SoundLibraryEntry,
-  ) {
-    if (!soundDesignSettings || !selectedSound) return;
-    updateSectionFeedbackState("sound-library", { error: null, message: null });
+	  function updateSelectedSound(
+	    updater: (sound: SoundLibraryEntry) => SoundLibraryEntry,
+	  ) {
+	    if (!soundDesignSettings || !selectedSound) return;
+	    updateSectionFeedbackState("sound-library", { error: null, message: null });
     setSoundDesignSettings({
       ...soundDesignSettings,
       library: soundDesignSettings.library.map((sound) =>
         sound.id === selectedSound.id ? updater(sound) : sound,
-      ),
-    });
-  }
+	      ),
+	    });
+	  }
 
-  function updateSelectedCaptionStyle(
+	  function openSelectedAudioClipNameDialog() {
+	    if (!selectedAudioClip) return;
+	    setAudioClipNameDraft(selectedAudioClip.name);
+	    setAudioClipNameDialogOpen(true);
+	  }
+
+	  function saveSelectedAudioClipName() {
+	    const nextName = audioClipNameDraft.trim();
+	    if (!nextName) return;
+	    if (selectedAudioLibraryKind === "music" && selectedMusic) {
+	      updateSelectedMusic((track) => ({
+	        ...track,
+	        name: nextName,
+	      }));
+	    } else if (selectedAudioLibraryKind === "sfx" && selectedSound) {
+	      updateSelectedSound((sound) => ({
+	        ...sound,
+	        name: nextName,
+	      }));
+	    }
+	    setAudioClipNameDialogOpen(false);
+	  }
+
+	  function openSelectedAudioClipTagsDialog() {
+	    setAudioClipTagDrafts(selectedAudioClipTags);
+	    setAudioClipNewTagDraft("");
+	    setAudioClipTagsDialogOpen(true);
+	  }
+
+	  function toggleAudioClipTagDraft(tag: string) {
+	    const normalizedTag = tag.trim();
+	    if (!normalizedTag) return;
+	    setAudioClipTagDrafts((current) => {
+	      const existing = current.find(
+	        (item) => item.toLowerCase() === normalizedTag.toLowerCase(),
+	      );
+	      if (existing) {
+	        return current.filter((item) => item !== existing);
+	      }
+	      return [...current, normalizedTag];
+	    });
+	  }
+
+	  function addAudioClipTagDraft() {
+	    const nextTag = audioClipNewTagDraft.trim();
+	    if (!nextTag) return;
+	    setAudioClipTagDrafts((current) =>
+	      current.some((tag) => tag.toLowerCase() === nextTag.toLowerCase())
+	        ? current
+	        : [...current, nextTag],
+	    );
+	    setAudioClipNewTagDraft("");
+	  }
+
+	  function saveSelectedAudioClipTags() {
+	    const nextTags = audioClipTagDrafts
+	      .map((tag) => tag.trim())
+	      .filter(Boolean)
+	      .filter(
+	        (tag, index, tags) =>
+	          tags.findIndex((item) => item.toLowerCase() === tag.toLowerCase()) ===
+	          index,
+	      );
+	    if (selectedAudioLibraryKind === "music" && selectedMusic) {
+	      updateSelectedMusic((track) => ({
+	        ...track,
+	        tags: nextTags,
+	      }));
+	    } else if (selectedAudioLibraryKind === "sfx" && selectedSound) {
+	      updateSelectedSound((sound) => ({
+	        ...sound,
+	        tags: nextTags,
+	      }));
+	    }
+	    setAudioClipTagsDialogOpen(false);
+	  }
+
+	  function confirmDeleteSelectedAudioClip() {
+	    if (selectedAudioLibraryKind === "music" && selectedMusic) {
+	      deleteMusic(selectedMusic.id);
+	    } else if (selectedAudioLibraryKind === "sfx" && selectedSound) {
+	      deleteSound(selectedSound.id);
+	    }
+	    setAudioClipDeleteDialogOpen(false);
+	  }
+
+	  function updateSelectedCaptionStyle(
     updater: (style: CaptionStyleEntry) => CaptionStyleEntry,
   ) {
     if (!videoRender || !selectedCaptionStyle) return;
@@ -9592,18 +9916,11 @@ export function ShortFormVideoSettingsView({
     setSelectedAudioLibraryKind("music");
   }
 
-  function deleteMusic(trackId: string) {
-    if (!videoRender || videoRender.musicTracks.length <= 1) return;
-    const trackName =
-      videoRender.musicTracks.find((track) => track.id === trackId)?.name ||
-      "this soundtrack";
-    const confirmed = window.confirm(
-      `Delete "${trackName}" from the music library? This removes the saved track metadata from video render settings.`,
-    );
-    if (!confirmed) return;
-    updateSectionFeedbackState("music-library", { error: null, message: null });
-    const remaining = videoRender.musicTracks.filter(
-      (track) => track.id !== trackId,
+	  function deleteMusic(trackId: string) {
+	    if (!videoRender || videoRender.musicTracks.length <= 1) return;
+	    updateSectionFeedbackState("music-library", { error: null, message: null });
+	    const remaining = videoRender.musicTracks.filter(
+	      (track) => track.id !== trackId,
     );
     const nextDefault =
       videoRender.defaultMusicTrackId === trackId
@@ -9654,18 +9971,11 @@ export function ShortFormVideoSettingsView({
     setSelectedAudioLibraryKind("sfx");
   }
 
-  function deleteSound(soundId: string) {
-    if (!soundDesignSettings || soundDesignSettings.library.length <= 1) return;
-    const soundName =
-      soundDesignSettings.library.find((sound) => sound.id === soundId)?.name ||
-      "this sound";
-    const confirmed = window.confirm(
-      `Delete "${soundName}" from the SFX library? This removes the saved sound metadata from sound-design settings.`,
-    );
-    if (!confirmed) return;
-    updateSectionFeedbackState("sound-library", { error: null, message: null });
-    const remaining = soundDesignSettings.library.filter(
-      (sound) => sound.id !== soundId,
+	  function deleteSound(soundId: string) {
+	    if (!soundDesignSettings || soundDesignSettings.library.length <= 1) return;
+	    updateSectionFeedbackState("sound-library", { error: null, message: null });
+	    const remaining = soundDesignSettings.library.filter(
+	      (sound) => sound.id !== soundId,
     );
     setSoundDesignSettings({
       ...soundDesignSettings,
