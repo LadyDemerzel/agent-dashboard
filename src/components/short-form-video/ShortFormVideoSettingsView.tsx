@@ -11,6 +11,7 @@ import {
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
+import { Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { RefreshIconButton } from "@/components/RefreshIconButton";
 import { Button } from "@/components/ui/button";
@@ -392,11 +393,6 @@ const XML_MOTION_GRAPHIC_TEMPLATE_PLACEHOLDER_ROWS = [
       "Around 2 seconds for the setup plus about 1 second per bar.",
   },
   {
-    placeholder: "{{durationSeconds}}",
-    explanation: "The configured default duration for this motion-graphics template.",
-    example: "7",
-  },
-  {
     placeholder: "{{exampleXml}}",
     explanation:
       "A minimal template-specific XML example from the motion-graphics settings, or None. when it is empty.",
@@ -406,7 +402,7 @@ const XML_MOTION_GRAPHIC_TEMPLATE_PLACEHOLDER_ROWS = [
   {
     placeholder: "{{fieldsJson}}",
     explanation:
-      "Pretty-printed JSON array of the template's configurable fields from settings, including names, labels, types, descriptions, required flags, and defaults.",
+      "Pretty-printed JSON array of the template's configurable fields from settings, including names, labels, types, descriptions, and required flags.",
     example:
       "[\n  { \"name\": \"title\", \"label\": \"Title\", \"type\": \"text\", ... }\n]",
   },
@@ -414,11 +410,6 @@ const XML_MOTION_GRAPHIC_TEMPLATE_PLACEHOLDER_ROWS = [
     placeholder: "{{rendererId}}",
     explanation: "The deterministic renderer ID used by the dashboard for this template.",
     example: "bar_chart",
-  },
-  {
-    placeholder: "{{stylePreset}}",
-    explanation: "The template's default style preset.",
-    example: "dark-pastel-watercolor",
   },
   {
     placeholder: "{{templateId}}",
@@ -630,7 +621,6 @@ interface MotionGraphicTemplateField {
   type: MotionGraphicFieldType;
   required?: boolean;
   description?: string;
-  defaultValue?: unknown;
 }
 
 interface MotionGraphicTemplateConfig {
@@ -642,17 +632,15 @@ interface MotionGraphicTemplateConfig {
   additionalUsageInstructions: string;
   xmlInstructions?: string;
   exampleXml?: string;
-  durationSeconds: number;
+  previewDurationSeconds: number;
   durationGuidance: string;
-  stylePreset: string;
-  defaultArgs: Record<string, unknown>;
+  previewArgs: Record<string, unknown>;
   fields: MotionGraphicTemplateField[];
   deterministicSoundEffects?: unknown[];
   enabled: boolean;
 }
 
 interface MotionGraphicsSettings {
-  defaultStylePreset: string;
   templates: MotionGraphicTemplateConfig[];
 }
 
@@ -1000,11 +988,9 @@ function createMotionGraphicTemplatePromptPreviewValues(
     ),
     displayName: template.displayName,
     durationGuidance: template.durationGuidance,
-    durationSeconds: template.durationSeconds,
     exampleXml: template.exampleXml || "None.",
     fieldsJson: stringifyPromptPreviewJson(template.fields),
     rendererId: template.rendererId,
-    stylePreset: template.stylePreset,
     templateId: template.id,
     whenToUse: template.whenToUse,
     xmlInstructions: template.xmlInstructions || "None.",
@@ -1029,8 +1015,6 @@ function renderMotionGraphicTemplatesPreviewValue(
         motionGraphicTemplatePromptTemplate,
         createMotionGraphicTemplatePromptPreviewValues(
           {
-            defaultStylePreset:
-              motionGraphicsSettings?.defaultStylePreset || "",
             templates: [template],
           },
           template.id,
@@ -1907,7 +1891,6 @@ const SETTINGS_PAGE_META: Record<
       "Maintain deterministic animated slides, charts, lists, and caption-wall templates available to Scribe during Plan Visuals.",
     summaryLabel: "Template library",
     sectionIds: ["motion-graphics"],
-    pageActionSectionId: "motion-graphics",
   },
   "generate-visuals-image-generation-prompts": {
     eyebrow: "Generate Visuals Settings",
@@ -1959,7 +1942,7 @@ function getSettingsSectionSaveLabel(sectionId: SettingsSectionId) {
     case "image-styles":
       return "Save style library";
     case "motion-graphics":
-      return "Save motion templates";
+      return "Save template";
     case "image-templates":
       return "Save image prompt templates";
     case "prompt-hooks":
@@ -2029,9 +2012,8 @@ function buildMotionTemplatePreviewKey(template: MotionGraphicTemplateConfig) {
   return serializeForCompare({
     id: template.id,
     rendererId: template.rendererId,
-    durationSeconds: template.durationSeconds,
-    stylePreset: template.stylePreset,
-    defaultArgs: template.defaultArgs,
+    previewDurationSeconds: template.previewDurationSeconds,
+    previewArgs: template.previewArgs,
     deterministicSoundEffects: template.deterministicSoundEffects || [],
   });
 }
@@ -3273,11 +3255,13 @@ function motionFieldShapeLabel(field: MotionGraphicTemplateField) {
 
 function MotionArgTextInput({
   label,
+  description,
   value,
   textarea = false,
   onChange,
 }: {
   label: string;
+  description?: string;
   value: unknown;
   textarea?: boolean;
   onChange: (value: string) => void;
@@ -3287,6 +3271,9 @@ function MotionArgTextInput({
       <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </label>
+      {description ? (
+        <p className="text-xs text-muted-foreground">{description}</p>
+      ) : null}
       {textarea ? (
         <Textarea
           value={motionArgText(value)}
@@ -3304,10 +3291,12 @@ function MotionArgTextInput({
 
 function MotionArgNumberInput({
   label,
+  description,
   value,
   onChange,
 }: {
   label: string;
+  description?: string;
   value: unknown;
   onChange: (value: number) => void;
 }) {
@@ -3316,6 +3305,9 @@ function MotionArgNumberInput({
       <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </label>
+      {description ? (
+        <p className="text-xs text-muted-foreground">{description}</p>
+      ) : null}
       <Input
         type="number"
         value={motionArgText(value)}
@@ -3325,23 +3317,80 @@ function MotionArgNumberInput({
   );
 }
 
-function MotionDefaultArgsEditor({
+function motionFieldLabel(field: MotionGraphicTemplateField) {
+  return `${field.label}${field.required ? "" : " (optional)"}`;
+}
+
+function MotionFieldHeading({ field }: { field: MotionGraphicTemplateField }) {
+  return (
+    <div className="space-y-1">
+      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {motionFieldLabel(field)}
+      </label>
+      {field.description ? (
+        <p className="text-xs text-muted-foreground">{field.description}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function MotionRemoveRowButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="destructive"
+      size="icon"
+      className="h-8 w-8"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+    >
+      <Trash2 className="h-4 w-4" aria-hidden="true" />
+    </Button>
+  );
+}
+
+function MotionPreviewValuesEditor({
   template,
   onChangeArg,
+  onChangePreviewDuration,
 }: {
   template: MotionGraphicTemplateConfig;
   onChangeArg: (name: string, value: unknown) => void;
+  onChangePreviewDuration: (value: number) => void;
 }) {
   const fieldNames = new Set(template.fields.map((field) => field.name));
-  const extraArgs = Object.entries(template.defaultArgs).filter(
-    ([name]) => !fieldNames.has(name),
+  const extraArgs = Object.entries(template.previewArgs).filter(
+    ([name]) => !fieldNames.has(name) && name !== "animationTimings",
   );
+  const animationTimings = isPlainRecord(template.previewArgs.animationTimings)
+    ? template.previewArgs.animationTimings
+    : {};
+  const timingTargets = getMotionGraphicTimingControlConfig(template.rendererId)
+    .controls
+    .filter((target) => /^[a-zA-Z0-9_-]+$/.test(target));
+
+  function updateAnimationTiming(target: string, value: number | undefined) {
+    const nextTimings = { ...animationTimings };
+    if (value === undefined) {
+      delete nextTimings[target];
+    } else {
+      nextTimings[target] = value;
+    }
+    onChangeArg("animationTimings", nextTimings);
+  }
 
   const renderField = (field: MotionGraphicTemplateField) => {
     const value =
-      template.defaultArgs[field.name] !== undefined
-        ? template.defaultArgs[field.name]
-        : field.defaultValue;
+      template.previewArgs[field.name] !== undefined
+        ? template.previewArgs[field.name]
+        : "";
     const updateArrayItem = (
       index: number,
       patch: Record<string, unknown>,
@@ -3366,7 +3415,8 @@ function MotionDefaultArgsEditor({
       return (
         <MotionArgTextInput
           key={field.name}
-          label={field.label}
+          label={motionFieldLabel(field)}
+          description={field.description}
           value={value}
           textarea
           onChange={(next) => onChangeArg(field.name, next)}
@@ -3377,7 +3427,8 @@ function MotionDefaultArgsEditor({
       return (
         <MotionArgNumberInput
           key={field.name}
-          label={field.label}
+          label={motionFieldLabel(field)}
+          description={field.description}
           value={value}
           onChange={(next) => onChangeArg(field.name, next)}
         />
@@ -3386,9 +3437,7 @@ function MotionDefaultArgsEditor({
     if (field.type === "indicatorType") {
       return (
         <div key={field.name} className="space-y-2">
-          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {field.label}
-          </label>
+          <MotionFieldHeading field={field} />
           <Select
             value={motionArgText(value) || "good"}
             onChange={(event) => onChangeArg(field.name, event.target.value)}
@@ -3403,9 +3452,7 @@ function MotionDefaultArgsEditor({
       const rows = motionArgArray(value).map((item) => motionArgText(item));
       return (
         <div key={field.name} className="space-y-2">
-          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {field.label}
-          </label>
+          <MotionFieldHeading field={field} />
           <div className="space-y-2">
             {rows.map((item, index) => (
               <div key={index} className="flex gap-2">
@@ -3443,56 +3490,75 @@ function MotionDefaultArgsEditor({
       const rows = motionArgArray(value);
       return (
         <div key={field.name} className="space-y-3">
-          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {field.label}
-          </label>
-          <div className="space-y-3">
-            {rows.map((item, index) => {
-              const row = isPlainRecord(item) ? item : {};
-              return (
-                <div key={index} className="grid gap-2 rounded-md border border-border bg-background/50 p-3 sm:grid-cols-[1fr_7rem_1fr_7rem_auto]">
-                  <Input
-                    value={motionArgText(row.label)}
-                    placeholder="Label"
-                    onChange={(event) =>
-                      updateArrayItem(index, { label: event.target.value }, {})
-                    }
-                  />
-                  <Input
-                    type="number"
-                    value={motionArgText(row.value)}
-                    placeholder="Value"
-                    onChange={(event) =>
-                      updateArrayItem(index, { value: Number(event.target.value) }, {})
-                    }
-                  />
-                  <Input
-                    value={motionArgText(row.displayValue)}
-                    placeholder="Display value"
-                    onChange={(event) =>
-                      updateArrayItem(index, { displayValue: event.target.value }, {})
-                    }
-                  />
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={motionArgText(row.animateIn)}
-                    placeholder="Animate in"
-                    onChange={(event) =>
-                      updateArrayItem(index, { animateIn: parseOptionalMotionNumber(event.target.value) }, {})
-                    }
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => removeArrayItem(index)}
-                  >
-                    Remove
-                  </Button>
-                </div>
-              );
-            })}
+          <MotionFieldHeading field={field} />
+          <div className="overflow-x-auto rounded-md border border-border bg-background/50">
+            <table className="w-full min-w-[42rem] text-left text-sm">
+              <thead className="border-b border-border text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2">Label</th>
+                  <th className="w-28 px-3 py-2">Value</th>
+                  <th className="px-3 py-2">Display value</th>
+                  <th className="w-28 px-3 py-2">Animate in</th>
+                  <th className="w-12 px-3 py-2" aria-label="Actions" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {rows.map((item, index) => {
+                  const row = isPlainRecord(item) ? item : {};
+                  return (
+                    <tr key={index}>
+                      <td className="px-3 py-2">
+                        <Input
+                          value={motionArgText(row.label)}
+                          placeholder="Label"
+                          onChange={(event) =>
+                            updateArrayItem(index, { label: event.target.value }, {})
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <Input
+                          type="number"
+                          value={motionArgText(row.value)}
+                          placeholder="Value"
+                          onChange={(event) =>
+                            updateArrayItem(index, { value: Number(event.target.value) }, {})
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <Input
+                          value={motionArgText(row.displayValue)}
+                          placeholder="Display value"
+                          onChange={(event) =>
+                            updateArrayItem(index, { displayValue: event.target.value }, {})
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={motionArgText(row.animateIn)}
+                          placeholder="Animate in"
+                          onChange={(event) =>
+                            updateArrayItem(index, { animateIn: parseOptionalMotionNumber(event.target.value) }, {})
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <MotionRemoveRowButton
+                          label={`Remove ${field.label} row ${index + 1}`}
+                          onClick={() => removeArrayItem(index)}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div>
             <Button
               type="button"
               variant="outline"
@@ -3514,48 +3580,64 @@ function MotionDefaultArgsEditor({
       const rows = motionArgArray(value);
       return (
         <div key={field.name} className="space-y-3">
-          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {field.label}
-          </label>
-          <div className="space-y-3">
-            {rows.map((item, index) => {
-              const row = isPlainRecord(item) ? item : { text: motionArgText(item) };
-              return (
-                <div key={index} className="grid gap-2 rounded-md border border-border bg-background/50 p-3 sm:grid-cols-[9rem_1fr_7rem_auto]">
-                  <Input
-                    value={motionArgText(row.label)}
-                    placeholder="Label"
-                    onChange={(event) =>
-                      updateArrayItem(index, { label: event.target.value }, {})
-                    }
-                  />
-                  <Input
-                    value={motionArgText(row.text)}
-                    placeholder="Text"
-                    onChange={(event) =>
-                      updateArrayItem(index, { text: event.target.value }, {})
-                    }
-                  />
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={motionArgText(row.animateIn)}
-                    placeholder="Animate in"
-                    onChange={(event) =>
-                      updateArrayItem(index, { animateIn: parseOptionalMotionNumber(event.target.value) }, {})
-                    }
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => removeArrayItem(index)}
-                  >
-                    Remove
-                  </Button>
-                </div>
-              );
-            })}
+          <MotionFieldHeading field={field} />
+          <div className="overflow-x-auto rounded-md border border-border bg-background/50">
+            <table className="w-full min-w-[34rem] text-left text-sm">
+              <thead className="border-b border-border text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="w-36 px-3 py-2">Label</th>
+                  <th className="px-3 py-2">Text</th>
+                  <th className="w-28 px-3 py-2">Animate in</th>
+                  <th className="w-12 px-3 py-2" aria-label="Actions" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {rows.map((item, index) => {
+                  const row = isPlainRecord(item) ? item : { text: motionArgText(item) };
+                  return (
+                    <tr key={index}>
+                      <td className="px-3 py-2">
+                        <Input
+                          value={motionArgText(row.label)}
+                          placeholder="Label"
+                          onChange={(event) =>
+                            updateArrayItem(index, { label: event.target.value }, {})
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <Input
+                          value={motionArgText(row.text)}
+                          placeholder="Text"
+                          onChange={(event) =>
+                            updateArrayItem(index, { text: event.target.value }, {})
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={motionArgText(row.animateIn)}
+                          placeholder="Animate in"
+                          onChange={(event) =>
+                            updateArrayItem(index, { animateIn: parseOptionalMotionNumber(event.target.value) }, {})
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <MotionRemoveRowButton
+                          label={`Remove ${field.label} row ${index + 1}`}
+                          onClick={() => removeArrayItem(index)}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div>
             <Button
               type="button"
               variant="outline"
@@ -3574,85 +3656,99 @@ function MotionDefaultArgsEditor({
       const rows = motionArgArray(value);
       return (
         <div key={field.name} className="space-y-3">
-          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {field.label}
-          </label>
-          <div className="space-y-3">
-            {rows.map((item, index) => {
-              const row = isPlainRecord(item) ? item : { text: motionArgText(item) };
-              const blank = Boolean(row.blank);
-              return (
-                <div key={index} className="space-y-2 rounded-md border border-border bg-background/50 p-3">
-                  <div className="grid gap-2 sm:grid-cols-[1fr_8rem_7rem_auto]">
-                    <Input
-                      value={motionArgText(row.text)}
-                      placeholder="Line text"
-                      disabled={blank}
-                      onChange={(event) =>
-                        updateArrayItem(index, { text: event.target.value, blank: false }, {})
-                      }
-                    />
-                    <Select
-                      value={motionArgText(row.size) || "regular"}
-                      disabled={blank}
-                      onChange={(event) =>
-                        updateArrayItem(index, { size: event.target.value }, {})
-                      }
-                    >
-                      <option value="regular">Regular</option>
-                      <option value="large">Large</option>
-                      <option value="extra_large">Extra large</option>
-                    </Select>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={motionArgText(row.animateIn)}
-                      placeholder="Animate in"
-                      onChange={(event) =>
-                        updateArrayItem(index, { animateIn: parseOptionalMotionNumber(event.target.value) }, {})
-                      }
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => removeArrayItem(index)}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                  <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={blank}
-                        onChange={(event) =>
-                          updateArrayItem(
-                            index,
-                            event.target.checked
-                              ? { blank: true, text: "" }
-                              : { blank: false },
-                            {},
-                          )
-                        }
-                      />
-                      Blank spacer line
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(row.emphasized)}
-                        disabled={blank}
-                        onChange={(event) =>
-                          updateArrayItem(index, { emphasized: event.target.checked }, {})
-                        }
-                      />
-                      Emphasized
-                    </label>
-                  </div>
-                </div>
-              );
-            })}
+          <MotionFieldHeading field={field} />
+          <div className="overflow-x-auto rounded-md border border-border bg-background/50">
+            <table className="w-full min-w-[44rem] text-left text-sm">
+              <thead className="border-b border-border text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2">Line text</th>
+                  <th className="w-36 px-3 py-2">Size</th>
+                  <th className="w-28 px-3 py-2">Animate in</th>
+                  <th className="w-24 px-3 py-2">Blank</th>
+                  <th className="w-28 px-3 py-2">Emphasized</th>
+                  <th className="w-12 px-3 py-2" aria-label="Actions" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {rows.map((item, index) => {
+                  const row = isPlainRecord(item) ? item : { text: motionArgText(item) };
+                  const blank = Boolean(row.blank);
+                  return (
+                    <tr key={index}>
+                      <td className="px-3 py-2">
+                        <Input
+                          value={motionArgText(row.text)}
+                          placeholder="Line text"
+                          disabled={blank}
+                          onChange={(event) =>
+                            updateArrayItem(index, { text: event.target.value, blank: false }, {})
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <Select
+                          value={motionArgText(row.size) || "regular"}
+                          disabled={blank}
+                          onChange={(event) =>
+                            updateArrayItem(index, { size: event.target.value }, {})
+                          }
+                        >
+                          <option value="regular">Regular</option>
+                          <option value="large">Large</option>
+                          <option value="extra_large">Extra large</option>
+                        </Select>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={motionArgText(row.animateIn)}
+                          placeholder="Animate in"
+                          onChange={(event) =>
+                            updateArrayItem(index, { animateIn: parseOptionalMotionNumber(event.target.value) }, {})
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={blank}
+                          aria-label={`Blank spacer line ${index + 1}`}
+                          onChange={(event) =>
+                            updateArrayItem(
+                              index,
+                              event.target.checked
+                                ? { blank: true, text: "" }
+                                : { blank: false },
+                              {},
+                            )
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(row.emphasized)}
+                          disabled={blank}
+                          aria-label={`Emphasized line ${index + 1}`}
+                          onChange={(event) =>
+                            updateArrayItem(index, { emphasized: event.target.checked }, {})
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <MotionRemoveRowButton
+                          label={`Remove ${field.label} row ${index + 1}`}
+                          onClick={() => removeArrayItem(index)}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div>
             <Button
               type="button"
               variant="outline"
@@ -3669,7 +3765,8 @@ function MotionDefaultArgsEditor({
     return (
       <MotionArgTextInput
         key={field.name}
-        label={field.label}
+        label={motionFieldLabel(field)}
+        description={field.description}
         value={value}
         onChange={(next) => onChangeArg(field.name, next)}
       />
@@ -3679,20 +3776,26 @@ function MotionDefaultArgsEditor({
   return (
     <Card className="space-y-4 p-5">
       <div>
-        <h3 className="text-sm font-medium text-foreground">Default args</h3>
-        <p className="mt-1 text-xs text-muted-foreground">
-          These values drive the preview and become the fallback when Scribe does
-          not override a field in Plan Visuals.
-        </p>
+        <h3 className="text-sm font-medium text-foreground">Preview values</h3>
       </div>
       <div className="space-y-4">
+        <div className="space-y-2">
+          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Preview duration seconds
+          </label>
+          <Input
+            type="number"
+            min={3}
+            max={12}
+            value={template.previewDurationSeconds}
+            onChange={(event) => onChangePreviewDuration(Number(event.target.value))}
+          />
+          <p className="text-xs text-muted-foreground">
+            Used only for this settings-page preview. Real project renders use the visual start/end times in Scribe&apos;s XML.
+          </p>
+        </div>
         {template.fields.map((field) => (
-          <div key={field.name} className="space-y-2">
-            {renderField(field)}
-            {field.description ? (
-              <p className="text-xs text-muted-foreground">{field.description}</p>
-            ) : null}
-          </div>
+          <div key={field.name}>{renderField(field)}</div>
         ))}
         {extraArgs.length > 0 ? (
           <div className="grid gap-3 md:grid-cols-2">
@@ -3704,6 +3807,41 @@ function MotionDefaultArgsEditor({
                 onChange={(next) => onChangeArg(name, next)}
               />
             ))}
+          </div>
+        ) : null}
+        {timingTargets.length > 0 ? (
+          <div className="space-y-3 rounded-md border border-border bg-background/50 p-3">
+            <div>
+              <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Preview animation timings
+              </h4>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Seconds from the start of this preview clip. Row-based timings are edited directly on their rows above.
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {timingTargets.map((target) => (
+                <div key={target} className="space-y-2">
+                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {target}
+                  </label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={template.previewDurationSeconds}
+                    step="0.01"
+                    value={motionArgText(animationTimings[target])}
+                    placeholder="Unset"
+                    onChange={(event) =>
+                      updateAnimationTiming(
+                        target,
+                        parseOptionalMotionNumber(event.target.value),
+                      )
+                    }
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         ) : null}
       </div>
@@ -4032,7 +4170,8 @@ export function ShortFormVideoSettingsView({
   const pendingMotionTemplateUrlIdRef = useRef<{
     templateId: string | null;
   } | null>(null);
-  const [motionDefaultArgsJsonDraft, setMotionDefaultArgsJsonDraft] = useState("");
+  const selectedMotionTemplateDirtyRef = useRef(false);
+  const [motionPreviewArgsJsonDraft, setMotionPreviewArgsJsonDraft] = useState("");
   const [motionFieldsJsonDraft, setMotionFieldsJsonDraft] = useState("");
   const [soundDesignSettings, setSoundDesignSettings] =
     useState<SoundDesignSettings | null>(initialSettings?.soundDesign || null);
@@ -4154,9 +4293,23 @@ export function ShortFormVideoSettingsView({
   );
 
   const selectMotionTemplate = useCallback(
-    (templateId: string | null) => {
+    (
+      templateId: string | null,
+      options?: { skipDirtyCheck?: boolean },
+    ) => {
+      if (
+        !options?.skipDirtyCheck &&
+        activeSectionRef.current === "generate-visuals-motion-graphics" &&
+        selectedMotionTemplateDirtyRef.current
+      ) {
+        const confirmed = window.confirm(
+          "You have unsaved changes to this motion graphics template. Discard those changes?",
+        );
+        if (!confirmed) return false;
+      }
       setSelectedMotionTemplateId(templateId);
       updateSelectedMotionTemplateInUrl(templateId);
+      return true;
     },
     [updateSelectedMotionTemplateInUrl],
   );
@@ -4513,6 +4666,25 @@ export function ShortFormVideoSettingsView({
       ) || null,
     [motionGraphicsSettings, selectedMotionTemplateId],
   );
+  const selectedMotionTemplateIndex = useMemo(
+    () =>
+      motionGraphicsSettings && selectedMotionTemplate
+        ? motionGraphicsSettings.templates.findIndex(
+            (template) => template.id === selectedMotionTemplate.id,
+          )
+        : -1,
+    [motionGraphicsSettings, selectedMotionTemplate],
+  );
+  const initialSelectedMotionTemplate =
+    selectedMotionTemplateIndex >= 0
+      ? initialMotionGraphicsSettings?.templates[selectedMotionTemplateIndex] || null
+      : null;
+  const selectedMotionTemplateDirty = Boolean(
+    selectedMotionTemplate &&
+      (!initialSelectedMotionTemplate ||
+        serializeForCompare(selectedMotionTemplate) !==
+          serializeForCompare(initialSelectedMotionTemplate)),
+  );
   const selectedMotionTemplatePreview = selectedMotionTemplate
     ? motionTemplatePreviewsById[selectedMotionTemplate.id] || null
     : null;
@@ -4554,9 +4726,9 @@ export function ShortFormVideoSettingsView({
   );
 
   useEffect(() => {
-    setMotionDefaultArgsJsonDraft(
+    setMotionPreviewArgsJsonDraft(
       selectedMotionTemplate
-        ? JSON.stringify(selectedMotionTemplate.defaultArgs, null, 2)
+        ? JSON.stringify(selectedMotionTemplate.previewArgs, null, 2)
         : "",
     );
     setMotionFieldsJsonDraft(
@@ -4565,6 +4737,80 @@ export function ShortFormVideoSettingsView({
         : "",
     );
   }, [selectedMotionTemplate]);
+
+  useEffect(() => {
+    selectedMotionTemplateDirtyRef.current = selectedMotionTemplateDirty;
+  }, [selectedMotionTemplateDirty]);
+
+  useEffect(() => {
+    if (
+      activeSection !== "generate-visuals-motion-graphics" ||
+      !selectedMotionTemplateDirty
+    ) {
+      return;
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [activeSection, selectedMotionTemplateDirty]);
+
+  useEffect(() => {
+    if (
+      activeSection !== "generate-visuals-motion-graphics" ||
+      !selectedMotionTemplateDirty
+    ) {
+      return;
+    }
+
+    const handleDocumentClick = (event: MouseEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+      if (anchor.target && anchor.target !== "_self") return;
+
+      const nextUrl = new URL(anchor.href);
+      const currentUrl = new URL(window.location.href);
+      if (nextUrl.href === currentUrl.href) return;
+      if (
+        nextUrl.pathname === currentUrl.pathname &&
+        nextUrl.searchParams.get(MOTION_TEMPLATE_QUERY_PARAM) ===
+          currentUrl.searchParams.get(MOTION_TEMPLATE_QUERY_PARAM)
+      ) {
+        return;
+      }
+
+      const confirmed = window.confirm(
+        "You have unsaved changes to this motion graphics template. Discard those changes?",
+      );
+      if (!confirmed) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+
+    document.addEventListener("click", handleDocumentClick, true);
+    return () => {
+      document.removeEventListener("click", handleDocumentClick, true);
+    };
+  }, [activeSection, selectedMotionTemplateDirty]);
   const selectedVoice = useMemo(
     () =>
       videoRender?.voices.find((voice) => voice.id === selectedVoiceId) || null,
@@ -8045,72 +8291,18 @@ export function ShortFormVideoSettingsView({
       }),
     });
     if (nextSelectedId !== selectedMotionTemplateId) {
-      selectMotionTemplate(nextSelectedId);
+      selectMotionTemplate(nextSelectedId, { skipDirtyCheck: true });
     }
   }
 
-  function updateSelectedMotionTemplateDefaultArg(name: string, value: unknown) {
+  function updateSelectedMotionTemplatePreviewArg(name: string, value: unknown) {
     updateSelectedMotionTemplate((template) => ({
       ...template,
-      defaultArgs: {
-        ...template.defaultArgs,
+      previewArgs: {
+        ...template.previewArgs,
         [name]: value,
       },
     }));
-  }
-
-  function addMotionTemplate() {
-    if (!motionGraphicsSettings) return;
-    const rendererId = supportedMotionGraphicRenderers[0] || "stat_reveal";
-    const id = `motion-template-${Date.now()}`;
-    const nextTemplate: MotionGraphicTemplateConfig = {
-      id,
-      rendererId,
-      displayName: "New motion template",
-      description: "Configured deterministic motion graphic template.",
-      whenToUse: "Use when this recurring visual pattern fits the scene better than a generated image.",
-      additionalUsageInstructions: "",
-      xmlInstructions: "Describe how Scribe should write this template's XML args, child nodes, timing entries, and any renderer-specific constraints.",
-      exampleXml: `<visual id="visual-1" label="New motion graphic" start="0.00" end="6.00" visualType="motion_graphic">\n  <motionGraphic templateId="${id}">\n    <timing item="title" at="0.40" />\n    <arg name="title">New motion template</arg>\n  </motionGraphic>\n</visual>`,
-      durationSeconds: 6,
-      durationGuidance: "Set visual start/end times to match the planned animation beat; do not assume a fixed template duration.",
-      stylePreset: motionGraphicsSettings.defaultStylePreset || "watercolor-editorial",
-      defaultArgs: { title: "New motion template" },
-      fields: [
-        { name: "title", label: "Title", type: "text", required: true },
-      ],
-      enabled: true,
-    };
-    setMotionGraphicsSettings({
-      ...motionGraphicsSettings,
-      templates: [...motionGraphicsSettings.templates, nextTemplate],
-    });
-    selectMotionTemplate(id);
-  }
-
-  function removeSelectedMotionTemplate() {
-    if (!motionGraphicsSettings || !selectedMotionTemplate) return;
-    const builtInIds = new Set([
-      "stat_reveal",
-      "bar_chart",
-      "pie_chart",
-      "line_growth_chart",
-      "comparison_before_after",
-      "timeline",
-      "cause_effect",
-      "caption_word_wall",
-      "ranked_podium",
-      "list",
-      "scorecard",
-      "research_paper_card",
-      "good-bad-indicator",
-    ]);
-    if (builtInIds.has(selectedMotionTemplate.id)) return;
-    const nextTemplates = motionGraphicsSettings.templates.filter(
-      (template) => template.id !== selectedMotionTemplate.id,
-    );
-    setMotionGraphicsSettings({ ...motionGraphicsSettings, templates: nextTemplates });
-    selectMotionTemplate(nextTemplates[0]?.id || null);
   }
 
   async function regenerateSelectedMotionPreview() {
@@ -8432,6 +8624,115 @@ export function ShortFormVideoSettingsView({
       });
       throw err;
     }
+  }
+
+  async function saveSelectedMotionTemplate() {
+    if (
+      !motionGraphicsSettings ||
+      !initialMotionGraphicsSettings ||
+      !selectedMotionTemplate ||
+      selectedMotionTemplateIndex < 0
+    ) {
+      return null;
+    }
+
+    const templateIndex = selectedMotionTemplateIndex;
+    const templateToSave = selectedMotionTemplate;
+    const baseTemplates =
+      initialMotionGraphicsSettings.templates.length ===
+      motionGraphicsSettings.templates.length
+        ? initialMotionGraphicsSettings.templates
+        : motionGraphicsSettings.templates;
+    const nextMotionGraphics: MotionGraphicsSettings = {
+      ...initialMotionGraphicsSettings,
+      templates: baseTemplates.map((template, index) =>
+        index === templateIndex ? templateToSave : template,
+      ),
+    };
+
+    updateSectionFeedbackState("motion-graphics", {
+      saving: true,
+      error: null,
+      message: null,
+    });
+
+    try {
+      const data = await parseResponse(
+        await fetch("/api/short-form-videos/settings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ motionGraphics: nextMotionGraphics }),
+        }),
+      );
+      const savedTemplate =
+        data.motionGraphics.templates[templateIndex] || templateToSave;
+      setInitialMotionGraphicsSettings(data.motionGraphics);
+      setMotionGraphicsSettings((current) =>
+        current
+          ? {
+              ...data.motionGraphics,
+              templates: data.motionGraphics.templates.map((template, index) =>
+                index === templateIndex
+                  ? savedTemplate
+                  : current.templates[index] || template,
+              ),
+            }
+          : data.motionGraphics,
+      );
+      setSupportedMotionGraphicRenderers(data.supportedMotionGraphicRenderers || []);
+      selectMotionTemplate(savedTemplate.id, { skipDirtyCheck: true });
+      updateSectionFeedbackState("motion-graphics", {
+        saving: false,
+        error: null,
+        message:
+          "Saved. New Plan Visuals prompts and Generate Visuals runs will use this motion graphics template immediately.",
+      });
+      return data;
+    } catch (err) {
+      updateSectionFeedbackState("motion-graphics", {
+        saving: false,
+        error:
+          err instanceof Error
+            ? err.message
+            : "Failed to save motion graphics template",
+        message: null,
+      });
+      throw err;
+    }
+  }
+
+  function resetSelectedMotionTemplate() {
+    if (
+      !selectedMotionTemplateDirty ||
+      !initialMotionGraphicsSettings ||
+      selectedMotionTemplateIndex < 0
+    ) {
+      return;
+    }
+    const confirmed = window.confirm(
+      "Discard unsaved changes for this motion graphics template?",
+    );
+    if (!confirmed) return;
+
+    const savedTemplate =
+      initialMotionGraphicsSettings.templates[selectedMotionTemplateIndex];
+    if (!savedTemplate) return;
+
+    setMotionGraphicsSettings((current) =>
+      current
+        ? {
+            ...current,
+            templates: current.templates.map((template, index) =>
+              index === selectedMotionTemplateIndex ? savedTemplate : template,
+            ),
+          }
+        : current,
+    );
+    selectMotionTemplate(savedTemplate.id, { skipDirtyCheck: true });
+    updateSectionFeedbackState("motion-graphics", {
+      error: null,
+      message: null,
+    });
   }
 
   function isTextScriptDefaultsDirty() {
@@ -10414,25 +10715,11 @@ export function ShortFormVideoSettingsView({
               {motionGraphicsSettings ? (
                 <div className="space-y-5">
                   <Card className="space-y-4 p-5">
-                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.7fr)_auto] lg:items-end">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-foreground">
-                        Default style preset
-                      </label>
-                      <Input
-                        value={motionGraphicsSettings.defaultStylePreset}
-                        onChange={(event) =>
-                          setMotionGraphicsSettings({
-                            ...motionGraphicsSettings,
-                            defaultStylePreset: event.target.value,
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-foreground">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="text-sm font-medium text-foreground">
                         Template
-                      </label>
+                    </label>
+                    <div className="min-w-[18rem] flex-1">
                       <Select
                         value={selectedMotionTemplateId || ""}
                         onChange={(event) =>
@@ -10445,22 +10732,99 @@ export function ShortFormVideoSettingsView({
                           </option>
                         ))}
                       </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Pick a template from the dropdown, then customize its
-                        renderer, default args, and field schema.
-                      </p>
                     </div>
-                    <Button type="button" variant="outline" size="sm" onClick={addMotionTemplate}>
-                      Add configured template
-                    </Button>
                   </div>
                   </Card>
 
                   {selectedMotionTemplate ? (
                     <div className="space-y-4">
-                      <Card className="space-y-4 p-5">
+                      <Card className="space-y-5 p-5">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0 space-y-1">
+                            <h2 className="text-lg font-semibold text-foreground">
+                              {selectedMotionTemplate.displayName || "Untitled template"}
+                            </h2>
+                            <p className="text-xs text-muted-foreground">
+                              {selectedMotionTemplate.id} · {selectedMotionTemplate.rendererId}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-end gap-3">
+                            <label className="flex items-center gap-2 text-sm text-foreground">
+                              <input
+                                type="checkbox"
+                                checked={selectedMotionTemplate.enabled}
+                                onChange={(event) =>
+                                  updateSelectedMotionTemplate((template) => ({
+                                    ...template,
+                                    enabled: event.target.checked,
+                                  }))
+                                }
+                              />
+                              Enabled
+                            </label>
+                            {selectedMotionTemplateDirty ? (
+                              <SectionActions
+                                dirty
+                                saving={sectionFeedback["motion-graphics"].saving}
+                                saveLabel="Save template"
+                                resetLabel="Reset template"
+                                onSave={() => void saveSelectedMotionTemplate()}
+                                onReset={resetSelectedMotionTemplate}
+                              />
+                            ) : null}
+                          </div>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {selectedMotionTemplate.description}
+                        </p>
+                        <div className="grid gap-4 md:grid-cols-3">
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-foreground">Template id</label>
+                            <Input
+                              value={selectedMotionTemplate.id}
+                              onChange={(event) =>
+                                updateSelectedMotionTemplate((template) => ({
+                                  ...template,
+                                  id: event.target.value,
+                                }))
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-foreground">Renderer id</label>
+                            <Select
+                              value={selectedMotionTemplate.rendererId}
+                              onChange={(event) =>
+                                updateSelectedMotionTemplate((template) => ({
+                                  ...template,
+                                  rendererId: event.target.value,
+                                }))
+                              }
+                            >
+                              {supportedMotionGraphicRenderers.map((rendererId) => (
+                                <option key={rendererId} value={rendererId}>
+                                  {rendererId}
+                                </option>
+                              ))}
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-foreground">Display name</label>
+                            <Input
+                              value={selectedMotionTemplate.displayName}
+                              onChange={(event) =>
+                                updateSelectedMotionTemplate((template) => ({
+                                  ...template,
+                                  displayName: event.target.value,
+                                }))
+                              }
+                            />
+                          </div>
+                        </div>
+                      </Card>
+
                       <div className="grid gap-4 lg:grid-cols-[minmax(15rem,0.9fr)_1.4fr]">
-                        <div className="overflow-hidden rounded-lg border bg-background">
+                        <Card className="overflow-hidden p-0">
                           <div className="aspect-[9/16] bg-muted">
                             {selectedMotionTemplatePreview?.videoUrl ? (
                               <video
@@ -10493,7 +10857,7 @@ export function ShortFormVideoSettingsView({
                                   Rendered preview
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  Uses this template’s saved/default args.
+                                  Uses the editable preview values.
                                 </p>
                               </div>
                               <Button
@@ -10519,105 +10883,19 @@ export function ShortFormVideoSettingsView({
                               </p>
                             ) : null}
                           </div>
-                        </div>
+                        </Card>
 
-                        <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-medium text-foreground">
-                                Selected template
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {selectedMotionTemplate.id} · {selectedMotionTemplate.rendererId}
-                              </p>
-                            </div>
-                            <Badge variant={selectedMotionTemplate.enabled ? "default" : "secondary"}>
-                              {selectedMotionTemplate.enabled ? "Enabled" : "Disabled"}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {selectedMotionTemplate.description}
-                          </p>
-                        </div>
+                        <MotionPreviewValuesEditor
+                          template={selectedMotionTemplate}
+                          onChangeArg={updateSelectedMotionTemplatePreviewArg}
+                          onChangePreviewDuration={(value) =>
+                            updateSelectedMotionTemplate((template) => ({
+                              ...template,
+                              previewDurationSeconds: value,
+                            }))
+                          }
+                        />
                       </div>
-                      </Card>
-
-                      <Card className="space-y-4 p-5">
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium text-foreground">Template id</label>
-                          <Input
-                            value={selectedMotionTemplate.id}
-                            onChange={(event) =>
-                              updateSelectedMotionTemplate((template) => ({
-                                ...template,
-                                id: event.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium text-foreground">Renderer id</label>
-                          <Select
-                            value={selectedMotionTemplate.rendererId}
-                            onChange={(event) =>
-                              updateSelectedMotionTemplate((template) => ({
-                                ...template,
-                                rendererId: event.target.value,
-                              }))
-                            }
-                          >
-                            {supportedMotionGraphicRenderers.map((rendererId) => (
-                              <option key={rendererId} value={rendererId}>
-                                {rendererId}
-                              </option>
-                            ))}
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium text-foreground">Display name</label>
-                          <Input
-                            value={selectedMotionTemplate.displayName}
-                            onChange={(event) =>
-                              updateSelectedMotionTemplate((template) => ({
-                                ...template,
-                                displayName: event.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium text-foreground">Preview duration seconds</label>
-                          <Input
-                            type="number"
-                            min={3}
-                            max={12}
-                            value={selectedMotionTemplate.durationSeconds}
-                            onChange={(event) =>
-                              updateSelectedMotionTemplate((template) => ({
-                                ...template,
-                                durationSeconds: Number(event.target.value),
-                              }))
-                            }
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Used only for the settings-page preview. Real project renders use Scribe&apos;s visual start/end times.
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium text-foreground">Style preset</label>
-                          <Input
-                            value={selectedMotionTemplate.stylePreset}
-                            onChange={(event) =>
-                              updateSelectedMotionTemplate((template) => ({
-                                ...template,
-                                stylePreset: event.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                      </div>
-                      </Card>
 
                       <Card className="space-y-4 p-5">
                       <div className="space-y-2">
@@ -10663,6 +10941,18 @@ export function ShortFormVideoSettingsView({
                         </p>
                       </div>
                       <div className="space-y-2">
+                        <label className="text-sm font-medium text-foreground">Duration guidance</label>
+                        <Textarea
+                          value={selectedMotionTemplate.durationGuidance}
+                          onChange={(event) =>
+                            updateSelectedMotionTemplate((template) => ({
+                              ...template,
+                              durationGuidance: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
                         <label className="text-sm font-medium text-foreground">
                           XML instructions
                         </label>
@@ -10701,26 +10991,6 @@ export function ShortFormVideoSettingsView({
                         </p>
                       </div>
                       </Card>
-
-                      <Card className="space-y-4 p-5">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-foreground">Duration guidance</label>
-                        <Textarea
-                          value={selectedMotionTemplate.durationGuidance}
-                          onChange={(event) =>
-                            updateSelectedMotionTemplate((template) => ({
-                              ...template,
-                              durationGuidance: event.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                      </Card>
-                      <MotionDefaultArgsEditor
-                        template={selectedMotionTemplate}
-                        onChangeArg={updateSelectedMotionTemplateDefaultArg}
-                      />
-
                       <MotionConfigurableFieldsSummary
                         template={selectedMotionTemplate}
                       />
@@ -10732,21 +11002,21 @@ export function ShortFormVideoSettingsView({
                         </summary>
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
                           <div className="space-y-2">
-                            <label className="text-sm font-medium text-foreground">Default args JSON</label>
+                            <label className="text-sm font-medium text-foreground">Preview values JSON</label>
                             <Textarea
                               className="min-h-40 font-mono text-xs"
-                              value={motionDefaultArgsJsonDraft}
+                              value={motionPreviewArgsJsonDraft}
                               onChange={(event) => {
                                 const draft = event.target.value;
-                                setMotionDefaultArgsJsonDraft(draft);
+                                setMotionPreviewArgsJsonDraft(draft);
                                 try {
                                   const nextArgs = JSON.parse(draft) as Record<string, unknown>;
                                   if (!nextArgs || typeof nextArgs !== "object" || Array.isArray(nextArgs)) {
-                                    throw new Error("Default args must be a JSON object.");
+                                    throw new Error("Preview values must be a JSON object.");
                                   }
-                                  updateSelectedMotionTemplate((template) => ({ ...template, defaultArgs: nextArgs }));
+                                  updateSelectedMotionTemplate((template) => ({ ...template, previewArgs: nextArgs }));
                                 } catch {
-                                  updateSectionFeedbackState("motion-graphics", { error: "Default args must be valid JSON before saving." });
+                                  updateSectionFeedbackState("motion-graphics", { error: "Preview values must be valid JSON before saving." });
                                 }
                               }}
                             />
@@ -10773,51 +11043,6 @@ export function ShortFormVideoSettingsView({
                           </div>
                         </div>
                       </details>
-                      </Card>
-                      <Card className="p-5">
-                      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
-                        <span>
-                          Enabled templates are auto-injected into Scribe’s Plan Visuals prompt via {"{{motionGraphicTemplates}}"}.
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={selectedMotionTemplate.enabled}
-                              onChange={(event) =>
-                                updateSelectedMotionTemplate((template) => ({
-                                  ...template,
-                                  enabled: event.target.checked,
-                                }))
-                              }
-                            />
-                            Enabled
-                          </label>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={removeSelectedMotionTemplate}
-                            disabled={[
-                              "stat_reveal",
-                              "bar_chart",
-                              "pie_chart",
-                              "line_growth_chart",
-                              "comparison_before_after",
-                              "timeline",
-                              "cause_effect",
-                              "caption_word_wall",
-                              "ranked_podium",
-                              "list",
-                              "scorecard",
-                              "research_paper_card",
-                              "good-bad-indicator",
-                            ].includes(selectedMotionTemplate.id)}
-                          >
-                            Remove custom
-                          </Button>
-                        </div>
-                      </div>
                       </Card>
                     </div>
                   ) : null}

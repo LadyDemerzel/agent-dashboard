@@ -1938,7 +1938,7 @@ function buildDeterministicMotionGraphicSoundEvents(projectId: string): ShortFor
 }
 
 function buildDeterministicMotionGraphicPreviewSoundEvents(options: {
-  template: Pick<MotionGraphicTemplateConfig, "id" | "displayName" | "defaultArgs" | "deterministicSoundEffects">;
+  template: Pick<MotionGraphicTemplateConfig, "id" | "displayName" | "previewArgs" | "deterministicSoundEffects">;
   durationSeconds: number;
   args?: Record<string, unknown>;
 }): ShortFormSoundDesignEvent[] {
@@ -1947,7 +1947,7 @@ function buildDeterministicMotionGraphicPreviewSoundEvents(options: {
   const duration = Math.max(0, options.durationSeconds);
   if (cues.length === 0 || duration < 0.5) return [];
 
-  const args = options.args || template.defaultArgs || {};
+  const args = options.args || template.previewArgs || {};
   const events: ShortFormSoundDesignEvent[] = [];
   const safeStart = Math.min(0.18, duration * 0.25);
   const safeEnd = duration - Math.min(0.18, duration * 0.25);
@@ -2790,7 +2790,7 @@ export interface MotionGraphicPreviewSoundEffectRenderResult extends MotionGraph
 }
 
 export function resolveMotionGraphicPreviewSoundEffects(options: {
-  template: Pick<MotionGraphicTemplateConfig, "id" | "displayName" | "defaultArgs" | "deterministicSoundEffects">;
+  template: Pick<MotionGraphicTemplateConfig, "id" | "displayName" | "previewArgs" | "deterministicSoundEffects">;
   durationSeconds: number;
   args?: Record<string, unknown>;
 }): MotionGraphicPreviewSoundEffectResolution {
@@ -2871,7 +2871,7 @@ export function resolveMotionGraphicPreviewSoundEffects(options: {
 }
 
 export function renderMotionGraphicPreviewSoundEffects(options: {
-  template: Pick<MotionGraphicTemplateConfig, "id" | "displayName" | "defaultArgs" | "deterministicSoundEffects">;
+  template: Pick<MotionGraphicTemplateConfig, "id" | "displayName" | "previewArgs" | "deterministicSoundEffects">;
   durationSeconds: number;
   outputPath: string;
   args?: Record<string, unknown>;

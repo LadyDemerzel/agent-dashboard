@@ -28,7 +28,7 @@ export interface MotionGraphicTemplateField {
   type: MotionGraphicFieldType;
   required?: boolean;
   description?: string;
-  defaultValue?: string | number | string[] | Array<{ label?: string; text: string; animateIn?: number }> | Array<{ label: string; value: number | string; displayValue?: string }> | Array<{ text?: string; size?: "regular" | "large" | "extra_large"; emphasized?: boolean; blank?: boolean }>;
+  defaultValue?: unknown;
 }
 
 export interface MotionGraphicDeterministicSoundCue {
@@ -64,22 +64,19 @@ export interface MotionGraphicTemplateConfig {
   additionalUsageInstructions: string;
   xmlInstructions?: string;
   exampleXml?: string;
-  durationSeconds: number;
+  previewDurationSeconds: number;
   durationGuidance: string;
-  stylePreset: string;
-  defaultArgs: Record<string, unknown>;
+  previewArgs: Record<string, unknown>;
   fields: MotionGraphicTemplateField[];
   deterministicSoundEffects?: MotionGraphicDeterministicSoundCue[];
   enabled: boolean;
 }
 
 export interface ShortFormMotionGraphicsSettings {
-  defaultStylePreset: string;
   templates: MotionGraphicTemplateConfig[];
 }
 
 const SETTINGS_PATH = getVersionedShortFormSettingsPath("_motion-graphics-settings.json");
-const DEFAULT_STYLE_PRESET = "dark-pastel-watercolor";
 const GOOD_BAD_INDICATOR_TEMPLATE_ID = "good-bad-indicator";
 const LIST_TEMPLATE_ID = "list";
 const REMOVED_TEMPLATE_IDS = new Set(["research_finding_card", "process_flow", "warning_card", "instruction"]);
@@ -331,13 +328,12 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Large animated number over the unified dark pastel watercolor background with minimal supporting context.",
     whenToUse: "Use for a single memorable statistic, percentage, dollar amount, study result, or surprising quantified claim that should feel premium and focused.",
     additionalUsageInstructions: "",
-    durationSeconds: 6,
+    previewDurationSeconds: 6,
     durationGuidance: "Usually 4-6 seconds: long enough for the number to reveal, settle, and give the viewer a beat to read the title.",
-    stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: { value: "73%", title: "people notice the change" },
+    previewArgs: { value: "73%", title: "people notice the change" },
     fields: [
-      { name: "value", label: "Main value", type: "text", required: true, defaultValue: "73%", description: "The large central statistic, number, percentage, or short quantified phrase that should be the visual's main focus." },
-      { name: "title", label: "Title", type: "text", required: true, defaultValue: "people notice the change", description: "Short supporting context below the value. Use it to explain what the number means without adding a full sentence." },
+      { name: "value", label: "Main value", type: "text", required: true, description: "The large central statistic, number, percentage, or short quantified phrase that should be the visual's main focus." },
+      { name: "title", label: "Title", type: "text", required: true, description: "Short supporting context below the value. Use it to explain what the number means without adding a full sentence." },
     ],
     deterministicSoundEffects: [
       { id: "value-pop", type: "impact", offsetSeconds: 0.72, durationSeconds: 0.32, gainDb: -10, fadeOutMs: 120, description: "Soft accent as the main stat resolves", searchQuery: "premium soft reveal pop impact", frequencyBand: "mid", layerRole: "body", literalness: "stylized", priority: "nice-to-have" },
@@ -352,13 +348,12 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Minimal animated bar chart over the unified dark pastel watercolor background with subdued labels and pastel accents.",
     whenToUse: "Use when comparing 2–5 categories, routines, channels, habits, or measured outcomes.",
     additionalUsageInstructions: "",
-    durationSeconds: 7,
+    previewDurationSeconds: 7,
     durationGuidance: "Around 2 seconds for the setup plus about 1 second per bar, so 3 bars should land around 5 seconds and 5 bars around 7 seconds.",
-    stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: { title: "What changed most", data: [{ label: "A", value: 35, displayValue: "35" }, { label: "B", value: 68, displayValue: "68" }, { label: "C", value: 92, displayValue: "92" }] },
+    previewArgs: { title: "What changed most", data: [{ label: "A", value: 35, displayValue: "35" }, { label: "B", value: 68, displayValue: "68" }, { label: "C", value: 92, displayValue: "92" }] },
     fields: [
-      { name: "title", label: "Title", type: "text", required: true, defaultValue: "What changed most", description: "Compact chart headline that tells viewers what the bars compare. Keep it short enough to read before the bars animate." },
-      { name: "data", label: "Data points", type: "dataSeries", required: true, defaultValue: [{ label: "A", value: 35, displayValue: "35" }, { label: "B", value: 68, displayValue: "68" }], description: "Use 2-5 <item label=\"Category\" value=\"68\" displayValue=\"68%\" /> entries. The numeric value controls bar height; displayValue is the readable label shown with the bar." },
+      { name: "title", label: "Title", type: "text", required: true, description: "Compact chart headline that tells viewers what the bars compare. Keep it short enough to read before the bars animate." },
+      { name: "data", label: "Data points", type: "dataSeries", required: true, description: "Use 2-5 <item label=\"Category\" value=\"68\" displayValue=\"68%\" /> entries. The numeric value controls bar height; displayValue is the readable label shown with the bar." },
     ],
     deterministicSoundEffects: [
       { id: "bar-reveal", type: "click", repeat: { source: "data", firstOffsetSeconds: 0.36, stepSeconds: 0.7, maxCount: 5 }, durationSeconds: 0.16, gainDb: -11, fadeOutMs: 90, description: "Sparse tick as each bar animates in", searchQuery: "clean data bar tick pop", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "nice-to-have" },
@@ -372,10 +367,9 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Minimal animated pie chart over the unified dark pastel watercolor background with pastel slices and a compact legend.",
     whenToUse: "Use when showing a part-to-whole split across 2-5 categories, such as shares, proportions, budget/time allocation, or outcome mix.",
     additionalUsageInstructions: "",
-    durationSeconds: 7,
+    previewDurationSeconds: 7,
     durationGuidance: "Around 2 seconds for setup plus about 0.5 seconds per slice, so 3-5 slices usually lands around 5-7 seconds.",
-    stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: {
+    previewArgs: {
       title: "What changed most",
       data: [
         { label: "A", value: 35, displayValue: "35%" },
@@ -384,18 +378,13 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
       ],
     },
     fields: [
-      { name: "title", label: "Title", type: "text", required: true, defaultValue: "What changed most", description: "Compact chart headline that explains what the slices add up to or compare." },
+      { name: "title", label: "Title", type: "text", required: true, description: "Compact chart headline that explains what the slices add up to or compare." },
       {
         name: "data",
         label: "Pie slices",
         type: "dataSeries",
         required: true,
         description: "Use <item label=\"Category\" value=\"35\" displayValue=\"35%\" />. Positive values are normalized into the full pie.",
-        defaultValue: [
-          { label: "A", value: 35, displayValue: "35%" },
-          { label: "B", value: 25, displayValue: "25%" },
-          { label: "C", value: 40, displayValue: "40%" },
-        ],
       },
     ],
     deterministicSoundEffects: [
@@ -410,10 +399,9 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Simple Cartesian chart with muted axes and an animated arrow line that grows to the right, either upward for increase or downward for decrease.",
     whenToUse: "Use when one metric improves, grows, declines, worsens, or shrinks over time and the viewer needs a simple directional trend instead of exact chart detail.",
     additionalUsageInstructions: "",
-    durationSeconds: 6,
+    previewDurationSeconds: 6,
     durationGuidance: "Usually 5-7 seconds: reveal the title and axes first, then let the arrow line grow across the chart for a full 3 seconds and hold the final value.",
-    stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: {
+    previewArgs: {
       title: "Growth trend",
       direction: "increase",
       startLabel: "Start",
@@ -427,30 +415,24 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
       ],
     },
     fields: [
-      { name: "title", label: "Title", type: "text", required: true, defaultValue: "Growth trend", description: "Short headline for the trend. Name the metric or change the line represents." },
+      { name: "title", label: "Title", type: "text", required: true, description: "Short headline for the trend. Name the metric or change the line represents." },
       {
         name: "direction",
         label: "Direction",
         type: "text",
         required: true,
         description: "Exactly one of: increase, decrease. increase animates up/right; decrease animates down/right.",
-        defaultValue: "increase",
       },
-      { name: "startLabel", label: "Start label", type: "text", defaultValue: "Start", description: "Small label for the left/start side of the chart, such as Before, Week 1, Baseline, or Start." },
-      { name: "endLabel", label: "End label", type: "text", defaultValue: "Now", description: "Small label for the right/final side of the chart, such as After, Now, Week 4, or Result." },
-      { name: "valueLabel", label: "Final value label", type: "text", required: false, defaultValue: "86", description: "Optional. When present, it counts up from 0 and follows the arrowhead." },
-      { name: "units", label: "Counter units", type: "text", required: false, defaultValue: "", description: "Optional unit text appended to the animated value, such as homes, leads, dollars, or clients. Example: valueLabel 90 with units homes renders as 90 homes while counting up." },
+      { name: "startLabel", label: "Start label", type: "text", description: "Small label for the left/start side of the chart, such as Before, Week 1, Baseline, or Start." },
+      { name: "endLabel", label: "End label", type: "text", description: "Small label for the right/final side of the chart, such as After, Now, Week 4, or Result." },
+      { name: "valueLabel", label: "Final value label", type: "text", required: false, description: "Optional. When present, it counts up from 0 and follows the arrowhead." },
+      { name: "units", label: "Counter units", type: "text", required: false, description: "Optional unit text appended to the animated value, such as homes, leads, dollars, or clients. Example: valueLabel 90 with units homes renders as 90 homes while counting up." },
       {
         name: "data",
         label: "Trend points",
         type: "dataSeries",
         required: false,
         description: "Optional <item label=\"Week 1\" value=\"22\" displayValue=\"22\" /> points. Use rising values for increase and falling values for decrease.",
-        defaultValue: [
-          { label: "Start", value: 22, displayValue: "22" },
-          { label: "Week 2", value: 48, displayValue: "48" },
-          { label: "Now", value: 86, displayValue: "86" },
-        ],
       },
     ],
     deterministicSoundEffects: [
@@ -466,15 +448,14 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Minimal two-column comparison over the unified dark pastel watercolor background with no panels or card boxes.",
     whenToUse: "Use for transformations, posture/routine contrasts, old-vs-new workflow, or mistake-vs-fix moments.",
     additionalUsageInstructions: "",
-    durationSeconds: 6,
+    previewDurationSeconds: 6,
     durationGuidance: "Usually 5-7 seconds: give the before side time to read first, then reveal the after side with a short pause before the visual ends.",
-    stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: { beforeLabel: "Before", afterLabel: "After", before: "Tension stacked under the chin", after: "Neck long, jawline reads cleaner" },
+    previewArgs: { beforeLabel: "Before", afterLabel: "After", before: "Tension stacked under the chin", after: "Neck long, jawline reads cleaner" },
     fields: [
-      { name: "beforeLabel", label: "Before label", type: "text", defaultValue: "Before", description: "Short label for the left/problem state. Use labels like Before, Old way, Mistake, or Without." },
-      { name: "afterLabel", label: "After label", type: "text", defaultValue: "After", description: "Short label for the right/improved state. Use labels like After, New way, Fix, or With." },
-      { name: "before", label: "Before copy", type: "textarea", required: true, defaultValue: "Problem state", description: "Concise text describing the initial, weaker, risky, or less desirable state. Keep it parallel with the after copy." },
-      { name: "after", label: "After copy", type: "textarea", required: true, defaultValue: "Improved state", description: "Concise text describing the improved, corrected, or more desirable state. Keep it parallel with the before copy." },
+      { name: "beforeLabel", label: "Before label", type: "text", description: "Short label for the left/problem state. Use labels like Before, Old way, Mistake, or Without." },
+      { name: "afterLabel", label: "After label", type: "text", description: "Short label for the right/improved state. Use labels like After, New way, Fix, or With." },
+      { name: "before", label: "Before copy", type: "textarea", required: true, description: "Concise text describing the initial, weaker, risky, or less desirable state. Keep it parallel with the after copy." },
+      { name: "after", label: "After copy", type: "textarea", required: true, description: "Concise text describing the improved, corrected, or more desirable state. Keep it parallel with the before copy." },
     ],
     deterministicSoundEffects: [
       { id: "before-reveal", type: "click", offsetSeconds: 1.08, durationSeconds: 0.16, gainDb: -12, fadeOutMs: 80, description: "Subtle tick as the before side appears", searchQuery: "soft comparison tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "optional" },
@@ -489,10 +470,9 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Minimal stepped timeline over the unified dark pastel watercolor background with smooth equal-segment reveals.",
     whenToUse: "Use for sequence, history, program phases, study timeline, or what happens over the next few seconds/days/weeks.",
     additionalUsageInstructions: "Timeline step labels should all belong to the same semantic category of abstraction. Do not mix label types in one timeline, such as using a date for one step label and a percentage for another step label.",
-    durationSeconds: 7,
+    previewDurationSeconds: 7,
     durationGuidance: "Around 3 seconds for each step on the timeline, e.g. 4 steps should be around 12 seconds.",
-    stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: { title: "", steps: [{ label: "DAY 1", text: "Setup", animateIn: 0.5 }, { label: "DAY 7", text: "Signal", animateIn: 2.1 }, { label: "DAY 30", text: "Visible change", animateIn: 4 }] },
+    previewArgs: { title: "", steps: [{ label: "DAY 1", text: "Setup", animateIn: 0.5 }, { label: "DAY 7", text: "Signal", animateIn: 2.1 }, { label: "DAY 30", text: "Visible change", animateIn: 4 }] },
     fields: [
       {
         name: "title",
@@ -500,7 +480,6 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         type: "text",
         required: false,
         description: "Optional left-aligned title shown above the timeline items. Leave blank when the timeline steps speak for themselves.",
-        defaultValue: "",
       },
       {
         name: "steps",
@@ -508,7 +487,6 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         type: "timelineSteps",
         required: true,
         description: "Array of { label, text, animateIn } objects. Legacy string arrays still work and auto-label as 01, 02, 03.",
-        defaultValue: [{ label: "DAY 1", text: "Setup", animateIn: 0.5 }, { label: "DAY 7", text: "Signal", animateIn: 2.1 }, { label: "DAY 30", text: "Visible change", animateIn: 4 }],
       },
     ],
     deterministicSoundEffects: [
@@ -523,13 +501,12 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Center-aligned cause-to-effect relationship with rounded translucent content cards, subtle shadows, and a deterministic downward arrow reveal over the unified dark pastel watercolor background.",
     whenToUse: "Use when explaining mechanisms, causal relationships, inputs that drive outcomes, or why one action creates a visible result.",
     additionalUsageInstructions: "",
-    durationSeconds: 6,
+    previewDurationSeconds: 6,
     durationGuidance: "Usually 5-7 seconds: give the cause a readable beat, then reveal the arrow and effect with enough time for the effect copy to land.",
-    stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: { cause: "Small daily tension", effect: "Jaw and neck read tighter" },
+    previewArgs: { cause: "Small daily tension", effect: "Jaw and neck read tighter" },
     fields: [
-      { name: "cause", label: "Cause", type: "textarea", required: true, defaultValue: "Small daily tension", description: "The input, habit, condition, or mechanism that starts the causal chain. Keep it short and concrete." },
-      { name: "effect", label: "Effect", type: "textarea", required: true, defaultValue: "Jaw and neck read tighter", description: "The outcome or visible consequence produced by the cause. Phrase it as the result viewers should remember." },
+      { name: "cause", label: "Cause", type: "textarea", required: true, description: "The input, habit, condition, or mechanism that starts the causal chain. Keep it short and concrete." },
+      { name: "effect", label: "Effect", type: "textarea", required: true, description: "The outcome or visible consequence produced by the cause. Phrase it as the result viewers should remember." },
     ],
     deterministicSoundEffects: [
       { id: "cause-card", type: "click", offsetSeconds: 0.5, durationSeconds: 0.16, gainDb: -12, fadeOutMs: 80, description: "Light tick as the cause card enters", searchQuery: "soft card enter tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "optional" },
@@ -545,10 +522,9 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Full-screen caption wall that replaces both the normal scene visual and bottom captions, using forced-alignment word timing with stat-reveal-style typography and an active-word pop.",
     whenToUse: "Use for retention-heavy moments where the spoken words should take over the full frame as a kinetic caption wall instead of sitting over a generated image.",
     additionalUsageInstructions: "",
-    durationSeconds: 6,
+    previewDurationSeconds: 6,
     durationGuidance: "Match the exact spoken narration range for the caption wall. The start/end times should cover only the words represented by the configured text.",
-    stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: {
+    previewArgs: {
       text: "most people miss <large>this part,</large> because <extraLarge>the words</extraLarge> become the visual.",
     },
     fields: [
@@ -558,7 +534,6 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         type: "textarea",
         required: true,
         description: "Exact spoken narration text for this visual, with punctuation. Use inline <large>...</large> or <extraLarge>...</extraLarge> tags around individual words or phrases to enlarge them.",
-        defaultValue: "most people miss <large>this part,</large> because <extraLarge>the words</extraLarge> become the visual.",
       },
     ],
     deterministicSoundEffects: [],
@@ -571,10 +546,9 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Animated ranking with oversized rank numbers and podium-like rows over the unified dark pastel watercolor background.",
     whenToUse: "Use for top-3/top-5 lists, ranked mistakes, priorities, symptoms, channels, exercises, or results where ranking order matters.",
     additionalUsageInstructions: "",
-    durationSeconds: 7,
+    previewDurationSeconds: 7,
     durationGuidance: "Around 1 second per ranking. For multi-visual sequences, set startIndex to the first rank that should animate in this visual.",
-    stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: {
+    previewArgs: {
       items: [
         { label: "01", text: "Most visible change" },
         { label: "02", text: "Faster feedback" },
@@ -590,24 +564,17 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         type: "timelineSteps",
         required: true,
         description: "Use ordered <step> entries. Labels are rank markers and auto-label as 01, 02, 03 when omitted.",
-        defaultValue: [
-          { label: "01", text: "Most visible change" },
-          { label: "02", text: "Faster feedback" },
-          { label: "03", text: "Cleaner routine" },
-        ],
       },
       {
         name: "startIndex",
         label: "Start rank",
         type: "number",
-        defaultValue: 1,
         description: "1-based rank to animate first. Earlier ranks render already present at time 0 for split multi-visual sequences.",
       },
       {
         name: "futureItemsMode",
         label: "Future rank state",
         type: "text",
-        defaultValue: "hidden",
         description: "hidden hides unrevealed future ranks; blurred shows muted ghost rows before they animate/unblur.",
       },
     ],
@@ -623,10 +590,9 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Animated list with selectable checklist, numbered, or bulleted markers, concise item copy, and optional future-item ghosting.",
     whenToUse: "Use for routines, protocols, decisions, action lists, unordered points, or ordered items that should appear as a clean list.",
     additionalUsageInstructions: "",
-    durationSeconds: 7,
+    previewDurationSeconds: 7,
     durationGuidance: "Around 1 second per list item. For multi-visual sequences, set startIndex to the first item that should animate in this visual.",
-    stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: {
+    previewArgs: {
       title: "",
       listType: "checklist",
       items: [
@@ -644,7 +610,6 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         type: "text",
         required: false,
         description: "Optional left-aligned title shown above the list items. Leave blank when the list does not need a heading.",
-        defaultValue: "",
       },
       {
         name: "listType",
@@ -652,7 +617,6 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         type: "text",
         required: true,
         description: "Exactly one of: checklist, numbered, bulleted. checklist renders checkboxes; numbered renders 1., 2., 3.; bulleted renders bullet points.",
-        defaultValue: "checklist",
       },
       {
         name: "items",
@@ -660,24 +624,17 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         type: "timelineSteps",
         required: true,
         description: "Use <step animateIn=\"absolute_video_timestamp_seconds\">copy</step> entries. Labels are ignored; listType controls whether markers are checkboxes, numbers, or bullets.",
-        defaultValue: [
-          { text: "Set the baseline", animateIn: 0.4 },
-          { text: "Make the small adjustment", animateIn: 1.45 },
-          { text: "Repeat it daily", animateIn: 2.55 },
-        ],
       },
       {
         name: "startIndex",
         label: "Start item",
         type: "number",
-        defaultValue: 1,
         description: "1-based item to animate first. Earlier items render already present at time 0 for split multi-visual sequences.",
       },
       {
         name: "futureItemsMode",
         label: "Future item state",
         type: "text",
-        defaultValue: "hidden",
         description: "hidden hides unrevealed future items; blurred shows muted ghost rows before they animate in.",
       },
     ],
@@ -693,10 +650,9 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Animated metric scorecard with rows, values, and compact progress bars.",
     whenToUse: "Use for grading a routine, comparing criteria, assessing risk, showing before/after subscores, or summarizing an evaluation.",
     additionalUsageInstructions: "",
-    durationSeconds: 6,
+    previewDurationSeconds: 6,
     durationGuidance: "Usually 5-7 seconds for 3-5 metrics with a short title reveal and one row reveal per beat.",
-    stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: {
+    previewArgs: {
       title: "Scorecard",
       data: [
         { label: "Clarity", value: 82, displayValue: "82" },
@@ -705,18 +661,13 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
       ],
     },
     fields: [
-      { name: "title", label: "Title", type: "text", required: true, defaultValue: "Scorecard", description: "Short title naming what is being scored or compared across the rows." },
+      { name: "title", label: "Title", type: "text", required: true, description: "Short title naming what is being scored or compared across the rows." },
       {
         name: "data",
         label: "Score rows",
         type: "dataSeries",
         required: true,
         description: "Use <item label=\"Metric\" value=\"82\" displayValue=\"82/100\" />. Values are normalized against the largest row.",
-        defaultValue: [
-          { label: "Clarity", value: 82, displayValue: "82" },
-          { label: "Consistency", value: 68, displayValue: "68" },
-          { label: "Effort", value: 91, displayValue: "91" },
-        ],
       },
     ],
     deterministicSoundEffects: [
@@ -731,20 +682,19 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Animated study-card visual with source, paper title, and one plain-English finding.",
     whenToUse: "Use when citing a study, paper, review, clinical trial, author group, journal, or named research result.",
     additionalUsageInstructions: "",
-    durationSeconds: 6,
+    previewDurationSeconds: 6,
     durationGuidance: "Usually 5-7 seconds: reveal the paper/source first, then the finding.",
-    stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: {
+    previewArgs: {
       source: "Journal of Applied Research",
       year: "2024",
       title: "Daily posture cues changed perceived jawline definition",
       finding: "The visible difference came from consistency, not intensity.",
     },
     fields: [
-      { name: "source", label: "Source / journal", type: "text", defaultValue: "Journal of Applied Research", description: "Short journal, institution, author group, or credible source name shown at the top of the paper card." },
-      { name: "year", label: "Year", type: "text", defaultValue: "2024", description: "Short year or date cue for the study/source. Leave concise so it reads like a citation detail." },
-      { name: "title", label: "Paper title", type: "textarea", required: true, defaultValue: "Daily posture cues changed perceived jawline definition", description: "Compressed paper or study title. Keep it credible and short enough to fit as a formal title block." },
-      { name: "finding", label: "Finding", type: "textarea", required: true, defaultValue: "The visible difference came from consistency, not intensity.", description: "One plain-English takeaway from the source. Prefer a single concise finding over an abstract-style summary." },
+      { name: "source", label: "Source / journal", type: "text", description: "Short journal, institution, author group, or credible source name shown at the top of the paper card." },
+      { name: "year", label: "Year", type: "text", description: "Short year or date cue for the study/source. Leave concise so it reads like a citation detail." },
+      { name: "title", label: "Paper title", type: "textarea", required: true, description: "Compressed paper or study title. Keep it credible and short enough to fit as a formal title block." },
+      { name: "finding", label: "Finding", type: "textarea", required: true, description: "One plain-English takeaway from the source. Prefer a single concise finding over an abstract-style summary." },
     ],
     deterministicSoundEffects: [
       { id: "paper-enter", type: "whoosh", offsetSeconds: 0.28, durationSeconds: 0.38, gainDb: -12, fadeInMs: 20, fadeOutMs: 140, description: "Soft paper-card entrance motion accent", searchQuery: "soft paper card whoosh", frequencyBand: "mid", layerRole: "motion", literalness: "stylized", priority: "nice-to-have" },
@@ -759,10 +709,9 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     description: "Minimal good/bad indicator card with one indicator type and one short supporting line. Good uses a green accent; bad uses a red accent.",
     whenToUse: "Use to highlight that something is good or bad, such as a helpful habit, risky behavior, recommended choice, mistake, or warning moment.",
     additionalUsageInstructions: "",
-    durationSeconds: 5,
+    previewDurationSeconds: 5,
     durationGuidance: "Usually 4-6 seconds: reveal the good/bad icon, underline, and short readable line together, then hold.",
-    stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: {
+    previewArgs: {
       indicatorType: "good",
       text: "Lift from the lower lid",
     },
@@ -773,9 +722,8 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         type: "indicatorType",
         required: true,
         description: "Exactly one of: good, bad. Use good for positive/recommended items; use bad for negative/risky items.",
-        defaultValue: "good",
       },
-      { name: "text", label: "Indicator text", type: "textarea", required: true, defaultValue: "Lift from the lower lid", description: "Short rule, habit, mistake, warning, or recommendation that the good/bad indicator should emphasize." },
+      { name: "text", label: "Indicator text", type: "textarea", required: true, description: "Short rule, habit, mistake, warning, or recommendation that the good/bad indicator should emphasize." },
     ],
     deterministicSoundEffects: [
       { id: "icon-enter", type: "click", offsetSeconds: 0.78, durationSeconds: 0.16, gainDb: -11, fadeOutMs: 90, description: "Tick as the good/bad icon appears with the indicator text", searchQuery: "soft icon tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "nice-to-have" },
@@ -950,6 +898,13 @@ function normalizeField(value: unknown, fallback: MotionGraphicTemplateField): M
   };
 }
 
+function stripTemplateFieldPreviewDefaults(fields: MotionGraphicTemplateField[]): MotionGraphicTemplateField[] {
+  return fields.map((field) => {
+    const { defaultValue: _legacyPreviewValue, ...rest } = field;
+    return rest;
+  });
+}
+
 function normalizeDeterministicSoundCue(value: unknown, fallback?: MotionGraphicDeterministicSoundCue): MotionGraphicDeterministicSoundCue | null {
   const candidate = value && typeof value === "object" && !Array.isArray(value) ? value as Partial<MotionGraphicDeterministicSoundCue> : {};
   const id = cleanString(candidate.id, fallback?.id || "");
@@ -1025,17 +980,21 @@ function normalizeDeterministicSoundCues(value: unknown, fallback: MotionGraphic
 }
 
 function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig, index: number): MotionGraphicTemplateConfig {
-  const candidate = value && typeof value === "object" && !Array.isArray(value) ? value as Partial<MotionGraphicTemplateConfig> : {};
+  const candidate = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Partial<MotionGraphicTemplateConfig> & { defaultArgs?: unknown; durationSeconds?: unknown }
+    : {};
   const hasUnsupportedRenderer = typeof candidate.rendererId === "string" && !isRendererId(candidate.rendererId) && !isLegacyRendererAlias(candidate.rendererId);
   const rendererId = resolveRendererId(candidate.rendererId, fallback.rendererId);
   const fields = !hasUnsupportedRenderer && Array.isArray(candidate.fields) && candidate.fields.length > 0
     ? candidate.fields.map((field, fieldIndex) => normalizeField(field, fallback.fields[fieldIndex] || fallback.fields[0]))
     : fallback.fields;
-  const rawDefaultArgs = !hasUnsupportedRenderer && candidate.defaultArgs && typeof candidate.defaultArgs === "object" && !Array.isArray(candidate.defaultArgs)
-    ? candidate.defaultArgs as Record<string, unknown>
-    : fallback.defaultArgs;
-  const defaultArgs = Object.fromEntries(
-    Object.entries(rawDefaultArgs).filter(([key]) => {
+  const rawPreviewArgs = !hasUnsupportedRenderer && candidate.previewArgs && typeof candidate.previewArgs === "object" && !Array.isArray(candidate.previewArgs)
+    ? candidate.previewArgs as Record<string, unknown>
+    : !hasUnsupportedRenderer && candidate.defaultArgs && typeof candidate.defaultArgs === "object" && !Array.isArray(candidate.defaultArgs)
+      ? candidate.defaultArgs as Record<string, unknown>
+      : fallback.previewArgs;
+  const previewArgs = Object.fromEntries(
+    Object.entries(rawPreviewArgs).filter(([key]) => {
       if (rendererId === "stat_reveal") return key !== "eyebrow" && key !== "note";
       if (rendererId === "bar_chart" || rendererId === "pie_chart" || rendererId === "line_growth_chart") return key !== "subtitle";
       if (rendererId === "comparison_before_after") return key !== "title";
@@ -1043,17 +1002,17 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
       return true;
     }),
   );
-  const normalizedDefaultArgs = rendererId === "timeline"
-    ? normalizeTimelineDefaultArgs(defaultArgs)
+  const normalizedPreviewArgs = rendererId === "timeline"
+    ? normalizeTimelineDefaultArgs(previewArgs)
     : rendererId === "list"
-      ? normalizeListDefaultArgs(defaultArgs, fallback.defaultArgs)
+      ? normalizeListDefaultArgs(previewArgs, fallback.previewArgs)
     : rendererId === "caption_word_wall"
-      ? { text: cleanString(defaultArgs.text ?? defaultArgs.caption ?? defaultArgs.captionText, captionWordWallLinesToInlineText(defaultArgs.lines) || cleanString(fallback.defaultArgs.text, "most people miss <large>this part,</large> because <extraLarge>the words</extraLarge> become the visual.")) }
+      ? { text: cleanString(previewArgs.text ?? previewArgs.caption ?? previewArgs.captionText, captionWordWallLinesToInlineText(previewArgs.lines) || cleanString(fallback.previewArgs.text, "most people miss <large>this part,</large> because <extraLarge>the words</extraLarge> become the visual.")) }
       : rendererId === "good_bad_indicator"
-        ? { indicatorType: normalizeIndicatorType(defaultArgs.indicatorType ?? defaultArgs.instructionType), text: cleanString(defaultArgs.text, cleanString((defaultArgs as { title?: unknown; body?: unknown }).title ?? (defaultArgs as { body?: unknown }).body, "Lift from the lower lid")) }
+        ? { indicatorType: normalizeIndicatorType(previewArgs.indicatorType ?? previewArgs.instructionType), text: cleanString(previewArgs.text, cleanString((previewArgs as { title?: unknown; body?: unknown }).title ?? (previewArgs as { body?: unknown }).body, "Lift from the lower lid")) }
         : rendererId === "line_growth_chart"
-          ? { ...defaultArgs, direction: normalizeChartDirection(defaultArgs.direction), units: cleanString(defaultArgs.units, cleanString(fallback.defaultArgs.units, "")) }
-      : defaultArgs;
+          ? { ...previewArgs, direction: normalizeChartDirection(previewArgs.direction), units: cleanString(previewArgs.units, cleanString(fallback.previewArgs.units, "")) }
+      : previewArgs;
   const normalizedFields = (() => {
     if (rendererId === "stat_reveal") {
       const statRevealFields = fields.filter((field) => field.name !== "eyebrow" && field.name !== "note");
@@ -1247,13 +1206,14 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
       candidate.exampleXml,
       fallback.exampleXml || getDefaultExampleXmlForRenderer(rendererId),
     ),
-    durationSeconds: typeof candidate.durationSeconds === "number" && Number.isFinite(candidate.durationSeconds)
-      ? Math.min(12, Math.max(3, candidate.durationSeconds))
-      : fallback.durationSeconds,
+    previewDurationSeconds: typeof candidate.previewDurationSeconds === "number" && Number.isFinite(candidate.previewDurationSeconds)
+      ? Math.min(12, Math.max(3, candidate.previewDurationSeconds))
+      : typeof candidate.durationSeconds === "number" && Number.isFinite(candidate.durationSeconds)
+        ? Math.min(12, Math.max(3, candidate.durationSeconds))
+        : fallback.previewDurationSeconds,
     durationGuidance: rendererId === "list" ? fallback.durationGuidance : cleanString(candidate.durationGuidance, fallback.durationGuidance),
-    stylePreset: cleanString(candidate.stylePreset, fallback.stylePreset || DEFAULT_STYLE_PRESET),
-    defaultArgs: normalizedDefaultArgs,
-    fields: normalizedFieldsWithDescriptions,
+    previewArgs: normalizedPreviewArgs,
+    fields: stripTemplateFieldPreviewDefaults(normalizedFieldsWithDescriptions),
     deterministicSoundEffects: normalizeDeterministicSoundCues(candidate.deterministicSoundEffects, fallback.deterministicSoundEffects || []),
     enabled: candidate.enabled !== false,
   };
@@ -1275,7 +1235,6 @@ function normalizeSettings(candidate: Partial<ShortFormMotionGraphicsSettings> |
     .map((template, index) => normalizeTemplate(template, DEFAULT_TEMPLATES[0], DEFAULT_TEMPLATES.length + index));
 
   return {
-    defaultStylePreset: cleanString(candidate?.defaultStylePreset, DEFAULT_STYLE_PRESET),
     templates: [...mergedBuiltIns, ...customTemplates],
   };
 }
@@ -1303,9 +1262,7 @@ export function saveShortFormMotionGraphicsSettings(patch: Partial<ShortFormMoti
 export const DEFAULT_MOTION_GRAPHIC_TEMPLATE_PROMPT_TEMPLATE = [
   "- {{templateId}} ({{displayName}})",
   "  rendererId: {{rendererId}}",
-  "  Duration seconds: {{durationSeconds}}",
   "  Duration guidance: {{durationGuidance}}",
-  "  stylePreset default: {{stylePreset}}",
   "  Description: {{description}}",
   "  When to use: {{whenToUse}}",
   "  Additional usage instructions: {{additionalUsageInstructions}}",
@@ -1328,11 +1285,9 @@ function renderMotionGraphicTemplatePromptBlock(template: MotionGraphicTemplateC
     deterministicSoundEffectsJson: JSON.stringify(template.deterministicSoundEffects || [], null, 2),
     displayName: template.displayName,
     durationGuidance: template.durationGuidance,
-    durationSeconds: String(template.durationSeconds),
     exampleXml: template.exampleXml || "None.",
     fieldsJson: JSON.stringify(template.fields, null, 2),
     rendererId: template.rendererId,
-    stylePreset: template.stylePreset,
     templateId: template.id,
     whenToUse: template.whenToUse,
     xmlInstructions: template.xmlInstructions || "None.",

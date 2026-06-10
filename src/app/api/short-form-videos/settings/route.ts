@@ -468,7 +468,7 @@ export async function PATCH(request: NextRequest) {
       if ("exampleXml" in template && typeof template.exampleXml !== "string") {
         return NextResponse.json({ success: false, error: `Motion graphics template ${template.displayName} example XML must be plain text` }, { status: 400 });
       }
-      if (typeof template.durationSeconds !== "number" || Number.isNaN(template.durationSeconds) || template.durationSeconds < 3 || template.durationSeconds > 12) {
+      if (typeof template.previewDurationSeconds !== "number" || Number.isNaN(template.previewDurationSeconds) || template.previewDurationSeconds < 3 || template.previewDurationSeconds > 12) {
         return NextResponse.json({ success: false, error: `Motion graphics template ${template.displayName} preview duration must be between 3 and 12 seconds` }, { status: 400 });
       }
       if ("durationGuidance" in template && typeof template.durationGuidance !== "string") {

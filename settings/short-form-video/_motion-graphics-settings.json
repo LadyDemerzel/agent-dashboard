@@ -1,5 +1,4 @@
 {
-  "defaultStylePreset": "dark-pastel-watercolor",
   "templates": [
     {
       "id": "stat_reveal",
@@ -10,10 +9,9 @@
       "additionalUsageInstructions": "",
       "xmlInstructions": "Use <arg name=\"value\">...</arg> for the primary statistic and <arg name=\"title\">...</arg> for the short supporting context.\nKeep the title compact; this template is for one dominant quantified idea, not a multi-line explanation.",
       "exampleXml": "<visual id=\"visual-4\" label=\"Key statistic\" start=\"8.00\" end=\"12.00\" visualType=\"motion_graphic\">\n  <motionGraphic templateId=\"stat_reveal\">\n    <timing item=\"value\" at=\"8.30\" />\n    <timing item=\"title\" at=\"8.90\" />\n    <arg name=\"value\">73%</arg>\n    <arg name=\"title\">people notice the change</arg>\n  </motionGraphic>\n</visual>",
-      "durationSeconds": 6,
+      "previewDurationSeconds": 6,
       "durationGuidance": "Make sure that the end time of the visual using this motion graphic template is at least 3 seconds after the last animation timing timestamp, so readers have time to read and digest the motion graphic.",
-      "stylePreset": "dark-pastel-watercolor",
-      "defaultArgs": {
+      "previewArgs": {
         "value": "73%",
         "title": "people notice the change"
       },
@@ -23,16 +21,14 @@
           "label": "Main value",
           "type": "text",
           "required": true,
-          "description": "The large central statistic, number, percentage, or short quantified phrase that should be the visual's main focus.",
-          "defaultValue": "73%"
+          "description": "The large central statistic, number, percentage, or short quantified phrase that should be the visual's main focus."
         },
         {
           "name": "title",
           "label": "Title",
           "type": "text",
           "required": true,
-          "description": "The title for the slide",
-          "defaultValue": ""
+          "description": "The title for the slide"
         }
       ],
       "deterministicSoundEffects": [
@@ -78,10 +74,9 @@
       "additionalUsageInstructions": "Make the bars that you want to emphasize the most come last (e.g. if you're emphasizing that one thing was rated higher, make it the last bar, similarly, if you're emphasizing it was rated lower, put it last).",
       "xmlInstructions": "Use repeated <item label=\"...\" value=\"...\" displayValue=\"...\" animateIn=\"absolute_video_timestamp_seconds\" /> entries for the data field.\nUse 2-5 items. The numeric value controls bar height; displayValue is what viewers read.\nPut reveal timings on each bar's animateIn attribute; do not use one shared <timing item=\"data\" ... /> for the whole data set.\nIf one bar is the key reveal, put it later in the item order so its animation lands last.",
       "exampleXml": "<visual id=\"visual-5\" label=\"Outcome comparison\" start=\"12.00\" end=\"18.00\" visualType=\"motion_graphic\">\n  <motionGraphic templateId=\"bar_chart\">\n    <timing item=\"title\" at=\"12.20\" />\n    <arg name=\"title\">What changed most</arg>\n    <item label=\"Before\" value=\"35\" displayValue=\"35%\" animateIn=\"12.90\" />\n    <item label=\"After\" value=\"82\" displayValue=\"82%\" animateIn=\"13.70\" />\n  </motionGraphic>\n</visual>",
-      "durationSeconds": 7,
+      "previewDurationSeconds": 7,
       "durationGuidance": "Ideally, leave up to 3 seconds after the last bar starts animating-in, so viewers have time to digest the information.",
-      "stylePreset": "dark-pastel-watercolor",
-      "defaultArgs": {
+      "previewArgs": {
         "title": "What changed most",
         "data": [
           {
@@ -112,27 +107,14 @@
           "label": "Title",
           "type": "text",
           "required": true,
-          "description": "Compact chart headline that tells viewers what the bars compare. Keep it short enough to read before the bars animate.",
-          "defaultValue": "What changed most"
+          "description": "Compact chart headline that tells viewers what the bars compare. Keep it short enough to read before the bars animate."
         },
         {
           "name": "data",
           "label": "Data points",
           "type": "dataSeries",
           "required": true,
-          "description": "Use 2-5 <item label=\"Category\" value=\"68\" displayValue=\"68%\" /> entries. The numeric value controls bar height; displayValue is the readable label shown with the bar.",
-          "defaultValue": [
-            {
-              "label": "A",
-              "value": 35,
-              "displayValue": "35"
-            },
-            {
-              "label": "B",
-              "value": 68,
-              "displayValue": "68"
-            }
-          ]
+          "description": "Use 2-5 <item label=\"Category\" value=\"68\" displayValue=\"68%\" /> entries. The numeric value controls bar height; displayValue is the readable label shown with the bar."
         }
       ],
       "deterministicSoundEffects": [
@@ -168,10 +150,9 @@
       "additionalUsageInstructions": "",
       "xmlInstructions": "Use repeated <item label=\"...\" value=\"...\" displayValue=\"...\" animateIn=\"absolute_video_timestamp_seconds\" /> entries for the data field.\nValues should be positive parts of a whole. displayValue should usually be a compact percent or share label.\nPut reveal timings on each slice item's animateIn attribute; do not use one shared <timing item=\"data\" ... /> for the whole pie.\nUse 2-5 slices and keep labels short enough for the legend.",
       "exampleXml": "<visual id=\"visual-5\" label=\"Time split\" start=\"12.00\" end=\"18.00\" visualType=\"motion_graphic\">\n  <motionGraphic templateId=\"pie_chart\">\n    <timing item=\"title\" at=\"12.20\" />\n    <arg name=\"title\">Where time goes</arg>\n    <item label=\"Practice\" value=\"50\" displayValue=\"50%\" animateIn=\"12.85\" />\n    <item label=\"Recovery\" value=\"30\" displayValue=\"30%\" animateIn=\"13.35\" />\n    <item label=\"Setup\" value=\"20\" displayValue=\"20%\" animateIn=\"13.85\" />\n  </motionGraphic>\n</visual>",
-      "durationSeconds": 7,
+      "previewDurationSeconds": 7,
       "durationGuidance": "Ideally, leave up to 3 seconds after that last pi chart slice starts animating-in, so viewers have time to digest the information.",
-      "stylePreset": "dark-pastel-watercolor",
-      "defaultArgs": {
+      "previewArgs": {
         "title": "What changed most",
         "data": [
           {
@@ -197,32 +178,14 @@
           "label": "Title",
           "type": "text",
           "required": true,
-          "description": "Compact chart headline that explains what the slices add up to or compare.",
-          "defaultValue": "What changed most"
+          "description": "Compact chart headline that explains what the slices add up to or compare."
         },
         {
           "name": "data",
           "label": "Pie slices",
           "type": "dataSeries",
           "required": true,
-          "description": "Use <item label=\"Category\" value=\"35\" displayValue=\"35%\" />. Positive values are normalized into the full pie.",
-          "defaultValue": [
-            {
-              "label": "A",
-              "value": 35,
-              "displayValue": "35%"
-            },
-            {
-              "label": "B",
-              "value": 25,
-              "displayValue": "25%"
-            },
-            {
-              "label": "C",
-              "value": 40,
-              "displayValue": "40%"
-            }
-          ]
+          "description": "Use <item label=\"Category\" value=\"35\" displayValue=\"35%\" />. Positive values are normalized into the full pie."
         }
       ],
       "deterministicSoundEffects": [
@@ -258,10 +221,9 @@
       "additionalUsageInstructions": "Leave the \"valueLabel\" and \"units\" blank if there's no clear metric to display. Do not use a \"valueLabel\" or \"units\" if there's no clear metric to change.",
       "xmlInstructions": "Set <arg name=\"direction\">increase</arg> for an up/right trend or <arg name=\"direction\">decrease</arg> for a down/right trend.\nOptional dataSeries points should match the chosen direction.\nUse <timing item=\"title\" ... /> for the headline and <timing item=\"chart\" ... /> for the chart line/counter reveal.\nTo show units on the moving counter, set <arg name=\"valueLabel\">90</arg> and optional <arg name=\"units\">homes</arg>; the renderer appends the unit text throughout the count-up.\nLeave valueLabel and units blank when there is no clear metric to display.",
       "exampleXml": "<visual id=\"visual-6\" label=\"Trend rising\" start=\"18.00\" end=\"24.00\" visualType=\"motion_graphic\">\n  <motionGraphic templateId=\"line_growth_chart\">\n    <timing item=\"title\" at=\"18.15\" />\n    <timing item=\"chart\" at=\"18.80\" />\n    <arg name=\"title\">Growth trend</arg>\n    <arg name=\"direction\">increase</arg>\n    <arg name=\"startLabel\">Start</arg>\n    <arg name=\"endLabel\">Now</arg>\n    <arg name=\"valueLabel\">90</arg>\n    <arg name=\"units\">homes</arg>\n    <item label=\"Start\" value=\"22\" displayValue=\"22\" />\n    <item label=\"Now\" value=\"90\" displayValue=\"90\" />\n  </motionGraphic>\n</visual>",
-      "durationSeconds": 8,
+      "previewDurationSeconds": 8,
       "durationGuidance": "Leave around 4 seconds after the chart line starts animating in, so that the viewer can digest the chart",
-      "stylePreset": "dark-pastel-watercolor",
-      "defaultArgs": {
+      "previewArgs": {
         "title": "Growth trend",
         "direction": "increase",
         "startLabel": "Start",
@@ -292,72 +254,49 @@
           "label": "Title",
           "type": "text",
           "required": true,
-          "description": "Short headline for the trend. Name the metric or change the line represents.",
-          "defaultValue": "Growth trend"
+          "description": "Short headline for the trend. Name the metric or change the line represents."
         },
         {
           "name": "direction",
           "label": "Direction",
           "type": "text",
           "required": true,
-          "description": "Exactly one of: increase, decrease. increase animates up/right; decrease animates down/right.",
-          "defaultValue": "increase"
+          "description": "Exactly one of: increase, decrease. increase animates up/right; decrease animates down/right."
         },
         {
           "name": "startLabel",
           "label": "Start label",
           "type": "text",
           "required": false,
-          "description": "Small label for the left/start side of the chart, such as Before, Week 1, Baseline, or Start.",
-          "defaultValue": "Start"
+          "description": "Small label for the left/start side of the chart, such as Before, Week 1, Baseline, or Start."
         },
         {
           "name": "endLabel",
           "label": "End label",
           "type": "text",
           "required": false,
-          "description": "Small label for the right/final side of the chart, such as After, Now, Week 4, or Result.",
-          "defaultValue": "Now"
+          "description": "Small label for the right/final side of the chart, such as After, Now, Week 4, or Result."
         },
         {
           "name": "valueLabel",
           "label": "Final value label",
           "type": "text",
           "required": false,
-          "description": "Optional. When present, it counts up from 0 and follows the arrowhead.",
-          "defaultValue": "86"
+          "description": "Optional. When present, it counts up from 0 and follows the arrowhead."
         },
         {
           "name": "units",
           "label": "Counter units",
           "type": "text",
           "required": false,
-          "description": "Optional unit text appended to the animated value, such as homes, leads, dollars, or clients. Example: valueLabel 90 with units homes renders as 90 homes while counting up.",
-          "defaultValue": ""
+          "description": "Optional unit text appended to the animated value, such as homes, leads, dollars, or clients. Example: valueLabel 90 with units homes renders as 90 homes while counting up."
         },
         {
           "name": "data",
           "label": "Trend points",
           "type": "dataSeries",
           "required": false,
-          "description": "Optional <item label=\"Week 1\" value=\"22\" displayValue=\"22\" /> points. Use rising values for increase and falling values for decrease.",
-          "defaultValue": [
-            {
-              "label": "Start",
-              "value": 22,
-              "displayValue": "22"
-            },
-            {
-              "label": "Week 2",
-              "value": 48,
-              "displayValue": "48"
-            },
-            {
-              "label": "Now",
-              "value": 86,
-              "displayValue": "86"
-            }
-          ]
+          "description": "Optional <item label=\"Week 1\" value=\"22\" displayValue=\"22\" /> points. Use rising values for increase and falling values for decrease."
         }
       ],
       "deterministicSoundEffects": [
@@ -403,10 +342,9 @@
       "additionalUsageInstructions": "",
       "xmlInstructions": "Use beforeLabel/afterLabel for the small comparison labels and before/after for the main copy.\nKeep before and after copy parallel so the visual reads as one clear transformation.",
       "exampleXml": "<visual id=\"visual-7\" label=\"Before and after\" start=\"24.00\" end=\"30.00\" visualType=\"motion_graphic\">\n  <motionGraphic templateId=\"comparison_before_after\">\n    <timing item=\"before\" at=\"24.40\" />\n    <timing item=\"after\" at=\"26.10\" />\n    <arg name=\"beforeLabel\">Before</arg>\n    <arg name=\"afterLabel\">After</arg>\n    <arg name=\"before\">Tension stacked under the chin</arg>\n    <arg name=\"after\">Neck long, jawline reads cleaner</arg>\n  </motionGraphic>\n</visual>",
-      "durationSeconds": 6,
+      "previewDurationSeconds": 6,
       "durationGuidance": "Usually around 7 to 8 seconds: give the before side time to read first, then reveal the after side with a short pause before the visual ends.",
-      "stylePreset": "dark-pastel-watercolor",
-      "defaultArgs": {
+      "previewArgs": {
         "beforeLabel": "Before",
         "afterLabel": "After",
         "before": "Tension stacked under the chin",
@@ -418,32 +356,28 @@
           "label": "Before label",
           "type": "text",
           "required": false,
-          "description": "Short label for the left/problem state. Use labels like Before, Old way, Mistake, or Without.",
-          "defaultValue": "Before"
+          "description": "Short label for the left/problem state. Use labels like Before, Old way, Mistake, or Without."
         },
         {
           "name": "afterLabel",
           "label": "After label",
           "type": "text",
           "required": false,
-          "description": "Short label for the right/improved state. Use labels like After, New way, Fix, or With.",
-          "defaultValue": "After"
+          "description": "Short label for the right/improved state. Use labels like After, New way, Fix, or With."
         },
         {
           "name": "before",
           "label": "Before copy",
           "type": "textarea",
           "required": true,
-          "description": "Concise text describing the initial, weaker, risky, or less desirable state. Keep it parallel with the after copy.",
-          "defaultValue": "Problem state"
+          "description": "Concise text describing the initial, weaker, risky, or less desirable state. Keep it parallel with the after copy."
         },
         {
           "name": "after",
           "label": "After copy",
           "type": "textarea",
           "required": true,
-          "description": "Concise text describing the improved, corrected, or more desirable state. Keep it parallel with the before copy.",
-          "defaultValue": "Improved state"
+          "description": "Concise text describing the improved, corrected, or more desirable state. Keep it parallel with the before copy."
         }
       ],
       "deterministicSoundEffects": [
@@ -489,11 +423,10 @@
       "additionalUsageInstructions": "Timeline step labels should all belong to the same semantic category of abstraction. Do not mix label types in one timeline, such as using a date for one step label and a percentage for another step label.",
       "xmlInstructions": "Optionally add <arg name=\"title\">...</arg> for a left-aligned title above the timeline items.\nUse repeated <step label=\"custom left label\" animateIn=\"absolute_video_timestamp_seconds\">step text</step> entries.\nPut reveal timings on each timeline step's animateIn attribute; do not use one shared <timing item=\"steps\" ... /> for the whole timeline.\nOmit label only when you want the renderer to auto-label steps as 01, 02, 03.\nKeep all step labels in the same semantic category, such as all dates, all phases, or all percentages.",
       "exampleXml": "<visual id=\"visual-8\" label=\"Three-step timeline\" start=\"30.00\" end=\"38.00\" visualType=\"motion_graphic\">\n  <motionGraphic templateId=\"timeline\">\n    <arg name=\"title\">Thirty-day ramp</arg>\n    <step label=\"DAY 1\" animateIn=\"30.50\">Setup</step>\n    <step label=\"DAY 7\" animateIn=\"32.10\">Signal</step>\n    <step label=\"DAY 30\" animateIn=\"34.00\">Visible change</step>\n  </motionGraphic>\n</visual>",
-      "durationSeconds": 7,
+      "previewDurationSeconds": 7,
       "durationGuidance": "Leave about 3 seconds after the last timeline step starts animating-in so viewers have time to digest the timeline.",
-      "stylePreset": "dark-pastel-watercolor",
-      "defaultArgs": {
-        "title": "",
+      "previewArgs": {
+        "title": "The research findings",
         "steps": [
           {
             "label": "DAY 1",
@@ -518,32 +451,14 @@
           "label": "Title",
           "type": "text",
           "required": false,
-          "description": "Optional left-aligned title shown above the timeline items. Leave blank when the timeline steps speak for themselves.",
-          "defaultValue": ""
+          "description": "Optional left-aligned title shown above the timeline items. Leave blank when the timeline steps speak for themselves."
         },
         {
           "name": "steps",
           "label": "Timeline steps",
           "type": "timelineSteps",
           "required": true,
-          "description": "Array of { label, text, animateIn } objects. Legacy string arrays still work and auto-label as 01, 02, 03.",
-          "defaultValue": [
-            {
-              "label": "DAY 1",
-              "text": "Setup",
-              "animateIn": 0.5
-            },
-            {
-              "label": "DAY 7",
-              "text": "Signal",
-              "animateIn": 2.1
-            },
-            {
-              "label": "DAY 30",
-              "text": "Visible change",
-              "animateIn": 4
-            }
-          ]
+          "description": "Array of { label, text, animateIn } objects. Legacy string arrays still work and auto-label as 01, 02, 03."
         }
       ],
       "deterministicSoundEffects": [
@@ -579,10 +494,9 @@
       "additionalUsageInstructions": "",
       "xmlInstructions": "Use <arg name=\"cause\">...</arg> for the input or mechanism and <arg name=\"effect\">...</arg> for the outcome.\nUse <timing item=\"cause\" ... />, <timing item=\"arrow\" ... />, and <timing item=\"effect\" ... /> when those three beats should reveal separately.\nKeep each side short and concrete so the downward causal relationship is obvious.",
       "exampleXml": "<visual id=\"visual-9\" label=\"Cause and effect\" start=\"38.00\" end=\"44.00\" visualType=\"motion_graphic\">\n  <motionGraphic templateId=\"cause_effect\">\n    <timing item=\"cause\" at=\"38.30\" />\n    <timing item=\"arrow\" at=\"39.25\" />\n    <timing item=\"effect\" at=\"40.10\" />\n    <arg name=\"cause\">Small daily tension</arg>\n    <arg name=\"effect\">Jaw and neck read tighter</arg>\n  </motionGraphic>\n</visual>",
-      "durationSeconds": 6,
+      "previewDurationSeconds": 6,
       "durationGuidance": "Leave about 3 seconds after the \"effect\" starting animating in, so viewers have time to digest the diagram.",
-      "stylePreset": "dark-pastel-watercolor",
-      "defaultArgs": {
+      "previewArgs": {
         "cause": "Small daily tension",
         "effect": "Jaw and neck read tighter"
       },
@@ -592,16 +506,14 @@
           "label": "Cause",
           "type": "textarea",
           "required": true,
-          "description": "The input, habit, condition, or mechanism that starts the causal chain. Keep it short and concrete.",
-          "defaultValue": "Small daily tension"
+          "description": "The input, habit, condition, or mechanism that starts the causal chain. Keep it short and concrete."
         },
         {
           "name": "effect",
           "label": "Effect",
           "type": "textarea",
           "required": true,
-          "description": "The outcome or visible consequence produced by the cause. Phrase it as the result viewers should remember.",
-          "defaultValue": "Jaw and neck read tighter"
+          "description": "The outcome or visible consequence produced by the cause. Phrase it as the result viewers should remember."
         }
       ],
       "deterministicSoundEffects": [
@@ -663,10 +575,9 @@
       "additionalUsageInstructions": "",
       "xmlInstructions": "Use one <arg name=\"text\">...</arg> containing the exact spoken narration text for this visual, including punctuation.\nDo not split the text into separate <line> rows; the renderer lays it out as one wrapping caption wall.\nRegular words need no tag. Wrap individual emphasized words or phrases in <large>...</large> or <extraLarge>...</extraLarge>.\nWords that have not been spoken yet are hidden, not dimmed; word reveal/highlighting follows forced alignment.\nThis template replaces ordinary bottom captions for that visual and should not be paired with normal captions.",
       "exampleXml": "<visual id=\"visual-10\" label=\"Caption wall emphasis\" start=\"44.00\" end=\"49.00\" visualType=\"motion_graphic\">\n  <motionGraphic templateId=\"caption_word_wall\">\n    <arg name=\"text\">most people miss <large>this part,</large> because <extraLarge>the words</extraLarge> become the visual.</arg>\n  </motionGraphic>\n</visual>",
-      "durationSeconds": 6,
+      "previewDurationSeconds": 6,
       "durationGuidance": "Match the exact spoken narration range for the caption wall. The start/end times should cover only the words represented by the configured text.",
-      "stylePreset": "dark-pastel-watercolor",
-      "defaultArgs": {
+      "previewArgs": {
         "text": "most people miss <large>this part,</large> because <extraLarge>the words</extraLarge> become the visual."
       },
       "fields": [
@@ -675,8 +586,7 @@
           "label": "Caption text",
           "type": "textarea",
           "required": true,
-          "description": "Exact spoken narration text for this visual, including punctuation. Use inline <large>...</large> or <extraLarge>...</extraLarge> tags around individual words or phrases to enlarge them.",
-          "defaultValue": "most people miss <large>this part,</large> because <extraLarge>the words</extraLarge> become the visual."
+          "description": "Exact spoken narration text for this visual, including punctuation. Use inline <large>...</large> or <extraLarge>...</extraLarge> tags around individual words or phrases to enlarge them."
         }
       ],
       "deterministicSoundEffects": [],
@@ -691,10 +601,9 @@
       "additionalUsageInstructions": "",
       "xmlInstructions": "Use repeated <step label=\"01\" animateIn=\"absolute_video_timestamp_seconds\">ranked item</step> entries. Optional labels are rank markers; omit them for 01, 02, 03 auto-labels.\nPut reveal timings on each ranked item's animateIn attribute; do not use one shared <timing item=\"items\" ... /> for the whole list.\nFor split multi-visual sequences, set <arg name=\"startIndex\">2</arg> to render earlier ranks already present and animate from rank 2.\nSet <arg name=\"futureItemsMode\">hidden</arg> or <arg name=\"futureItemsMode\">blurred</arg> to control unrevealed later ranks.",
       "exampleXml": "<visual id=\"visual-11\" label=\"Ranked priorities\" start=\"49.00\" end=\"56.00\" visualType=\"motion_graphic\">\n  <motionGraphic templateId=\"ranked_podium\">\n    <arg name=\"startIndex\">1</arg>\n    <arg name=\"futureItemsMode\">hidden</arg>\n    <step label=\"01\" animateIn=\"49.40\">Most visible change</step>\n    <step label=\"02\" animateIn=\"50.25\">Faster feedback</step>\n    <step label=\"03\" animateIn=\"51.10\">Cleaner routine</step>\n  </motionGraphic>\n</visual>",
-      "durationSeconds": 7,
+      "previewDurationSeconds": 7,
       "durationGuidance": "Around 1 second per ranking. For multi-visual sequences, set startIndex to the first rank that should animate in this visual.",
-      "stylePreset": "dark-pastel-watercolor",
-      "defaultArgs": {
+      "previewArgs": {
         "items": [
           {
             "label": "01",
@@ -718,37 +627,21 @@
           "label": "Ranked items",
           "type": "timelineSteps",
           "required": true,
-          "description": "Use ordered <step> entries. Labels are rank markers and auto-label as 01, 02, 03 when omitted.",
-          "defaultValue": [
-            {
-              "label": "01",
-              "text": "Most visible change"
-            },
-            {
-              "label": "02",
-              "text": "Faster feedback"
-            },
-            {
-              "label": "03",
-              "text": "Cleaner routine"
-            }
-          ]
+          "description": "Use ordered <step> entries. Labels are rank markers and auto-label as 01, 02, 03 when omitted."
         },
         {
           "name": "startIndex",
           "label": "Start rank",
           "type": "number",
           "required": false,
-          "description": "1-based rank to animate first. Earlier ranks render already present at time 0 for split multi-visual sequences.",
-          "defaultValue": 1
+          "description": "1-based rank to animate first. Earlier ranks render already present at time 0 for split multi-visual sequences."
         },
         {
           "name": "futureItemsMode",
           "label": "Future rank state",
           "type": "text",
           "required": false,
-          "description": "hidden hides unrevealed future ranks; blurred shows muted ghost rows before they animate/unblur.",
-          "defaultValue": "hidden"
+          "description": "hidden hides unrevealed future ranks; blurred shows muted ghost rows before they animate/unblur."
         }
       ],
       "deterministicSoundEffects": [
@@ -784,10 +677,9 @@
       "additionalUsageInstructions": "",
       "xmlInstructions": "Optionally add <arg name=\"title\">...</arg> for a left-aligned title above the list items.\nSet <arg name=\"listType\">checklist</arg>, <arg name=\"listType\">numbered</arg>, or <arg name=\"listType\">bulleted</arg> to choose the marker style.\nUse repeated <step animateIn=\"absolute_video_timestamp_seconds\">...</step> entries for list items. Labels are ignored by this template.\nPut reveal timings on each list step's animateIn attribute; do not use one shared <timing item=\"items\" ... /> for the whole list.\nFor split multi-visual sequences, set <arg name=\"startIndex\">2</arg> to render earlier items already present and animate from item 2.\nSet <arg name=\"futureItemsMode\">hidden</arg> or <arg name=\"futureItemsMode\">blurred</arg> to control unrevealed later items.",
       "exampleXml": "<visual id=\"visual-12\" label=\"Routine list\" start=\"56.00\" end=\"63.00\" visualType=\"motion_graphic\">\n  <motionGraphic templateId=\"list\">\n    <arg name=\"title\">Daily routine</arg>\n    <arg name=\"listType\">checklist</arg>\n    <arg name=\"startIndex\">1</arg>\n    <arg name=\"futureItemsMode\">hidden</arg>\n    <step animateIn=\"56.40\">Set the baseline</step>\n    <step animateIn=\"57.45\">Make the small adjustment</step>\n    <step animateIn=\"58.55\">Repeat it daily</step>\n  </motionGraphic>\n</visual>",
-      "durationSeconds": 7,
+      "previewDurationSeconds": 7,
       "durationGuidance": "Around 1 second per list item. For multi-visual sequences, set startIndex to the first item that should animate in this visual.",
-      "stylePreset": "dark-pastel-watercolor",
-      "defaultArgs": {
+      "previewArgs": {
         "title": "",
         "listType": "checklist",
         "items": [
@@ -813,50 +705,34 @@
           "label": "Title",
           "type": "text",
           "required": false,
-          "description": "Optional left-aligned title shown above the list items. Leave blank when the list does not need a heading.",
-          "defaultValue": ""
+          "description": "Optional left-aligned title shown above the list items. Leave blank when the list does not need a heading."
         },
         {
           "name": "listType",
           "label": "List type",
           "type": "text",
           "required": true,
-          "description": "Exactly one of: checklist, numbered, bulleted. checklist renders checkboxes; numbered renders 1., 2., 3.; bulleted renders bullet points.",
-          "defaultValue": "checklist"
+          "description": "Exactly one of: checklist, numbered, bulleted. checklist renders checkboxes; numbered renders 1., 2., 3.; bulleted renders bullet points."
         },
         {
           "name": "items",
           "label": "List items",
           "type": "timelineSteps",
           "required": true,
-          "description": "Use <step animateIn=\"absolute_video_timestamp_seconds\">copy</step> entries. Labels are ignored; listType controls whether markers are checkboxes, numbers, or bullets.",
-          "defaultValue": [
-            {
-              "text": "Set the baseline",
-              "animateIn": 0.4
-            },
-            {
-              "text": "Make the small adjustment",
-              "animateIn": 1.45
-            },
-            {
-              "text": "Repeat it daily",
-              "animateIn": 2.55
-            }
-          ]
+          "description": "Use <step animateIn=\"absolute_video_timestamp_seconds\">copy</step> entries. Labels are ignored; listType controls whether markers are checkboxes, numbers, or bullets."
         },
         {
           "name": "startIndex",
           "label": "Start item",
           "type": "number",
-          "defaultValue": 1,
+          "required": false,
           "description": "1-based item to animate first. Earlier items render already present at time 0 for split multi-visual sequences."
         },
         {
           "name": "futureItemsMode",
           "label": "Future item state",
           "type": "text",
-          "defaultValue": "hidden",
+          "required": false,
           "description": "hidden hides unrevealed future items; blurred shows muted ghost rows before they animate in."
         }
       ],
@@ -893,10 +769,9 @@
       "additionalUsageInstructions": "",
       "xmlInstructions": "Use <arg name=\"title\">...</arg> plus repeated <item label=\"...\" value=\"...\" displayValue=\"...\" animateIn=\"absolute_video_timestamp_seconds\" /> score rows.\nValues are normalized against the largest row, so keep numeric values comparable.\nPut reveal timings on each score row's animateIn attribute; do not use one shared <timing item=\"data\" ... /> for the whole scorecard.\nUse displayValue for the readable score, such as 82/100, High, or 4.5x.",
       "exampleXml": "<visual id=\"visual-13\" label=\"Scorecard\" start=\"63.00\" end=\"69.00\" visualType=\"motion_graphic\">\n  <motionGraphic templateId=\"scorecard\">\n    <timing item=\"title\" at=\"63.20\" />\n    <arg name=\"title\">Scorecard</arg>\n    <item label=\"Clarity\" value=\"82\" displayValue=\"82/100\" animateIn=\"63.90\" />\n    <item label=\"Consistency\" value=\"68\" displayValue=\"68/100\" animateIn=\"64.65\" />\n    <item label=\"Effort\" value=\"91\" displayValue=\"91/100\" animateIn=\"65.40\" />\n  </motionGraphic>\n</visual>",
-      "durationSeconds": 6,
+      "previewDurationSeconds": 6,
       "durationGuidance": "Leave about 3 seconds after the last item starts animating-in, so viewers have time to digest the visual.",
-      "stylePreset": "dark-pastel-watercolor",
-      "defaultArgs": {
+      "previewArgs": {
         "title": "Scorecard",
         "data": [
           {
@@ -922,32 +797,14 @@
           "label": "Title",
           "type": "text",
           "required": true,
-          "description": "Short title naming what is being scored or compared across the rows.",
-          "defaultValue": "Scorecard"
+          "description": "Short title naming what is being scored or compared across the rows."
         },
         {
           "name": "data",
           "label": "Score rows",
           "type": "dataSeries",
           "required": true,
-          "description": "Use <item label=\"Metric\" value=\"82\" displayValue=\"82/100\" />. Values are normalized against the largest row.",
-          "defaultValue": [
-            {
-              "label": "Clarity",
-              "value": 82,
-              "displayValue": "82"
-            },
-            {
-              "label": "Consistency",
-              "value": 68,
-              "displayValue": "68"
-            },
-            {
-              "label": "Effort",
-              "value": 91,
-              "displayValue": "91"
-            }
-          ]
+          "description": "Use <item label=\"Metric\" value=\"82\" displayValue=\"82/100\" />. Values are normalized against the largest row."
         }
       ],
       "deterministicSoundEffects": [
@@ -983,10 +840,9 @@
       "additionalUsageInstructions": "",
       "xmlInstructions": "Use source, year, title, and finding args to create a compact citation-style card.\nUse <timing item=\"paper\" ... />, <timing item=\"source\" ... />, <timing item=\"title\" ... />, and <timing item=\"finding\" ... /> when those citation beats should reveal separately.\nKeep the finding to one plain-English takeaway; do not write a full abstract.",
       "exampleXml": "<visual id=\"visual-14\" label=\"Study finding\" start=\"69.00\" end=\"75.00\" visualType=\"motion_graphic\">\n  <motionGraphic templateId=\"research_paper_card\">\n    <timing item=\"paper\" at=\"69.15\" />\n    <timing item=\"source\" at=\"69.25\" />\n    <timing item=\"title\" at=\"69.75\" />\n    <timing item=\"finding\" at=\"70.60\" />\n    <arg name=\"source\">Journal of Applied Research</arg>\n    <arg name=\"year\">2024</arg>\n    <arg name=\"title\">Daily posture cues changed perceived jawline definition</arg>\n    <arg name=\"finding\">The visible difference came from consistency, not intensity.</arg>\n  </motionGraphic>\n</visual>",
-      "durationSeconds": 6,
+      "previewDurationSeconds": 6,
       "durationGuidance": "Usually 5-7 seconds: reveal the paper/source first, then a single key finding. Avoid long abstracts or multi-sentence explanations.",
-      "stylePreset": "dark-pastel-watercolor",
-      "defaultArgs": {
+      "previewArgs": {
         "source": "Journal of Applied Research",
         "year": "2024",
         "title": "Posture cues and visible jawline definition",
@@ -998,32 +854,28 @@
           "label": "Source / journal",
           "type": "text",
           "required": false,
-          "description": "Short journal, author group, or source name.",
-          "defaultValue": "Journal of Applied Research"
+          "description": "Short journal, author group, or source name."
         },
         {
           "name": "year",
           "label": "Year",
           "type": "text",
           "required": false,
-          "description": "Short year or date cue.",
-          "defaultValue": "2024"
+          "description": "Short year or date cue."
         },
         {
           "name": "title",
           "label": "Paper title",
           "type": "textarea",
           "required": true,
-          "description": "Keep this short; the renderer compresses it into a formal title block.",
-          "defaultValue": "Posture cues and visible jawline definition"
+          "description": "Keep this short; the renderer compresses it into a formal title block."
         },
         {
           "name": "finding",
           "label": "Key finding",
           "type": "textarea",
           "required": true,
-          "description": "One concise finding, ideally under 9 words.",
-          "defaultValue": "Consistency drove the visible change."
+          "description": "One concise finding, ideally under 9 words."
         }
       ],
       "deterministicSoundEffects": [
@@ -1070,10 +922,9 @@
       "additionalUsageInstructions": "Only communicate one thing/idea/point in the indicator text. Don't try to communicate multiple things/ideas/points. If you need to communicate multiple things/ideas/points using the motion graphic template, then consider creating multiple different motion graphics visuals using this template, or using a different visual altogether.",
       "xmlInstructions": "Use exactly <arg name=\"indicatorType\">good</arg> or <arg name=\"indicatorType\">bad</arg>.\nUse one <arg name=\"text\">...</arg> field for the rule, habit, mistake, warning, or recommendation.\nCommunicate one idea only. If there are multiple ideas, use multiple visuals or another template. This text arg should be one complete sentence with the period omitted; do not use partial phrases or multiple sentences.",
       "exampleXml": "<visual id=\"visual-15\" label=\"Good habit\" start=\"75.00\" end=\"80.00\" visualType=\"motion_graphic\">\n  <motionGraphic templateId=\"good-bad-indicator\">\n    <timing item=\"text\" at=\"75.35\" />\n    <arg name=\"indicatorType\">good</arg>\n    <arg name=\"text\">Lift from the lower lid</arg>\n  </motionGraphic>\n</visual>",
-      "durationSeconds": 5,
+      "previewDurationSeconds": 5,
       "durationGuidance": "Leave about 3 seconds after the text animates in.",
-      "stylePreset": "dark-pastel-watercolor",
-      "defaultArgs": {
+      "previewArgs": {
         "indicatorType": "good",
         "text": "Lift from the lower lid"
       },
@@ -1083,16 +934,14 @@
           "label": "Indicator type",
           "type": "indicatorType",
           "required": true,
-          "description": "Exactly one of: good, bad. Use good for positive/recommended items; use bad for negative/risky items.",
-          "defaultValue": "good"
+          "description": "Exactly one of: good, bad. Use good for positive/recommended items; use bad for negative/risky items."
         },
         {
           "name": "text",
           "label": "Indicator text",
           "type": "textarea",
           "required": true,
-          "description": "Short rule, habit, mistake, warning, or recommendation that the good/bad indicator should emphasize.",
-          "defaultValue": "Lift from the lower lid"
+          "description": "Short rule, habit, mistake, warning, or recommendation that the good/bad indicator should emphasize."
         }
       ],
       "deterministicSoundEffects": [

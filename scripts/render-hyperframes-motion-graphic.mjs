@@ -114,13 +114,13 @@ function resolveRendererKey(config) {
 }
 
 function resolveRendererArgs(config) {
-  const defaultArgs = config?.defaultArgs && typeof config.defaultArgs === "object" && !Array.isArray(config.defaultArgs)
-    ? config.defaultArgs
+  const previewArgs = config?.previewArgs && typeof config.previewArgs === "object" && !Array.isArray(config.previewArgs)
+    ? config.previewArgs
     : {};
   const providedArgs = config?.args && typeof config.args === "object" && !Array.isArray(config.args)
     ? config.args
     : {};
-  const args = { ...defaultArgs, ...providedArgs };
+  const args = { ...previewArgs, ...providedArgs };
   const rendererKey = resolveRendererKey(config);
   if ((rendererKey === "list" || rendererKey === "ranked_podium") && hasListSource(providedArgs.steps) && !hasListSource(providedArgs.items)) {
     args.items = providedArgs.steps;

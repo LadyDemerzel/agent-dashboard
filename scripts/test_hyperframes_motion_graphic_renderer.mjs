@@ -30,21 +30,21 @@ function run(command, args, options = {}) {
 }
 
 const templateConfigs = [
-  { rendererId: "stat_reveal", defaultArgs: { value: "73%", title: "people notice the change" } },
-  { rendererId: "bar_chart", defaultArgs: { title: "What changed most", data: [{ label: "A", value: 35, displayValue: "35" }, { label: "B", value: 68, displayValue: "68" }] } },
-  { rendererId: "pie_chart", defaultArgs: { title: "Split", data: [{ label: "A", value: 40, displayValue: "40%" }, { label: "B", value: 60, displayValue: "60%" }] } },
-  { rendererId: "line_growth_chart", defaultArgs: { title: "Growth trend", direction: "increase", startLabel: "Start", endLabel: "Now", valueLabel: "86" } },
-  { rendererId: "comparison_before_after", defaultArgs: { before: "Problem state", after: "Improved state" } },
-  { rendererId: "timeline", defaultArgs: { title: "Thirty-day ramp", steps: [{ label: "MONTH 12 CHECKPOINT", text: "Setup" }, { label: "DAY 7", text: "Signal" }, { label: "DAY 30", text: "Visible change" }] } },
-  { rendererId: "cause_effect", defaultArgs: { cause: "Small habit", effect: "Visible change" } },
-  { rendererId: "ranked_podium", defaultArgs: { items: ["Most visible change", "Faster feedback", "Cleaner routine"] } },
-  { rendererId: "list", defaultArgs: { title: "Daily routine", listType: "checklist", items: ["Set the baseline", "Make the small adjustment that continues even when the routine gets longer", "Repeat it daily"] } },
-  { rendererId: "list", defaultArgs: { listType: "numbered", items: ["First numbered step", "Second numbered step", "Third numbered step"] } },
-  { rendererId: "list", defaultArgs: { listType: "bulleted", items: ["First bullet", "Second bullet", "Third bullet"] } },
-  { rendererId: "scorecard", defaultArgs: { title: "Scorecard", data: [{ label: "Clarity", value: 92, displayValue: "1,234,567 people" }] } },
-  { rendererId: "research_paper_card", defaultArgs: { source: "Study", title: "Research finding", finding: "One finding changes how this should be read." } },
-  { rendererId: "good_bad_indicator", defaultArgs: { indicatorType: "good", text: "Do this" } },
-  { rendererId: "caption_word_wall", allowSyntheticTiming: true, defaultArgs: { text: "miss <large>this,</large> words <extraLarge>visual.</extraLarge>" } },
+  { rendererId: "stat_reveal", previewArgs: { value: "73%", title: "people notice the change" } },
+  { rendererId: "bar_chart", previewArgs: { title: "What changed most", data: [{ label: "A", value: 35, displayValue: "35" }, { label: "B", value: 68, displayValue: "68" }] } },
+  { rendererId: "pie_chart", previewArgs: { title: "Split", data: [{ label: "A", value: 40, displayValue: "40%" }, { label: "B", value: 60, displayValue: "60%" }] } },
+  { rendererId: "line_growth_chart", previewArgs: { title: "Growth trend", direction: "increase", startLabel: "Start", endLabel: "Now", valueLabel: "86" } },
+  { rendererId: "comparison_before_after", previewArgs: { before: "Problem state", after: "Improved state" } },
+  { rendererId: "timeline", previewArgs: { title: "Thirty-day ramp", steps: [{ label: "MONTH 12 CHECKPOINT", text: "Setup" }, { label: "DAY 7", text: "Signal" }, { label: "DAY 30", text: "Visible change" }] } },
+  { rendererId: "cause_effect", previewArgs: { cause: "Small habit", effect: "Visible change" } },
+  { rendererId: "ranked_podium", previewArgs: { items: ["Most visible change", "Faster feedback", "Cleaner routine"] } },
+  { rendererId: "list", previewArgs: { title: "Daily routine", listType: "checklist", items: ["Set the baseline", "Make the small adjustment that continues even when the routine gets longer", "Repeat it daily"] } },
+  { rendererId: "list", previewArgs: { listType: "numbered", items: ["First numbered step", "Second numbered step", "Third numbered step"] } },
+  { rendererId: "list", previewArgs: { listType: "bulleted", items: ["First bullet", "Second bullet", "Third bullet"] } },
+  { rendererId: "scorecard", previewArgs: { title: "Scorecard", data: [{ label: "Clarity", value: 92, displayValue: "1,234,567 people" }] } },
+  { rendererId: "research_paper_card", previewArgs: { source: "Study", title: "Research finding", finding: "One finding changes how this should be read." } },
+  { rendererId: "good_bad_indicator", previewArgs: { indicatorType: "good", text: "Do this" } },
+  { rendererId: "caption_word_wall", allowSyntheticTiming: true, previewArgs: { text: "miss <large>this,</large> words <extraLarge>visual.</extraLarge>" } },
 ];
 
 try {
@@ -97,7 +97,7 @@ try {
       assert.ok(html.includes("font-size:40px"), "scorecard displayValue must keep the configured font size instead of shrinking to fit");
       assert.ok(html.includes("1,234,567 people"), "scorecard fixture must keep a long displayValue for no-wrap coverage");
     }
-    if (config.rendererId === "list" && config.defaultArgs.listType === "checklist") {
+    if (config.rendererId === "list" && config.previewArgs.listType === "checklist") {
       const readStyleNumber = (id, property) => {
         const match = html.match(new RegExp(`id="${id}"[^>]*style="([^"]*)"`));
         assert.ok(match, `${id} should be rendered`);
@@ -115,12 +115,12 @@ try {
       assert.ok(!html.includes("height:128px"), "list items should not render a fixed row height");
       assert.ok(!html.includes("height:104px"), "list items should not render the compact fixed row height");
     }
-    if (config.rendererId === "list" && config.defaultArgs.listType === "numbered") {
+    if (config.rendererId === "list" && config.previewArgs.listType === "numbered") {
       assert.ok(html.includes("list-number-0"), "numbered list should render number markers");
       assert.ok(html.includes("1."), "numbered list should show 1. marker text");
       assert.ok(!html.includes("list-check-box-0"), "numbered list should not render checklist boxes");
     }
-    if (config.rendererId === "list" && config.defaultArgs.listType === "bulleted") {
+    if (config.rendererId === "list" && config.previewArgs.listType === "bulleted") {
       assert.ok(html.includes("list-bullet-0"), "bulleted list should render bullet markers");
       assert.ok(html.includes("•"), "bulleted list should show bullet marker text");
       assert.ok(!html.includes("list-check-box-0"), "bulleted list should not render checklist boxes");
@@ -174,7 +174,7 @@ try {
   fs.writeFileSync(renderConfigPath, JSON.stringify({
     rendererId: "stat_reveal",
     durationSeconds: 1,
-    defaultArgs: { value: "73%", title: "people notice the change" },
+    previewArgs: { value: "73%", title: "people notice the change" },
   }), "utf-8");
   const render = run(process.execPath, [
     path.join(repoRoot, "scripts", "render-hyperframes-motion-graphic.mjs"),

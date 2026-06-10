@@ -1935,7 +1935,6 @@ function parseMotionGraphicConfig(attributes, body, options = {}) {
     id,
     templateId,
     ...(rendererId ? { rendererId } : {}),
-    stylePreset: collapseWhitespace(attributes.stylePreset),
     durationSeconds: Number.isFinite(Number(attributes.durationSeconds)) ? Number(attributes.durationSeconds) : undefined,
     args,
   };
@@ -2070,6 +2069,34 @@ function describeMotionGraphicVisual(visual) {
   return `${visualName} (${assetName})`;
 }
 
+function motionGraphicArgValue(args, fieldName) {
+  if (!args || typeof args !== "object") return undefined;
+  if (Object.prototype.hasOwnProperty.call(args, fieldName)) return args[fieldName];
+  if (fieldName === "items" && Object.prototype.hasOwnProperty.call(args, "steps")) return args.steps;
+  if (fieldName === "data" && Object.prototype.hasOwnProperty.call(args, "items")) return args.items;
+  return undefined;
+}
+
+function hasMotionGraphicArgValue(value) {
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "string") return value.trim().length > 0;
+  return value !== undefined && value !== null;
+}
+
+function validateRequiredMotionGraphicArgs(template, visual) {
+  if (!template || !Array.isArray(template.fields)) return;
+  const args = visual?.asset?.args || {};
+  const missing = template.fields
+    .filter((field) => field?.required)
+    .map((field) => field.name)
+    .filter((name) => !hasMotionGraphicArgValue(motionGraphicArgValue(args, name)));
+  if (missing.length === 0) return;
+  throw new Error(
+    `Motion graphic visual ${describeMotionGraphicVisual(visual)} is missing required XML value${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}. Scribe must define all required motion-graphic fields in the XML; template preview values are not used for real renders.`,
+  );
+}
+
 function mergeMotionGraphicConfig(settings, visual) {
   const template = motionGraphicsTemplateById(settings, visual.asset.templateId);
   const rendererId = resolveMotionGraphicRendererId(settings, visual, template);
@@ -2082,15 +2109,14 @@ function mergeMotionGraphicConfig(settings, visual) {
       `Motion graphic visual ${describeMotionGraphicVisual(visual)} requires valid start and end times with end greater than start; got start="${startText}" end="${endText}". Set explicit start/end attributes in Scribe's XML plan.`,
     );
   }
+  validateRequiredMotionGraphicArgs(template, visual);
   const visualDuration = visualEnd - visualStart;
   return {
     templateId: visual.asset.templateId,
     rendererId,
-    stylePreset: visual.asset.stylePreset || template?.stylePreset || settings?.defaultStylePreset || "watercolor-editorial",
     durationSeconds: visualDuration,
     visualStartSeconds: visualStart,
     visualEndSeconds: visualEnd,
-    defaultArgs: template?.defaultArgs || {},
     args: visual.asset.args || {},
     label: visual.label,
   };

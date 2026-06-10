@@ -69,7 +69,8 @@ function normalizeTemplate(value: unknown) {
     throw new Error(`Unsupported motion graphics renderer: ${rawRendererId}`);
   }
 
-  const durationNumber = Number(template.durationSeconds);
+  const legacyTemplate = template as Partial<MotionGraphicTemplateConfig> & { durationSeconds?: unknown };
+  const durationNumber = Number(template.previewDurationSeconds ?? legacyTemplate.durationSeconds);
   const durationSeconds = Number.isFinite(durationNumber)
     ? Math.min(12, Math.max(3, durationNumber))
     : 6;
@@ -82,11 +83,7 @@ function normalizeTemplate(value: unknown) {
     rendererId,
     durationSeconds,
     ...(rendererId === "caption_word_wall" ? { allowSyntheticTiming: true } : {}),
-    stylePreset:
-      typeof template.stylePreset === "string" && template.stylePreset.trim()
-        ? template.stylePreset.trim()
-        : "watercolor-editorial",
-    defaultArgs: asRecord(template.defaultArgs),
+    previewArgs: asRecord(template.previewArgs),
     displayName:
       typeof template.displayName === "string" && template.displayName.trim()
         ? template.displayName.trim()
@@ -281,7 +278,7 @@ export async function POST(request: Request) {
           template: config,
           durationSeconds: config.durationSeconds,
           outputPath: audioPath,
-          args: config.defaultArgs,
+          args: config.previewArgs,
         });
         soundEffectsPreview = {
           rendered: soundResult.rendered,
