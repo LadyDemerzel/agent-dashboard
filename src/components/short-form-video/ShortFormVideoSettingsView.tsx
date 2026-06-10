@@ -191,6 +191,8 @@ const VISUAL_GENERATION_MODEL_OPTIONS =
   getShortFormVisualGenerationModelOptions();
 
 const MOTION_TEMPLATE_QUERY_PARAM = "motionTemplate";
+const AUDIO_KIND_QUERY_PARAM = "audioKind";
+const AUDIO_ID_QUERY_PARAM = "audioId";
 
 const NANO_BANANA_PLACEHOLDER_ROWS = [
   {
@@ -761,6 +763,50 @@ type AudioLibrarySelectionKind = "music" | "sfx";
 interface AudioLibraryPickerSelection {
   kind: AudioLibrarySelectionKind;
   id: string;
+}
+
+function parseAudioLibraryKind(value: string | null): AudioLibrarySelectionKind | null {
+  return value === "music" || value === "sfx" ? value : null;
+}
+
+function resolveAudioLibrarySelection({
+  musicTracks,
+  soundLibrary,
+  current,
+  requested,
+}: {
+  musicTracks: MusicLibraryEntry[];
+  soundLibrary: SoundLibraryEntry[];
+  current: AudioLibraryPickerSelection | null;
+  requested: AudioLibraryPickerSelection | null;
+}): AudioLibraryPickerSelection | null {
+  if (
+    requested?.kind === "music" &&
+    musicTracks.some((track) => track.id === requested.id)
+  ) {
+    return requested;
+  }
+  if (
+    requested?.kind === "sfx" &&
+    soundLibrary.some((sound) => sound.id === requested.id)
+  ) {
+    return requested;
+  }
+  if (
+    current?.kind === "music" &&
+    musicTracks.some((track) => track.id === current.id)
+  ) {
+    return current;
+  }
+  if (
+    current?.kind === "sfx" &&
+    soundLibrary.some((sound) => sound.id === current.id)
+  ) {
+    return current;
+  }
+  if (soundLibrary[0]) return { kind: "sfx", id: soundLibrary[0].id };
+  if (musicTracks[0]) return { kind: "music", id: musicTracks[0].id };
+  return null;
 }
 
 interface SoundLibraryCategorySummary {
@@ -4133,8 +4179,29 @@ export function ShortFormVideoSettingsView({
   const requestedMotionTemplateId = searchParams.get(
     MOTION_TEMPLATE_QUERY_PARAM,
   );
+  const requestedAudioKind = parseAudioLibraryKind(
+    searchParams.get(AUDIO_KIND_QUERY_PARAM),
+  );
+  const requestedAudioId = searchParams.get(AUDIO_ID_QUERY_PARAM);
+  const requestedAudioSelection = useMemo<AudioLibraryPickerSelection | null>(
+    () =>
+      activeSection === "generate-sound-design" &&
+      requestedAudioKind &&
+      requestedAudioId
+        ? { kind: requestedAudioKind, id: requestedAudioId }
+        : null,
+    [activeSection, requestedAudioId, requestedAudioKind],
+  );
   const activeSectionRef = useRef(activeSection);
   const requestedMotionTemplateIdRef = useRef(requestedMotionTemplateId);
+  const initialAudioSelection = initialSettings
+    ? resolveAudioLibrarySelection({
+        musicTracks: initialSettings.videoRender.musicTracks,
+        soundLibrary: initialSettings.soundDesign.library,
+        current: null,
+        requested: requestedAudioSelection,
+      })
+    : null;
 
   const [definitions, setDefinitions] = useState<PromptDefinition[]>(
     initialSettings?.definitions || [],
@@ -4205,13 +4272,19 @@ export function ShortFormVideoSettingsView({
       null,
   );
   const [selectedMusicId, setSelectedMusicId] = useState<string | null>(
-    initialSettings?.videoRender.musicTracks[0]?.id || null,
+    initialAudioSelection?.kind === "music"
+      ? initialAudioSelection.id
+      : initialSettings?.videoRender.musicTracks[0]?.id || null,
   );
   const [selectedSoundId, setSelectedSoundId] = useState<string | null>(
-    initialSettings?.soundDesign.library[0]?.id || null,
+    initialAudioSelection?.kind === "sfx"
+      ? initialAudioSelection.id
+      : initialSettings?.soundDesign.library[0]?.id || null,
   );
   const [selectedAudioLibraryKind, setSelectedAudioLibraryKind] =
-    useState<AudioLibrarySelectionKind>("sfx");
+    useState<AudioLibrarySelectionKind>(initialAudioSelection?.kind || "sfx");
+  const pendingAudioSelectionUrlRef =
+    useRef<AudioLibraryPickerSelection | null>(null);
   const [audioLibraryPickerOpen, setAudioLibraryPickerOpen] = useState(false);
   const [pendingAudioLibrarySelection, setPendingAudioLibrarySelection] =
     useState<AudioLibraryPickerSelection | null>(null);
@@ -4336,6 +4409,53 @@ export function ShortFormVideoSettingsView({
       return true;
     },
     [updateSelectedMotionTemplateInUrl],
+  );
+
+  const updateSelectedAudioSelectionInUrl = useCallback(
+    (selection: AudioLibraryPickerSelection | null) => {
+      if (activeSection !== "generate-sound-design") return;
+      const params = new URLSearchParams(searchParams.toString());
+      if (selection) {
+        params.set(AUDIO_KIND_QUERY_PARAM, selection.kind);
+        params.set(AUDIO_ID_QUERY_PARAM, selection.id);
+      } else {
+        params.delete(AUDIO_KIND_QUERY_PARAM);
+        params.delete(AUDIO_ID_QUERY_PARAM);
+      }
+      const query = params.toString();
+      const hash = typeof window === "undefined" ? "" : window.location.hash;
+      const nextUrl = `${pathname}${query ? `?${query}` : ""}${hash}`;
+      const currentUrl =
+        typeof window === "undefined"
+          ? ""
+          : `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (nextUrl !== currentUrl) {
+        pendingAudioSelectionUrlRef.current = selection;
+        router.replace(nextUrl, { scroll: false });
+      } else {
+        pendingAudioSelectionUrlRef.current = null;
+      }
+    },
+    [activeSection, pathname, router, searchParams],
+  );
+
+  const selectAudioSelection = useCallback(
+    (selection: AudioLibraryPickerSelection | null) => {
+      if (!selection) {
+        setSelectedMusicId(null);
+        setSelectedSoundId(null);
+        updateSelectedAudioSelectionInUrl(null);
+        return;
+      }
+      if (selection.kind === "music") {
+        setSelectedMusicId(selection.id);
+      } else {
+        setSelectedSoundId(selection.id);
+      }
+      setSelectedAudioLibraryKind(selection.kind);
+      updateSelectedAudioSelectionInUrl(selection);
+    },
+    [updateSelectedAudioSelectionInUrl],
   );
 
   usePageScrollRestoration(
@@ -4554,6 +4674,74 @@ export function ShortFormVideoSettingsView({
       setSelectedSoundId(soundDesignSettings.library[0]?.id || null);
     }
   }, [selectedSoundId, soundDesignSettings]);
+
+  useEffect(() => {
+    if (
+      activeSection !== "generate-sound-design" ||
+      !videoRender ||
+      !soundDesignSettings
+    ) {
+      return;
+    }
+
+    const pendingUrlSelection = pendingAudioSelectionUrlRef.current;
+    if (
+      pendingUrlSelection &&
+      (!requestedAudioSelection ||
+        requestedAudioSelection.kind !== pendingUrlSelection.kind ||
+        requestedAudioSelection.id !== pendingUrlSelection.id)
+    ) {
+      return;
+    }
+    if (pendingUrlSelection) {
+      pendingAudioSelectionUrlRef.current = null;
+    }
+
+    const currentSelection =
+      selectedAudioLibraryKind === "music" && selectedMusicId
+        ? { kind: "music" as const, id: selectedMusicId }
+        : selectedAudioLibraryKind === "sfx" && selectedSoundId
+          ? { kind: "sfx" as const, id: selectedSoundId }
+          : null;
+    const nextSelection = resolveAudioLibrarySelection({
+      musicTracks: videoRender.musicTracks,
+      soundLibrary: soundDesignSettings.library,
+      current: currentSelection,
+      requested: requestedAudioSelection,
+    });
+
+    if (
+      nextSelection &&
+      (!currentSelection ||
+        currentSelection.kind !== nextSelection.kind ||
+        currentSelection.id !== nextSelection.id)
+    ) {
+      if (nextSelection.kind === "music") {
+        setSelectedMusicId(nextSelection.id);
+      } else {
+        setSelectedSoundId(nextSelection.id);
+      }
+      setSelectedAudioLibraryKind(nextSelection.kind);
+    }
+
+    if (
+      requestedAudioSelection &&
+      (!nextSelection ||
+        requestedAudioSelection.kind !== nextSelection.kind ||
+        requestedAudioSelection.id !== nextSelection.id)
+    ) {
+      updateSelectedAudioSelectionInUrl(nextSelection);
+    }
+  }, [
+    activeSection,
+    requestedAudioSelection,
+    selectedAudioLibraryKind,
+    selectedMusicId,
+    selectedSoundId,
+    soundDesignSettings,
+    updateSelectedAudioSelectionInUrl,
+    videoRender,
+  ]);
 
   useEffect(() => {
     if (!videoRender || videoRender.captionStyles.length === 0) return;
@@ -6631,13 +6819,7 @@ export function ShortFormVideoSettingsView({
                         disabled={!pendingAudioLibrarySelection}
                         onClick={() => {
                           if (!pendingAudioLibrarySelection) return;
-                          if (pendingAudioLibrarySelection.kind === "music") {
-                            setSelectedMusicId(pendingAudioLibrarySelection.id);
-                            setSelectedAudioLibraryKind("music");
-                          } else {
-                            setSelectedSoundId(pendingAudioLibrarySelection.id);
-                            setSelectedAudioLibraryKind("sfx");
-                          }
+                          selectAudioSelection(pendingAudioLibrarySelection);
                           setAudioLibraryPickerOpen(false);
                         }}
                       >
@@ -9018,7 +9200,7 @@ export function ShortFormVideoSettingsView({
               }
             : data.soundDesign,
         );
-        setSelectedSoundId(savedSound.id);
+        selectAudioSelection({ kind: "sfx", id: savedSound.id });
         updateSectionFeedbackState("sound-library", {
           saving: false,
           error: null,
@@ -9092,7 +9274,7 @@ export function ShortFormVideoSettingsView({
               }
             : data.videoRender,
         );
-        setSelectedMusicId(savedTrack.id);
+        selectAudioSelection({ kind: "music", id: savedTrack.id });
         updateSectionFeedbackState("music-library", {
           saving: false,
           error: null,
@@ -9134,7 +9316,9 @@ export function ShortFormVideoSettingsView({
           (sound) => sound.id !== selectedSound.id,
         );
         setSoundDesignSettings({ ...soundDesignSettings, library: nextLibrary });
-        setSelectedSoundId(nextLibrary[0]?.id || null);
+        selectAudioSelection(
+          nextLibrary[0] ? { kind: "sfx", id: nextLibrary[0].id } : null,
+        );
         return;
       }
       setSoundDesignSettings({
@@ -9162,7 +9346,11 @@ export function ShortFormVideoSettingsView({
           musicTracks: nextMusicTracks,
           musicVolume: initialVideoRender.musicVolume,
         });
-        setSelectedMusicId(nextMusicTracks[0]?.id || null);
+        selectAudioSelection(
+          nextMusicTracks[0]
+            ? { kind: "music", id: nextMusicTracks[0].id }
+            : null,
+        );
         return;
       }
       setVideoRender({
@@ -9238,22 +9426,25 @@ export function ShortFormVideoSettingsView({
         musicTracks: initialVideoRender.musicTracks,
         musicVolume: initialVideoRender.musicVolume,
       });
-      setSelectedMusicId(initialVideoRender.musicTracks[0]?.id || null);
+      selectAudioSelection(
+        initialVideoRender.musicTracks[0]
+          ? { kind: "music", id: initialVideoRender.musicTracks[0].id }
+          : null,
+      );
       return;
     }
 
     if (sectionId === "sound-library" && initialSoundDesignSettings) {
       setSoundDesignSettings(initialSoundDesignSettings);
-      setSelectedSoundId((current) => {
-        if (
-          current &&
-          initialSoundDesignSettings.library.some(
-            (sound) => sound.id === current,
+      const currentSound = selectedSoundId
+        ? initialSoundDesignSettings.library.find(
+            (sound) => sound.id === selectedSoundId,
           )
-        )
-          return current;
-        return initialSoundDesignSettings.library[0]?.id || null;
-      });
+        : null;
+      const nextSound = currentSound || initialSoundDesignSettings.library[0];
+      selectAudioSelection(
+        nextSound ? { kind: "sfx", id: nextSound.id } : null,
+      );
       return;
     }
 
@@ -9914,8 +10105,7 @@ export function ShortFormVideoSettingsView({
       ...videoRender,
       musicTracks: [...videoRender.musicTracks, nextTrack],
     });
-    setSelectedMusicId(dedupedId);
-    setSelectedAudioLibraryKind("music");
+    selectAudioSelection({ kind: "music", id: dedupedId });
   }
 
 	  function deleteMusic(trackId: string) {
@@ -9928,8 +10118,9 @@ export function ShortFormVideoSettingsView({
       ...videoRender,
       musicTracks: remaining,
     });
-    setSelectedMusicId(remaining[0]?.id || null);
-    setSelectedAudioLibraryKind("music");
+    selectAudioSelection(
+      remaining[0] ? { kind: "music", id: remaining[0].id } : null,
+    );
   }
 
   function addSound() {
@@ -9964,8 +10155,7 @@ export function ShortFormVideoSettingsView({
     });
     setSoundLibrarySearchQuery("");
     setSoundLibraryFileFilter("all");
-    setSelectedSoundId(nextSound.id);
-    setSelectedAudioLibraryKind("sfx");
+    selectAudioSelection({ kind: "sfx", id: nextSound.id });
   }
 
 	  function deleteSound(soundId: string) {
@@ -9978,8 +10168,9 @@ export function ShortFormVideoSettingsView({
       ...soundDesignSettings,
       library: remaining,
     });
-    setSelectedSoundId(remaining[0]?.id || null);
-    setSelectedAudioLibraryKind("sfx");
+    selectAudioSelection(
+      remaining[0] ? { kind: "sfx", id: remaining[0].id } : null,
+    );
   }
 
   async function uploadSoundFile(file: File) {
@@ -10231,7 +10422,7 @@ export function ShortFormVideoSettingsView({
 
       setVideoRender(data.videoRender);
       setInitialVideoRender(data.videoRender);
-      setSelectedMusicId(data.track.id);
+      selectAudioSelection({ kind: "music", id: data.track.id });
       setMusicPreview({
         isLoading: false,
         error: null,
