@@ -6209,7 +6209,8 @@ export function ShortFormVideoSettingsView({
             )}
 
             {activeSection === "generate-sound-design" ? (
-            <Card className="audio-library-card space-y-5 p-5">
+              <>
+                <Card className="space-y-5 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-medium text-foreground">
@@ -6267,8 +6268,22 @@ export function ShortFormVideoSettingsView({
                 ))}
               </div>
 
-              <div className="audio-library-layout mt-4">
-                <div className="min-w-0 space-y-3" data-audio-library-pane="browser">
+                </Card>
+
+                <Card className="space-y-5 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-medium text-foreground">
+                    Browse audio library
+                  </h3>
+                  <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
+                    Search, filter, browse categories, and select a saved music
+                    or SFX asset to edit below.
+                  </p>
+                </div>
+              </div>
+
+                  <div className="space-y-5" data-audio-library-pane="browser">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -6743,9 +6758,10 @@ export function ShortFormVideoSettingsView({
                     </div>
                   </div>
                 </div>
+                </Card>
 
                 {selectedAudioLibraryKind === "sfx" && selectedSound ? (
-                  <div className="min-w-0 space-y-4 rounded-lg border border-border bg-background/50 p-4" data-audio-library-pane="detail">
+                  <Card className="space-y-4 p-5" data-audio-library-pane="detail">
                     <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/70 bg-background/60 p-3">
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -7394,11 +7410,11 @@ export function ShortFormVideoSettingsView({
                         </div>
                       ) : null}
                     </div>
-                  </div>
+                  </Card>
                 ) : null}
 
                 {selectedAudioLibraryKind === "music" && selectedMusic && videoRender ? (
-                  <div className="min-w-0 space-y-4 rounded-lg border border-border bg-background/50 p-4" data-audio-library-pane="detail">
+                  <Card className="space-y-4 p-5" data-audio-library-pane="detail">
                     <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/70 bg-background/60 p-3">
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -7935,10 +7951,9 @@ export function ShortFormVideoSettingsView({
                         </div>
                       ) : null}
                     </div>
-                  </div>
+                  </Card>
                 ) : null}
-              </div>
-            </Card>
+              </>
             ) : null}
           </div>
         ) : null}
