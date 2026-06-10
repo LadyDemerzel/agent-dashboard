@@ -112,14 +112,6 @@ export interface ShortFormMusicLibraryEntry {
   transitionOutPattern?: ShortFormMusicTransitionPattern;
   /** True when the track can be safely stream-looped to cover a longer section. */
   loopFriendly?: boolean;
-  /** Include this track in sound-design planning metadata. Defaults to true for backwards compatibility. */
-  availableForPlanning?: boolean;
-  /** Prefer this track when the planner needs music with matching metadata. */
-  preferredForPlanning?: boolean;
-  /** Include this track in generate/final mix selection metadata. Defaults to true for backwards compatibility. */
-  availableForGeneration?: boolean;
-  /** Prefer this track for generated/final background soundtrack usage. */
-  preferredForBackground?: boolean;
   /** Source URL when imported (freesound page, etc.). */
   source?: string;
   /** License string. */
@@ -898,10 +890,6 @@ function normalizeMusicEntry(value: unknown, fallback: ShortFormMusicLibraryEntr
   const transitionInPattern = normalizeMusicTransitionPattern(obj.transitionInPattern);
   const transitionOutPattern = normalizeMusicTransitionPattern(obj.transitionOutPattern);
   const loopFriendly = typeof obj.loopFriendly === "boolean" ? obj.loopFriendly : undefined;
-  const availableForPlanning = typeof obj.availableForPlanning === "boolean" ? obj.availableForPlanning : undefined;
-  const preferredForPlanning = typeof obj.preferredForPlanning === "boolean" ? obj.preferredForPlanning : undefined;
-  const availableForGeneration = typeof obj.availableForGeneration === "boolean" ? obj.availableForGeneration : undefined;
-  const preferredForBackground = typeof obj.preferredForBackground === "boolean" ? obj.preferredForBackground : undefined;
   const source = normalizeString(obj.source);
   const license = normalizeString(obj.license);
   const creator = normalizeString(obj.creator);
@@ -930,10 +918,6 @@ function normalizeMusicEntry(value: unknown, fallback: ShortFormMusicLibraryEntr
     ...(transitionInPattern ? { transitionInPattern } : {}),
     ...(transitionOutPattern ? { transitionOutPattern } : {}),
     ...(typeof loopFriendly === "boolean" ? { loopFriendly } : {}),
-    ...(typeof availableForPlanning === "boolean" ? { availableForPlanning } : {}),
-    ...(typeof preferredForPlanning === "boolean" ? { preferredForPlanning } : {}),
-    ...(typeof availableForGeneration === "boolean" ? { availableForGeneration } : {}),
-    ...(typeof preferredForBackground === "boolean" ? { preferredForBackground } : {}),
     ...(source ? { source } : {}),
     ...(license ? { license } : {}),
     ...(creator ? { creator } : {}),

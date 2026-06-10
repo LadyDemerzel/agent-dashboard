@@ -238,14 +238,6 @@ export interface ShortFormSoundLibraryEntry {
   anchorRatio?: number;
   waveformPeaks?: number[];
   uploadedAt?: string;
-  /** Include this asset in Plan Sound Design metadata. Defaults to true for existing entries. */
-  availableForPlanning?: boolean;
-  /** Prefer this asset when matching planned SFX metadata. */
-  preferredForPlanning?: boolean;
-  /** Include this asset in Generate Sound Design resolution metadata. Defaults to true for existing entries. */
-  availableForGeneration?: boolean;
-  /** Prefer this asset when generation resolves matching SFX cues. */
-  preferredForGeneration?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -603,10 +595,6 @@ function normalizeLibraryEntry(candidate: Partial<ShortFormSoundLibraryEntry> | 
     anchorRatio: normalizeOptionalNumber(candidate?.anchorRatio, 0, 1, 3) ?? 0,
     waveformPeaks: normalizeWaveformPeaks(candidate?.waveformPeaks),
     uploadedAt,
-    ...(typeof candidate?.availableForPlanning === "boolean" ? { availableForPlanning: candidate.availableForPlanning } : {}),
-    ...(typeof candidate?.preferredForPlanning === "boolean" ? { preferredForPlanning: candidate.preferredForPlanning } : {}),
-    ...(typeof candidate?.availableForGeneration === "boolean" ? { availableForGeneration: candidate.availableForGeneration } : {}),
-    ...(typeof candidate?.preferredForGeneration === "boolean" ? { preferredForGeneration: candidate.preferredForGeneration } : {}),
     createdAt: normalizeOptionalString(candidate?.createdAt) || now,
     updatedAt: updatedAt || now,
   };
@@ -1014,10 +1002,6 @@ function buildPromptSoundLibraryJson(library: ShortFormSoundLibraryEntry[]) {
     durationSeconds: entry.durationSeconds,
     sourceSyncPointRatio: entry.anchorRatio,
     hasSavedAudio: Boolean(entry.audioRelativePath),
-    availableForPlanning: entry.availableForPlanning,
-    preferredForPlanning: entry.preferredForPlanning,
-    availableForGeneration: entry.availableForGeneration,
-    preferredForGeneration: entry.preferredForGeneration,
     recommendedUses: compactPromptText(entry.recommendedUses),
     avoidUses: compactPromptText(entry.avoidUses),
     notes: compactPromptText(entry.notes),
@@ -1043,10 +1027,6 @@ function buildPromptMusicLibraryJson() {
     transitionInPattern: track.transitionInPattern,
     transitionOutPattern: track.transitionOutPattern,
     loopFriendly: track.loopFriendly,
-    availableForPlanning: track.availableForPlanning,
-    preferredForPlanning: track.preferredForPlanning,
-    availableForGeneration: track.availableForGeneration,
-    preferredForBackground: track.preferredForBackground,
     durationSeconds: track.durationSeconds ?? track.generatedDurationSeconds,
     notes: compactPromptText(track.notes),
     hasSavedAudio: Boolean(track.generatedAudioRelativePath),

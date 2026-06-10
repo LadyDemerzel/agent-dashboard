@@ -551,10 +551,6 @@ interface MusicLibraryEntry {
   transitionInPattern?: string;
   transitionOutPattern?: string;
   loopFriendly?: boolean;
-  availableForPlanning?: boolean;
-  preferredForPlanning?: boolean;
-  availableForGeneration?: boolean;
-  preferredForBackground?: boolean;
   source?: string;
   license?: string;
   creator?: string;
@@ -712,10 +708,6 @@ interface SoundLibraryEntry {
   anchorRatio?: number;
   waveformPeaks?: number[];
   uploadedAt?: string;
-  availableForPlanning?: boolean;
-  preferredForPlanning?: boolean;
-  availableForGeneration?: boolean;
-  preferredForGeneration?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -757,17 +749,8 @@ function pickSoundMixDefaults(settings: SoundDesignSettings | null) {
 type SoundLibraryCategoryFilter = "all" | "__uncategorized__" | string;
 
 type SoundLibraryFileFilter = "all" | "with-audio" | "missing-audio";
-type AudioLibraryAvailabilityFilter =
-  | "all"
-  | "planning-and-generation"
-  | "planning"
-  | "not-planning"
-  | "generation"
-  | "not-generation";
 type AudioLibraryTypeFilter = "all" | "music" | "sfx";
 type AudioLibrarySelectionKind = "music" | "sfx";
-const DEFAULT_AUDIO_LIBRARY_AVAILABILITY_FILTER: AudioLibraryAvailabilityFilter =
-  "planning-and-generation";
 
 interface AudioLibraryPickerSelection {
   kind: AudioLibrarySelectionKind;
@@ -1163,8 +1146,6 @@ function createSoundDesignPromptPreviewValues({
       timingType: sound.timingType,
       defaultAnchor: sound.defaultAnchor,
       defaultGainDb: sound.defaultGainDb,
-      availableForPlanning: sound.availableForPlanning,
-      preferredForPlanning: sound.preferredForPlanning,
       recommendedUses: sound.recommendedUses,
     }),
   );
@@ -1177,7 +1158,6 @@ function createSoundDesignPromptPreviewValues({
       energy: track.energy,
       tags: track.tags,
       recommendedSections: track.recommendedSections,
-      preferredForPlanning: track.preferredForPlanning,
       prompt: track.prompt,
     }),
   );
@@ -1831,12 +1811,12 @@ const SOUND_DESIGN_PLACEHOLDER_ROWS: PromptPlaceholderRow[] = [
   },
   {
     placeholder: "{{soundLibraryJson}}",
-    explanation: "Compact JSON payload of saved sound-library entries available for planning.",
+    explanation: "Compact JSON payload of saved sound-library entries.",
     example: "[{ \"id\": \"impact-soft-organic-hit\", \"category\": \"Impact\", ... }]",
   },
   {
     placeholder: "{{musicLibraryJson}}",
-    explanation: "Compact JSON payload of saved music-library tracks available for planning.",
+    explanation: "Compact JSON payload of saved music-library tracks.",
     example: "[{ \"id\": \"music-cinematic-tension\", \"mood\": \"tense\", ... }]",
   },
   {
@@ -2345,25 +2325,6 @@ function matchesSoundLibraryFileFilter(
 ) {
   if (filter === "with-audio") return Boolean(sound.audioRelativePath);
   if (filter === "missing-audio") return !sound.audioRelativePath;
-  return true;
-}
-
-function matchesAudioLibraryAvailabilityFilter(
-  asset:
-    | Pick<SoundLibraryEntry, "availableForPlanning" | "availableForGeneration">
-    | Pick<MusicLibraryEntry, "availableForPlanning" | "availableForGeneration">,
-  filter: AudioLibraryAvailabilityFilter,
-) {
-  if (filter === "planning-and-generation") {
-    return (
-      asset.availableForPlanning === true &&
-      asset.availableForGeneration === true
-    );
-  }
-  if (filter === "planning") return asset.availableForPlanning === true;
-  if (filter === "not-planning") return asset.availableForPlanning !== true;
-  if (filter === "generation") return asset.availableForGeneration === true;
-  if (filter === "not-generation") return asset.availableForGeneration !== true;
   return true;
 }
 
@@ -4348,10 +4309,6 @@ export function ShortFormVideoSettingsView({
   const [soundLibraryFileFilter, setSoundLibraryFileFilter] = useState<
     "all" | "with-audio" | "missing-audio"
   >("all");
-  const [audioLibraryAvailabilityFilter, setAudioLibraryAvailabilityFilter] =
-    useState<AudioLibraryAvailabilityFilter>(
-      DEFAULT_AUDIO_LIBRARY_AVAILABILITY_FILTER,
-    );
   const [musicMoodFilter, setMusicMoodFilter] = useState("all");
   const [musicEnergyFilter, setMusicEnergyFilter] = useState("all");
   const [selectedCaptionStyleId, setSelectedCaptionStyleId] = useState<
@@ -5203,37 +5160,27 @@ export function ShortFormVideoSettingsView({
   const soundLibraryBaseMatches = useMemo(() => {
     if (!soundDesignSettings) return [];
     return soundDesignSettings.library.filter(
-	      (sound) =>
-	        matchesSoundLibraryFileFilter(sound, soundLibraryFileFilter) &&
-	        matchesAudioLibraryAvailabilityFilter(
-	          sound,
-	          audioLibraryAvailabilityFilter,
-	        ) &&
-	        matchesSoundLibrarySearch(sound, normalizedSoundLibrarySearchTokens),
-	    );
-	  }, [
-	    audioLibraryAvailabilityFilter,
-	    normalizedSoundLibrarySearchTokens,
-	    soundDesignSettings,
-	    soundLibraryFileFilter,
+      (sound) =>
+        matchesSoundLibraryFileFilter(sound, soundLibraryFileFilter) &&
+        matchesSoundLibrarySearch(sound, normalizedSoundLibrarySearchTokens),
+    );
+  }, [
+    normalizedSoundLibrarySearchTokens,
+    soundDesignSettings,
+    soundLibraryFileFilter,
   ]);
   const musicLibraryBaseMatches = useMemo(() => {
     if (!videoRender) return [];
     return videoRender.musicTracks.filter(
-	      (track) =>
-	        matchesMusicLibraryFileFilter(track, soundLibraryFileFilter) &&
-	        matchesAudioLibraryAvailabilityFilter(
-	          track,
-	          audioLibraryAvailabilityFilter,
-	        ) &&
-	        (musicMoodFilter === "all" || track.mood === musicMoodFilter) &&
-	        (musicEnergyFilter === "all" || track.energy === musicEnergyFilter) &&
-	        matchesMusicLibrarySearch(track, normalizedSoundLibrarySearchTokens),
-	    );
-	  }, [
-	    audioLibraryAvailabilityFilter,
-	    musicEnergyFilter,
-	    musicMoodFilter,
+      (track) =>
+        matchesMusicLibraryFileFilter(track, soundLibraryFileFilter) &&
+        (musicMoodFilter === "all" || track.mood === musicMoodFilter) &&
+        (musicEnergyFilter === "all" || track.energy === musicEnergyFilter) &&
+        matchesMusicLibrarySearch(track, normalizedSoundLibrarySearchTokens),
+    );
+  }, [
+    musicEnergyFilter,
+    musicMoodFilter,
     normalizedSoundLibrarySearchTokens,
     soundLibraryFileFilter,
     videoRender,
@@ -6592,108 +6539,81 @@ export function ShortFormVideoSettingsView({
 		                        onClick={() => {
 		                          setSoundLibrarySearchQuery("");
 		                          setAudioLibraryTypeFilter("all");
-			                          setSoundLibraryCategoryFilter("all");
-			                          setSoundLibraryFileFilter("all");
-			                          setAudioLibraryAvailabilityFilter(
-			                            DEFAULT_AUDIO_LIBRARY_AVAILABILITY_FILTER,
-			                          );
-			                          setMusicMoodFilter("all");
-			                          setMusicEnergyFilter("all");
-			                        }}
+		                          setSoundLibraryCategoryFilter("all");
+		                          setSoundLibraryFileFilter("all");
+		                          setMusicMoodFilter("all");
+		                          setMusicEnergyFilter("all");
+		                        }}
 		                        disabled={
 		                          !soundLibrarySearchQuery &&
-			                          audioLibraryTypeFilter === "all" &&
-			                          soundLibraryCategoryFilter === "all" &&
-			                          soundLibraryFileFilter === "all" &&
-			                          audioLibraryAvailabilityFilter ===
-			                            DEFAULT_AUDIO_LIBRARY_AVAILABILITY_FILTER &&
-			                          musicMoodFilter === "all" &&
-			                          musicEnergyFilter === "all"
-			                        }
+		                          audioLibraryTypeFilter === "all" &&
+		                          soundLibraryCategoryFilter === "all" &&
+		                          soundLibraryFileFilter === "all" &&
+		                          musicMoodFilter === "all" &&
+		                          musicEnergyFilter === "all"
+		                        }
 		                      >
 		                        Clear filters
 		                      </Button>
-		                    </div>
-			                    <div className="grid gap-2 md:grid-cols-4">
-	                      <div className="space-y-1">
-	                        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-	                          Mood
-	                        </label>
-	                        <Select
-	                          value={musicMoodFilter}
-	                          onChange={(event) =>
-	                            setMusicMoodFilter(event.target.value)
-	                          }
-	                        >
-	                          <option value="all">All music moods</option>
-	                          {musicMoodOptions.map((mood) => (
-	                            <option key={mood} value={mood}>
-	                              {mood}
-	                            </option>
-	                          ))}
-	                        </Select>
-	                      </div>
-	                      <div className="space-y-1">
-	                        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-	                          Energy
-	                        </label>
-	                        <Select
-	                          value={musicEnergyFilter}
-	                          onChange={(event) =>
-	                            setMusicEnergyFilter(event.target.value)
-	                          }
-	                        >
-	                          <option value="all">All energy levels</option>
-	                          {musicEnergyOptions.map((energy) => (
-	                            <option key={energy} value={energy}>
-	                              {energy}
-	                            </option>
-	                          ))}
-	                        </Select>
-	                      </div>
+			                    </div>
+			                    <div className="grid gap-2 md:grid-cols-3">
+		                      <div className="space-y-1">
+		                        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+		                          Mood
+		                        </label>
+		                        <Select
+		                          value={musicMoodFilter}
+		                          onChange={(event) =>
+		                            setMusicMoodFilter(event.target.value)
+		                          }
+		                        >
+		                          <option value="all">All music moods</option>
+		                          {musicMoodOptions.map((mood) => (
+		                            <option key={mood} value={mood}>
+		                              {mood}
+		                            </option>
+		                          ))}
+		                        </Select>
+		                      </div>
+		                      <div className="space-y-1">
+		                        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+		                          Energy
+		                        </label>
+		                        <Select
+		                          value={musicEnergyFilter}
+		                          onChange={(event) =>
+		                            setMusicEnergyFilter(event.target.value)
+		                          }
+		                        >
+		                          <option value="all">All energy levels</option>
+		                          {musicEnergyOptions.map((energy) => (
+		                            <option key={energy} value={energy}>
+		                              {energy}
+		                            </option>
+		                          ))}
+		                        </Select>
+		                      </div>
 		                      <div className="space-y-1">
 		                        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
 		                          Category
-	                        </label>
-	                        <Select
-	                          value={soundLibraryCategoryFilter}
-	                          onChange={(event) =>
-	                            setSoundLibraryCategoryFilter(
-	                              event.target.value as SoundLibraryCategoryFilter,
-	                            )
-	                          }
-	                        >
-	                          <option value="all">All categories</option>
-	                          {soundLibraryCategorySummaries.map((summary) => (
-	                            <option key={summary.key} value={summary.value}>
-	                              {summary.label}
-	                            </option>
-	                          ))}
-		                        </Select>
-		                      </div>
-		                      <div className="space-y-1">
-		                        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-		                          Availability
 		                        </label>
 		                        <Select
-		                          value={audioLibraryAvailabilityFilter}
+		                          value={soundLibraryCategoryFilter}
 		                          onChange={(event) =>
-		                            setAudioLibraryAvailabilityFilter(
-		                              event.target.value as AudioLibraryAvailabilityFilter,
+		                            setSoundLibraryCategoryFilter(
+		                              event.target.value as SoundLibraryCategoryFilter,
 		                            )
 		                          }
 		                        >
-		                          <option value="planning-and-generation">
-		                            Available for planning and generation
-		                          </option>
-		                          <option value="all">All availability</option>
-		                          <option value="planning">Available for planning</option>
-		                          <option value="not-planning">Not available for planning</option>
-		                          <option value="generation">Available for generation</option>
-		                          <option value="not-generation">Not available for generation</option>
+		                          <option value="all">All categories</option>
+		                          {soundLibraryCategorySummaries.map((summary) => (
+		                            <option key={summary.key} value={summary.value}>
+		                              {summary.label}
+		                            </option>
+		                          ))}
 		                        </Select>
 		                      </div>
-		                    </div>
+			                    </div>
 	                  </div>
 
 	                  <div className="flex min-h-0 flex-1 flex-col gap-2">
@@ -7568,47 +7488,6 @@ export function ShortFormVideoSettingsView({
 	                      <h4 className="text-sm font-medium text-foreground">
 	                        Generation and mixing defaults
 	                      </h4>
-	                      <div className="grid gap-3 sm:grid-cols-2">
-	                        {[
-	                          {
-	                            key: "availableForPlanning",
-	                            label: "Available for planning",
-	                          },
-	                          {
-	                            key: "preferredForPlanning",
-	                            label: "Preferred for planning",
-	                          },
-	                          {
-	                            key: "availableForGeneration",
-	                            label: "Available for generation",
-	                          },
-	                          {
-	                            key: "preferredForGeneration",
-	                            label: "Preferred for generation",
-	                          },
-	                        ].map((toggle) => (
-	                          <label
-	                            key={toggle.key}
-	                            className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-xs text-foreground"
-	                          >
-	                            <input
-	                              type="checkbox"
-	                              checked={Boolean(
-	                                selectedSound[
-	                                  toggle.key as keyof SoundLibraryEntry
-	                                ],
-	                              )}
-	                              onChange={(event) =>
-	                                updateSelectedSound((sound) => ({
-	                                  ...sound,
-	                                  [toggle.key]: event.target.checked,
-	                                }))
-	                              }
-	                            />
-	                            {toggle.label}
-	                          </label>
-	                        ))}
-	                      </div>
 	                      <div className="grid gap-4 md:grid-cols-3">
 	                        <div className="space-y-2">
 	                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -8108,46 +7987,19 @@ export function ShortFormVideoSettingsView({
                         Generation and mixing defaults
                       </h4>
                       <div className="grid gap-3 sm:grid-cols-2">
-                        {[
-                          {
-                            key: "availableForPlanning",
-                            label: "Available for planning",
-                          },
-                          {
-                            key: "preferredForPlanning",
-                            label: "Preferred for planning",
-                          },
-                          {
-                            key: "availableForGeneration",
-                            label: "Available for generation",
-                          },
-                          {
-                            key: "preferredForBackground",
-                            label: "Preferred background music",
-                          },
-                          { key: "loopFriendly", label: "Loop-friendly" },
-                        ].map((toggle) => (
-                          <label
-                            key={toggle.key}
-                            className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-xs text-foreground"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={Boolean(
-                                selectedMusic[
-                                  toggle.key as keyof MusicLibraryEntry
-                                ],
-                              )}
-                              onChange={(event) =>
-                                updateSelectedMusic((track) => ({
-                                  ...track,
-                                  [toggle.key]: event.target.checked,
-                                }))
-                              }
-                            />
-                            {toggle.label}
-                          </label>
-                        ))}
+                        <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-xs text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(selectedMusic.loopFriendly)}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                loopFriendly: event.target.checked,
+                              }))
+                            }
+                          />
+                          Loop-friendly
+                        </label>
                       </div>
                       <div className="grid gap-4 md:grid-cols-3">
                         <div className="space-y-2">
