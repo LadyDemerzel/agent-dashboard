@@ -5020,7 +5020,6 @@ function runDirectVideo(job) {
   if (sceneImagesRuntimeXmlPath) {
     syncRuntimeTimelineVisualAttributesFromSource(runtimeXmlPath, config.scriptPath);
     preserveRuntimeMotionGraphicRendererMetadata(runtimeXmlPath, getSceneGeneratorManifestPath(job.projectId));
-    restoreMissingMotionGraphicVideosFromSceneImageRun(job.projectId, config.sceneImagesDir);
   }
   const xmlWorkDir = path.join(getProjectDir(job.projectId), "output", "xml-script-work");
   const captionsJsonPath = path.join(xmlWorkDir, "captions", "caption-sections.json");
@@ -5029,6 +5028,24 @@ function runDirectVideo(job) {
   if (!fs.existsSync(existingVoicePath) || !fs.existsSync(existingAlignmentPath) || !fs.existsSync(captionsJsonPath)) {
     throw new Error("Missing XML narration/alignment/caption artifacts for final-video generation. Run the XML Script step first so Final Video can reuse its narration WAV, forced-alignment JSON, and deterministic captions JSON.");
   }
+
+  updateDirectVideoProgress("render-motion-graphics", "Rendering final-video motion graphics from the current XML.");
+  const motionGraphicsRuntimeXmlPath = resolveXmlRuntimePath(
+    config.scriptPath,
+    runDir,
+    "video-motion-graphics-runtime.xml",
+  );
+  normalizeTimelineImageRuntimeXmlFile(motionGraphicsRuntimeXmlPath);
+  const finalMotionGraphicsDir = path.join(config.videoWorkDir, "final-motion-graphics");
+  ensureDir(finalMotionGraphicsDir);
+  const finalMotionGraphics = renderMotionGraphicScenes({
+    outputDir: finalMotionGraphicsDir,
+    runDir,
+    xmlPath: motionGraphicsRuntimeXmlPath,
+    settings: config.motionGraphicsSettings || {},
+    sceneIndexes: [],
+    alignmentPath: existingAlignmentPath,
+  });
 
   const xmlSelectedVoice = readXmlVoiceSelection(job.projectId) || resolveVoiceSelection(projectMeta.selectedVoiceId).voice;
   const args = [
@@ -5063,6 +5080,9 @@ function runDirectVideo(job) {
     "--no-music",
     "--force",
   ];
+  if (finalMotionGraphics.motionVisuals.length > 0) {
+    args.push("--motion-graphics-dir", finalMotionGraphicsDir);
+  }
 
   updateDirectVideoProgress("prepare-inputs", "Loading XML narration, alignment, caption, visual, and sound-design inputs.");
   updateDirectVideoProgress("render-base-video", "Rendering the base final video from the XML scene pipeline.");

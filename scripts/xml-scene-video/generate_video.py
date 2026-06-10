@@ -322,9 +322,13 @@ def cleanup_stale_motion_graphic_videos(images_dir: Path, scenes: list[Scene]) -
     return removed
 
 
-def scene_motion_graphic_video(images_dir: Path, scene: Scene) -> Path | None:
+def scene_motion_graphic_video(images_dir: Path, scene: Scene, motion_graphics_dir: Path | None = None) -> Path | None:
     if not scene.is_motion_graphic():
         return None
+    if motion_graphics_dir:
+        candidate = motion_graphics_dir / f"scene-{scene.index:02d}-motion-graphic.mp4"
+        if candidate.exists():
+            return candidate
     candidate = images_dir / f"scene-{scene.index:02d}-motion-graphic.mp4"
     return candidate if candidate.exists() else None
 
@@ -1480,6 +1484,7 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate a finished short-form video from XML + scene images.")
     p.add_argument("--xml", required=True)
     p.add_argument("--images-dir", required=True)
+    p.add_argument("--motion-graphics-dir")
     p.add_argument("--output", required=True)
     p.add_argument("--work-dir")
     p.add_argument("--music")
@@ -1515,6 +1520,7 @@ def main() -> int:
     args = parse_args()
     xml_path = Path(args.xml).expanduser().resolve()
     images_dir = Path(args.images_dir).expanduser().resolve()
+    motion_graphics_dir = Path(args.motion_graphics_dir).expanduser().resolve() if args.motion_graphics_dir else None
     output = Path(args.output).expanduser().resolve()
     work_dir = Path(args.work_dir).expanduser().resolve() if args.work_dir else output.parent / (output.stem + "-artifacts")
     ensure_dir(work_dir)
@@ -1598,6 +1604,7 @@ def main() -> int:
         "topic": topic,
         "xml": str(xml_path),
         "images_dir": str(images_dir),
+        "motion_graphics_dir": str(motion_graphics_dir) if motion_graphics_dir else None,
         "work_dir": str(work_dir),
         "output": str(output),
         "tts_engine": args.tts_engine,
@@ -1655,7 +1662,7 @@ def main() -> int:
                 "text": s.text,
                 "image": str(img),
                 "visual_type": s.visual_type,
-                "motion_graphic_source_video": str(scene_motion_graphic_video(images_dir, s)) if scene_motion_graphic_video(images_dir, s) else None,
+                "motion_graphic_source_video": str(scene_motion_graphic_video(images_dir, s, motion_graphics_dir)) if scene_motion_graphic_video(images_dir, s, motion_graphics_dir) else None,
                 "motion_video": str(motion_dir / f"scene-{s.index:02d}.mp4"),
                 "background_composite_video": str(motion_dir / f"scene-{s.index:02d}-composited.mp4"),
                 "duration": dur,
@@ -1672,7 +1679,7 @@ def main() -> int:
     scene_videos: list[Path] = []
     current_time = 0.0
     for scene, img, dur in zip(scenes, image_inputs, scene_durations):
-        motion_graphic_src = scene_motion_graphic_video(images_dir, scene)
+        motion_graphic_src = scene_motion_graphic_video(images_dir, scene, motion_graphics_dir)
         motion = motion_dir / f"scene-{scene.index:02d}.mp4"
         if motion_graphic_src:
             motion_meta = normalize_motion_graphic_video(motion_graphic_src, dur, motion, args.fps)

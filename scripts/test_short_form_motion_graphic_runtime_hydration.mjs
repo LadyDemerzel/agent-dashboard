@@ -91,6 +91,11 @@ const runDirectVideoBody = stageWorkerSource.match(/function runDirectVideo\(job
 assert.match(runDirectVideoBody, /getLatestSceneImagesRuntimeXmlPath/, "Final-video should consume the scene-images runtime XML that already maps motion graphics to renderable placeholder imageIds.");
 assert.match(runDirectVideoBody, /syncRuntimeTimelineVisualAttributesFromSource\(runtimeXmlPath, config\.scriptPath\)/, "Final-video should sync mutable visual timeline attrs from the current XML before rendering stale scene-images runtime XML.");
 assert.match(runDirectVideoBody, /preserveRuntimeMotionGraphicRendererMetadata/, "Final-video should repair older scene-images runtime XML so motion graphics keep renderer-facing metadata.");
+assert.match(runDirectVideoBody, /video-motion-graphics-runtime\.xml/, "Final-video should parse the canonical XML script for fresh motion-graphic rendering.");
+assert.match(runDirectVideoBody, /final-motion-graphics/, "Final-video should render fresh motion-graphic clips into its own work directory.");
+assert.match(runDirectVideoBody, /renderMotionGraphicScenes/, "Final-video should render motion graphics fresh instead of consuming stale scene preview MP4s.");
+assert.match(runDirectVideoBody, /"--motion-graphics-dir"/, "Final-video should pass the fresh motion-graphics directory to the XML video compositor.");
+assert.doesNotMatch(runDirectVideoBody, /restoreMissingMotionGraphicVideosFromSceneImageRun/, "Final-video should not repair or depend on Generate Visuals preview MP4s.");
 assert.doesNotMatch(runDirectVideoBody, /hydrateRuntimeXmlMotionGraphicsFromManifest/, "Final-video must not rehydrate renderer-facing XML back to inline motion graphics before calling xml-scene-video.");
 assert.match(stageWorkerSource, /XML_SCENE_VIDEO_SCRIPT = path\.join\(AGENT_DASHBOARD_ROOT, "scripts", "xml-scene-video", "generate_video\.py"\)/, "Final-video should use the Agent Dashboard repo-owned xml-scene-video renderer.");
 assert.doesNotMatch(stageWorkerSource, /\.openclaw", "skills", "xml-scene-video", "scripts", "generate_video\.py"/, "Final-video must not call the external xml-scene-video skill renderer.");
@@ -98,6 +103,8 @@ assert.match(stageWorkerSource, /attrs\.visualType = "motion_graphic"/, "Rendere
 assert.match(stageWorkerSource, /attrs\.motionGraphicId = motionVisual\.asset\.id/, "Renderer-facing scene-images runtime XML must preserve motionGraphicId while using a poster imageId placeholder.");
 assert.doesNotMatch(normalizeMotionGraphicVideoBody, /"-stream_loop"/, "Final-video must not extend short motion graphics by looping them.");
 assert.match(normalizeMotionGraphicVideoBody, /tpad=stop_mode=clone/, "Final-video should hold the last motion-graphic frame when a visual's XML timing is longer than the source clip.");
+assert.match(finalVideoRendererSource, /--motion-graphics-dir/, "XML video compositor should accept a final-video-specific motion graphics directory.");
+assert.match(finalVideoRendererSource, /motion_graphics_dir \/ f"scene-\{scene\.index:02d\}-motion-graphic\.mp4"/, "XML video compositor should prefer freshly rendered final-video motion graphics over Generate Visuals preview MP4s.");
 
 const staleFinalRuntimePath = path.join(tempDir, "stale-video-runtime.xml");
 const currentSourceXmlPath = path.join(tempDir, "current-xml-script.md");

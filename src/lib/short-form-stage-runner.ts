@@ -46,6 +46,7 @@ export interface DirectVideoConfig {
   captionStyleSource?: "project" | "default" | "fallback";
   captionStyle?: ShortFormCaptionStyleEntry;
   animationPreset?: ShortFormCaptionAnimationPresetEntry;
+  motionGraphicsSettings?: ShortFormMotionGraphicsSettings;
   notes?: string;
 }
 

@@ -573,6 +573,7 @@ export async function POST(
                   captionStyleSource: resolvedCaptionStyle.source,
                   captionStyle: resolvedCaptionStyle.captionStyle,
                   animationPreset: resolvedCaptionStyle.animationPreset,
+                  motionGraphicsSettings: getShortFormMotionGraphicsSettings(),
                   ...(requestNotes ? { notes: requestNotes } : {}),
                 },
               }
