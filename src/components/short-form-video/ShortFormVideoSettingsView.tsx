@@ -725,6 +725,26 @@ interface SoundDesignSettings {
   library: SoundLibraryEntry[];
 }
 
+const SOUND_MIX_DEFAULT_FIELDS = [
+  "defaultDuckingDb",
+  "maxConcurrentOneShots",
+  "musicDuckingDb",
+  "musicEqCutDb",
+  "musicEqFrequencyHz",
+  "musicEqQ",
+  "musicLowCutHz",
+  "musicHighCutHz",
+] as const satisfies ReadonlyArray<keyof SoundDesignSettings>;
+
+type SoundMixDefaultField = (typeof SOUND_MIX_DEFAULT_FIELDS)[number];
+
+function pickSoundMixDefaults(settings: SoundDesignSettings | null) {
+  if (!settings) return null;
+  return Object.fromEntries(
+    SOUND_MIX_DEFAULT_FIELDS.map((key) => [key, settings[key]]),
+  ) as Pick<SoundDesignSettings, SoundMixDefaultField>;
+}
+
 type SoundLibraryCategoryFilter = "all" | "__uncategorized__" | string;
 
 type SoundLibraryFileFilter = "all" | "with-audio" | "missing-audio";
@@ -1933,7 +1953,7 @@ const SETTINGS_PAGE_META: Record<
     eyebrow: "Short-form workflow settings",
     title: "Generate Sound Design",
     description:
-      "Manage Generate Sound Design mix defaults and the audio library used by project sound-design resolution.",
+      "Manage mix defaults and the audio library used by project sound-design resolution.",
     summaryLabel: "Audio Library",
     sectionIds: ["sound-library"],
   },
@@ -4894,6 +4914,20 @@ export function ShortFormVideoSettingsView({
       ) || null,
     [selectedSoundId, soundDesignSettings],
   );
+  const initialSelectedSound = useMemo(
+    () =>
+      initialSoundDesignSettings?.library.find(
+        (sound) => sound.id === selectedSoundId,
+      ) || null,
+    [initialSoundDesignSettings, selectedSoundId],
+  );
+  const initialSelectedMusic = useMemo(
+    () =>
+      initialVideoRender?.musicTracks.find(
+        (track) => track.id === selectedMusicId,
+      ) || null,
+    [initialVideoRender, selectedMusicId],
+  );
   const selectedAudioClip = useMemo(() => {
     if (selectedAudioLibraryKind === "music" && selectedMusic) {
       return {
@@ -4911,6 +4945,28 @@ export function ShortFormVideoSettingsView({
     }
     return null;
   }, [selectedAudioLibraryKind, selectedMusic, selectedSound]);
+  const mixDefaultsDirty =
+    serializeForCompare(pickSoundMixDefaults(soundDesignSettings)) !==
+    serializeForCompare(pickSoundMixDefaults(initialSoundDesignSettings));
+  const selectedSoundDirty =
+    selectedAudioLibraryKind === "sfx" && selectedSound
+      ? serializeForCompare(selectedSound) !==
+        serializeForCompare(initialSelectedSound)
+      : false;
+  const selectedMusicDirty =
+    selectedAudioLibraryKind === "music" && selectedMusic
+      ? serializeForCompare({
+          track: selectedMusic,
+          defaultMusicTrackId: videoRender?.defaultMusicTrackId,
+          musicVolume: videoRender?.musicVolume,
+        }) !==
+        serializeForCompare({
+          track: initialSelectedMusic,
+          defaultMusicTrackId: initialVideoRender?.defaultMusicTrackId,
+          musicVolume: initialVideoRender?.musicVolume,
+        })
+      : false;
+  const selectedAudioClipDirty = selectedSoundDirty || selectedMusicDirty;
   const normalizedSoundLibrarySearchTokens = useMemo(
     () =>
       soundLibrarySearchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean),
@@ -6108,133 +6164,127 @@ export function ShortFormVideoSettingsView({
               />
             </div>
             ) : (
-              <Card className="space-y-4 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-medium text-foreground">
-                      Generate Sound Design mix defaults
-                    </h3>
-                    <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
-                      Tune the global mix rules used when Generate Sound Design
-                      resolves planned XML cues to saved sounds and music.
-                    </p>
-                  </div>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Default ducking (dB)
-                    </label>
-                    <Input
-                      type="number"
-                      min={-24}
-                      max={0}
-                      step={1}
-                      value={soundDesignSettings.defaultDuckingDb}
-                      onChange={(event) => {
-                        updateSectionFeedbackState("sound-library", {
-                          error: null,
-                          message: null,
-                        });
-                        setSoundDesignSettings({
-                          ...soundDesignSettings,
-                          defaultDuckingDb: Math.max(
-                            -24,
-                            Math.min(0, Number(event.target.value) || 0),
-                          ),
-                        });
-                      }}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Max concurrent one-shots
-                    </label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={8}
-                      step={1}
-                      value={soundDesignSettings.maxConcurrentOneShots}
-                      onChange={(event) => {
-                        updateSectionFeedbackState("sound-library", {
-                          error: null,
-                          message: null,
-                        });
-                        setSoundDesignSettings({
-                          ...soundDesignSettings,
-                          maxConcurrentOneShots: Math.max(
-                            1,
-                            Math.min(8, Number(event.target.value) || 1),
-                          ),
-                        });
-                      }}
-                    />
-                  </div>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {[
-                    { key: "musicDuckingDb", label: "Music ducking (dB)", min: -24, max: 0, step: 1 },
-                    { key: "musicEqCutDb", label: "Music mid EQ cut (dB)", min: -18, max: 0, step: 1 },
-                    { key: "musicEqFrequencyHz", label: "Music EQ frequency (Hz)", min: 120, max: 8000, step: 50 },
-                    { key: "musicEqQ", label: "Music EQ Q", min: 0.1, max: 10, step: 0.1 },
-                    { key: "musicLowCutHz", label: "Music low cut (Hz, 0 off)", min: 0, max: 500, step: 5 },
-                    { key: "musicHighCutHz", label: "Music high cut (Hz, 0 off)", min: 0, max: 20000, step: 100 },
-                  ].map((control) => (
-                    <div key={control.key} className="space-y-2">
-                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        {control.label}
-                      </label>
-                      <Input
-                        type="number"
-                        min={control.min}
-                        max={control.max}
-                        step={control.step}
-                        value={
-                          soundDesignSettings[
-                            control.key as keyof Pick<
-                              SoundDesignSettings,
-                              | "musicDuckingDb"
-                              | "musicEqCutDb"
-                              | "musicEqFrequencyHz"
-                              | "musicEqQ"
-                              | "musicLowCutHz"
-                              | "musicHighCutHz"
-                            >
-                          ]
-                        }
-                        onChange={(event) => {
-                          updateSectionFeedbackState("sound-library", {
-                            error: null,
-                            message: null,
-                          });
-                          const value = Number(event.target.value);
-                          setSoundDesignSettings({
-                            ...soundDesignSettings,
-                            [control.key]: Math.max(
-                              control.min,
-                              Math.min(control.max, Number.isFinite(value) ? value : control.min),
-                            ),
-                          });
-                        }}
-                      />
-                    </div>
-                  ))}
-                </div>
-                <div className="rounded-lg border border-border/70 bg-background/40 p-3 text-xs text-muted-foreground">
-                  <p className="font-medium text-foreground">
-                    What counts as the current global rule set
-                  </p>
-                  <ul className="mt-2 list-disc space-y-1 pl-4">
-                    <li>The saved planning prompt and revision prompt templates.</li>
-                    <li>The ducking, music EQ carve, and concurrency limits above.</li>
-                    <li>
-                      Each library entry’s semantic types, palette metadata, low/mid/high layer metadata, source sync points, gain, fades,
-                      recommended uses, and avoid notes.
-                    </li>
-                  </ul>
-                </div>
-              </Card>
+	              <Card className="space-y-4 p-4">
+	                <div className="flex flex-wrap items-start justify-between gap-3">
+	                  <div>
+	                    <h3 className="text-sm font-medium text-foreground">
+	                      Mix defaults
+	                    </h3>
+	                  </div>
+	                  {mixDefaultsDirty ? (
+	                    <SectionActions
+	                      dirty={mixDefaultsDirty}
+	                      saving={sectionFeedback["sound-library"].saving}
+	                      saveLabel="Save mix defaults"
+	                      onSave={() => void saveSoundMixDefaults()}
+	                      onReset={resetSoundMixDefaults}
+	                    />
+	                  ) : null}
+	                </div>
+	                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,3fr)]">
+	                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+	                    <div className="space-y-2">
+	                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                        Default ducking (dB)
+	                      </label>
+	                      <Input
+	                        type="number"
+	                        min={-24}
+	                        max={0}
+	                        step={1}
+	                        value={soundDesignSettings.defaultDuckingDb}
+	                        onChange={(event) => {
+	                          updateSectionFeedbackState("sound-library", {
+	                            error: null,
+	                            message: null,
+	                          });
+	                          setSoundDesignSettings({
+	                            ...soundDesignSettings,
+	                            defaultDuckingDb: Math.max(
+	                              -24,
+	                              Math.min(0, Number(event.target.value) || 0),
+	                            ),
+	                          });
+	                        }}
+	                      />
+	                    </div>
+	                    <div className="space-y-2">
+	                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                        Max concurrent one-shots
+	                      </label>
+	                      <Input
+	                        type="number"
+	                        min={1}
+	                        max={8}
+	                        step={1}
+	                        value={soundDesignSettings.maxConcurrentOneShots}
+	                        onChange={(event) => {
+	                          updateSectionFeedbackState("sound-library", {
+	                            error: null,
+	                            message: null,
+	                          });
+	                          setSoundDesignSettings({
+	                            ...soundDesignSettings,
+	                            maxConcurrentOneShots: Math.max(
+	                              1,
+	                              Math.min(8, Number(event.target.value) || 1),
+	                            ),
+	                          });
+	                        }}
+	                      />
+	                    </div>
+	                  </div>
+	                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+	                    {[
+	                      { key: "musicDuckingDb", label: "Music ducking (dB)", min: -24, max: 0, step: 1 },
+	                      { key: "musicEqCutDb", label: "Music mid EQ cut (dB)", min: -18, max: 0, step: 1 },
+	                      { key: "musicEqFrequencyHz", label: "Music EQ frequency (Hz)", min: 120, max: 8000, step: 50 },
+	                      { key: "musicEqQ", label: "Music EQ Q", min: 0.1, max: 10, step: 0.1 },
+	                      { key: "musicLowCutHz", label: "Music low cut (Hz, 0 off)", min: 0, max: 500, step: 5 },
+	                      { key: "musicHighCutHz", label: "Music high cut (Hz, 0 off)", min: 0, max: 20000, step: 100 },
+	                    ].map((control) => (
+	                      <div key={control.key} className="space-y-2">
+	                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                          {control.label}
+	                        </label>
+	                        <Input
+	                          type="number"
+	                          min={control.min}
+	                          max={control.max}
+	                          step={control.step}
+	                          value={
+	                            soundDesignSettings[
+	                              control.key as keyof Pick<
+	                                SoundDesignSettings,
+	                                | "musicDuckingDb"
+	                                | "musicEqCutDb"
+	                                | "musicEqFrequencyHz"
+	                                | "musicEqQ"
+	                                | "musicLowCutHz"
+	                                | "musicHighCutHz"
+	                              >
+	                            ]
+	                          }
+	                          onChange={(event) => {
+	                            updateSectionFeedbackState("sound-library", {
+	                              error: null,
+	                              message: null,
+	                            });
+	                            const value = Number(event.target.value);
+	                            setSoundDesignSettings({
+	                              ...soundDesignSettings,
+	                              [control.key]: Math.max(
+	                                control.min,
+	                                Math.min(control.max, Number.isFinite(value) ? value : control.min),
+	                              ),
+	                            });
+	                          }}
+	                        />
+	                      </div>
+	                    ))}
+	                  </div>
+	                </div>
+	              </Card>
             )}
 
             {activeSection === "generate-sound-design" ? (
@@ -6809,12 +6859,23 @@ export function ShortFormVideoSettingsView({
                   </DialogContent>
                 </DialogOverlay>
 
-                {selectedAudioLibraryKind === "sfx" && selectedSound ? (
-                  <Card className="space-y-4 p-5" data-audio-library-pane="detail">
-                    <h3 className="text-base font-semibold text-foreground">
-                      {selectedSound.name}
-                    </h3>
-                    <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/70 bg-background/60 p-3">
+	                {selectedAudioLibraryKind === "sfx" && selectedSound ? (
+	                  <Card className="space-y-4 p-5" data-audio-library-pane="detail">
+	                    <div className="flex flex-wrap items-start justify-between gap-3">
+	                      <h3 className="text-base font-semibold text-foreground">
+	                        {selectedSound.name}
+	                      </h3>
+	                      {selectedAudioClipDirty ? (
+	                        <SectionActions
+	                          dirty={selectedAudioClipDirty}
+	                          saving={sectionFeedback["sound-library"].saving}
+	                          saveLabel="Save audio clip"
+	                          onSave={() => void saveSelectedAudioClip()}
+	                          onReset={resetSelectedAudioClip}
+	                        />
+	                      ) : null}
+	                    </div>
+	                    <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/70 bg-background/60 p-3">
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2 text-xs">
                           <Badge
@@ -7465,12 +7526,23 @@ export function ShortFormVideoSettingsView({
                   </Card>
                 ) : null}
 
-                {selectedAudioLibraryKind === "music" && selectedMusic && videoRender ? (
-                  <Card className="space-y-4 p-5" data-audio-library-pane="detail">
-                    <h3 className="text-base font-semibold text-foreground">
-                      {selectedMusic.name}
-                    </h3>
-                    <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/70 bg-background/60 p-3">
+	                {selectedAudioLibraryKind === "music" && selectedMusic && videoRender ? (
+	                  <Card className="space-y-4 p-5" data-audio-library-pane="detail">
+	                    <div className="flex flex-wrap items-start justify-between gap-3">
+	                      <h3 className="text-base font-semibold text-foreground">
+	                        {selectedMusic.name}
+	                      </h3>
+	                      {selectedAudioClipDirty ? (
+	                        <SectionActions
+	                          dirty={selectedAudioClipDirty}
+	                          saving={sectionFeedback["music-library"].saving}
+	                          saveLabel="Save audio clip"
+	                          onSave={() => void saveSelectedAudioClip()}
+	                          onReset={resetSelectedAudioClip}
+	                        />
+	                      ) : null}
+	                    </div>
+	                    <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/70 bg-background/60 p-3">
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2 text-xs">
                           <Badge
@@ -8013,9 +8085,14 @@ export function ShortFormVideoSettingsView({
           </div>
         ) : null}
 
-        {activeSection === "plan-sound-design" ? null : (
-          <SectionFeedbackNotice feedback={sectionFeedback["sound-library"]} />
-        )}
+	        {activeSection === "plan-sound-design" ? null : (
+	          <>
+	            <SectionFeedbackNotice feedback={sectionFeedback["sound-library"]} />
+	            {activeSection === "generate-sound-design" ? (
+	              <SectionFeedbackNotice feedback={sectionFeedback["music-library"]} />
+	            ) : null}
+	          </>
+	        )}
       </div>
     </section>
   );
@@ -8915,6 +8992,287 @@ export function ShortFormVideoSettingsView({
       error: null,
       message: null,
     });
+  }
+
+  async function saveSoundMixDefaults() {
+    if (!soundDesignSettings) return null;
+    const nextMixDefaults = pickSoundMixDefaults(soundDesignSettings);
+    if (!nextMixDefaults) return null;
+
+    updateSectionFeedbackState("sound-library", {
+      saving: true,
+      error: null,
+      message: null,
+    });
+
+    try {
+      const data = await parseResponse(
+        await fetch("/api/short-form-videos/settings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ soundDesign: nextMixDefaults }),
+        }),
+      );
+      const savedMixDefaults = pickSoundMixDefaults(data.soundDesign);
+      setInitialSoundDesignSettings(data.soundDesign);
+      setSoundDesignSettings((current) =>
+        current && savedMixDefaults
+          ? { ...current, ...savedMixDefaults }
+          : data.soundDesign,
+      );
+      updateSectionFeedbackState("sound-library", {
+        saving: false,
+        error: null,
+        message:
+          "Saved. New Generate Sound Design runs will use these mix defaults immediately.",
+      });
+      return data;
+    } catch (err) {
+      updateSectionFeedbackState("sound-library", {
+        saving: false,
+        error:
+          err instanceof Error ? err.message : "Failed to save mix defaults",
+        message: null,
+      });
+      throw err;
+    }
+  }
+
+  function resetSoundMixDefaults() {
+    if (!mixDefaultsDirty || !initialSoundDesignSettings) return;
+    const confirmed = window.confirm(
+      "Restore mix defaults to their last saved values?",
+    );
+    if (!confirmed) return;
+
+    const savedMixDefaults = pickSoundMixDefaults(initialSoundDesignSettings);
+    if (!savedMixDefaults) return;
+    setSoundDesignSettings((current) =>
+      current ? { ...current, ...savedMixDefaults } : current,
+    );
+    updateSectionFeedbackState("sound-library", { error: null, message: null });
+  }
+
+  async function saveSelectedAudioClip() {
+    if (
+      selectedAudioLibraryKind === "sfx" &&
+      selectedSound &&
+      initialSoundDesignSettings
+    ) {
+      const savedLibraryHasSound = initialSoundDesignSettings.library.some(
+        (sound) => sound.id === selectedSound.id,
+      );
+      const nextLibrary = savedLibraryHasSound
+        ? initialSoundDesignSettings.library.map((sound) =>
+            sound.id === selectedSound.id ? selectedSound : sound,
+          )
+        : [...initialSoundDesignSettings.library, selectedSound];
+
+      updateSectionFeedbackState("sound-library", {
+        saving: true,
+        error: null,
+        message: null,
+      });
+
+      try {
+        const data = await parseResponse(
+          await fetch("/api/short-form-videos/settings", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ soundDesign: { library: nextLibrary } }),
+          }),
+        );
+        const savedSound =
+          data.soundDesign.library.find(
+            (sound) => sound.id === selectedSound.id,
+          ) || selectedSound;
+        setInitialSoundDesignSettings(data.soundDesign);
+        setSoundDesignSettings((current) =>
+          current
+            ? {
+                ...current,
+                library: current.library.some(
+                  (sound) => sound.id === savedSound.id,
+                )
+                  ? current.library.map((sound) =>
+                      sound.id === savedSound.id ? savedSound : sound,
+                    )
+                  : [...current.library, savedSound],
+              }
+            : data.soundDesign,
+        );
+        setSelectedSoundId(savedSound.id);
+        updateSectionFeedbackState("sound-library", {
+          saving: false,
+          error: null,
+          message:
+            "Saved. New Plan Sound Design and Generate Sound Design runs can use this audio clip immediately.",
+        });
+        return data;
+      } catch (err) {
+        updateSectionFeedbackState("sound-library", {
+          saving: false,
+          error:
+            err instanceof Error
+              ? err.message
+              : "Failed to save selected audio clip",
+          message: null,
+        });
+        throw err;
+      }
+    }
+
+    if (
+      selectedAudioLibraryKind === "music" &&
+      selectedMusic &&
+      videoRender &&
+      initialVideoRender
+    ) {
+      const savedLibraryHasTrack = initialVideoRender.musicTracks.some(
+        (track) => track.id === selectedMusic.id,
+      );
+      const nextMusicTracks = savedLibraryHasTrack
+        ? initialVideoRender.musicTracks.map((track) =>
+            track.id === selectedMusic.id ? selectedMusic : track,
+          )
+        : [...initialVideoRender.musicTracks, selectedMusic];
+      const nextDefaultMusicTrackId = nextMusicTracks.some(
+        (track) => track.id === videoRender.defaultMusicTrackId,
+      )
+        ? videoRender.defaultMusicTrackId
+        : initialVideoRender.defaultMusicTrackId || nextMusicTracks[0]?.id;
+
+      updateSectionFeedbackState("music-library", {
+        saving: true,
+        error: null,
+        message: null,
+      });
+
+      try {
+        const data = await parseResponse(
+          await fetch("/api/short-form-videos/settings", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              videoRender: {
+                musicTracks: nextMusicTracks,
+                defaultMusicTrackId: nextDefaultMusicTrackId,
+                musicVolume: videoRender.musicVolume,
+              },
+            }),
+          }),
+        );
+        const savedTrack =
+          data.videoRender.musicTracks.find(
+            (track) => track.id === selectedMusic.id,
+          ) || selectedMusic;
+        setInitialVideoRender(data.videoRender);
+        setVideoRender((current) =>
+          current
+            ? {
+                ...current,
+                musicTracks: current.musicTracks.some(
+                  (track) => track.id === savedTrack.id,
+                )
+                  ? current.musicTracks.map((track) =>
+                      track.id === savedTrack.id ? savedTrack : track,
+                    )
+                  : [...current.musicTracks, savedTrack],
+                defaultMusicTrackId: data.videoRender.defaultMusicTrackId,
+                musicVolume: data.videoRender.musicVolume,
+              }
+            : data.videoRender,
+        );
+        setSelectedMusicId(savedTrack.id);
+        updateSectionFeedbackState("music-library", {
+          saving: false,
+          error: null,
+          message:
+            "Saved. New Plan Sound Design and Generate Sound Design runs can use this music clip immediately.",
+        });
+        return data;
+      } catch (err) {
+        updateSectionFeedbackState("music-library", {
+          saving: false,
+          error:
+            err instanceof Error
+              ? err.message
+              : "Failed to save selected audio clip",
+          message: null,
+        });
+        throw err;
+      }
+    }
+
+    return null;
+  }
+
+  function resetSelectedAudioClip() {
+    if (!selectedAudioClipDirty) return;
+    const confirmed = window.confirm(
+      "Restore this audio clip to its last saved values?",
+    );
+    if (!confirmed) return;
+
+    if (
+      selectedAudioLibraryKind === "sfx" &&
+      selectedSound &&
+      soundDesignSettings
+    ) {
+      updateSectionFeedbackState("sound-library", { error: null, message: null });
+      if (!initialSelectedSound) {
+        const nextLibrary = soundDesignSettings.library.filter(
+          (sound) => sound.id !== selectedSound.id,
+        );
+        setSoundDesignSettings({ ...soundDesignSettings, library: nextLibrary });
+        setSelectedSoundId(nextLibrary[0]?.id || null);
+        return;
+      }
+      setSoundDesignSettings({
+        ...soundDesignSettings,
+        library: soundDesignSettings.library.map((sound) =>
+          sound.id === initialSelectedSound.id ? initialSelectedSound : sound,
+        ),
+      });
+      return;
+    }
+
+    if (
+      selectedAudioLibraryKind === "music" &&
+      selectedMusic &&
+      videoRender &&
+      initialVideoRender
+    ) {
+      updateSectionFeedbackState("music-library", { error: null, message: null });
+      if (!initialSelectedMusic) {
+        const nextMusicTracks = videoRender.musicTracks.filter(
+          (track) => track.id !== selectedMusic.id,
+        );
+        setVideoRender({
+          ...videoRender,
+          musicTracks: nextMusicTracks,
+          defaultMusicTrackId:
+            initialVideoRender.defaultMusicTrackId ||
+            nextMusicTracks[0]?.id ||
+            "",
+          musicVolume: initialVideoRender.musicVolume,
+        });
+        setSelectedMusicId(
+          initialVideoRender.defaultMusicTrackId ||
+            nextMusicTracks[0]?.id ||
+            null,
+        );
+        return;
+      }
+      setVideoRender({
+        ...videoRender,
+        musicTracks: videoRender.musicTracks.map((track) =>
+          track.id === initialSelectedMusic.id ? initialSelectedMusic : track,
+        ),
+        defaultMusicTrackId: initialVideoRender.defaultMusicTrackId,
+        musicVolume: initialVideoRender.musicVolume,
+      });
+    }
   }
 
   function resetSection(sectionId: SettingsSectionId) {
@@ -9986,50 +10344,6 @@ export function ShortFormVideoSettingsView({
     }
   }
 
-  async function saveGenerateSoundDesignSettings() {
-    if (dirtyBySection["sound-library"]) {
-      await saveSection("sound-library");
-    }
-    if (dirtyBySection["music-library"]) {
-      await saveSection("music-library");
-    }
-  }
-
-  function resetGenerateSoundDesignSettings() {
-    if (!dirtyBySection["sound-library"] && !dirtyBySection["music-library"]) return;
-    const confirmed = window.confirm(
-      "Discard unsaved Audio Library and mix default changes?",
-    );
-    if (!confirmed) return;
-    updateSectionFeedbackState("sound-library", { error: null, message: null });
-    updateSectionFeedbackState("music-library", { error: null, message: null });
-    if (dirtyBySection["sound-library"] && initialSoundDesignSettings) {
-      setSoundDesignSettings(initialSoundDesignSettings);
-      setSelectedSoundId((current) => {
-        if (
-          current &&
-          initialSoundDesignSettings.library.some((sound) => sound.id === current)
-        ) {
-          return current;
-        }
-        return initialSoundDesignSettings.library[0]?.id || null;
-      });
-    }
-    if (dirtyBySection["music-library"] && initialVideoRender && videoRender) {
-      setVideoRender({
-        ...videoRender,
-        musicTracks: initialVideoRender.musicTracks,
-        defaultMusicTrackId: initialVideoRender.defaultMusicTrackId,
-        musicVolume: initialVideoRender.musicVolume,
-      });
-      setSelectedMusicId(
-        initialVideoRender.defaultMusicTrackId ||
-          initialVideoRender.musicTracks[0]?.id ||
-          null,
-      );
-    }
-  }
-
   if (loading) {
     return (
       <div className="space-y-6 p-4 sm:p-6 lg:p-8">
@@ -10057,21 +10371,6 @@ export function ShortFormVideoSettingsView({
             label="Reload page state"
           />
           <Badge variant="outline">{pageMeta.summaryLabel}</Badge>
-          {activeSection === "generate-sound-design" ? (
-            <SectionActions
-              dirty={
-                dirtyBySection["sound-library"] ||
-                dirtyBySection["music-library"]
-              }
-              saving={
-                sectionFeedback["sound-library"].saving ||
-                sectionFeedback["music-library"].saving
-              }
-              saveLabel="Save Audio Library"
-              onSave={() => void saveGenerateSoundDesignSettings()}
-              onReset={resetGenerateSoundDesignSettings}
-            />
-          ) : null}
           {pageActionSectionIds.map((sectionId) => (
             <SectionActions
               key={sectionId}
