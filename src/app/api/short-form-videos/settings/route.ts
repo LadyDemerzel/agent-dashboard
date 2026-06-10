@@ -171,12 +171,6 @@ export async function PATCH(request: NextRequest) {
     if (!Array.isArray(candidate.musicTracks) || candidate.musicTracks.length === 0) {
       return NextResponse.json({ success: false, error: "At least one saved music preset is required" }, { status: 400 });
     }
-    if (typeof candidate.defaultMusicTrackId !== "string" || !candidate.defaultMusicTrackId.trim()) {
-      return NextResponse.json({ success: false, error: "Default music preset must be selected" }, { status: 400 });
-    }
-    if (!candidate.musicTracks.some((track) => track.id === candidate.defaultMusicTrackId)) {
-      return NextResponse.json({ success: false, error: "Default music preset must reference an existing saved preset" }, { status: 400 });
-    }
     if (!Array.isArray(candidate.animationPresets) || candidate.animationPresets.length === 0) {
       return NextResponse.json({ success: false, error: "At least one saved animation preset is required" }, { status: 400 });
     }

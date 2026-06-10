@@ -2006,10 +2006,7 @@ function resolveShortFormSoundDesignMusicSegments(content: string): ShortFormRes
   if (plannedSegments.length === 0) return [];
   const settings = getShortFormVideoRenderSettings();
   const musicTracks = settings.musicTracks;
-  const defaultTrack = settings.defaultMusicTrackId
-    ? musicTracks.find((track) => track.id === settings.defaultMusicTrackId)
-    : undefined;
-  const fallbackTrack = defaultTrack || musicTracks[0];
+  const fallbackTrack = musicTracks[0];
   return plannedSegments.map((segment, index) => {
     const track = segment.trackId
       ? musicTracks.find((candidate) => candidate.id === segment.trackId || candidate.name.toLowerCase() === segment.trackId!.toLowerCase())

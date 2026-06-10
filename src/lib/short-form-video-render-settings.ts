@@ -175,7 +175,7 @@ export interface ShortFormResolvedVoiceSelection {
 export interface ShortFormResolvedMusicSelection {
   music?: ShortFormMusicLibraryEntry;
   resolvedMusicId?: string;
-  source: "project" | "default" | "fallback" | "none";
+  source: "project" | "fallback" | "none";
 }
 
 export interface ShortFormResolvedCaptionStyleSelection {
@@ -194,7 +194,6 @@ export interface ShortFormPauseRemovalSettings {
 export interface ShortFormVideoRenderSettings {
   defaultVoiceId: string;
   voices: ShortFormVoiceLibraryEntry[];
-  defaultMusicTrackId?: string;
   musicVolume: number;
   musicTracks: ShortFormMusicLibraryEntry[];
   defaultCaptionStyleId: string;
@@ -352,7 +351,6 @@ export const DEFAULT_SHORT_FORM_CAPTION_STYLE: ShortFormCaptionStyleEntry = DEFA
 const DEFAULT_SETTINGS: ShortFormVideoRenderSettings = {
   defaultVoiceId: DEFAULT_SHORT_FORM_VOICE.id,
   voices: [DEFAULT_SHORT_FORM_VOICE],
-  defaultMusicTrackId: DEFAULT_SHORT_FORM_MUSIC.id,
   musicVolume: DEFAULT_MUSIC_VOLUME,
   musicTracks: [DEFAULT_SHORT_FORM_MUSIC],
   defaultCaptionStyleId: DEFAULT_SHORT_FORM_CAPTION_STYLE.id,
@@ -1063,7 +1061,6 @@ function migrateLegacyQwenVoice(value: unknown): ShortFormVideoRenderSettings | 
   return {
     defaultVoiceId: voice.id,
     voices: [voice],
-    defaultMusicTrackId: DEFAULT_SHORT_FORM_MUSIC.id,
     musicVolume: DEFAULT_MUSIC_VOLUME,
     musicTracks: [DEFAULT_SHORT_FORM_MUSIC],
     defaultCaptionStyleId: DEFAULT_SHORT_FORM_CAPTION_STYLE.id,
@@ -1096,10 +1093,6 @@ function normalizeSettings(value: unknown): ShortFormVideoRenderSettings {
     .map((track, index) => normalizeMusicEntry(track, DEFAULT_SHORT_FORM_MUSIC, index))
     .filter((track): track is ShortFormMusicLibraryEntry => Boolean(track));
   const musicTracks = ensureUniqueMusicIds(normalizedMusicTracks.length > 0 ? normalizedMusicTracks : [DEFAULT_SHORT_FORM_MUSIC]);
-  const defaultMusicTrackId = normalizeString(obj.defaultMusicTrackId, musicTracks[0]?.id || DEFAULT_SHORT_FORM_MUSIC.id);
-  const resolvedDefaultMusicTrackId = musicTracks.some((track) => track.id === defaultMusicTrackId)
-    ? defaultMusicTrackId
-    : musicTracks[0]?.id;
 
   const animationPresets = normalizeCaptionAnimationPresets(obj.animationPresets);
 
@@ -1116,7 +1109,6 @@ function normalizeSettings(value: unknown): ShortFormVideoRenderSettings {
   return {
     defaultVoiceId: resolvedDefaultVoiceId,
     voices,
-    ...(resolvedDefaultMusicTrackId ? { defaultMusicTrackId: resolvedDefaultMusicTrackId } : {}),
     musicVolume: clampMusicVolume(obj.musicVolume, DEFAULT_MUSIC_VOLUME),
     musicTracks,
     defaultCaptionStyleId: resolvedDefaultCaptionStyleId,
@@ -1158,13 +1150,6 @@ export function resolveShortFormMusicSelection(preferredMusicId?: string): Short
   const projectMusic = preferredMusicId ? settings.musicTracks.find((track) => track.id === preferredMusicId) : undefined;
   if (projectMusic) {
     return { music: projectMusic, resolvedMusicId: projectMusic.id, source: "project" };
-  }
-
-  const defaultMusic = settings.defaultMusicTrackId
-    ? settings.musicTracks.find((track) => track.id === settings.defaultMusicTrackId)
-    : undefined;
-  if (defaultMusic) {
-    return { music: defaultMusic, resolvedMusicId: defaultMusic.id, source: "default" };
   }
 
   const fallbackMusic = settings.musicTracks[0];

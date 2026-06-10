@@ -867,7 +867,6 @@ function migrateLegacyQwenVoice(parsed) {
   return {
     defaultVoiceId: voice.id,
     voices: [voice],
-    defaultMusicTrackId: music.id,
     musicVolume: Number(DEFAULT_MUSIC_VOLUME),
     musicTracks: [music],
     defaultCaptionStyleId: DEFAULT_CAPTION_STYLE_ID,
@@ -884,7 +883,6 @@ function readVideoRenderSettings() {
   const defaultSettings = {
     defaultVoiceId: defaultVoice.id,
     voices: [defaultVoice],
-    defaultMusicTrackId: defaultMusic.id,
     musicVolume: Number(DEFAULT_MUSIC_VOLUME),
     musicTracks: [defaultMusic],
     defaultCaptionStyleId: defaultCaptionStyles[0].id,
@@ -918,7 +916,6 @@ function readVideoRenderSettings() {
         .filter(Boolean)
     );
     const normalizedMusicTracks = musicTracks.length > 0 ? musicTracks : [defaultMusic];
-    const defaultMusicTrackId = normalizeString(parsed?.defaultMusicTrackId, normalizedMusicTracks[0].id);
     const musicVolume = Number.isFinite(Number(parsed?.musicVolume))
       ? Math.min(1, Math.max(0, Number(parsed.musicVolume)))
       : Number(DEFAULT_MUSIC_VOLUME);
@@ -943,9 +940,6 @@ function readVideoRenderSettings() {
     return {
       defaultVoiceId: normalizedVoices.some((voice) => voice.id === defaultVoiceId) ? defaultVoiceId : normalizedVoices[0].id,
       voices: normalizedVoices,
-      defaultMusicTrackId: normalizedMusicTracks.some((track) => track.id === defaultMusicTrackId)
-        ? defaultMusicTrackId
-        : normalizedMusicTracks[0].id,
       musicVolume,
       musicTracks: normalizedMusicTracks,
       defaultCaptionStyleId: captionStyles.some((style) => style.id === defaultCaptionStyleId)

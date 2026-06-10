@@ -599,7 +599,6 @@ type AnimationPresetEntry = ShortFormCaptionAnimationPresetEntry;
 interface VideoRenderSettings {
   defaultVoiceId: string;
   voices: VoiceLibraryEntry[];
-  defaultMusicTrackId?: string;
   musicVolume: number;
   musicTracks: MusicLibraryEntry[];
   defaultCaptionStyleId: string;
@@ -4206,9 +4205,7 @@ export function ShortFormVideoSettingsView({
       null,
   );
   const [selectedMusicId, setSelectedMusicId] = useState<string | null>(
-    initialSettings?.videoRender.defaultMusicTrackId ||
-      initialSettings?.videoRender.musicTracks[0]?.id ||
-      null,
+    initialSettings?.videoRender.musicTracks[0]?.id || null,
   );
   const [selectedSoundId, setSelectedSoundId] = useState<string | null>(
     initialSettings?.soundDesign.library[0]?.id || null,
@@ -4543,11 +4540,7 @@ export function ShortFormVideoSettingsView({
       !selectedMusicId ||
       !videoRender.musicTracks.some((track) => track.id === selectedMusicId)
     ) {
-      setSelectedMusicId(
-        videoRender.defaultMusicTrackId ||
-          videoRender.musicTracks[0]?.id ||
-          null,
-      );
+      setSelectedMusicId(videoRender.musicTracks[0]?.id || null);
     }
   }, [selectedMusicId, videoRender]);
 
@@ -4645,7 +4638,6 @@ export function ShortFormVideoSettingsView({
       setSelectedMusicId(
         (current) =>
           current ||
-          data.videoRender.defaultMusicTrackId ||
           data.videoRender.musicTracks[0]?.id ||
           null,
       );
@@ -4958,12 +4950,10 @@ export function ShortFormVideoSettingsView({
     selectedAudioLibraryKind === "music" && selectedMusic
       ? serializeForCompare({
           track: selectedMusic,
-          defaultMusicTrackId: videoRender?.defaultMusicTrackId,
           musicVolume: videoRender?.musicVolume,
         }) !==
         serializeForCompare({
           track: initialSelectedMusic,
-          defaultMusicTrackId: initialVideoRender?.defaultMusicTrackId,
           musicVolume: initialVideoRender?.musicVolume,
         })
       : false;
@@ -5345,12 +5335,10 @@ export function ShortFormVideoSettingsView({
       videoRender && initialVideoRender
         ? serializeForCompare({
             musicTracks: videoRender.musicTracks,
-            defaultMusicTrackId: videoRender.defaultMusicTrackId,
             musicVolume: videoRender.musicVolume,
           }) !==
           serializeForCompare({
             musicTracks: initialVideoRender.musicTracks,
-            defaultMusicTrackId: initialVideoRender.defaultMusicTrackId,
             musicVolume: initialVideoRender.musicVolume,
           })
         : false;
@@ -7452,9 +7440,6 @@ export function ShortFormVideoSettingsView({
 		                            {getMusicTrackReadiness(selectedMusic)}
 		                          </Badge>
 		                        ) : null}
-		                        {selectedMusic.id === videoRender.defaultMusicTrackId ? (
-		                          <Badge variant="secondary">Default</Badge>
-		                        ) : null}
 		                        {selectedAudioClipDirty ? (
 		                          <SectionActions
 		                            dirty={selectedAudioClipDirty}
@@ -7506,9 +7491,6 @@ export function ShortFormVideoSettingsView({
                               ? "AI-generated"
                               : "Imported/manual"}
                           </Badge>
-                          {selectedMusic.id === videoRender.defaultMusicTrackId ? (
-                            <Badge variant="secondary">Default</Badge>
-                          ) : null}
                         </div>
                         <p className="text-xs text-muted-foreground">
                           Edit the selected music asset. These fields are saved
@@ -7516,31 +7498,6 @@ export function ShortFormVideoSettingsView({
                           and generation prompts as library metadata.
                         </p>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                          type="button"
-                          variant={
-                            selectedMusic.id === videoRender.defaultMusicTrackId
-                              ? "default"
-                              : "outline"
-                          }
-                          size="sm"
-                          onClick={() => {
-                            updateSectionFeedbackState("music-library", {
-                              error: null,
-                              message: null,
-                            });
-                            setVideoRender({
-                              ...videoRender,
-                              defaultMusicTrackId: selectedMusic.id,
-                            });
-                          }}
-                        >
-                          {selectedMusic.id === videoRender.defaultMusicTrackId
-                            ? "Default music"
-                            : "Set default"}
-                        </Button>
-	                      </div>
 	                    </div>
 
 	                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
@@ -8486,11 +8443,7 @@ export function ShortFormVideoSettingsView({
           data.videoRender.musicTracks.some((track) => track.id === current)
         )
           return current;
-        return (
-          data.videoRender.defaultMusicTrackId ||
-          data.videoRender.musicTracks[0]?.id ||
-          null
-        );
+        return data.videoRender.musicTracks[0]?.id || null;
       });
       setSelectedCaptionStyleId((current) => {
         if (
@@ -8627,7 +8580,6 @@ export function ShortFormVideoSettingsView({
           ? {
               videoRender: {
                 musicTracks: videoRender.musicTracks,
-                defaultMusicTrackId: videoRender.defaultMusicTrackId,
                 musicVolume: videoRender.musicVolume,
               },
             }
@@ -9101,12 +9053,6 @@ export function ShortFormVideoSettingsView({
             track.id === selectedMusic.id ? selectedMusic : track,
           )
         : [...initialVideoRender.musicTracks, selectedMusic];
-      const nextDefaultMusicTrackId = nextMusicTracks.some(
-        (track) => track.id === videoRender.defaultMusicTrackId,
-      )
-        ? videoRender.defaultMusicTrackId
-        : initialVideoRender.defaultMusicTrackId || nextMusicTracks[0]?.id;
-
       updateSectionFeedbackState("music-library", {
         saving: true,
         error: null,
@@ -9121,7 +9067,6 @@ export function ShortFormVideoSettingsView({
             body: JSON.stringify({
               videoRender: {
                 musicTracks: nextMusicTracks,
-                defaultMusicTrackId: nextDefaultMusicTrackId,
                 musicVolume: videoRender.musicVolume,
               },
             }),
@@ -9143,7 +9088,6 @@ export function ShortFormVideoSettingsView({
                       track.id === savedTrack.id ? savedTrack : track,
                     )
                   : [...current.musicTracks, savedTrack],
-                defaultMusicTrackId: data.videoRender.defaultMusicTrackId,
                 musicVolume: data.videoRender.musicVolume,
               }
             : data.videoRender,
@@ -9216,17 +9160,9 @@ export function ShortFormVideoSettingsView({
         setVideoRender({
           ...videoRender,
           musicTracks: nextMusicTracks,
-          defaultMusicTrackId:
-            initialVideoRender.defaultMusicTrackId ||
-            nextMusicTracks[0]?.id ||
-            "",
           musicVolume: initialVideoRender.musicVolume,
         });
-        setSelectedMusicId(
-          initialVideoRender.defaultMusicTrackId ||
-            nextMusicTracks[0]?.id ||
-            null,
-        );
+        setSelectedMusicId(nextMusicTracks[0]?.id || null);
         return;
       }
       setVideoRender({
@@ -9234,7 +9170,6 @@ export function ShortFormVideoSettingsView({
         musicTracks: videoRender.musicTracks.map((track) =>
           track.id === initialSelectedMusic.id ? initialSelectedMusic : track,
         ),
-        defaultMusicTrackId: initialVideoRender.defaultMusicTrackId,
         musicVolume: initialVideoRender.musicVolume,
       });
     }
@@ -9301,14 +9236,9 @@ export function ShortFormVideoSettingsView({
       setVideoRender({
         ...videoRender,
         musicTracks: initialVideoRender.musicTracks,
-        defaultMusicTrackId: initialVideoRender.defaultMusicTrackId,
         musicVolume: initialVideoRender.musicVolume,
       });
-      setSelectedMusicId(
-        initialVideoRender.defaultMusicTrackId ||
-          initialVideoRender.musicTracks[0]?.id ||
-          null,
-      );
+      setSelectedMusicId(initialVideoRender.musicTracks[0]?.id || null);
       return;
     }
 
@@ -9982,7 +9912,6 @@ export function ShortFormVideoSettingsView({
     nextTrack.id = dedupedId;
     setVideoRender({
       ...videoRender,
-      defaultMusicTrackId: videoRender.defaultMusicTrackId || dedupedId,
       musicTracks: [...videoRender.musicTracks, nextTrack],
     });
     setSelectedMusicId(dedupedId);
@@ -9995,13 +9924,8 @@ export function ShortFormVideoSettingsView({
 	    const remaining = videoRender.musicTracks.filter(
 	      (track) => track.id !== trackId,
     );
-    const nextDefault =
-      videoRender.defaultMusicTrackId === trackId
-        ? remaining[0].id
-        : videoRender.defaultMusicTrackId;
     setVideoRender({
       ...videoRender,
-      defaultMusicTrackId: nextDefault,
       musicTracks: remaining,
     });
     setSelectedMusicId(remaining[0]?.id || null);
