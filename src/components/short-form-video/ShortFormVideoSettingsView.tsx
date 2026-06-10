@@ -3028,6 +3028,23 @@ function SectionActions({
   );
 }
 
+function AudioClipKindBadge({
+  leftLabel,
+  rightLabel,
+}: {
+  leftLabel: string;
+  rightLabel: string;
+}) {
+  return (
+    <span className="inline-flex overflow-hidden rounded-md border border-sky-400/30 bg-sky-500/10 text-[11px] font-semibold text-sky-100">
+      <span className="px-2 py-0.5">{leftLabel}</span>
+      <span className="border-l border-sky-300/25 px-2 py-0.5 text-sky-200">
+        {rightLabel}
+      </span>
+    </span>
+  );
+}
+
 function SectionFeedbackNotice({ feedback }: { feedback: SectionFeedback }) {
   if (feedback.error) {
     return (
@@ -7004,11 +7021,17 @@ export function ShortFormVideoSettingsView({
 			                          >
 			                            <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
 			                          </Button>
-			                        </div>
-			                        <div className="flex flex-wrap items-center gap-1.5">
-			                          {selectedAudioClipTags.length > 0 ? (
-			                            selectedAudioClipTags.map((tag) => (
-			                              <Badge key={tag} variant="secondary">
+				                        </div>
+				                        <div className="flex flex-wrap items-center gap-1.5">
+				                          <AudioClipKindBadge
+				                            leftLabel="SFX"
+				                            rightLabel={getSoundLibraryCategoryLabel(
+				                              selectedSound.category,
+				                            )}
+				                          />
+				                          {selectedAudioClipTags.length > 0 ? (
+				                            selectedAudioClipTags.map((tag) => (
+				                              <Badge key={tag} variant="secondary">
 			                                {tag}
 			                              </Badge>
 			                            ))
@@ -7069,507 +7092,497 @@ export function ShortFormVideoSettingsView({
 			                      </div>
 			                    </div>
 
-                    <div className="grid gap-4 md:grid-cols-2">
-		                      <div className="space-y-2">
-		                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-		                          Category
+	                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+	                      <div className="flex flex-wrap items-start justify-between gap-3">
+	                        <div>
+	                          <h4 className="text-sm font-medium text-foreground">
+	                            Audio
+	                          </h4>
+	                          <p className="mt-1 text-xs text-muted-foreground">
+	                            Upload, preview, and document the saved source file for this SFX asset.
+	                          </p>
+	                        </div>
+	                        <div className="text-xs text-muted-foreground">
+	                          {selectedSound.durationSeconds
+	                            ? `${selectedSound.durationSeconds}s`
+	                            : "Duration unknown"}
+	                          {selectedSound.sampleRate
+	                            ? ` · ${selectedSound.sampleRate} Hz`
+	                            : ""}
+	                          {selectedSound.channels
+	                            ? ` · ${selectedSound.channels} ch`
+	                            : ""}
+	                        </div>
+	                      </div>
+	                      <div className="flex flex-wrap items-center gap-2 text-xs">
+	                        <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-background/80">
+	                          <span>
+	                            {selectedSoundUpload?.isUploading
+	                              ? "Uploading…"
+	                              : selectedSound.audioRelativePath
+	                                ? "Replace audio file"
+	                                : "Upload audio file"}
+	                          </span>
+	                          <input
+	                            type="file"
+	                            accept="audio/*,.wav,.mp3,.m4a,.aac,.ogg,.opus,.webm"
+	                            className="hidden"
+	                            disabled={selectedSoundUpload?.isUploading}
+	                            onChange={(event) => {
+	                              const file = event.target.files?.[0];
+	                              if (file) {
+	                                void uploadSoundFile(file);
+	                                event.currentTarget.value = "";
+	                              }
+	                            }}
+	                          />
 	                        </label>
-	                        <Select
-	                          value={selectedSound.category}
+	                      </div>
+	                      <div className="grid gap-4 md:grid-cols-2">
+	                        <div className="space-y-2">
+	                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                            Source
+	                          </label>
+	                          <Input
+	                            value={selectedSound.source || ""}
+	                            onChange={(event) =>
+	                              updateSelectedSound((sound) => ({
+	                                ...sound,
+	                                source: event.target.value,
+	                              }))
+	                            }
+	                            placeholder="Internal"
+	                          />
+	                        </div>
+	                        <div className="space-y-2">
+	                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                            License
+	                          </label>
+	                          <Input
+	                            value={selectedSound.license || ""}
+	                            onChange={(event) =>
+	                              updateSelectedSound((sound) => ({
+	                                ...sound,
+	                                license: event.target.value,
+	                              }))
+	                            }
+	                            placeholder="Internal"
+	                          />
+	                        </div>
+	                      </div>
+	                      {selectedSoundUpload?.error ? (
+	                        <ValidationNotice
+	                          title="Sound upload failed"
+	                          message={selectedSoundUpload.error}
+	                        />
+	                      ) : null}
+	                      <div className="space-y-2">
+	                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+	                          <span className="font-medium uppercase tracking-wide text-muted-foreground">
+	                            Waveform sync point
+	                          </span>
+	                          <span className="text-muted-foreground">
+	                            {Math.round((selectedSound.anchorRatio || 0) * 100)}
+	                            %
+	                            {selectedSound.durationSeconds
+	                              ? ` · ${(selectedSound.durationSeconds * (selectedSound.anchorRatio || 0)).toFixed(2)}s`
+	                              : ""}
+	                          </span>
+	                        </div>
+	                        <WaveformPreview
+	                          peaks={selectedSound.waveformPeaks}
+	                          anchorRatio={selectedSound.anchorRatio}
+	                          durationSeconds={selectedSound.durationSeconds}
+	                          timingType={selectedSound.timingType}
+	                          currentTimeSeconds={selectedSoundAudioTime}
+	                          onSeekAudio={seekSelectedSoundAudio}
+	                          onAnchorChange={(ratio) =>
+	                            updateSelectedSound((sound) => ({
+	                              ...sound,
+	                              anchorRatio: Number(ratio.toFixed(3)),
+	                            }))
+	                          }
+	                        />
+	                        <p className="text-xs text-muted-foreground">
+	                          This source sync point gives the resolver a direct reference
+	                          point inside the source sound. Drag the marker to the
+	                          real transient or entry, then use the playhead and
+	                          fine-trim strip to tighten point-based assets.
+	                        </p>
+	                      </div>
+	                      {savedSoundAudioUrl ? (
+	                        <audio
+	                          ref={selectedSoundAudioRef}
+	                          controls
+	                          className="w-full"
+	                          src={savedSoundAudioUrl}
+	                          onLoadedMetadata={(event) =>
+	                            setSelectedSoundAudioTime(
+	                              event.currentTarget.currentTime || 0,
+	                            )
+	                          }
+	                          onTimeUpdate={(event) =>
+	                            setSelectedSoundAudioTime(
+	                              event.currentTarget.currentTime || 0,
+	                            )
+	                          }
+	                          onSeeked={(event) =>
+	                            setSelectedSoundAudioTime(
+	                              event.currentTarget.currentTime || 0,
+	                            )
+	                          }
+	                        />
+	                      ) : (
+	                        <div className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
+	                          No audio file saved yet. Upload one to make this
+	                          library entry usable in project Generate Sound Design
+	                          resolution.
+	                        </div>
+	                      )}
+	                    </div>
+
+	                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+	                      <h4 className="text-sm font-medium text-foreground">
+	                        Planning hints
+	                      </h4>
+	                      <div className="grid gap-4 md:grid-cols-2">
+	                        <div className="space-y-2">
+	                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                            Category
+	                          </label>
+	                          <Select
+	                            value={selectedSound.category}
+	                            onChange={(event) =>
+	                              updateSelectedSound((sound) => ({
+	                                ...sound,
+	                                category: event.target.value,
+	                              }))
+	                            }
+	                          >
+	                            {selectedSound.category.trim() &&
+	                            !soundLibraryCategorySummaries.some(
+	                              (summary) => summary.value === selectedSound.category,
+	                            ) ? (
+	                              <option value={selectedSound.category}>
+	                                {getSoundLibraryCategoryLabel(selectedSound.category)}
+	                              </option>
+	                            ) : null}
+	                            {soundLibraryCategorySummaries
+	                              .filter((summary) => summary.key !== "music")
+	                              .map((summary) => (
+	                                <option key={summary.key} value={summary.value}>
+	                                  {summary.label}
+	                                </option>
+	                              ))}
+	                          </Select>
+	                        </div>
+	                        <div className="space-y-2">
+	                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                            Timing type
+	                          </label>
+	                          <Select
+	                            value={selectedSound.timingType}
+	                            onChange={(event) =>
+	                              updateSelectedSound((sound) => ({
+	                                ...sound,
+	                                timingType: event.target
+	                                  .value as SoundLibraryEntry["timingType"],
+	                              }))
+	                            }
+	                          >
+	                            <option value="point">Point</option>
+	                            <option value="bed">Bed</option>
+	                            <option value="riser">Riser</option>
+	                          </Select>
+	                        </div>
+	                      </div>
+	                      <div className="space-y-2">
+	                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                          Semantic types
+	                        </label>
+	                        <div className="flex flex-wrap gap-2">
+	                          {(
+	                            [
+	                              "impact",
+	                              "riser",
+	                              "click",
+	                              "whoosh",
+	                              "ambience",
+	                            ] as const
+	                          ).map((type) => {
+	                            const active =
+	                              selectedSound.semanticTypes.includes(type);
+	                            return (
+	                              <Button
+	                                key={type}
+	                                type="button"
+	                                variant={active ? "default" : "outline"}
+	                                size="sm"
+	                                onClick={() => {
+	                                  updateSelectedSound((sound) => {
+	                                    const nextTypes = active
+	                                      ? sound.semanticTypes.filter(
+	                                          (item) => item !== type,
+	                                        )
+	                                      : [...sound.semanticTypes, type];
+	                                    return {
+	                                      ...sound,
+	                                      semanticTypes:
+	                                        nextTypes.length > 0 ? nextTypes : [type],
+	                                    };
+	                                  });
+	                                }}
+	                              >
+	                                {type}
+	                              </Button>
+	                            );
+	                          })}
+	                        </div>
+	                      </div>
+	                      <div className="grid gap-4 md:grid-cols-3">
+	                        <div className="space-y-2">
+	                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                            Style palettes
+	                          </label>
+	                          <Input
+	                            value={(selectedSound.stylePalettes || []).join(", ")}
+	                            onChange={(event) =>
+	                              updateSelectedSound((sound) => ({
+	                                ...sound,
+	                                stylePalettes: event.target.value
+	                                  .split(",")
+	                                  .map((item) => item.trim())
+	                                  .filter(Boolean),
+	                              }))
+	                            }
+	                            placeholder="clean tech, premium editorial"
+	                          />
+	                        </div>
+	                        <div className="space-y-2">
+	                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                            Frequency band
+	                          </label>
+	                          <Select
+	                            value={selectedSound.frequencyBand || ""}
+	                            onChange={(event) =>
+	                              updateSelectedSound((sound) => ({
+	                                ...sound,
+	                                frequencyBand: event.target.value
+	                                  ? (event.target.value as SoundLibraryEntry["frequencyBand"])
+	                                  : undefined,
+	                              }))
+	                            }
+	                          >
+	                            <option value="">Any / untagged</option>
+	                            <option value="low">Low weight</option>
+	                            <option value="mid">Mid body</option>
+	                            <option value="high">High air</option>
+	                            <option value="full-range">Full-range</option>
+	                          </Select>
+	                        </div>
+	                        <div className="space-y-2">
+	                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                            Literalness
+	                          </label>
+	                          <Select
+	                            value={selectedSound.literalness || ""}
+	                            onChange={(event) =>
+	                              updateSelectedSound((sound) => ({
+	                                ...sound,
+	                                literalness: event.target.value
+	                                  ? (event.target.value as SoundLibraryEntry["literalness"])
+	                                  : undefined,
+	                              }))
+	                            }
+	                          >
+	                            <option value="">Any / untagged</option>
+	                            <option value="literal">Literal</option>
+	                            <option value="stylized">Stylized</option>
+	                            <option value="emotional-metaphor">Emotional metaphor</option>
+	                          </Select>
+	                        </div>
+	                      </div>
+	                      <div className="space-y-2">
+	                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                          Layer roles (comma separated)
+	                        </label>
+	                        <Input
+	                          value={(selectedSound.layerRoles || []).join(", ")}
 	                          onChange={(event) =>
 	                            updateSelectedSound((sound) => ({
 	                              ...sound,
-	                              category: event.target.value,
+	                              layerRoles: event.target.value
+	                                .split(",")
+	                                .map((item) => item.trim())
+	                                .filter(Boolean),
 	                            }))
 	                          }
-	                        >
-	                          {selectedSound.category.trim() &&
-	                          !soundLibraryCategorySummaries.some(
-	                            (summary) => summary.value === selectedSound.category,
-	                          ) ? (
-	                            <option value={selectedSound.category}>
-	                              {getSoundLibraryCategoryLabel(selectedSound.category)}
-	                            </option>
-	                          ) : null}
-	                          {soundLibraryCategorySummaries
-	                            .filter((summary) => summary.key !== "music")
-	                            .map((summary) => (
-	                              <option key={summary.key} value={summary.value}>
-	                                {summary.label}
-	                              </option>
-	                            ))}
-	                        </Select>
+	                          placeholder="weight, body, motion, air, tick, sparkle"
+	                        />
 	                      </div>
-	                    </div>
-
-	                    <div className="flex flex-wrap items-center gap-2 text-xs">
-		                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-background/80">
-                        <span>
-                          {selectedSoundUpload?.isUploading
-                            ? "Uploading…"
-                            : selectedSound.audioRelativePath
-                              ? "Replace audio file"
-                              : "Upload audio file"}
-                        </span>
-                        <input
-                          type="file"
-                          accept="audio/*,.wav,.mp3,.m4a,.aac,.ogg,.opus,.webm"
-                          className="hidden"
-                          disabled={selectedSoundUpload?.isUploading}
-                          onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            if (file) {
-                              void uploadSoundFile(file);
-                              event.currentTarget.value = "";
-                            }
-                          }}
-                        />
-                      </label>
-                    </div>
-
-	                    <div className="grid gap-4 md:grid-cols-2">
+	                      <div className="grid gap-4 md:grid-cols-2">
+	                        <div className="space-y-2">
+	                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                            Recommended uses
+	                          </label>
+	                          <Textarea
+	                            value={selectedSound.recommendedUses}
+	                            onChange={(event) =>
+	                              updateSelectedSound((sound) => ({
+	                                ...sound,
+	                                recommendedUses: event.target.value,
+	                              }))
+	                            }
+	                            className="min-h-[96px] text-xs"
+	                            placeholder="Use for opener punctuation, payoff hits, and fast transitions."
+	                          />
+	                        </div>
+	                        <div className="space-y-2">
+	                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                            Avoid uses
+	                          </label>
+	                          <Textarea
+	                            value={selectedSound.avoidUses}
+	                            onChange={(event) =>
+	                              updateSelectedSound((sound) => ({
+	                                ...sound,
+	                                avoidUses: event.target.value,
+	                              }))
+	                            }
+	                            className="min-h-[96px] text-xs"
+	                            placeholder="Avoid emotional beds, comedy moments, or heavy trailer styling."
+	                          />
+	                        </div>
+	                      </div>
 	                      <div className="space-y-2">
 	                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-	                          Timing type
-                        </label>
-                        <Select
-                          value={selectedSound.timingType}
-                          onChange={(event) =>
-                            updateSelectedSound((sound) => ({
-                              ...sound,
-                              timingType: event.target
-                                .value as SoundLibraryEntry["timingType"],
-                            }))
-                          }
-                        >
-                          <option value="point">Point</option>
-                          <option value="bed">Bed</option>
-	                          <option value="riser">Riser</option>
-	                        </Select>
+	                          Notes
+	                        </label>
+	                        <Textarea
+	                          value={selectedSound.notes}
+	                          onChange={(event) =>
+	                            updateSelectedSound((sound) => ({
+	                              ...sound,
+	                              notes: event.target.value,
+	                            }))
+	                          }
+	                          className="min-h-[96px] text-xs"
+	                          placeholder="Optional notes about tone, density, or editorial taste."
+	                        />
 	                      </div>
 	                    </div>
 
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Semantic types
-                      </label>
-                      <div className="flex flex-wrap gap-2">
-                        {(
-                          [
-                            "impact",
-                            "riser",
-                            "click",
-                            "whoosh",
-                            "ambience",
-                          ] as const
-                        ).map((type) => {
-                          const active =
-                            selectedSound.semanticTypes.includes(type);
-                          return (
-                            <Button
-                              key={type}
-                              type="button"
-                              variant={active ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => {
-                                updateSelectedSound((sound) => {
-                                  const nextTypes = active
-                                    ? sound.semanticTypes.filter(
-                                        (item) => item !== type,
-                                      )
-                                    : [...sound.semanticTypes, type];
-                                  return {
-                                    ...sound,
-                                    semanticTypes:
-                                      nextTypes.length > 0 ? nextTypes : [type],
-                                  };
-                                });
-                              }}
-                            >
-                              {type}
-                            </Button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Style palettes
-                        </label>
-                        <Input
-                          value={(selectedSound.stylePalettes || []).join(", ")}
-                          onChange={(event) =>
-                            updateSelectedSound((sound) => ({
-                              ...sound,
-                              stylePalettes: event.target.value
-                                .split(",")
-                                .map((item) => item.trim())
-                                .filter(Boolean),
-                            }))
-                          }
-                          placeholder="clean tech, premium editorial"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Frequency band
-                        </label>
-                        <Select
-                          value={selectedSound.frequencyBand || ""}
-                          onChange={(event) =>
-                            updateSelectedSound((sound) => ({
-                              ...sound,
-                              frequencyBand: event.target.value
-                                ? (event.target.value as SoundLibraryEntry["frequencyBand"])
-                                : undefined,
-                            }))
-                          }
-                        >
-                          <option value="">Any / untagged</option>
-                          <option value="low">Low weight</option>
-                          <option value="mid">Mid body</option>
-                          <option value="high">High air</option>
-                          <option value="full-range">Full-range</option>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Literalness
-                        </label>
-                        <Select
-                          value={selectedSound.literalness || ""}
-                          onChange={(event) =>
-                            updateSelectedSound((sound) => ({
-                              ...sound,
-                              literalness: event.target.value
-                                ? (event.target.value as SoundLibraryEntry["literalness"])
-                                : undefined,
-                            }))
-                          }
-                        >
-                          <option value="">Any / untagged</option>
-                          <option value="literal">Literal</option>
-                          <option value="stylized">Stylized</option>
-                          <option value="emotional-metaphor">Emotional metaphor</option>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Layer roles (comma separated)
-                      </label>
-                      <Input
-                        value={(selectedSound.layerRoles || []).join(", ")}
-                        onChange={(event) =>
-                          updateSelectedSound((sound) => ({
-                            ...sound,
-                            layerRoles: event.target.value
-                              .split(",")
-                              .map((item) => item.trim())
-                              .filter(Boolean),
-                          }))
-                        }
-                        placeholder="weight, body, motion, air, tick, sparkle"
-                      />
-                    </div>
-
-	                    <div className="space-y-2">
-                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Availability
-                      </label>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {[
-                          {
-                            key: "availableForPlanning",
-                            label: "Available for planning",
-                          },
-                          {
-                            key: "preferredForPlanning",
-                            label: "Preferred for planning",
-                          },
-                          {
-                            key: "availableForGeneration",
-                            label: "Available for generation",
-                          },
-                          {
-                            key: "preferredForGeneration",
-                            label: "Preferred for generation",
-                          },
-                        ].map((toggle) => (
-                          <label
-                            key={toggle.key}
-                            className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-xs text-foreground"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={Boolean(
-                                selectedSound[
-                                  toggle.key as keyof SoundLibraryEntry
-                                ],
-                              )}
-                              onChange={(event) =>
-                                updateSelectedSound((sound) => ({
-                                  ...sound,
-                                  [toggle.key]: event.target.checked,
-                                }))
-                              }
-                            />
-                            {toggle.label}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Gain (dB)
-                        </label>
-                        <Input
-                          type="number"
-                          min={-36}
-                          max={12}
-                          step={1}
-                          value={selectedSound.defaultGainDb}
-                          onChange={(event) =>
-                            updateSelectedSound((sound) => ({
-                              ...sound,
-                              defaultGainDb: Math.max(
-                                -36,
-                                Math.min(12, Number(event.target.value) || 0),
-                              ),
-                            }))
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Fade in (ms)
-                        </label>
-                        <Input
-                          type="number"
-                          min={0}
-                          max={5000}
-                          step={10}
-                          value={selectedSound.defaultFadeInMs}
-                          onChange={(event) =>
-                            updateSelectedSound((sound) => ({
-                              ...sound,
-                              defaultFadeInMs: Math.max(
-                                0,
-                                Math.min(5000, Number(event.target.value) || 0),
-                              ),
-                            }))
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Fade out (ms)
-                        </label>
-                        <Input
-                          type="number"
-                          min={0}
-                          max={5000}
-                          step={10}
-                          value={selectedSound.defaultFadeOutMs}
-                          onChange={(event) =>
-                            updateSelectedSound((sound) => ({
-                              ...sound,
-                              defaultFadeOutMs: Math.max(
-                                0,
-                                Math.min(5000, Number(event.target.value) || 0),
-                              ),
-                            }))
-                          }
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Recommended uses
-                        </label>
-                        <Textarea
-                          value={selectedSound.recommendedUses}
-                          onChange={(event) =>
-                            updateSelectedSound((sound) => ({
-                              ...sound,
-                              recommendedUses: event.target.value,
-                            }))
-                          }
-                          className="min-h-[96px] text-xs"
-                          placeholder="Use for opener punctuation, payoff hits, and fast transitions."
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Avoid uses
-                        </label>
-                        <Textarea
-                          value={selectedSound.avoidUses}
-                          onChange={(event) =>
-                            updateSelectedSound((sound) => ({
-                              ...sound,
-                              avoidUses: event.target.value,
-                            }))
-                          }
-                          className="min-h-[96px] text-xs"
-                          placeholder="Avoid emotional beds, comedy moments, or heavy trailer styling."
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Source
-                        </label>
-                        <Input
-                          value={selectedSound.source || ""}
-                          onChange={(event) =>
-                            updateSelectedSound((sound) => ({
-                              ...sound,
-                              source: event.target.value,
-                            }))
-                          }
-                          placeholder="Internal"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          License
-                        </label>
-                        <Input
-                          value={selectedSound.license || ""}
-                          onChange={(event) =>
-                            updateSelectedSound((sound) => ({
-                              ...sound,
-                              license: event.target.value,
-                            }))
-                          }
-                          placeholder="Internal"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Notes
-                      </label>
-                      <Textarea
-                        value={selectedSound.notes}
-                        onChange={(event) =>
-                          updateSelectedSound((sound) => ({
-                            ...sound,
-                            notes: event.target.value,
-                          }))
-                        }
-                        className="min-h-[96px] text-xs"
-                        placeholder="Optional notes about tone, density, or editorial taste."
-                      />
-                    </div>
-
-                    {selectedSoundUpload?.error ? (
-                      <ValidationNotice
-                        title="Sound upload failed"
-                        message={selectedSoundUpload.error}
-                      />
-                    ) : null}
-
-                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <h3 className="text-sm font-medium text-foreground">
-                            Saved sound asset
-                          </h3>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Upload once here, save the library, and project
-                            Plan Sound Design passes can resolve timestamped XML effects against
-                            this exact stored file.
-                          </p>
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {selectedSound.durationSeconds
-                            ? `${selectedSound.durationSeconds}s`
-                            : "Duration unknown"}
-                          {selectedSound.sampleRate
-                            ? ` · ${selectedSound.sampleRate} Hz`
-                            : ""}
-                          {selectedSound.channels
-                            ? ` · ${selectedSound.channels} ch`
-                            : ""}
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                          <span className="font-medium uppercase tracking-wide text-muted-foreground">
-                            Waveform sync point
-                          </span>
-                          <span className="text-muted-foreground">
-                            {Math.round((selectedSound.anchorRatio || 0) * 100)}
-                            %
-                            {selectedSound.durationSeconds
-                              ? ` · ${(selectedSound.durationSeconds * (selectedSound.anchorRatio || 0)).toFixed(2)}s`
-                              : ""}
-                          </span>
-                        </div>
-                        <WaveformPreview
-                          peaks={selectedSound.waveformPeaks}
-                          anchorRatio={selectedSound.anchorRatio}
-                          durationSeconds={selectedSound.durationSeconds}
-                          timingType={selectedSound.timingType}
-                          currentTimeSeconds={selectedSoundAudioTime}
-                          onSeekAudio={seekSelectedSoundAudio}
-                          onAnchorChange={(ratio) =>
-                            updateSelectedSound((sound) => ({
-                              ...sound,
-                              anchorRatio: Number(ratio.toFixed(3)),
-                            }))
-                          }
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          This source sync point gives the resolver a direct reference
-                          point inside the source sound. Drag the marker to the
-                          real transient or entry, then use the playhead and
-                          fine-trim strip to tighten point-based assets.
-                        </p>
-                      </div>
-                      {savedSoundAudioUrl ? (
-                        <audio
-                          ref={selectedSoundAudioRef}
-                          controls
-                          className="w-full"
-                          src={savedSoundAudioUrl}
-                          onLoadedMetadata={(event) =>
-                            setSelectedSoundAudioTime(
-                              event.currentTarget.currentTime || 0,
-                            )
-                          }
-                          onTimeUpdate={(event) =>
-                            setSelectedSoundAudioTime(
-                              event.currentTarget.currentTime || 0,
-                            )
-                          }
-                          onSeeked={(event) =>
-                            setSelectedSoundAudioTime(
-                              event.currentTarget.currentTime || 0,
-                            )
-                          }
-                        />
-                      ) : null}
-                      {!savedSoundAudioUrl ? (
-                        <div className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
-                          No audio file saved yet. Upload one to make this
-                          library entry usable in project Generate Sound Design
-                          resolution.
-                        </div>
-                      ) : null}
-                    </div>
+	                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+	                      <h4 className="text-sm font-medium text-foreground">
+	                        Generation and mixing defaults
+	                      </h4>
+	                      <div className="grid gap-3 sm:grid-cols-2">
+	                        {[
+	                          {
+	                            key: "availableForPlanning",
+	                            label: "Available for planning",
+	                          },
+	                          {
+	                            key: "preferredForPlanning",
+	                            label: "Preferred for planning",
+	                          },
+	                          {
+	                            key: "availableForGeneration",
+	                            label: "Available for generation",
+	                          },
+	                          {
+	                            key: "preferredForGeneration",
+	                            label: "Preferred for generation",
+	                          },
+	                        ].map((toggle) => (
+	                          <label
+	                            key={toggle.key}
+	                            className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-xs text-foreground"
+	                          >
+	                            <input
+	                              type="checkbox"
+	                              checked={Boolean(
+	                                selectedSound[
+	                                  toggle.key as keyof SoundLibraryEntry
+	                                ],
+	                              )}
+	                              onChange={(event) =>
+	                                updateSelectedSound((sound) => ({
+	                                  ...sound,
+	                                  [toggle.key]: event.target.checked,
+	                                }))
+	                              }
+	                            />
+	                            {toggle.label}
+	                          </label>
+	                        ))}
+	                      </div>
+	                      <div className="grid gap-4 md:grid-cols-3">
+	                        <div className="space-y-2">
+	                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                            Gain (dB)
+	                          </label>
+	                          <Input
+	                            type="number"
+	                            min={-36}
+	                            max={12}
+	                            step={1}
+	                            value={selectedSound.defaultGainDb}
+	                            onChange={(event) =>
+	                              updateSelectedSound((sound) => ({
+	                                ...sound,
+	                                defaultGainDb: Math.max(
+	                                  -36,
+	                                  Math.min(12, Number(event.target.value) || 0),
+	                                ),
+	                              }))
+	                            }
+	                          />
+	                        </div>
+	                        <div className="space-y-2">
+	                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                            Fade in (ms)
+	                          </label>
+	                          <Input
+	                            type="number"
+	                            min={0}
+	                            max={5000}
+	                            step={10}
+	                            value={selectedSound.defaultFadeInMs}
+	                            onChange={(event) =>
+	                              updateSelectedSound((sound) => ({
+	                                ...sound,
+	                                defaultFadeInMs: Math.max(
+	                                  0,
+	                                  Math.min(5000, Number(event.target.value) || 0),
+	                                ),
+	                              }))
+	                            }
+	                          />
+	                        </div>
+	                        <div className="space-y-2">
+	                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                            Fade out (ms)
+	                          </label>
+	                          <Input
+	                            type="number"
+	                            min={0}
+	                            max={5000}
+	                            step={10}
+	                            value={selectedSound.defaultFadeOutMs}
+	                            onChange={(event) =>
+	                              updateSelectedSound((sound) => ({
+	                                ...sound,
+	                                defaultFadeOutMs: Math.max(
+	                                  0,
+	                                  Math.min(5000, Number(event.target.value) || 0),
+	                                ),
+	                              }))
+	                            }
+	                          />
+	                        </div>
+	                      </div>
+	                    </div>
                   </Card>
                 ) : null}
 
@@ -7591,11 +7604,19 @@ export function ShortFormVideoSettingsView({
 		                          >
 		                            <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
 		                          </Button>
-		                        </div>
-		                        <div className="flex flex-wrap items-center gap-1.5">
-		                          {selectedAudioClipTags.length > 0 ? (
-		                            selectedAudioClipTags.map((tag) => (
-		                              <Badge key={tag} variant="secondary">
+			                        </div>
+			                        <div className="flex flex-wrap items-center gap-1.5">
+			                          <AudioClipKindBadge
+			                            leftLabel="Music"
+			                            rightLabel={
+			                              getMusicSourceType(selectedMusic) === "ai-generated"
+			                                ? "AI generated"
+			                                : "Imported/manual"
+			                            }
+			                          />
+			                          {selectedAudioClipTags.length > 0 ? (
+			                            selectedAudioClipTags.map((tag) => (
+			                              <Badge key={tag} variant="secondary">
 		                                {tag}
 		                              </Badge>
 		                            ))
@@ -7655,34 +7676,7 @@ export function ShortFormVideoSettingsView({
 		                        </DropdownMenu>
 		                      </div>
 		                    </div>
-		                    <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/70 bg-background/60 p-3">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                          <Badge
-                            variant={
-                              getMusicTrackReadiness(selectedMusic) === "ready"
-                                ? "secondary"
-                                : "outline"
-                            }
-                          >
-                            {getMusicTrackReadiness(selectedMusic)}
-                          </Badge>
-                          <Badge variant="outline">Music</Badge>
-                          <Badge variant="outline">
-                            {getMusicSourceType(selectedMusic) === "ai-generated"
-                              ? "AI-generated"
-                              : "Imported/manual"}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Edit the selected music asset. These fields are saved
-                          to videoRender.musicTracks and are visible to planning
-                          and generation prompts as library metadata.
-                        </p>
-                      </div>
-	                    </div>
-
-	                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+		                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
 	                      <div className="flex flex-wrap items-start justify-between gap-3">
 	                        <div>
                           <h4 className="text-sm font-medium text-foreground">
