@@ -34,7 +34,7 @@ const MODIFIER_START_WORDS = new Set(["more", "less", "very", "really", "too", "
 
 const AGENT_DASHBOARD_ROOT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard");
 const QWEN_RUNNER = path.join(HOME_DIR, ".openclaw", "workspace-ralph", "skills", "qwen3-voiceover", "scripts", "run.sh");
-const FORCED_ALIGN_RUNNER = path.join(HOME_DIR, ".openclaw", "skills", "xml-scene-video", "scripts", "run_forced_align.sh");
+const FORCED_ALIGN_RUNNER = path.join(AGENT_DASHBOARD_ROOT, "scripts", "xml-scene-video", "run_forced_align.sh");
 const DETERMINISTIC_CAPTIONS_SCRIPT = path.join(AGENT_DASHBOARD_ROOT, "scripts", "deterministic_caption_chunks.py");
 const CAPTION_SPACY_VENV = path.join(AGENT_DASHBOARD_ROOT, ".venv-caption-spacy");
 const CAPTION_SPACY_PYTHON = path.join(CAPTION_SPACY_VENV, "bin", "python");

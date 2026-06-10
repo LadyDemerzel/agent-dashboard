@@ -90,6 +90,8 @@ assert.match(runDirectVideoBody, /getLatestSceneImagesRuntimeXmlPath/, "Final-vi
 assert.match(runDirectVideoBody, /syncRuntimeTimelineVisualAttributesFromSource\(runtimeXmlPath, config\.scriptPath\)/, "Final-video should sync mutable visual timeline attrs from the current XML before rendering stale scene-images runtime XML.");
 assert.match(runDirectVideoBody, /preserveRuntimeMotionGraphicRendererMetadata/, "Final-video should repair older scene-images runtime XML so motion graphics keep renderer-facing metadata.");
 assert.doesNotMatch(runDirectVideoBody, /hydrateRuntimeXmlMotionGraphicsFromManifest/, "Final-video must not rehydrate renderer-facing XML back to inline motion graphics before calling xml-scene-video.");
+assert.match(stageWorkerSource, /XML_SCENE_VIDEO_SCRIPT = path\.join\(AGENT_DASHBOARD_ROOT, "scripts", "xml-scene-video", "generate_video\.py"\)/, "Final-video should use the Agent Dashboard repo-owned xml-scene-video renderer.");
+assert.doesNotMatch(stageWorkerSource, /\.openclaw", "skills", "xml-scene-video", "scripts", "generate_video\.py"/, "Final-video must not call the external xml-scene-video skill renderer.");
 assert.match(stageWorkerSource, /attrs\.visualType = "motion_graphic"/, "Renderer-facing scene-images runtime XML must preserve motion-graphic visualType metadata for final-video substitution and caption suppression.");
 assert.match(stageWorkerSource, /attrs\.motionGraphicId = motionVisual\.asset\.id/, "Renderer-facing scene-images runtime XML must preserve motionGraphicId while using a poster imageId placeholder.");
 
