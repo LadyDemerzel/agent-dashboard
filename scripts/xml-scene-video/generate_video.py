@@ -332,18 +332,21 @@ def scene_motion_graphic_video(images_dir: Path, scene: Scene) -> Path | None:
 def normalize_motion_graphic_video(src: Path, duration: float, out_path: Path, fps: int) -> dict[str, object]:
     ensure_dir(out_path.parent)
     normalized = vertical_frame_normalize_filter(pad_color="black")
+    source_duration = ffprobe_duration(src)
+    pad_seconds = max(0.0, duration - source_duration)
+    video_filter = normalized
+    if pad_seconds > (1 / max(1, fps)):
+        video_filter = f"{video_filter},tpad=stop_mode=clone:stop_duration={pad_seconds:.3f}"
     run(
         [
             "ffmpeg",
             "-y",
-            "-stream_loop",
-            "-1",
             "-i",
             str(src),
+            "-vf",
+            video_filter,
             "-t",
             f"{duration:.3f}",
-            "-vf",
-            normalized,
             "-an",
             "-c:v",
             "libx264",
@@ -360,7 +363,9 @@ def normalize_motion_graphic_video(src: Path, duration: float, out_path: Path, f
     return {
         "mode": "motion_graphic_template",
         "source_motion_graphic_video": str(src),
+        "source_duration": source_duration,
         "duration": duration,
+        "hold_last_frame_seconds": pad_seconds,
         "fps": fps,
     }
 

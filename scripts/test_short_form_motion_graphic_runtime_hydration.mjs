@@ -10,6 +10,8 @@ import {
 
 const repoRoot = process.cwd();
 const stageWorkerSource = fs.readFileSync(path.join(repoRoot, "scripts", "short-form-stage-worker.mjs"), "utf-8");
+const finalVideoRendererSource = fs.readFileSync(path.join(repoRoot, "scripts", "xml-scene-video", "generate_video.py"), "utf-8");
+const normalizeMotionGraphicVideoBody = finalVideoRendererSource.match(/def normalize_motion_graphic_video\([\s\S]*?\n\ndef ensure_dir/)?.[0] || "";
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "short-form-motion-runtime-"));
 const scenesDir = path.join(tempDir, "scenes");
@@ -94,6 +96,8 @@ assert.match(stageWorkerSource, /XML_SCENE_VIDEO_SCRIPT = path\.join\(AGENT_DASH
 assert.doesNotMatch(stageWorkerSource, /\.openclaw", "skills", "xml-scene-video", "scripts", "generate_video\.py"/, "Final-video must not call the external xml-scene-video skill renderer.");
 assert.match(stageWorkerSource, /attrs\.visualType = "motion_graphic"/, "Renderer-facing scene-images runtime XML must preserve motion-graphic visualType metadata for final-video substitution and caption suppression.");
 assert.match(stageWorkerSource, /attrs\.motionGraphicId = motionVisual\.asset\.id/, "Renderer-facing scene-images runtime XML must preserve motionGraphicId while using a poster imageId placeholder.");
+assert.doesNotMatch(normalizeMotionGraphicVideoBody, /"-stream_loop"/, "Final-video must not extend short motion graphics by looping them.");
+assert.match(normalizeMotionGraphicVideoBody, /tpad=stop_mode=clone/, "Final-video should hold the last motion-graphic frame when a visual's XML timing is longer than the source clip.");
 
 const staleFinalRuntimePath = path.join(tempDir, "stale-video-runtime.xml");
 const currentSourceXmlPath = path.join(tempDir, "current-xml-script.md");
