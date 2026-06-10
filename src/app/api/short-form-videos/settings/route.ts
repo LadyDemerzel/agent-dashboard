@@ -40,7 +40,7 @@ import { getShortFormSettingsPayload } from "@/lib/short-form-settings";
 
 export const dynamic = "force-dynamic";
 
-const LEGACY_MOTION_GRAPHIC_RENDERERS = new Set(["instruction", "step_checklist"]);
+const LEGACY_MOTION_GRAPHIC_RENDERERS = new Set(["instruction", "step_checklist", "checklist"]);
 
 function mergeImagePromptTemplates(
   current: ShortFormImageStyleSettings["promptTemplates"],

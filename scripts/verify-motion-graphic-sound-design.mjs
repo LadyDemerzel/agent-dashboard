@@ -31,15 +31,15 @@ const templateIds = [
   "cause_effect",
   "caption_word_wall",
   "ranked_podium",
-  "checklist",
+  "list",
   "scorecard",
   "research_paper_card",
   "good-bad-indicator",
 ];
 
 for (const id of templateIds) {
-  const idPattern = id === "checklist"
-    ? "id: CHECKLIST_TEMPLATE_ID"
+  const idPattern = id === "list"
+    ? "id: LIST_TEMPLATE_ID"
     : id === "good-bad-indicator"
       ? "id: GOOD_BAD_INDICATOR_TEMPLATE_ID"
       : `id: ${JSON.stringify(id)}`;

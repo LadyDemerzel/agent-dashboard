@@ -26,7 +26,8 @@ const LEGACY_RENDERER_FALLBACKS: Record<string, string> = {
   process_flow: "timeline",
   warning_card: "good_bad_indicator",
   instruction: "good_bad_indicator",
-  step_checklist: "checklist",
+  step_checklist: "list",
+  checklist: "list",
 };
 
 interface PreviewRequestBody {

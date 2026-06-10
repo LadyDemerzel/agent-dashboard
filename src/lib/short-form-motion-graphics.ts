@@ -13,7 +13,7 @@ export const SUPPORTED_MOTION_GRAPHIC_RENDERERS = [
   "cause_effect",
   "caption_word_wall",
   "ranked_podium",
-  "checklist",
+  "list",
   "scorecard",
   "research_paper_card",
   "good_bad_indicator",
@@ -81,11 +81,12 @@ export interface ShortFormMotionGraphicsSettings {
 const SETTINGS_PATH = getVersionedShortFormSettingsPath("_motion-graphics-settings.json");
 const DEFAULT_STYLE_PRESET = "dark-pastel-watercolor";
 const GOOD_BAD_INDICATOR_TEMPLATE_ID = "good-bad-indicator";
-const CHECKLIST_TEMPLATE_ID = "checklist";
+const LIST_TEMPLATE_ID = "list";
 const REMOVED_TEMPLATE_IDS = new Set(["research_finding_card", "process_flow", "warning_card", "instruction"]);
 const LEGACY_RENDERER_ALIASES: Record<string, MotionGraphicRendererId> = {
   instruction: "good_bad_indicator",
-  step_checklist: "checklist",
+  step_checklist: "list",
+  checklist: "list",
 };
 
 const DEFAULT_XML_INSTRUCTIONS_BY_RENDERER: Record<MotionGraphicRendererId, string> = {
@@ -117,6 +118,7 @@ const DEFAULT_XML_INSTRUCTIONS_BY_RENDERER: Record<MotionGraphicRendererId, stri
     "Keep before and after copy parallel so the visual reads as one clear transformation.",
   ].join("\n"),
   timeline: [
+    "Optionally add <arg name=\"title\">...</arg> for a left-aligned title above the timeline items.",
     "Use repeated <step label=\"custom left label\" animateIn=\"absolute_video_timestamp_seconds\">step text</step> entries.",
     "Put reveal timings on each timeline step's animateIn attribute; do not use one shared <timing item=\"steps\" ... /> for the whole timeline.",
     "Omit label only when you want the renderer to auto-label steps as 01, 02, 03.",
@@ -140,10 +142,12 @@ const DEFAULT_XML_INSTRUCTIONS_BY_RENDERER: Record<MotionGraphicRendererId, stri
     "For split multi-visual sequences, set <arg name=\"startIndex\">2</arg> to render earlier ranks already present and animate from rank 2.",
     "Set <arg name=\"futureItemsMode\">hidden</arg> or <arg name=\"futureItemsMode\">blurred</arg> to control unrevealed later ranks.",
   ].join("\n"),
-  checklist: [
-    "Use repeated <step animateIn=\"absolute_video_timestamp_seconds\">...</step> entries for checklist items. Labels are ignored by this template.",
-    "Put reveal timings on each checklist step's animateIn attribute; do not use one shared <timing item=\"items\" ... /> for the whole checklist.",
-    "For split multi-visual sequences, set <arg name=\"startIndex\">2</arg> to render earlier items already checked and animate from item 2.",
+  list: [
+    "Optionally add <arg name=\"title\">...</arg> for a left-aligned title above the list items.",
+    "Set <arg name=\"listType\">checklist</arg>, <arg name=\"listType\">numbered</arg>, or <arg name=\"listType\">bulleted</arg> to choose the marker style.",
+    "Use repeated <step animateIn=\"absolute_video_timestamp_seconds\">...</step> entries for list items. Labels are ignored by this template.",
+    "Put reveal timings on each list step's animateIn attribute; do not use one shared <timing item=\"items\" ... /> for the whole list.",
+    "For split multi-visual sequences, set <arg name=\"startIndex\">2</arg> to render earlier items already present and animate from item 2.",
     "Set <arg name=\"futureItemsMode\">hidden</arg> or <arg name=\"futureItemsMode\">blurred</arg> to control unrevealed later items.",
   ].join("\n"),
   scorecard: [
@@ -227,6 +231,7 @@ const DEFAULT_EXAMPLE_XML_BY_RENDERER: Record<MotionGraphicRendererId, string> =
   timeline: [
     `<visual id=\"visual-8\" label=\"Three-step timeline\" start=\"30.00\" end=\"38.00\" visualType=\"motion_graphic\">`,
     `  <motionGraphic templateId=\"timeline\">`,
+    `    <arg name=\"title\">Thirty-day ramp</arg>`,
     `    <step label=\"DAY 1\" animateIn=\"30.50\">Setup</step>`,
     `    <step label=\"DAY 7\" animateIn=\"32.10\">Signal</step>`,
     `    <step label=\"DAY 30\" animateIn=\"34.00\">Visible change</step>`,
@@ -262,9 +267,11 @@ const DEFAULT_EXAMPLE_XML_BY_RENDERER: Record<MotionGraphicRendererId, string> =
     `  </motionGraphic>`,
     `</visual>`,
   ].join("\n"),
-  checklist: [
-    `<visual id=\"visual-12\" label=\"Routine checklist\" start=\"56.00\" end=\"63.00\" visualType=\"motion_graphic\">`,
-    `  <motionGraphic templateId=\"checklist\">`,
+  list: [
+    `<visual id=\"visual-12\" label=\"Routine list\" start=\"56.00\" end=\"63.00\" visualType=\"motion_graphic\">`,
+    `  <motionGraphic templateId=\"list\">`,
+    `    <arg name=\"title\">Daily routine</arg>`,
+    `    <arg name=\"listType\">checklist</arg>`,
     `    <arg name=\"startIndex\">1</arg>`,
     `    <arg name=\"futureItemsMode\">hidden</arg>`,
     `    <step animateIn=\"56.40\">Set the baseline</step>`,
@@ -485,8 +492,16 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     durationSeconds: 7,
     durationGuidance: "Around 3 seconds for each step on the timeline, e.g. 4 steps should be around 12 seconds.",
     stylePreset: DEFAULT_STYLE_PRESET,
-    defaultArgs: { steps: [{ label: "DAY 1", text: "Setup", animateIn: 0.5 }, { label: "DAY 7", text: "Signal", animateIn: 2.1 }, { label: "DAY 30", text: "Visible change", animateIn: 4 }] },
+    defaultArgs: { title: "", steps: [{ label: "DAY 1", text: "Setup", animateIn: 0.5 }, { label: "DAY 7", text: "Signal", animateIn: 2.1 }, { label: "DAY 30", text: "Visible change", animateIn: 4 }] },
     fields: [
+      {
+        name: "title",
+        label: "Title",
+        type: "text",
+        required: false,
+        description: "Optional left-aligned title shown above the timeline items. Leave blank when the timeline steps speak for themselves.",
+        defaultValue: "",
+      },
       {
         name: "steps",
         label: "Timeline steps",
@@ -602,16 +617,18 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     enabled: true,
   },
   {
-    id: CHECKLIST_TEMPLATE_ID,
-    rendererId: "checklist",
-    displayName: "Checklist",
-    description: "Animated checklist with deterministic check marks, concise item copy, and optional future-item ghosting.",
-    whenToUse: "Use for routines, protocols, decision checklists, action lists, and ordered items that should feel complete as they appear.",
+    id: LIST_TEMPLATE_ID,
+    rendererId: "list",
+    displayName: "List",
+    description: "Animated list with selectable checklist, numbered, or bulleted markers, concise item copy, and optional future-item ghosting.",
+    whenToUse: "Use for routines, protocols, decisions, action lists, unordered points, or ordered items that should appear as a clean list.",
     additionalUsageInstructions: "",
     durationSeconds: 7,
-    durationGuidance: "Around 1 second per checklist item. For multi-visual sequences, set startIndex to the first item that should animate in this visual.",
+    durationGuidance: "Around 1 second per list item. For multi-visual sequences, set startIndex to the first item that should animate in this visual.",
     stylePreset: DEFAULT_STYLE_PRESET,
     defaultArgs: {
+      title: "",
+      listType: "checklist",
       items: [
         { text: "Set the baseline", animateIn: 0.4 },
         { text: "Make the small adjustment", animateIn: 1.45 },
@@ -622,11 +639,27 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
     },
     fields: [
       {
+        name: "title",
+        label: "Title",
+        type: "text",
+        required: false,
+        description: "Optional left-aligned title shown above the list items. Leave blank when the list does not need a heading.",
+        defaultValue: "",
+      },
+      {
+        name: "listType",
+        label: "List type",
+        type: "text",
+        required: true,
+        description: "Exactly one of: checklist, numbered, bulleted. checklist renders checkboxes; numbered renders 1., 2., 3.; bulleted renders bullet points.",
+        defaultValue: "checklist",
+      },
+      {
         name: "items",
-        label: "Checklist items",
+        label: "List items",
         type: "timelineSteps",
         required: true,
-        description: "Use ordered <step animateIn=\"absolute_video_timestamp_seconds\">copy</step> entries. Labels are ignored by this template.",
+        description: "Use <step animateIn=\"absolute_video_timestamp_seconds\">copy</step> entries. Labels are ignored; listType controls whether markers are checkboxes, numbers, or bullets.",
         defaultValue: [
           { text: "Set the baseline", animateIn: 0.4 },
           { text: "Make the small adjustment", animateIn: 1.45 },
@@ -638,18 +671,18 @@ const DEFAULT_TEMPLATES: MotionGraphicTemplateConfig[] = [
         label: "Start item",
         type: "number",
         defaultValue: 1,
-        description: "1-based item to animate first. Earlier items render already checked at time 0 for split multi-visual sequences.",
+        description: "1-based item to animate first. Earlier items render already present at time 0 for split multi-visual sequences.",
       },
       {
         name: "futureItemsMode",
         label: "Future item state",
         type: "text",
         defaultValue: "hidden",
-        description: "hidden hides unchecked future items; blurred shows muted unchecked rows before they animate/check.",
+        description: "hidden hides unrevealed future items; blurred shows muted ghost rows before they animate in.",
       },
     ],
     deterministicSoundEffects: [
-      { id: "check-activate", type: "click", repeat: { source: "items", firstOffsetSeconds: 0.44, stepSeconds: 0.78, maxCount: 6 }, durationSeconds: 0.16, gainDb: -11, fadeOutMs: 90, description: "Tick as each checklist item checks in", searchQuery: "soft checklist tick check", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "nice-to-have" },
+      { id: "list-item-activate", type: "click", repeat: { source: "items", firstOffsetSeconds: 0.44, stepSeconds: 0.78, maxCount: 6 }, durationSeconds: 0.16, gainDb: -11, fadeOutMs: 90, description: "Tick as each list item appears", searchQuery: "soft list item tick", frequencyBand: "high", layerRole: "tick", literalness: "stylized", priority: "nice-to-have" },
     ],
     enabled: true,
   },
@@ -813,6 +846,13 @@ function normalizeChecklistItems(value: unknown) {
   return normalizeTimelineSteps(value).map((item) => ({ text: item.text, ...(item.animateIn !== undefined ? { animateIn: item.animateIn } : {}) }));
 }
 
+function normalizeListType(value: unknown) {
+  const raw = String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "-");
+  if (raw === "numbered" || raw === "ordered" || raw === "ordered-list" || raw === "number-list" || raw === "numbered-list") return "numbered";
+  if (raw === "bulleted" || raw === "bullet" || raw === "unordered" || raw === "unordered-list" || raw === "bullet-list") return "bulleted";
+  return "checklist";
+}
+
 function normalizeCaptionWordWallLineSize(value: unknown, candidate: { emphasized?: unknown; emphasis?: unknown } = {}) {
   const raw = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
   if (raw === "regular" || raw === "normal" || raw === "base") return "regular" as const;
@@ -871,7 +911,7 @@ function normalizeTimelineDefaultArgs(args: Record<string, unknown>) {
   return steps.length > 0 ? { ...args, steps } : args;
 }
 
-function normalizeChecklistDefaultArgs(args: Record<string, unknown>, fallback: Record<string, unknown>) {
+function normalizeListDefaultArgs(args: Record<string, unknown>, fallback: Record<string, unknown>) {
   const items = normalizeChecklistItems(args.items).length > 0
     ? normalizeChecklistItems(args.items)
     : normalizeChecklistItems(args.steps).length > 0
@@ -885,6 +925,8 @@ function normalizeChecklistDefaultArgs(args: Record<string, unknown>, fallback: 
   delete rest.animateFromStep;
   return {
     ...rest,
+    title: cleanString(rest.title, cleanString(fallback.title, "")),
+    listType: normalizeListType(rest.listType ?? rest.markerType ?? rest.type ?? fallback.listType),
     items,
     startIndex: rest.startIndex ?? startStep ?? animateFromStep ?? fallback.startIndex ?? 1,
     futureItemsMode: cleanString(rest.futureItemsMode, cleanString(fallback.futureItemsMode, "hidden")),
@@ -996,7 +1038,6 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
     Object.entries(rawDefaultArgs).filter(([key]) => {
       if (rendererId === "stat_reveal") return key !== "eyebrow" && key !== "note";
       if (rendererId === "bar_chart" || rendererId === "pie_chart" || rendererId === "line_growth_chart") return key !== "subtitle";
-      if (rendererId === "timeline") return key !== "title";
       if (rendererId === "comparison_before_after") return key !== "title";
       if (rendererId === "good_bad_indicator") return key === "indicatorType" || key === "instructionType" || key === "text";
       return true;
@@ -1004,8 +1045,8 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
   );
   const normalizedDefaultArgs = rendererId === "timeline"
     ? normalizeTimelineDefaultArgs(defaultArgs)
-    : rendererId === "checklist"
-      ? normalizeChecklistDefaultArgs(defaultArgs, fallback.defaultArgs)
+    : rendererId === "list"
+      ? normalizeListDefaultArgs(defaultArgs, fallback.defaultArgs)
     : rendererId === "caption_word_wall"
       ? { text: cleanString(defaultArgs.text ?? defaultArgs.caption ?? defaultArgs.captionText, captionWordWallLinesToInlineText(defaultArgs.lines) || cleanString(fallback.defaultArgs.text, "most people miss <large>this part,</large> because <extraLarge>the words</extraLarge> become the visual.")) }
       : rendererId === "good_bad_indicator"
@@ -1059,10 +1100,19 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
         : field);
     }
     if (rendererId === "timeline") {
-      const timelineFields = fields.filter((field) => field.name !== "title");
-      const fallbackTimelineFields = fallback.fields.filter((field) => field.name !== "title");
+      const timelineFields = fields;
+      const fallbackTimelineFields = fallback.fields;
       const selectedFields = timelineFields.length > 0 ? timelineFields : fallbackTimelineFields;
       return selectedFields.map((field) => {
+        if (field.name === "title") {
+          return {
+            ...field,
+            type: "text" as const,
+            required: false,
+            description: field.description || "Optional left-aligned title shown above the timeline items. Leave blank when the timeline steps speak for themselves.",
+            defaultValue: cleanString(field.defaultValue, ""),
+          };
+        }
         if (field.name !== "steps") return field;
         const defaultValue = normalizeTimelineSteps(field.defaultValue);
         return {
@@ -1073,19 +1123,39 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
         };
       });
     }
-    if (rendererId === "checklist") {
+    if (rendererId === "list") {
       const fallbackByName = new Map(fallback.fields.map((field) => [field.name, field]));
+      const titleField = fields.find((field) => field.name === "title");
+      const listTypeField = fields.find((field) => field.name === "listType" || field.name === "markerType" || field.name === "type");
       const legacyItemsField = fields.find((field) => field.name === "items" || field.name === "steps");
       const startIndexField = fields.find((field) => field.name === "startIndex" || field.name === "startStep" || field.name === "animateFromStep");
       const futureItemsField = fields.find((field) => field.name === "futureItemsMode");
       return [
         {
+          ...(titleField || fallbackByName.get("title")),
+          name: "title",
+          label: "Title",
+          type: "text" as const,
+          required: false,
+          description: "Optional left-aligned title shown above the list items. Leave blank when the list does not need a heading.",
+          defaultValue: cleanString(titleField?.defaultValue, cleanString(fallbackByName.get("title")?.defaultValue, "")),
+        },
+        {
+          ...(listTypeField || fallbackByName.get("listType")),
+          name: "listType",
+          label: "List type",
+          type: "text" as const,
+          required: true,
+          description: "Exactly one of: checklist, numbered, bulleted. checklist renders checkboxes; numbered renders 1., 2., 3.; bulleted renders bullet points.",
+          defaultValue: normalizeListType(listTypeField?.defaultValue ?? fallbackByName.get("listType")?.defaultValue),
+        },
+        {
           ...(legacyItemsField || fallbackByName.get("items")),
           name: "items",
-          label: "Checklist items",
+          label: "List items",
           type: "timelineSteps" as const,
           required: true,
-          description: "Use ordered <step animateIn=\"absolute_video_timestamp_seconds\">copy</step> entries. Labels are ignored by this template.",
+          description: "Use <step animateIn=\"absolute_video_timestamp_seconds\">copy</step> entries. Labels are ignored; listType controls whether markers are checkboxes, numbers, or bullets.",
           defaultValue: normalizeChecklistItems(legacyItemsField?.defaultValue).length > 0
             ? normalizeChecklistItems(legacyItemsField?.defaultValue)
             : fallbackByName.get("items")?.defaultValue,
@@ -1095,7 +1165,7 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
           name: "startIndex",
           label: "Start item",
           type: "number" as const,
-          description: "1-based item to animate first. Earlier items render already checked at time 0 for split multi-visual sequences.",
+          description: "1-based item to animate first. Earlier items render already present at time 0 for split multi-visual sequences.",
           defaultValue: startIndexField?.defaultValue ?? fallbackByName.get("startIndex")?.defaultValue ?? 1,
         },
         {
@@ -1103,7 +1173,7 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
           name: "futureItemsMode",
           label: "Future item state",
           type: "text" as const,
-          description: "hidden hides unchecked future items; blurred shows muted unchecked rows before they animate/check.",
+          description: "hidden hides unrevealed future items; blurred shows muted ghost rows before they animate in.",
           defaultValue: cleanString(futureItemsField?.defaultValue, cleanString(fallbackByName.get("futureItemsMode")?.defaultValue, "hidden")),
         },
       ];
@@ -1161,13 +1231,13 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
     const description = cleanString(field.description, fallbackField?.description || "");
     return description ? { ...field, description } : field;
   });
-  const isLegacyChecklistTemplate = fallback.id === CHECKLIST_TEMPLATE_ID && candidate.id === "step_checklist";
+  const isLegacyListTemplate = fallback.id === LIST_TEMPLATE_ID && (candidate.id === "step_checklist" || candidate.id === "checklist");
   return {
-    id: isLegacyChecklistTemplate ? fallback.id : cleanString(candidate.id, fallback.id || `motion-graphic-${index + 1}`),
+    id: isLegacyListTemplate ? fallback.id : cleanString(candidate.id, fallback.id || `motion-graphic-${index + 1}`),
     rendererId,
-    displayName: rendererId === "checklist" ? "Checklist" : cleanString(candidate.displayName, fallback.displayName),
-    description: rendererId === "checklist" ? fallback.description : cleanString(candidate.description, fallback.description),
-    whenToUse: rendererId === "checklist" ? fallback.whenToUse : cleanString(candidate.whenToUse, fallback.whenToUse),
+    displayName: rendererId === "list" ? "List" : cleanString(candidate.displayName, fallback.displayName),
+    description: rendererId === "list" ? fallback.description : cleanString(candidate.description, fallback.description),
+    whenToUse: rendererId === "list" ? fallback.whenToUse : cleanString(candidate.whenToUse, fallback.whenToUse),
     additionalUsageInstructions: cleanOptionalString(candidate.additionalUsageInstructions, fallback.additionalUsageInstructions || ""),
     xmlInstructions: cleanOptionalString(
       candidate.xmlInstructions,
@@ -1180,7 +1250,7 @@ function normalizeTemplate(value: unknown, fallback: MotionGraphicTemplateConfig
     durationSeconds: typeof candidate.durationSeconds === "number" && Number.isFinite(candidate.durationSeconds)
       ? Math.min(12, Math.max(3, candidate.durationSeconds))
       : fallback.durationSeconds,
-    durationGuidance: rendererId === "checklist" ? fallback.durationGuidance : cleanString(candidate.durationGuidance, fallback.durationGuidance),
+    durationGuidance: rendererId === "list" ? fallback.durationGuidance : cleanString(candidate.durationGuidance, fallback.durationGuidance),
     stylePreset: cleanString(candidate.stylePreset, fallback.stylePreset || DEFAULT_STYLE_PRESET),
     defaultArgs: normalizedDefaultArgs,
     fields: normalizedFieldsWithDescriptions,
@@ -1194,13 +1264,13 @@ function normalizeSettings(candidate: Partial<ShortFormMotionGraphicsSettings> |
   const byId = new Map(inputTemplates.map((template) => [typeof (template as { id?: unknown }).id === "string" ? (template as { id: string }).id : "", template]));
   const mergedBuiltIns = DEFAULT_TEMPLATES.map((fallback, index) => {
     const legacyInstructionTemplate = fallback.id === GOOD_BAD_INDICATOR_TEMPLATE_ID ? byId.get("instruction") : undefined;
-    const legacyChecklistTemplate = fallback.id === CHECKLIST_TEMPLATE_ID ? byId.get("step_checklist") : undefined;
-    return normalizeTemplate(byId.get(fallback.id) ?? legacyInstructionTemplate ?? legacyChecklistTemplate, fallback, index);
+    const legacyListTemplate = fallback.id === LIST_TEMPLATE_ID ? byId.get("step_checklist") ?? byId.get("checklist") : undefined;
+    return normalizeTemplate(byId.get(fallback.id) ?? legacyInstructionTemplate ?? legacyListTemplate, fallback, index);
   });
   const customTemplates = inputTemplates
     .filter((template) => {
       const id = typeof (template as { id?: unknown }).id === "string" ? (template as { id: string }).id : "";
-      return id && !REMOVED_TEMPLATE_IDS.has(id) && !DEFAULT_TEMPLATES.some((fallback) => fallback.id === id || (fallback.id === CHECKLIST_TEMPLATE_ID && id === "step_checklist"));
+      return id && !REMOVED_TEMPLATE_IDS.has(id) && !DEFAULT_TEMPLATES.some((fallback) => fallback.id === id || (fallback.id === LIST_TEMPLATE_ID && (id === "step_checklist" || id === "checklist")));
     })
     .map((template, index) => normalizeTemplate(template, DEFAULT_TEMPLATES[0], DEFAULT_TEMPLATES.length + index));
 

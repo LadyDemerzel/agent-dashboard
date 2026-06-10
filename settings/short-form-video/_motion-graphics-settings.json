@@ -487,12 +487,13 @@
       "description": "A classic timeline displaying a sequence of items.",
       "whenToUse": "Use to visually display a sequence of events, actions, or any other sequence of items that makes sense to represent in a timeline.",
       "additionalUsageInstructions": "Timeline step labels should all belong to the same semantic category of abstraction. Do not mix label types in one timeline, such as using a date for one step label and a percentage for another step label.",
-      "xmlInstructions": "Use repeated <step label=\"custom left label\" animateIn=\"absolute_video_timestamp_seconds\">step text</step> entries.\nPut reveal timings on each timeline step's animateIn attribute; do not use one shared <timing item=\"steps\" ... /> for the whole timeline.\nOmit label only when you want the renderer to auto-label steps as 01, 02, 03.\nKeep all step labels in the same semantic category, such as all dates, all phases, or all percentages.",
-      "exampleXml": "<visual id=\"visual-8\" label=\"Three-step timeline\" start=\"30.00\" end=\"38.00\" visualType=\"motion_graphic\">\n  <motionGraphic templateId=\"timeline\">\n    <step label=\"DAY 1\" animateIn=\"30.50\">Setup</step>\n    <step label=\"DAY 7\" animateIn=\"32.10\">Signal</step>\n    <step label=\"DAY 30\" animateIn=\"34.00\">Visible change</step>\n  </motionGraphic>\n</visual>",
+      "xmlInstructions": "Optionally add <arg name=\"title\">...</arg> for a left-aligned title above the timeline items.\nUse repeated <step label=\"custom left label\" animateIn=\"absolute_video_timestamp_seconds\">step text</step> entries.\nPut reveal timings on each timeline step's animateIn attribute; do not use one shared <timing item=\"steps\" ... /> for the whole timeline.\nOmit label only when you want the renderer to auto-label steps as 01, 02, 03.\nKeep all step labels in the same semantic category, such as all dates, all phases, or all percentages.",
+      "exampleXml": "<visual id=\"visual-8\" label=\"Three-step timeline\" start=\"30.00\" end=\"38.00\" visualType=\"motion_graphic\">\n  <motionGraphic templateId=\"timeline\">\n    <arg name=\"title\">Thirty-day ramp</arg>\n    <step label=\"DAY 1\" animateIn=\"30.50\">Setup</step>\n    <step label=\"DAY 7\" animateIn=\"32.10\">Signal</step>\n    <step label=\"DAY 30\" animateIn=\"34.00\">Visible change</step>\n  </motionGraphic>\n</visual>",
       "durationSeconds": 7,
       "durationGuidance": "Leave about 3 seconds after the last timeline step starts animating-in so viewers have time to digest the timeline.",
       "stylePreset": "dark-pastel-watercolor",
       "defaultArgs": {
+        "title": "",
         "steps": [
           {
             "label": "DAY 1",
@@ -512,6 +513,14 @@
         ]
       },
       "fields": [
+        {
+          "name": "title",
+          "label": "Title",
+          "type": "text",
+          "required": false,
+          "description": "Optional left-aligned title shown above the timeline items. Leave blank when the timeline steps speak for themselves.",
+          "defaultValue": ""
+        },
         {
           "name": "steps",
           "label": "Timeline steps",
@@ -767,20 +776,20 @@
       "enabled": false
     },
     {
-      "id": "checklist",
-      "rendererId": "checklist",
-      "displayName": "Checklist",
-      "description": "Animated checklist with deterministic check marks, concise item copy, and optional future-item ghosting.",
-      "whenToUse": "Use for routines, protocols, decision checklists, action lists, and ordered items that should feel complete as they appear.",
+      "id": "list",
+      "rendererId": "list",
+      "displayName": "List",
+      "description": "Animated list with selectable checklist, numbered, or bulleted markers, concise item copy, and optional future-item ghosting.",
+      "whenToUse": "Use for routines, protocols, decisions, action lists, unordered points, or ordered items that should appear as a clean list.",
       "additionalUsageInstructions": "",
-      "xmlInstructions": "Use repeated <step animateIn=\"absolute_video_timestamp_seconds\">...</step> entries for checklist items. Labels are ignored by this template.\nPut reveal timings on each checklist step's animateIn attribute; do not use one shared <timing item=\"items\" ... /> for the whole checklist.\nFor split multi-visual sequences, set <arg name=\"startIndex\">2</arg> to render earlier items already checked and animate from item 2.\nSet <arg name=\"futureItemsMode\">hidden</arg> or <arg name=\"futureItemsMode\">blurred</arg> to control unrevealed later items.",
-      "exampleXml": "<visual id=\"visual-12\" label=\"Routine checklist\" start=\"56.00\" end=\"63.00\" visualType=\"motion_graphic\">\n  <motionGraphic templateId=\"checklist\">\n    <arg name=\"startIndex\">1</arg>\n    <arg name=\"futureItemsMode\">hidden</arg>\n    <step animateIn=\"56.40\">Set the baseline</step>\n    <step animateIn=\"57.45\">Make the small adjustment</step>\n    <step animateIn=\"58.55\">Repeat it daily</step>\n  </motionGraphic>\n</visual>",
+      "xmlInstructions": "Optionally add <arg name=\"title\">...</arg> for a left-aligned title above the list items.\nSet <arg name=\"listType\">checklist</arg>, <arg name=\"listType\">numbered</arg>, or <arg name=\"listType\">bulleted</arg> to choose the marker style.\nUse repeated <step animateIn=\"absolute_video_timestamp_seconds\">...</step> entries for list items. Labels are ignored by this template.\nPut reveal timings on each list step's animateIn attribute; do not use one shared <timing item=\"items\" ... /> for the whole list.\nFor split multi-visual sequences, set <arg name=\"startIndex\">2</arg> to render earlier items already present and animate from item 2.\nSet <arg name=\"futureItemsMode\">hidden</arg> or <arg name=\"futureItemsMode\">blurred</arg> to control unrevealed later items.",
+      "exampleXml": "<visual id=\"visual-12\" label=\"Routine list\" start=\"56.00\" end=\"63.00\" visualType=\"motion_graphic\">\n  <motionGraphic templateId=\"list\">\n    <arg name=\"title\">Daily routine</arg>\n    <arg name=\"listType\">checklist</arg>\n    <arg name=\"startIndex\">1</arg>\n    <arg name=\"futureItemsMode\">hidden</arg>\n    <step animateIn=\"56.40\">Set the baseline</step>\n    <step animateIn=\"57.45\">Make the small adjustment</step>\n    <step animateIn=\"58.55\">Repeat it daily</step>\n  </motionGraphic>\n</visual>",
       "durationSeconds": 7,
-      "durationGuidance": "Around 1 second per checklist item. For multi-visual sequences, set startIndex to the first item that should animate in this visual.",
+      "durationGuidance": "Around 1 second per list item. For multi-visual sequences, set startIndex to the first item that should animate in this visual.",
       "stylePreset": "dark-pastel-watercolor",
       "defaultArgs": {
-        "startIndex": 1,
-        "futureItemsMode": "hidden",
+        "title": "",
+        "listType": "checklist",
         "items": [
           {
             "text": "Set the baseline",
@@ -794,15 +803,33 @@
             "text": "Repeat it daily",
             "animateIn": 2.55
           }
-        ]
+        ],
+        "startIndex": 1,
+        "futureItemsMode": "hidden"
       },
       "fields": [
         {
+          "name": "title",
+          "label": "Title",
+          "type": "text",
+          "required": false,
+          "description": "Optional left-aligned title shown above the list items. Leave blank when the list does not need a heading.",
+          "defaultValue": ""
+        },
+        {
+          "name": "listType",
+          "label": "List type",
+          "type": "text",
+          "required": true,
+          "description": "Exactly one of: checklist, numbered, bulleted. checklist renders checkboxes; numbered renders 1., 2., 3.; bulleted renders bullet points.",
+          "defaultValue": "checklist"
+        },
+        {
           "name": "items",
-          "label": "Checklist items",
+          "label": "List items",
           "type": "timelineSteps",
           "required": true,
-          "description": "Use ordered <step animateIn=\"absolute_video_timestamp_seconds\">copy</step> entries. Labels are ignored by this template.",
+          "description": "Use <step animateIn=\"absolute_video_timestamp_seconds\">copy</step> entries. Labels are ignored; listType controls whether markers are checkboxes, numbers, or bullets.",
           "defaultValue": [
             {
               "text": "Set the baseline",
@@ -822,22 +849,20 @@
           "name": "startIndex",
           "label": "Start item",
           "type": "number",
-          "required": false,
-          "description": "1-based item to animate first. Earlier items render already checked at time 0 for split multi-visual sequences.",
-          "defaultValue": 1
+          "defaultValue": 1,
+          "description": "1-based item to animate first. Earlier items render already present at time 0 for split multi-visual sequences."
         },
         {
           "name": "futureItemsMode",
           "label": "Future item state",
           "type": "text",
-          "required": false,
-          "description": "hidden hides unchecked future items; blurred shows muted unchecked rows before they animate/check.",
-          "defaultValue": "hidden"
+          "defaultValue": "hidden",
+          "description": "hidden hides unrevealed future items; blurred shows muted ghost rows before they animate in."
         }
       ],
       "deterministicSoundEffects": [
         {
-          "id": "check-activate",
+          "id": "list-item-activate",
           "type": "click",
           "track": "motion-graphics",
           "repeat": {
@@ -849,8 +874,8 @@
           "durationSeconds": 0.16,
           "gainDb": -11,
           "fadeOutMs": 90,
-          "description": "Tick as each checklist item checks in",
-          "searchQuery": "soft checklist tick check",
+          "description": "Tick as each list item appears",
+          "searchQuery": "soft list item tick",
           "frequencyBand": "high",
           "layerRole": "tick",
           "literalness": "stylized",

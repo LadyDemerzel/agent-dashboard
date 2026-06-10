@@ -71,23 +71,28 @@ assert.match(
 );
 assert.match(
   motionGraphicsSource,
-  /displayName:\s*"Checklist"/,
-  "Checklist template display name must be generalized.",
+  /displayName:\s*"List"/,
+  "List template display name must be generalized.",
 );
 assert.match(
   motionGraphicsSource,
-  /rendererId:\s*"checklist"/,
-  "Checklist template must use the generalized renderer id while preserving legacy aliases separately.",
+  /rendererId:\s*"list"/,
+  "List template must use the generalized renderer id while preserving legacy aliases separately.",
 );
 assert.match(
   motionGraphicsSource,
-  /name:\s*"items"[\s\S]*label:\s*"Checklist items"/,
-  "Checklist configurable field must use generalized item language.",
+  /name:\s*"listType"[\s\S]*Exactly one of: checklist, numbered, bulleted/,
+  "List configurable fields must expose checklist, numbered, and bulleted list types.",
+);
+assert.match(
+  motionGraphicsSource,
+  /name:\s*"items"[\s\S]*label:\s*"List items"/,
+  "List configurable field must use generalized item language.",
 );
 assert.doesNotMatch(
   motionGraphicsSource,
-  /Step checklist|Checklist steps|Start step|Future step state|future-step/i,
-  "Checklist settings and prompt-facing copy must not use step-specific checklist language.",
+  /Step checklist|Checklist steps|Future step state|future-step/i,
+  "List settings and prompt-facing copy must not use step-specific checklist language.",
 );
 assert.doesNotMatch(
   motionGraphicsSource,

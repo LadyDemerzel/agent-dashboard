@@ -35,10 +35,12 @@ const templateConfigs = [
   { rendererId: "pie_chart", defaultArgs: { title: "Split", data: [{ label: "A", value: 40, displayValue: "40%" }, { label: "B", value: 60, displayValue: "60%" }] } },
   { rendererId: "line_growth_chart", defaultArgs: { title: "Growth trend", direction: "increase", startLabel: "Start", endLabel: "Now", valueLabel: "86" } },
   { rendererId: "comparison_before_after", defaultArgs: { before: "Problem state", after: "Improved state" } },
-  { rendererId: "timeline", defaultArgs: { steps: [{ label: "MONTH 12 CHECKPOINT", text: "Setup" }, { label: "DAY 7", text: "Signal" }, { label: "DAY 30", text: "Visible change" }] } },
+  { rendererId: "timeline", defaultArgs: { title: "Thirty-day ramp", steps: [{ label: "MONTH 12 CHECKPOINT", text: "Setup" }, { label: "DAY 7", text: "Signal" }, { label: "DAY 30", text: "Visible change" }] } },
   { rendererId: "cause_effect", defaultArgs: { cause: "Small habit", effect: "Visible change" } },
   { rendererId: "ranked_podium", defaultArgs: { items: ["Most visible change", "Faster feedback", "Cleaner routine"] } },
-  { rendererId: "checklist", defaultArgs: { items: ["Set the baseline", "Make the small adjustment that continues even when the routine gets longer", "Repeat it daily"] } },
+  { rendererId: "list", defaultArgs: { title: "Daily routine", listType: "checklist", items: ["Set the baseline", "Make the small adjustment that continues even when the routine gets longer", "Repeat it daily"] } },
+  { rendererId: "list", defaultArgs: { listType: "numbered", items: ["First numbered step", "Second numbered step", "Third numbered step"] } },
+  { rendererId: "list", defaultArgs: { listType: "bulleted", items: ["First bullet", "Second bullet", "Third bullet"] } },
   { rendererId: "scorecard", defaultArgs: { title: "Scorecard", data: [{ label: "Clarity", value: 92, displayValue: "1,234,567 people" }] } },
   { rendererId: "research_paper_card", defaultArgs: { source: "Study", title: "Research finding", finding: "One finding changes how this should be read." } },
   { rendererId: "good_bad_indicator", defaultArgs: { indicatorType: "good", text: "Do this" } },
@@ -49,6 +51,7 @@ try {
   assert.ok(fs.existsSync(hyperframesCli), "hyperframes CLI must be installed as a local dependency");
   assert.ok(fs.existsSync(gsapScript), "GSAP must be installed as a local dependency");
   assert.equal(resolveRendererKey({ templateId: "good-bad-indicator" }), "good_bad_indicator");
+  assert.equal(resolveRendererKey({ rendererId: "checklist" }), "list");
 
   for (const config of templateConfigs) {
     const templateDir = path.join(tempDir, config.rendererId);
@@ -67,6 +70,8 @@ try {
       assert.ok(html.includes("stroke-width=\"10\""), "line_growth_chart primary line should match the old 10px stroke");
     }
     if (config.rendererId === "timeline") {
+      assert.ok(html.includes("timeline-title"), "timeline should render the optional title inside the centered content group");
+      assert.ok(html.includes("Thirty-day ramp"), "timeline optional title should preserve configured copy");
       assert.ok(!html.includes("timeline-dot"), "timeline must not use the newer dot-based visual style");
       assert.ok(html.includes("timeline-connector-0"), "timeline must preserve short center-out connectors");
       assert.ok(html.includes("width:62px;height:4px"), "timeline connectors must match the old compact rule geometry");
@@ -92,7 +97,7 @@ try {
       assert.ok(html.includes("font-size:40px"), "scorecard displayValue must keep the configured font size instead of shrinking to fit");
       assert.ok(html.includes("1,234,567 people"), "scorecard fixture must keep a long displayValue for no-wrap coverage");
     }
-    if (config.rendererId === "checklist") {
+    if (config.rendererId === "list" && config.defaultArgs.listType === "checklist") {
       const readStyleNumber = (id, property) => {
         const match = html.match(new RegExp(`id="${id}"[^>]*style="([^"]*)"`));
         assert.ok(match, `${id} should be rendered`);
@@ -100,14 +105,25 @@ try {
         assert.ok(propertyMatch, `${id} should define ${property}`);
         return Number(propertyMatch[1]);
       };
-      const textTops = [0, 1, 2].map((index) => readStyleNumber(`check-text-${index}`, "top"));
-      const boxTops = [0, 1, 2].map((index) => readStyleNumber(`check-box-${index}`, "top"));
-      assert.ok(html.includes("the routine gets longer"), "checklist fixture must keep a wrapped long item for responsive-height coverage");
-      assert.ok(textTops[2] - textTops[1] > textTops[1] - textTops[0], "checklist rows should advance by measured content height instead of one fixed row height");
+      const textTops = [0, 1, 2].map((index) => readStyleNumber(`list-text-${index}`, "top"));
+      const boxTops = [0, 1, 2].map((index) => readStyleNumber(`list-check-box-${index}`, "top"));
+      assert.ok(html.includes("list-title"), "list should render the optional title inside the centered content group");
+      assert.ok(html.includes("the routine gets longer"), "list fixture must keep a wrapped long item for responsive-height coverage");
+      assert.ok(textTops[2] - textTops[1] > textTops[1] - textTops[0], "list rows should advance by measured content height instead of one fixed row height");
       assert.equal(boxTops[0] - textTops[0], 3, "single-line checklist text should be vertically centered against the check box");
       assert.equal(boxTops[1] - textTops[1], boxTops[0] - textTops[0], "multi-line checklist check box should align to the first text row instead of the full wrapped text block");
-      assert.ok(!html.includes("height:128px"), "checklist items should not render a fixed row height");
-      assert.ok(!html.includes("height:104px"), "checklist items should not render the compact fixed row height");
+      assert.ok(!html.includes("height:128px"), "list items should not render a fixed row height");
+      assert.ok(!html.includes("height:104px"), "list items should not render the compact fixed row height");
+    }
+    if (config.rendererId === "list" && config.defaultArgs.listType === "numbered") {
+      assert.ok(html.includes("list-number-0"), "numbered list should render number markers");
+      assert.ok(html.includes("1."), "numbered list should show 1. marker text");
+      assert.ok(!html.includes("list-check-box-0"), "numbered list should not render checklist boxes");
+    }
+    if (config.rendererId === "list" && config.defaultArgs.listType === "bulleted") {
+      assert.ok(html.includes("list-bullet-0"), "bulleted list should render bullet markers");
+      assert.ok(html.includes("•"), "bulleted list should show bullet marker text");
+      assert.ok(!html.includes("list-check-box-0"), "bulleted list should not render checklist boxes");
     }
     if (config.rendererId === "cause_effect") {
       assert.ok(html.includes("cause-card"), "cause_effect must render the cause text group");

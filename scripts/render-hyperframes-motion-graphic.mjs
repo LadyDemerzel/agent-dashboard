@@ -43,7 +43,7 @@ const SUPPORTED_RENDERER_KEYS = new Set([
   "cause_effect",
   "caption_word_wall",
   "ranked_podium",
-  "checklist",
+  "list",
   "scorecard",
   "research_paper_card",
   "good_bad_indicator",
@@ -52,7 +52,8 @@ const RENDERER_KEY_ALIASES = new Map([
   ["instruction", "good_bad_indicator"],
   ["warning_card", "good_bad_indicator"],
   ["good-bad-indicator", "good_bad_indicator"],
-  ["step_checklist", "checklist"],
+  ["step_checklist", "list"],
+  ["checklist", "list"],
   ["process_flow", "timeline"],
   ["research_finding_card", "stat_reveal"],
 ]);
@@ -121,7 +122,7 @@ function resolveRendererArgs(config) {
     : {};
   const args = { ...defaultArgs, ...providedArgs };
   const rendererKey = resolveRendererKey(config);
-  if ((rendererKey === "checklist" || rendererKey === "ranked_podium") && hasListSource(providedArgs.steps) && !hasListSource(providedArgs.items)) {
+  if ((rendererKey === "list" || rendererKey === "ranked_podium") && hasListSource(providedArgs.steps) && !hasListSource(providedArgs.items)) {
     args.items = providedArgs.steps;
   }
   return args;
@@ -728,6 +729,7 @@ function comparison(args, timeline) {
 
 function timelineGraphic(args, timeline) {
   const steps = asTimelineSteps(args.steps, ["Setup", "Signal", "Visible change"]).slice(0, 5);
+  const title = asText(args.title);
   const firstRevealAt = 0.64;
   const stepRevealDuration = 0.36;
   const gapAfterStepReveal = 0.3;
@@ -767,15 +769,28 @@ function timelineGraphic(args, timeline) {
   });
   const groupTop = Math.min(...stepExtents.map((extent) => extent.top));
   const groupBottom = Math.max(...stepExtents.map((extent) => extent.bottom));
-  const startY = Math.round(HEIGHT / 2 - (groupTop + groupBottom) / 2);
+  const titleSize = steps.length <= 3 ? 54 : 48;
+  const titleLineGap = 14;
+  const titleLines = title ? wrap(title, 23, 2) : [];
+  const titleHeight = titleLines.length > 0
+    ? titleLines.length * titleSize + Math.max(0, titleLines.length - 1) * titleLineGap
+    : 0;
+  const titleGap = titleLines.length > 0 ? 76 : 0;
+  const contentHeight = titleHeight + titleGap + (groupBottom - groupTop);
+  const contentTop = Math.round((HEIGHT - contentHeight) / 2);
+  const startY = titleLines.length > 0
+    ? contentTop + titleHeight + titleGap - groupTop
+    : Math.round(HEIGHT / 2 - (groupTop + groupBottom) / 2);
   const ruleCenterYs = stepExtents.map((extent) => startY + extent.ruleCenterY);
   const firstRuleCenterY = ruleCenterYs[0];
   const lastRuleCenterY = ruleCenterYs[ruleCenterYs.length - 1];
   const verticalRuleHeight = Math.max(1, lastRuleCenterY - firstRuleCenterY);
   const stepRevealFinishTimes = stepRevealTimes.map((revealAt) => revealAt + stepRevealDuration);
-  const html = [
-    htmlElement("timeline-rule", "rule", `left:${verticalRuleX}px;top:${firstRuleCenterY}px;width:${verticalRuleW}px;height:${verticalRuleHeight}px;background:${PALETTE.faintGrey};transform-origin:center top;`),
-  ];
+  const html = titleLines.length > 0
+    ? [textBlock("timeline-title", titleLines, 126, contentTop, { width: 828, size: titleSize, lineGap: titleLineGap, align: "left" })]
+    : [];
+  html.push(htmlElement("timeline-rule", "rule", `left:${verticalRuleX}px;top:${firstRuleCenterY}px;width:${verticalRuleW}px;height:${verticalRuleHeight}px;background:${PALETTE.faintGrey};transform-origin:center top;`));
+  if (titleLines.length > 0) reveal(timeline, "#timeline-title", timingValue(args, "title", 0.24), { y: 30, duration: 0.42 });
   timeline.push(`tl.set("#timeline-rule", {opacity:0, scaleY:0}, 0);`);
   if (steps.length > 1) {
     timeline.push(`tl.set("#timeline-rule", {opacity:1, scaleY:0}, ${stepRevealFinishTimes[0].toFixed(3)});`);
@@ -821,8 +836,17 @@ function rankedPodium(args, timeline) {
   return html.join("\n");
 }
 
-function checklist(args, timeline) {
+function listMarkerType(value) {
+  const raw = String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "-");
+  if (raw === "numbered" || raw === "ordered" || raw === "ordered-list" || raw === "number-list" || raw === "numbered-list") return "numbered";
+  if (raw === "bulleted" || raw === "bullet" || raw === "unordered" || raw === "unordered-list" || raw === "bullet-list") return "bulleted";
+  return "checklist";
+}
+
+function listGraphic(args, timeline) {
   const items = asTimelineSteps(args.steps || args.items, ["Set the baseline", "Make the small adjustment", "Repeat it daily"]).slice(0, 6);
+  const title = asText(args.title);
+  const markerType = listMarkerType(args.listType ?? args.markerType ?? args.type);
   const textSize = items.length <= 4 ? 56 : 48;
   const textLineGap = 14;
   const textLineHeight = textSize + textLineGap;
@@ -830,6 +854,13 @@ function checklist(args, timeline) {
   const itemPaddingY = items.length <= 4 ? 22 : 18;
   const gap = items.length <= 4 ? 42 : 30;
   const boxSize = 64;
+  const titleSize = items.length <= 4 ? 58 : 50;
+  const titleLineGap = 14;
+  const titleLines = title ? wrap(title, 22, 2) : [];
+  const titleHeight = titleLines.length > 0
+    ? titleLines.length * titleSize + Math.max(0, titleLines.length - 1) * titleLineGap
+    : 0;
+  const titleGap = titleLines.length > 0 ? 72 : 0;
   const layouts = items.map((item) => {
     const lines = wrap(item.text, textMaxChars);
     const textHeight = lines.length * textLineHeight;
@@ -841,23 +872,38 @@ function checklist(args, timeline) {
       textHeight,
     };
   });
-  const totalH = layouts.reduce((sum, layout) => sum + layout.height, 0) + Math.max(0, items.length - 1) * gap;
+  const listH = layouts.reduce((sum, layout) => sum + layout.height, 0) + Math.max(0, items.length - 1) * gap;
+  const totalH = titleHeight + titleGap + listH;
   const startY = Math.round((HEIGHT - totalH) / 2);
-  const html = [];
+  const listStartY = startY + titleHeight + titleGap;
+  const html = titleLines.length > 0
+    ? [textBlock("list-title", titleLines, 126, startY, { width: 828, size: titleSize, lineGap: titleLineGap, align: "left" })]
+    : [];
+  if (titleLines.length > 0) reveal(timeline, "#list-title", timingValue(args, "title", 0.24), { y: 30, duration: 0.42 });
   let cursorY = startY;
+  cursorY = listStartY;
   items.forEach((item, index) => {
     const layout = layouts[index];
-    const at = itemTiming(args, "items", item, index, fixedRevealTiming(index, { firstRevealAt: 0.44, revealDuration: 0.42, gapAfterReveal: 0.36 }).revealAt, ["steps", "checklist"]);
+    const at = itemTiming(args, "items", item, index, fixedRevealTiming(index, { firstRevealAt: 0.44, revealDuration: 0.42, gapAfterReveal: 0.36 }).revealAt, ["steps", "list", "checklist"]);
     const y = cursorY;
     const contentTop = y + itemPaddingY;
     const textTop = Math.round(contentTop);
     const boxTop = Math.round(contentTop + (textLineHeight - boxSize) / 2);
-    html.push(htmlElement(`check-box-${index}`, "check-box", `left:126px;top:${boxTop}px;width:${boxSize}px;height:${boxSize}px;border-radius:12px;background:${PALETTE.mutedSage};`));
-    html.push(htmlElement(`check-mark-${index}`, "check-mark", `left:142px;top:${boxTop + 16}px;width:32px;height:20px;border-left:7px solid ${PALETTE.offWhite};border-bottom:7px solid ${PALETTE.offWhite};transform:rotate(-45deg);`));
-    html.push(textBlock(`check-text-${index}`, layout.lines, 236, textTop, { width: 760, size: textSize, lineGap: textLineGap }));
-    scaleReveal(timeline, `#check-box-${index}`, at, { duration: 0.3, fromScale: 0.8 });
-    timeline.push(`tl.fromTo("#check-mark-${index}", {opacity:0, scale:.7, rotate:-45}, {opacity:1, scale:1, rotate:-45, duration:.26, ease:"back.out(1.7)"}, ${(at + 0.1).toFixed(3)});`);
-    reveal(timeline, `#check-text-${index}`, at, { y: 28, duration: 0.42 });
+    const markerTextTop = Math.round(contentTop - 1);
+    if (markerType === "numbered") {
+      html.push(singleLineTextBlock(`list-number-${index}`, `${index + 1}.`, 190, markerTextTop, { right: WIDTH - 190, size: textSize, lineGap: textLineGap, align: "right", color: PALETTE.mutedSage }));
+      scaleReveal(timeline, `#list-number-${index}`, at, { duration: 0.3, fromScale: 0.8 });
+    } else if (markerType === "bulleted") {
+      html.push(textBlock(`list-bullet-${index}`, ["•"], 126, markerTextTop, { width: boxSize, size: textSize, lineGap: textLineGap, align: "center", color: PALETTE.mutedSage }));
+      scaleReveal(timeline, `#list-bullet-${index}`, at, { duration: 0.3, fromScale: 0.8 });
+    } else {
+      html.push(htmlElement(`list-check-box-${index}`, "check-box", `left:126px;top:${boxTop}px;width:${boxSize}px;height:${boxSize}px;border-radius:12px;background:${PALETTE.mutedSage};`));
+      html.push(htmlElement(`list-check-mark-${index}`, "check-mark", `left:142px;top:${boxTop + 16}px;width:32px;height:20px;border-left:7px solid ${PALETTE.offWhite};border-bottom:7px solid ${PALETTE.offWhite};transform:rotate(-45deg);`));
+      scaleReveal(timeline, `#list-check-box-${index}`, at, { duration: 0.3, fromScale: 0.8 });
+      timeline.push(`tl.fromTo("#list-check-mark-${index}", {opacity:0, scale:.7, rotate:-45}, {opacity:1, scale:1, rotate:-45, duration:.26, ease:"back.out(1.7)"}, ${(at + 0.1).toFixed(3)});`);
+    }
+    html.push(textBlock(`list-text-${index}`, layout.lines, 236, textTop, { width: 760, size: textSize, lineGap: textLineGap }));
+    reveal(timeline, `#list-text-${index}`, at, { y: 28, duration: 0.42 });
     cursorY += layout.height + gap;
   });
   return html.join("\n");
@@ -1318,8 +1364,8 @@ function buildTemplateHtml(config) {
     case "ranked_podium":
       body = rankedPodium(args, timeline);
       break;
-    case "checklist":
-      body = checklist(args, timeline);
+    case "list":
+      body = listGraphic(args, timeline);
       break;
     case "scorecard":
       body = scorecard(args, timeline);

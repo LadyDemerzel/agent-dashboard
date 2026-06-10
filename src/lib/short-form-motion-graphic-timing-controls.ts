@@ -49,9 +49,9 @@ export const MOTION_GRAPHIC_TIMING_CONTROL_CONFIGS: Record<
     fields: ["items"],
     controls: ["each <step> / ranked item"],
   },
-  checklist: {
-    fields: ["items"],
-    controls: ["each <step> / checklist item"],
+  list: {
+    fields: ["title", "listType", "items"],
+    controls: ["title", "each <step> / list item"],
   },
   scorecard: {
     fields: ["title", "data"],

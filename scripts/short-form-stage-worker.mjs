@@ -1793,7 +1793,7 @@ const SUPPORTED_MOTION_GRAPHIC_RENDERERS = new Set([
   "cause_effect",
   "caption_word_wall",
   "ranked_podium",
-  "checklist",
+  "list",
   "scorecard",
   "research_paper_card",
   "good_bad_indicator",
@@ -1803,7 +1803,8 @@ const LEGACY_MOTION_GRAPHIC_RENDERER_ALIASES = new Map([
   ["instruction", "good_bad_indicator"],
   ["warning_card", "good_bad_indicator"],
   ["good-bad-indicator", "good_bad_indicator"],
-  ["step_checklist", "checklist"],
+  ["step_checklist", "list"],
+  ["checklist", "list"],
   ["process_flow", "timeline"],
   ["research_finding_card", "stat_reveal"],
 ]);
@@ -2031,7 +2032,7 @@ function sanitizeXmlForMotionGraphics(xml, motionVisuals) {
 
 function motionGraphicsTemplateById(settings, templateId) {
   const templates = Array.isArray(settings?.templates) ? settings.templates : [];
-  const alias = templateId === "step_checklist" ? "checklist" : templateId;
+  const alias = templateId === "step_checklist" || templateId === "checklist" ? "list" : templateId;
   return templates.find((template) =>
     template?.id === templateId
     || template?.rendererId === templateId

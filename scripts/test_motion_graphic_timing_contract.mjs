@@ -73,10 +73,11 @@ try {
   assert.doesNotMatch(motionGraphicsSource, /<timing item=\\"steps\\" at=\\"30\.50\\"/, "Timeline example XML must not imply all timeline steps share one timing.");
   assert.match(motionGraphicsSource, /Array of \{ label, text, animateIn \} objects/, "Timeline step field guidance must document editable per-step animateIn values.");
   assert.match(motionGraphicsSource, /const animateIn = cleanOptionalNumber/, "Timeline settings normalization must preserve editable per-step animateIn values.");
-  assert.match(timingControlsSource, /checklist:[\s\S]*each <step> \/ checklist item/, "Checklist timing controls must describe independently timed checklist step items.");
-  assert.match(motionGraphicsSource, /<step animateIn=\\"56\.40\\">Set the baseline<\/step>/, "Checklist example XML must show per-item absolute animateIn timing.");
+  assert.match(timingControlsSource, /list:[\s\S]*title[\s\S]*each <step> \/ list item/, "List timing controls must describe optional title and independently timed list step items.");
+  assert.match(motionGraphicsSource, /<motionGraphic templateId=\\"list\\">[\s\S]*<arg name=\\"title\\">Daily routine<\/arg>[\s\S]*<arg name=\\"listType\\">checklist<\/arg>/, "List example XML must show optional title and listType.");
+  assert.match(motionGraphicsSource, /<step animateIn=\\"56\.40\\">Set the baseline<\/step>/, "List example XML must show per-item absolute animateIn timing.");
   assert.doesNotMatch(motionGraphicsSource, /<timing item=\\"items\\" at=\\"56\.40\\"/, "Checklist example XML must not imply all checklist items share one timing.");
-  assert.match(motionGraphicsSource, /Use ordered <step animateIn=\\"absolute_video_timestamp_seconds\\">copy<\/step> entries/, "Checklist step field guidance must document editable per-item animateIn values.");
+  assert.match(motionGraphicsSource, /listType controls whether markers are checkboxes, numbers, or bullets/, "List field guidance must document editable marker type and per-item animateIn values.");
   assert.match(motionGraphicsSource, /<item label=\\"Before\\" value=\\"35\\" displayValue=\\"35%\\" animateIn=\\"12\.90\\" \/>/, "Bar chart example XML must show per-bar animateIn timing.");
   assert.match(motionGraphicsSource, /<item label=\\"Practice\\" value=\\"50\\" displayValue=\\"50%\\" animateIn=\\"12\.85\\" \/>/, "Pie chart example XML must show per-slice animateIn timing.");
   assert.match(motionGraphicsSource, /<step label=\\"01\\" animateIn=\\"49\.40\\">Most visible change<\/step>/, "Ranked podium example XML must show per-rank animateIn timing.");
