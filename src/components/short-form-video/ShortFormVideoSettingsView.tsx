@@ -6092,7 +6092,7 @@ export function ShortFormVideoSettingsView({
 	                    />
 	                  ) : null}
 	                </div>
-		                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+		                <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
 		                  {[
 		                    { key: "defaultDuckingDb", label: "Default ducking (dB)", min: -24, max: 0, step: 1 },
 		                    { key: "maxConcurrentOneShots", label: "Max concurrent one-shots", min: 1, max: 8, step: 1 },
