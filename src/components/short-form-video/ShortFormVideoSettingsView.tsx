@@ -6249,87 +6249,83 @@ export function ShortFormVideoSettingsView({
                     />
                   </div>
 
-	                  <div className="space-y-3 rounded-lg border border-border bg-background/50 p-3">
-	                    <div className="flex flex-wrap items-center justify-between gap-2">
-	                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-	                        Filters
-	                      </label>
-	                      <Button
-	                        type="button"
-	                        variant="ghost"
-	                        size="sm"
-	                        onClick={() => {
-	                          setSoundLibrarySearchQuery("");
-	                          setAudioLibraryTypeFilter("all");
-	                          setSoundLibraryCategoryFilter("all");
-	                          setSoundLibraryFileFilter("all");
-	                          setMusicMoodFilter("all");
-	                          setMusicEnergyFilter("all");
-	                        }}
-	                        disabled={
-	                          !soundLibrarySearchQuery &&
-	                          audioLibraryTypeFilter === "all" &&
-	                          soundLibraryCategoryFilter === "all" &&
-	                          soundLibraryFileFilter === "all" &&
-	                          musicMoodFilter === "all" &&
-	                          musicEnergyFilter === "all"
-	                        }
-	                      >
-	                        Clear filters
-	                      </Button>
-	                    </div>
-	                    <div className="flex flex-wrap items-center gap-3">
-	                      <TabsList>
-	                        {[
-	                          { value: "all", label: "All" },
-	                          { value: "music", label: "Music" },
-	                          { value: "sfx", label: "SFX" },
-	                        ].map((filter) => (
-	                          <TabsTrigger
-	                            key={filter.value}
-	                            type="button"
-	                            active={audioLibraryTypeFilter === filter.value}
-	                            onClick={() =>
-	                              setAudioLibraryTypeFilter(
-	                                filter.value as AudioLibraryTypeFilter,
-	                              )
-	                            }
-	                          >
-	                            {filter.label}
-	                          </TabsTrigger>
-	                        ))}
-	                      </TabsList>
-	                      <TabsList>
-	                        {[
-	                          {
-	                            value: "all",
-	                            label: `All files (${soundLibraryItemCount})`,
-	                          },
-	                          {
-	                            value: "with-audio",
-	                            label: `Audio ready (${soundLibraryTotalWithAudioCount})`,
-	                          },
-	                          {
-	                            value: "missing-audio",
-	                            label: `Needs audio (${soundLibraryItemCount - soundLibraryTotalWithAudioCount})`,
-	                          },
-	                        ].map((filter) => (
-	                          <TabsTrigger
-	                            key={filter.value}
-	                            type="button"
-	                            active={soundLibraryFileFilter === filter.value}
-	                            onClick={() =>
-	                              setSoundLibraryFileFilter(
-	                                filter.value as SoundLibraryFileFilter,
-	                              )
-	                            }
-	                          >
-	                            {filter.label}
-	                          </TabsTrigger>
-	                        ))}
-	                      </TabsList>
-	                    </div>
-	                    <div className="grid gap-2 md:grid-cols-3">
+		                  <div className="space-y-3">
+		                    <div className="flex flex-wrap items-center gap-3">
+		                      <TabsList>
+		                        {[
+		                          { value: "all", label: "All" },
+		                          { value: "music", label: "Music" },
+		                          { value: "sfx", label: "SFX" },
+		                        ].map((filter) => (
+		                          <TabsTrigger
+		                            key={filter.value}
+		                            type="button"
+		                            active={audioLibraryTypeFilter === filter.value}
+		                            onClick={() =>
+		                              setAudioLibraryTypeFilter(
+		                                filter.value as AudioLibraryTypeFilter,
+		                              )
+		                            }
+		                          >
+		                            {filter.label}
+		                          </TabsTrigger>
+		                        ))}
+		                      </TabsList>
+		                      <TabsList>
+		                        {[
+		                          {
+		                            value: "all",
+		                            label: `All files (${soundLibraryItemCount})`,
+		                          },
+		                          {
+		                            value: "with-audio",
+		                            label: `Audio ready (${soundLibraryTotalWithAudioCount})`,
+		                          },
+		                          {
+		                            value: "missing-audio",
+		                            label: `Needs audio (${soundLibraryItemCount - soundLibraryTotalWithAudioCount})`,
+		                          },
+		                        ].map((filter) => (
+		                          <TabsTrigger
+		                            key={filter.value}
+		                            type="button"
+		                            active={soundLibraryFileFilter === filter.value}
+		                            onClick={() =>
+		                              setSoundLibraryFileFilter(
+		                                filter.value as SoundLibraryFileFilter,
+		                              )
+		                            }
+		                          >
+		                            {filter.label}
+		                          </TabsTrigger>
+		                        ))}
+		                      </TabsList>
+		                      <Button
+		                        type="button"
+		                        variant="ghost"
+		                        size="sm"
+		                        className="ml-auto"
+		                        onClick={() => {
+		                          setSoundLibrarySearchQuery("");
+		                          setAudioLibraryTypeFilter("all");
+		                          setSoundLibraryCategoryFilter("all");
+		                          setSoundLibraryFileFilter("all");
+		                          setMusicMoodFilter("all");
+		                          setMusicEnergyFilter("all");
+		                        }}
+		                        disabled={
+		                          !soundLibrarySearchQuery &&
+		                          audioLibraryTypeFilter === "all" &&
+		                          soundLibraryCategoryFilter === "all" &&
+		                          soundLibraryFileFilter === "all" &&
+		                          musicMoodFilter === "all" &&
+		                          musicEnergyFilter === "all"
+		                        }
+		                      >
+		                        Clear filters
+		                      </Button>
+		                    </div>
+		                    <div className="grid gap-2 md:grid-cols-3">
 	                      <div className="space-y-1">
 	                        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
 	                          Mood
