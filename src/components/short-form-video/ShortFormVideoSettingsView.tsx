@@ -759,12 +759,15 @@ type SoundLibraryCategoryFilter = "all" | "__uncategorized__" | string;
 type SoundLibraryFileFilter = "all" | "with-audio" | "missing-audio";
 type AudioLibraryAvailabilityFilter =
   | "all"
+  | "planning-and-generation"
   | "planning"
   | "not-planning"
   | "generation"
   | "not-generation";
 type AudioLibraryTypeFilter = "all" | "music" | "sfx";
 type AudioLibrarySelectionKind = "music" | "sfx";
+const DEFAULT_AUDIO_LIBRARY_AVAILABILITY_FILTER: AudioLibraryAvailabilityFilter =
+  "planning-and-generation";
 
 interface AudioLibraryPickerSelection {
   kind: AudioLibrarySelectionKind;
@@ -2351,6 +2354,12 @@ function matchesAudioLibraryAvailabilityFilter(
     | Pick<MusicLibraryEntry, "availableForPlanning" | "availableForGeneration">,
   filter: AudioLibraryAvailabilityFilter,
 ) {
+  if (filter === "planning-and-generation") {
+    return (
+      asset.availableForPlanning === true &&
+      asset.availableForGeneration === true
+    );
+  }
   if (filter === "planning") return asset.availableForPlanning === true;
   if (filter === "not-planning") return asset.availableForPlanning !== true;
   if (filter === "generation") return asset.availableForGeneration === true;
@@ -4340,7 +4349,9 @@ export function ShortFormVideoSettingsView({
     "all" | "with-audio" | "missing-audio"
   >("all");
   const [audioLibraryAvailabilityFilter, setAudioLibraryAvailabilityFilter] =
-    useState<AudioLibraryAvailabilityFilter>("all");
+    useState<AudioLibraryAvailabilityFilter>(
+      DEFAULT_AUDIO_LIBRARY_AVAILABILITY_FILTER,
+    );
   const [musicMoodFilter, setMusicMoodFilter] = useState("all");
   const [musicEnergyFilter, setMusicEnergyFilter] = useState("all");
   const [selectedCaptionStyleId, setSelectedCaptionStyleId] = useState<
@@ -6583,7 +6594,9 @@ export function ShortFormVideoSettingsView({
 		                          setAudioLibraryTypeFilter("all");
 			                          setSoundLibraryCategoryFilter("all");
 			                          setSoundLibraryFileFilter("all");
-			                          setAudioLibraryAvailabilityFilter("all");
+			                          setAudioLibraryAvailabilityFilter(
+			                            DEFAULT_AUDIO_LIBRARY_AVAILABILITY_FILTER,
+			                          );
 			                          setMusicMoodFilter("all");
 			                          setMusicEnergyFilter("all");
 			                        }}
@@ -6592,7 +6605,8 @@ export function ShortFormVideoSettingsView({
 			                          audioLibraryTypeFilter === "all" &&
 			                          soundLibraryCategoryFilter === "all" &&
 			                          soundLibraryFileFilter === "all" &&
-			                          audioLibraryAvailabilityFilter === "all" &&
+			                          audioLibraryAvailabilityFilter ===
+			                            DEFAULT_AUDIO_LIBRARY_AVAILABILITY_FILTER &&
 			                          musicMoodFilter === "all" &&
 			                          musicEnergyFilter === "all"
 			                        }
@@ -6669,6 +6683,9 @@ export function ShortFormVideoSettingsView({
 		                            )
 		                          }
 		                        >
+		                          <option value="planning-and-generation">
+		                            Available for planning and generation
+		                          </option>
 		                          <option value="all">All availability</option>
 		                          <option value="planning">Available for planning</option>
 		                          <option value="not-planning">Not available for planning</option>
