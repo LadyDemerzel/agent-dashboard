@@ -504,6 +504,7 @@ function PromptPlaceholderCard({
 
 type VoiceMode = "voice-design" | "custom-voice";
 type VoiceSourceType = "generated" | "uploaded-reference";
+type MusicSourceType = "ai-generated" | "imported";
 
 interface VoiceLibraryEntry {
   id: string;
@@ -526,6 +527,7 @@ interface VoiceLibraryEntry {
 interface MusicLibraryEntry {
   id: string;
   name: string;
+  sourceType?: MusicSourceType;
   prompt: string;
   notes: string;
   previewDurationSeconds?: number;
@@ -2121,6 +2123,7 @@ function createMusicDraft(index: number): MusicLibraryEntry {
   return {
     id: `music-${Date.now()}-${index}`,
     name: `New soundtrack ${index}`,
+    sourceType: "ai-generated",
     prompt:
       "instrumental modern short-form social-video underscore, polished and cinematic, no vocals, no spoken voice, no choir",
     notes: "",
@@ -2466,6 +2469,14 @@ function hasGeneratedSoundtrack(track: MusicLibraryEntry | null | undefined) {
     track.generatedPrompt === track.prompt &&
     track.generatedDurationSeconds === expectedDuration
   );
+}
+
+function getMusicSourceType(track: MusicLibraryEntry | null | undefined): MusicSourceType {
+  if (track?.sourceType === "imported") return "imported";
+  if (track?.sourceType === "ai-generated") return "ai-generated";
+  return track?.source || track?.license || track?.creator || track?.originalFileName
+    ? "imported"
+    : "ai-generated";
 }
 
 function getMusicTrackReadiness(track: MusicLibraryEntry) {
@@ -7490,6 +7501,11 @@ export function ShortFormVideoSettingsView({
                             {getMusicTrackReadiness(selectedMusic)}
                           </Badge>
                           <Badge variant="outline">Music</Badge>
+                          <Badge variant="outline">
+                            {getMusicSourceType(selectedMusic) === "ai-generated"
+                              ? "AI-generated"
+                              : "Imported/manual"}
+                          </Badge>
                           {selectedMusic.id === videoRender.defaultMusicTrackId ? (
                             <Badge variant="secondary">Default</Badge>
                           ) : null}
@@ -7529,52 +7545,77 @@ export function ShortFormVideoSettingsView({
 
 	                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
 	                      <h4 className="text-sm font-medium text-foreground">Basic</h4>
-	                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Description and notes
-                        </label>
-                        <Textarea
-                          value={selectedMusic.notes}
-                          onChange={(event) =>
-                            updateSelectedMusic((track) => ({
-                              ...track,
-                              notes: event.target.value,
-                            }))
-                          }
-                          className="min-h-[90px] text-xs"
-                        />
-                      </div>
-                      <div className="grid gap-4 md:grid-cols-3">
-                        <div className="space-y-2 md:col-span-2">
+	                      <div className="grid gap-4 md:grid-cols-[220px,1fr]">
+                        <div className="space-y-2">
                           <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            Source
+                            Music type
                           </label>
-                          <Input
-                            value={selectedMusic.source || ""}
-                            onChange={(event) =>
+                          <Select
+                            value={getMusicSourceType(selectedMusic)}
+                            onChange={(event) => {
+                              const sourceType =
+                                event.target.value === "imported"
+                                  ? "imported"
+                                  : "ai-generated";
                               updateSelectedMusic((track) => ({
                                 ...track,
-                                source: event.target.value,
-                              }))
-                            }
-                            placeholder="freesound URL, internal, generated"
-                          />
+                                sourceType,
+                              }));
+                            }}
+                          >
+                            <option value="ai-generated">AI-generated</option>
+                            <option value="imported">Imported/manual</option>
+                          </Select>
                         </div>
                         <div className="space-y-2">
                           <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            License
+                            Description and notes
                           </label>
-                          <Input
-                            value={selectedMusic.license || ""}
+                          <Textarea
+                            value={selectedMusic.notes}
                             onChange={(event) =>
                               updateSelectedMusic((track) => ({
                                 ...track,
-                                license: event.target.value,
+                                notes: event.target.value,
                               }))
                             }
+                            className="min-h-[90px] text-xs"
                           />
                         </div>
                       </div>
+                      {getMusicSourceType(selectedMusic) === "imported" ? (
+                        <div className="grid gap-4 md:grid-cols-3">
+                          <div className="space-y-2 md:col-span-2">
+                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                              Source
+                            </label>
+                            <Input
+                              value={selectedMusic.source || ""}
+                              onChange={(event) =>
+                                updateSelectedMusic((track) => ({
+                                  ...track,
+                                  source: event.target.value,
+                                }))
+                              }
+                              placeholder="freesound URL, internal, uploaded file"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                              License
+                            </label>
+                            <Input
+                              value={selectedMusic.license || ""}
+                              onChange={(event) =>
+                                updateSelectedMusic((track) => ({
+                                  ...track,
+                                  license: event.target.value,
+                                }))
+                              }
+                            />
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
@@ -7584,29 +7625,34 @@ export function ShortFormVideoSettingsView({
                             Audio
                           </h4>
                           <p className="mt-1 text-xs text-muted-foreground">
-                            Preview uses the stored generated audio path when a
-                            reusable soundtrack file exists.
+                            {getMusicSourceType(selectedMusic) === "ai-generated"
+                              ? "Generate and preview the reusable AI soundtrack file for this music prompt."
+                              : "Preview uses the stored imported audio file path for this music asset."}
                           </p>
                         </div>
-                        <Button
-                          type="button"
-                          onClick={() => void generateMusicPreview()}
-                          disabled={
-                            musicPreview.isLoading ||
-                            sectionFeedback["music-library"].saving
-                          }
-                        >
-                          {musicPreview.isLoading
-                            ? "Generating..."
-                            : hasGeneratedSoundtrack(selectedMusic)
-                              ? "Regenerate soundtrack"
-                              : "Generate soundtrack"}
-                        </Button>
+                        {getMusicSourceType(selectedMusic) === "ai-generated" ? (
+                          <Button
+                            type="button"
+                            onClick={() => void generateMusicPreview()}
+                            disabled={
+                              musicPreview.isLoading ||
+                              sectionFeedback["music-library"].saving
+                            }
+                          >
+                            {musicPreview.isLoading
+                              ? "Generating..."
+                              : hasGeneratedSoundtrack(selectedMusic)
+                                ? "Regenerate soundtrack"
+                                : "Generate soundtrack"}
+                          </Button>
+                        ) : null}
                       </div>
                       <div className="grid gap-4 md:grid-cols-[1fr,160px]">
                         <div className="space-y-2">
                           <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            Audio file path
+                            {getMusicSourceType(selectedMusic) === "ai-generated"
+                              ? "Generated audio file path"
+                              : "Audio file path"}
                           </label>
                           <Input
                             value={selectedMusic.generatedAudioRelativePath || ""}
@@ -7622,25 +7668,49 @@ export function ShortFormVideoSettingsView({
                         </div>
                         <div className="space-y-2">
                           <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            Duration
+                            {getMusicSourceType(selectedMusic) === "ai-generated"
+                              ? "Preview duration"
+                              : "Duration"}
                           </label>
                           <Input
                             type="number"
-                            min={0}
-                            max={1800}
+                            min={getMusicSourceType(selectedMusic) === "ai-generated" ? 6 : 0}
+                            max={getMusicSourceType(selectedMusic) === "ai-generated" ? 30 : 1800}
                             step={0.1}
                             value={
-                              selectedMusic.durationSeconds ||
-                              selectedMusic.generatedDurationSeconds ||
-                              ""
+                              getMusicSourceType(selectedMusic) === "ai-generated"
+                                ? selectedMusic.previewDurationSeconds ||
+                                  selectedMusic.generatedDurationSeconds ||
+                                  ""
+                                : selectedMusic.durationSeconds ||
+                                  selectedMusic.generatedDurationSeconds ||
+                                  ""
                             }
                             onChange={(event) =>
                               updateSelectedMusic((track) => ({
                                 ...track,
-                                durationSeconds:
-                                  event.target.value === ""
-                                    ? undefined
-                                    : Math.max(0, Number(event.target.value) || 0),
+                                ...(getMusicSourceType(track) === "ai-generated"
+                                  ? {
+                                      previewDurationSeconds:
+                                        event.target.value === ""
+                                          ? undefined
+                                          : Math.max(
+                                              6,
+                                              Math.min(
+                                                30,
+                                                Number(event.target.value) || 0,
+                                              ),
+                                            ),
+                                    }
+                                  : {
+                                      durationSeconds:
+                                        event.target.value === ""
+                                          ? undefined
+                                          : Math.max(
+                                              0,
+                                              Number(event.target.value) || 0,
+                                            ),
+                                    }),
                               }))
                             }
                           />
@@ -7657,8 +7727,9 @@ export function ShortFormVideoSettingsView({
                       ) : (
                         <div className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
                           No previewable audio file exists for this music asset
-                          yet. Generate a soundtrack or provide a valid stored
-                          relative path.
+                          yet. {getMusicSourceType(selectedMusic) === "ai-generated"
+                            ? "Generate a soundtrack or provide a valid stored relative path."
+                            : "Provide a valid stored relative path for the imported file."}
                         </div>
                       )}
                     </div>
@@ -7940,36 +8011,38 @@ export function ShortFormVideoSettingsView({
                       </div>
                     </div>
 
-                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
-                      <h4 className="text-sm font-medium text-foreground">
-                        Prompt metadata
-                      </h4>
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Generation prompt
-                        </label>
-                        <Textarea
-                          value={selectedMusic.prompt}
-                          onChange={(event) =>
-                            updateSelectedMusic((track) => ({
-                              ...track,
-                              prompt: event.target.value,
-                            }))
-                          }
-                          className="min-h-[120px] font-mono text-xs"
-                        />
-                      </div>
-                      {selectedMusic.generatedPrompt ? (
+                    {getMusicSourceType(selectedMusic) === "ai-generated" ? (
+                      <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
+                        <h4 className="text-sm font-medium text-foreground">
+                          AI generation
+                        </h4>
                         <div className="space-y-2">
                           <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            Last generated prompt snapshot
+                            Music prompt
                           </label>
-                          <div className="whitespace-pre-wrap rounded-md border border-border bg-background/70 p-3 text-xs text-muted-foreground">
-                            {selectedMusic.generatedPrompt}
-                          </div>
+                          <Textarea
+                            value={selectedMusic.prompt}
+                            onChange={(event) =>
+                              updateSelectedMusic((track) => ({
+                                ...track,
+                                prompt: event.target.value,
+                              }))
+                            }
+                            className="min-h-[120px] font-mono text-xs"
+                          />
                         </div>
-                      ) : null}
-                    </div>
+                        {selectedMusic.generatedPrompt ? (
+                          <div className="space-y-2">
+                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                              Last generated prompt snapshot
+                            </label>
+                            <div className="whitespace-pre-wrap rounded-md border border-border bg-background/70 p-3 text-xs text-muted-foreground">
+                              {selectedMusic.generatedPrompt}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </Card>
                 ) : null}
               </>
@@ -10204,6 +10277,14 @@ export function ShortFormVideoSettingsView({
 
   async function generateMusicPreview() {
     if (!selectedMusic) return;
+    if (getMusicSourceType(selectedMusic) !== "ai-generated") {
+      setMusicPreview((current) => ({
+        ...current,
+        isLoading: false,
+        error: "Only AI-generated music tracks can generate a soundtrack from a prompt.",
+      }));
+      return;
+    }
 
     setMusicPreview((current) => ({
       ...current,

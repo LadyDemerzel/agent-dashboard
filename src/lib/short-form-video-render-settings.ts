@@ -46,6 +46,7 @@ export interface ShortFormVoiceLibraryEntry {
 }
 
 export type ShortFormMusicEnergy = "low" | "medium-low" | "medium" | "medium-high" | "high";
+export type ShortFormMusicSourceType = "ai-generated" | "imported";
 export type ShortFormMusicEmotionalArc =
   | "rising"
   | "falling"
@@ -77,6 +78,7 @@ export type ShortFormMusicTransitionPattern =
 export interface ShortFormMusicLibraryEntry {
   id: string;
   name: string;
+  sourceType?: ShortFormMusicSourceType;
   prompt: string;
   notes: string;
   previewDurationSeconds?: number;
@@ -249,6 +251,7 @@ export const DEFAULT_SHORT_FORM_VOICE: ShortFormVoiceLibraryEntry = {
 export const DEFAULT_SHORT_FORM_MUSIC: ShortFormMusicLibraryEntry = {
   id: DEFAULT_MUSIC_ID,
   name: "Ambient piano loop 120 BPM",
+  sourceType: "ai-generated",
   prompt: DEFAULT_MUSIC_PROMPT,
   notes: "Default fallback bed used only when no other music tracks are registered. Replace by importing CC0 tracks from freesound or generating one in Settings.",
   previewDurationSeconds: DEFAULT_MUSIC_PREVIEW_DURATION_SECONDS,
@@ -860,12 +863,29 @@ function normalizeMusicNumber(value: unknown, min: number, max: number, decimals
   return Math.round(Math.max(min, Math.min(max, parsed)) * factor) / factor;
 }
 
+function normalizeMusicSourceType(
+  obj: Record<string, unknown>,
+  fallback: ShortFormMusicLibraryEntry,
+): ShortFormMusicSourceType {
+  if (obj.sourceType === "imported" || obj.sourceType === "manual") return "imported";
+  if (obj.sourceType === "ai-generated" || obj.sourceType === "generated") return "ai-generated";
+  const hasImportMetadata = Boolean(
+    normalizeString(obj.source) ||
+      normalizeString(obj.license) ||
+      normalizeString(obj.creator) ||
+      normalizeString(obj.originalFileName),
+  );
+  if (hasImportMetadata) return "imported";
+  return fallback.sourceType || "ai-generated";
+}
+
 function normalizeMusicEntry(value: unknown, fallback: ShortFormMusicLibraryEntry, index: number): ShortFormMusicLibraryEntry | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
 
   const obj = value as Record<string, unknown>;
+  const sourceType = normalizeMusicSourceType(obj, fallback);
   const mood = normalizeString(obj.mood);
   const pacing = normalizeString(obj.pacing);
   const key = normalizeString(obj.key);
@@ -894,6 +914,7 @@ function normalizeMusicEntry(value: unknown, fallback: ShortFormMusicLibraryEntr
   const normalized: ShortFormMusicLibraryEntry = {
     id: normalizeString(obj.id, fallback.id || `music-${index + 1}`),
     name: normalizeString(obj.name, fallback.name || `Music ${index + 1}`),
+    sourceType,
     prompt: normalizeString(obj.prompt, fallback.prompt),
     notes: normalizeString(obj.notes, fallback.notes),
     previewDurationSeconds: normalizePreviewDurationSeconds(obj.previewDurationSeconds, fallback.previewDurationSeconds),

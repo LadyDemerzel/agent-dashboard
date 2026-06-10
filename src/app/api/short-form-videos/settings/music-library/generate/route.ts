@@ -186,6 +186,12 @@ export async function POST(request: NextRequest) {
   if (!track) {
     return NextResponse.json({ success: false, error: "Saved music track not found" }, { status: 404 });
   }
+  if (track.sourceType === "imported") {
+    return NextResponse.json(
+      { success: false, error: "Imported music tracks use their stored audio file and cannot generate AI soundtracks." },
+      { status: 400 },
+    );
+  }
 
   const durationSeconds = normalizeDuration(track.previewDurationSeconds, DEFAULT_DURATION_SECONDS);
   const canonicalRelativePath = track.generatedAudioRelativePath || `${sanitizePathSegment(track.id)}/soundtrack.wav`;
