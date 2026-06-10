@@ -11,11 +11,18 @@ import {
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
-import { Trash2 } from "lucide-react";
+import { ChevronDown, Search, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { RefreshIconButton } from "@/components/RefreshIconButton";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogOverlay,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -723,6 +730,11 @@ type SoundLibraryCategoryFilter = "all" | "__uncategorized__" | string;
 type SoundLibraryFileFilter = "all" | "with-audio" | "missing-audio";
 type AudioLibraryTypeFilter = "all" | "music" | "sfx";
 type AudioLibrarySelectionKind = "music" | "sfx";
+
+interface AudioLibraryPickerSelection {
+  kind: AudioLibrarySelectionKind;
+  id: string;
+}
 
 interface SoundLibraryCategorySummary {
   key: string;
@@ -4197,6 +4209,9 @@ export function ShortFormVideoSettingsView({
   );
   const [selectedAudioLibraryKind, setSelectedAudioLibraryKind] =
     useState<AudioLibrarySelectionKind>("sfx");
+  const [audioLibraryPickerOpen, setAudioLibraryPickerOpen] = useState(false);
+  const [pendingAudioLibrarySelection, setPendingAudioLibrarySelection] =
+    useState<AudioLibraryPickerSelection | null>(null);
   const [audioLibraryTypeFilter, setAudioLibraryTypeFilter] =
     useState<AudioLibraryTypeFilter>("all");
   const [soundLibrarySearchQuery, setSoundLibrarySearchQuery] = useState("");
@@ -4879,6 +4894,23 @@ export function ShortFormVideoSettingsView({
       ) || null,
     [selectedSoundId, soundDesignSettings],
   );
+  const selectedAudioClip = useMemo(() => {
+    if (selectedAudioLibraryKind === "music" && selectedMusic) {
+      return {
+        name: selectedMusic.name,
+        kindLabel: "Music",
+        status: getMusicTrackReadiness(selectedMusic),
+      };
+    }
+    if (selectedSound) {
+      return {
+        name: selectedSound.name,
+        kindLabel: getSoundLibraryCategoryLabel(selectedSound.category),
+        status: getSoundReadiness(selectedSound),
+      };
+    }
+    return null;
+  }, [selectedAudioLibraryKind, selectedMusic, selectedSound]);
   const normalizedSoundLibrarySearchTokens = useMemo(
     () =>
       soundLibrarySearchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean),
@@ -5108,9 +5140,6 @@ export function ShortFormVideoSettingsView({
           )
         : -1,
     [filteredSoundLibrary, selectedSound],
-  );
-  const selectedSoundHiddenByFilter = Boolean(
-    selectedSound && selectedSoundFilteredIndex === -1,
   );
   const soundLibraryTotalWithAudioCount = useMemo(
     () =>
@@ -6271,46 +6300,77 @@ export function ShortFormVideoSettingsView({
                 </Card>
 
                 <Card className="space-y-5 p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-medium text-foreground">
-                    Browse audio library
-                  </h3>
-                  <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
-                    Search, filter, browse categories, and select a saved music
-                    or SFX asset to edit below.
-                  </p>
-                </div>
-              </div>
-
-                  <div className="space-y-5" data-audio-library-pane="browser">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Search library
-                      </label>
-                      <span className="text-[11px] text-muted-foreground">
-                        {filteredSoundLibraryItemCount} shown
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-auto w-full justify-between px-3 py-2 text-left"
+                    onClick={() => {
+                      setPendingAudioLibrarySelection(
+                        selectedAudioLibraryKind === "music" && selectedMusic
+                          ? { kind: "music", id: selectedMusic.id }
+                          : selectedSound
+                            ? { kind: "sfx", id: selectedSound.id }
+                            : null,
+                      );
+                      setAudioLibraryPickerOpen(true);
+                    }}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-foreground">
+                        {selectedAudioClip?.name || "Select an audio clip"}
                       </span>
-                    </div>
+                      {selectedAudioClip ? (
+                        <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
+                          {selectedAudioClip.kindLabel}
+                          {selectedAudioClip.status !== "ready"
+                            ? ` · ${selectedAudioClip.status}`
+                            : ""}
+                        </span>
+                      ) : null}
+                    </span>
+                    <ChevronDown
+                      aria-hidden="true"
+                      className="h-4 w-4 shrink-0 text-muted-foreground"
+                    />
+                  </Button>
+                </Card>
+
+                <DialogOverlay
+                  open={audioLibraryPickerOpen}
+                  onClick={() => setAudioLibraryPickerOpen(false)}
+                >
+                  <DialogContent
+                    size="lg"
+                    className="max-h-[88vh] max-w-5xl overflow-y-auto"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <DialogHeader>
+                      <DialogTitle>Select an audio clip</DialogTitle>
+                    </DialogHeader>
+
+                    <div
+                      className="space-y-4"
+                      data-audio-library-pane="browser"
+                    >
+                      <div className="relative">
+                        <Search
+                          aria-hidden="true"
+                          className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                        />
                     <Input
+                      className="h-10 rounded-full pl-10"
                       value={soundLibrarySearchQuery}
                       onChange={(event) =>
                         setSoundLibrarySearchQuery(event.target.value)
                       }
                       placeholder="Search names, tags, metadata, source..."
                     />
-                    <p className="text-[11px] text-muted-foreground">
-                      Search matches every typed keyword across names,
-                      categories, tags, music metadata, usage notes, source,
-                      and file path.
-                    </p>
                   </div>
 
                   <div className="space-y-2 rounded-lg border border-border bg-background/50 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Filter state
+                        Filters
                       </label>
                       <Button
                         type="button"
@@ -6457,17 +6517,9 @@ export function ShortFormVideoSettingsView({
                         {filteredSoundLibraryItemCount || 0}
                       </div>
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Browse by category
-                      </label>
-                      <span className="text-[11px] text-muted-foreground">
-                        Case-insensitive grouping
-                      </span>
-                    </div>
+                    <label className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Category
+                    </label>
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
@@ -6513,53 +6565,13 @@ export function ShortFormVideoSettingsView({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Asset browser
+                        Assets
                       </label>
                       <span className="text-[11px] text-muted-foreground">
-                        Music and SFX stay separately scannable
+                        {filteredSoundLibraryItemCount} shown
                       </span>
                     </div>
-                    <div className="max-h-[560px] space-y-3 overflow-y-auto rounded-lg border border-border bg-background/40 p-2">
-                      {selectedSoundHiddenByFilter && selectedSound ? (
-                        <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
-                          <div className="px-1 text-[11px] font-medium uppercase tracking-wide text-amber-100">
-                            Pinned selection outside filters
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedSoundId(selectedSound.id);
-                              setSelectedAudioLibraryKind("sfx");
-                            }}
-                            className="w-full rounded-lg border border-amber-400/40 bg-background/70 px-3 py-3 text-left transition hover:border-amber-300/60"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="text-sm font-medium text-foreground">
-                                  {selectedSound.name}
-                                </div>
-                                <div className="mt-1 text-[11px] text-muted-foreground">
-                                  {getSoundLibraryCategoryLabel(
-                                    selectedSound.category,
-                                  )}{" "}
-                                  · {selectedSound.semanticTypes.join(", ")}
-                                </div>
-                              </div>
-                              <Badge
-                                variant={
-                                  selectedSound.audioRelativePath
-                                    ? "secondary"
-                                    : "outline"
-                                }
-                              >
-                                {selectedSound.audioRelativePath
-                                  ? "Audio ready"
-                                  : "Needs audio"}
-                              </Badge>
-                            </div>
-                          </button>
-                        </div>
-                      ) : null}
+                    <div className="max-h-[42vh] space-y-3 overflow-y-auto rounded-lg border border-border bg-background/40 p-2">
                       {filteredSoundLibraryGroups.map((group) => (
                         <div key={group.key} className="space-y-2">
                           {soundLibraryCategoryFilter === "all" ? (
@@ -6573,44 +6585,53 @@ export function ShortFormVideoSettingsView({
                           ) : null}
                           {group.sounds.map((sound) => {
                             const selected =
-                              selectedAudioLibraryKind === "sfx" &&
-                              selectedSoundId === sound.id;
+                              pendingAudioLibrarySelection?.kind === "sfx" &&
+                              pendingAudioLibrarySelection.id === sound.id;
                             const readiness = getSoundReadiness(sound);
+                            const categoryLabel = getSoundLibraryCategoryLabel(
+                              sound.category,
+                            );
                             return (
                               <button
                                 key={sound.id}
                                 type="button"
+                                data-audio-asset-id={sound.id}
+                                data-audio-asset-kind="sfx"
                                 onClick={() => {
-                                  setSelectedSoundId(sound.id);
-                                  setSelectedAudioLibraryKind("sfx");
+                                  setPendingAudioLibrarySelection({
+                                    kind: "sfx",
+                                    id: sound.id,
+                                  });
                                 }}
-                                className={`w-full rounded-lg border px-3 py-3 text-left transition ${selected ? "border-primary/50 bg-primary/10" : "border-border/70 bg-background/70 hover:border-primary/30 hover:bg-background"}`}
+                                className={`w-full cursor-pointer rounded-lg border px-3 py-3 text-left transition active:scale-[0.997] active:bg-primary/15 ${selected ? "border-primary/70 bg-primary/15 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/50 hover:bg-primary/5 hover:shadow-sm"}`}
                               >
                                 <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <div className="text-sm font-medium text-foreground">
+                                  <div className="min-w-0">
+                                    <div className="truncate text-sm font-medium text-foreground">
                                       {sound.name}
                                     </div>
-                                    <div className="mt-1 text-[11px] text-muted-foreground">
-                                      {getSoundLibraryCategoryLabel(
-                                        sound.category,
-                                      )}{" "}
-                                      · {sound.semanticTypes.join(", ")}
-                                    </div>
                                   </div>
-                                  <Badge
-                                    variant={
-                                      readiness === "ready"
-                                        ? "secondary"
-                                        : "outline"
-                                    }
-                                  >
-                                    {readiness}
-                                  </Badge>
+                                  <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                                    <Badge variant="outline">
+                                      {categoryLabel}
+                                    </Badge>
+                                    {readiness !== "ready" ? (
+                                      <Badge variant="outline">
+                                        {readiness}
+                                      </Badge>
+                                    ) : null}
+                                  </div>
                                 </div>
                                 {sound.tags.length > 0 ? (
-                                  <div className="mt-2 line-clamp-2 text-[11px] text-muted-foreground">
-                                    Tags: {sound.tags.join(", ")}
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {sound.tags.map((tag) => (
+                                      <span
+                                        key={tag}
+                                        className="rounded-full bg-muted/70 px-2 py-0.5 text-[11px] text-muted-foreground"
+                                      >
+                                        {tag}
+                                      </span>
+                                    ))}
                                   </div>
                                 ) : null}
                               </button>
@@ -6637,8 +6658,8 @@ export function ShortFormVideoSettingsView({
                                 : undefined,
                             );
                             const selected =
-                              selectedAudioLibraryKind === "music" &&
-                              selectedMusicId === track.id;
+                              pendingAudioLibrarySelection?.kind === "music" &&
+                              pendingAudioLibrarySelection.id === track.id;
                             const lufs =
                               typeof track.integratedLufs === "number"
                                 ? `${track.integratedLufs.toFixed(1)} LUFS`
@@ -6652,37 +6673,45 @@ export function ShortFormVideoSettingsView({
                               <button
                                 key={track.id}
                                 type="button"
+                                data-audio-asset-id={track.id}
+                                data-audio-asset-kind="music"
                                 onClick={() => {
-                                  setSelectedMusicId(track.id);
-                                  setSelectedAudioLibraryKind("music");
+                                  setPendingAudioLibrarySelection({
+                                    kind: "music",
+                                    id: track.id,
+                                  });
                                 }}
-                                className={`w-full rounded-lg border px-3 py-3 text-left transition ${selected ? "border-primary/50 bg-primary/10" : "border-border/70 bg-background/70 hover:border-primary/30 hover:bg-background"}`}
+                                className={`w-full cursor-pointer rounded-lg border px-3 py-3 text-left transition active:scale-[0.997] active:bg-primary/15 ${selected ? "border-primary/70 bg-primary/15 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/50 hover:bg-primary/5 hover:shadow-sm"}`}
                               >
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="min-w-0">
                                     <div className="truncate text-sm font-medium text-foreground">
                                       {track.name}
                                     </div>
-                                    <div className="mt-1 text-[11px] text-muted-foreground">
-                                      Music
-                                      {track.mood ? ` · ${track.mood}` : ""}
-                                      {track.pacing
-                                        ? ` · ${track.pacing}`
-                                        : ""}
-                                      {typeof track.bpm === "number"
-                                        ? ` · ${track.bpm} BPM`
-                                        : ""}
-                                    </div>
+                                    {track.mood ||
+                                    track.pacing ||
+                                    typeof track.bpm === "number" ? (
+                                      <div className="mt-1 text-[11px] text-muted-foreground">
+                                        {[
+                                          track.mood,
+                                          track.pacing,
+                                          typeof track.bpm === "number"
+                                            ? `${track.bpm} BPM`
+                                            : null,
+                                        ]
+                                          .filter(Boolean)
+                                          .join(" · ")}
+                                      </div>
+                                    ) : null}
                                   </div>
-                                  <Badge
-                                    variant={
-                                      readiness === "ready"
-                                        ? "secondary"
-                                        : "outline"
-                                    }
-                                  >
-                                    {readiness}
-                                  </Badge>
+                                  <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                                    <Badge variant="outline">Music</Badge>
+                                    {readiness !== "ready" ? (
+                                      <Badge variant="outline">
+                                        {readiness}
+                                      </Badge>
+                                    ) : null}
+                                  </div>
                                 </div>
                                 {audioUrl ? (
                                   <audio
@@ -6749,19 +6778,42 @@ export function ShortFormVideoSettingsView({
                         </div>
                       ) : null}
                     </div>
-                    <div className="rounded-lg border border-border bg-background/50 p-3 text-xs text-muted-foreground">
-                      <p>
-                        Projects load this library inside Plan Sound Design, then
-                        Generate Sound Design can adjust and preview the resolved
-                        XML events per project.
-                      </p>
-                    </div>
                   </div>
                 </div>
-                </Card>
+                    <DialogFooter>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setAudioLibraryPickerOpen(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        disabled={!pendingAudioLibrarySelection}
+                        onClick={() => {
+                          if (!pendingAudioLibrarySelection) return;
+                          if (pendingAudioLibrarySelection.kind === "music") {
+                            setSelectedMusicId(pendingAudioLibrarySelection.id);
+                            setSelectedAudioLibraryKind("music");
+                          } else {
+                            setSelectedSoundId(pendingAudioLibrarySelection.id);
+                            setSelectedAudioLibraryKind("sfx");
+                          }
+                          setAudioLibraryPickerOpen(false);
+                        }}
+                      >
+                        Select
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </DialogOverlay>
 
                 {selectedAudioLibraryKind === "sfx" && selectedSound ? (
                   <Card className="space-y-4 p-5" data-audio-library-pane="detail">
+                    <h3 className="text-base font-semibold text-foreground">
+                      {selectedSound.name}
+                    </h3>
                     <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/70 bg-background/60 p-3">
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -7415,6 +7467,9 @@ export function ShortFormVideoSettingsView({
 
                 {selectedAudioLibraryKind === "music" && selectedMusic && videoRender ? (
                   <Card className="space-y-4 p-5" data-audio-library-pane="detail">
+                    <h3 className="text-base font-semibold text-foreground">
+                      {selectedMusic.name}
+                    </h3>
                     <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/70 bg-background/60 p-3">
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2 text-xs">
