@@ -1947,8 +1947,8 @@ const SETTINGS_PAGE_META: Record<
     eyebrow: "Short-form workflow settings",
     title: "Generate Sound Design",
     description:
-      "Manage mix defaults and the audio library used by project sound-design resolution.",
-    summaryLabel: "Audio Library",
+      "Manage mix defaults and saved audio clips used by project sound-design resolution.",
+    summaryLabel: "Selected sounds",
     sectionIds: ["sound-library"],
   },
 };
@@ -2363,31 +2363,6 @@ function matchesSoundLibrarySearch(sound: SoundLibraryEntry, tokens: string[]) {
   if (tokens.length === 0) return true;
   const haystack = buildSoundLibrarySearchHaystack(sound);
   return tokens.every((token) => haystack.includes(token));
-}
-
-function buildUniqueSoundName(library: SoundLibraryEntry[], baseName: string) {
-  let nextName = `${baseName} copy`;
-  let suffix = 2;
-  const existing = new Set(
-    library.map((sound) => sound.name.trim().toLowerCase()),
-  );
-  while (existing.has(nextName.trim().toLowerCase())) {
-    nextName = `${baseName} copy ${suffix}`;
-    suffix += 1;
-  }
-  return nextName;
-}
-
-function buildUniqueSoundId(library: SoundLibraryEntry[], name: string) {
-  const base = slugify(name) || "sound";
-  let candidate = base;
-  let suffix = 2;
-  const existing = new Set(library.map((sound) => sound.id));
-  while (existing.has(candidate)) {
-    candidate = `${base}-${suffix}`;
-    suffix += 1;
-  }
-  return candidate;
 }
 
 async function parseResponse(response: Response) {
@@ -5098,13 +5073,6 @@ export function ShortFormVideoSettingsView({
     soundLibraryFileFilter,
     videoRender,
   ]);
-  const soundLibraryCategorySuggestions = useMemo(
-    () =>
-      soundLibraryCategorySummaries
-        .filter((summary) => summary.key !== "__uncategorized__")
-        .map((summary) => summary.label),
-    [soundLibraryCategorySummaries],
-  );
   const filteredSoundLibrary = useMemo(
     () =>
       audioLibraryTypeFilter === "music"
@@ -5157,15 +5125,6 @@ export function ShortFormVideoSettingsView({
       ),
     [filteredSoundLibrary],
   );
-  const selectedSoundFilteredIndex = useMemo(
-    () =>
-      selectedSound
-        ? filteredSoundLibrary.findIndex(
-            (sound) => sound.id === selectedSound.id,
-          )
-        : -1,
-    [filteredSoundLibrary, selectedSound],
-  );
   const soundLibraryTotalWithAudioCount = useMemo(
     () =>
       (soundDesignSettings?.library || []).filter((sound) =>
@@ -5176,14 +5135,6 @@ export function ShortFormVideoSettingsView({
       ).length,
     [soundDesignSettings, videoRender],
   );
-  const selectedSoundCategorySummary = useMemo(() => {
-    if (!selectedSound) return null;
-    const key = getSoundLibraryCategoryKey(selectedSound.category);
-    return (
-      soundLibraryCategorySummaries.find((summary) => summary.key === key) ||
-      null
-    );
-  }, [selectedSound, soundLibraryCategorySummaries]);
   const savedSoundAudioUrl = useMemo(() => {
     if (!selectedSound) return null;
     if (selectedSound.audioUrl) return selectedSound.audioUrl;
@@ -6141,178 +6092,99 @@ export function ShortFormVideoSettingsView({
 	                    />
 	                  ) : null}
 	                </div>
-	                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,3fr)]">
-	                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-	                    <div className="space-y-2">
-	                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-	                        Default ducking (dB)
-	                      </label>
-	                      <Input
-	                        type="number"
-	                        min={-24}
-	                        max={0}
-	                        step={1}
-	                        value={soundDesignSettings.defaultDuckingDb}
-	                        onChange={(event) => {
-	                          updateSectionFeedbackState("sound-library", {
-	                            error: null,
-	                            message: null,
-	                          });
-	                          setSoundDesignSettings({
-	                            ...soundDesignSettings,
-	                            defaultDuckingDb: Math.max(
-	                              -24,
-	                              Math.min(0, Number(event.target.value) || 0),
-	                            ),
-	                          });
-	                        }}
-	                      />
-	                    </div>
-	                    <div className="space-y-2">
-	                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-	                        Max concurrent one-shots
-	                      </label>
-	                      <Input
-	                        type="number"
-	                        min={1}
-	                        max={8}
-	                        step={1}
-	                        value={soundDesignSettings.maxConcurrentOneShots}
-	                        onChange={(event) => {
-	                          updateSectionFeedbackState("sound-library", {
-	                            error: null,
-	                            message: null,
-	                          });
-	                          setSoundDesignSettings({
-	                            ...soundDesignSettings,
-	                            maxConcurrentOneShots: Math.max(
-	                              1,
-	                              Math.min(8, Number(event.target.value) || 1),
-	                            ),
-	                          });
-	                        }}
-	                      />
-	                    </div>
-	                  </div>
-	                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-	                    {[
-	                      { key: "musicDuckingDb", label: "Music ducking (dB)", min: -24, max: 0, step: 1 },
-	                      { key: "musicEqCutDb", label: "Music mid EQ cut (dB)", min: -18, max: 0, step: 1 },
-	                      { key: "musicEqFrequencyHz", label: "Music EQ frequency (Hz)", min: 120, max: 8000, step: 50 },
-	                      { key: "musicEqQ", label: "Music EQ Q", min: 0.1, max: 10, step: 0.1 },
-	                      { key: "musicLowCutHz", label: "Music low cut (Hz, 0 off)", min: 0, max: 500, step: 5 },
-	                      { key: "musicHighCutHz", label: "Music high cut (Hz, 0 off)", min: 0, max: 20000, step: 100 },
-	                    ].map((control) => (
-	                      <div key={control.key} className="space-y-2">
-	                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-	                          {control.label}
-	                        </label>
-	                        <Input
-	                          type="number"
-	                          min={control.min}
-	                          max={control.max}
-	                          step={control.step}
-	                          value={
-	                            soundDesignSettings[
-	                              control.key as keyof Pick<
-	                                SoundDesignSettings,
-	                                | "musicDuckingDb"
-	                                | "musicEqCutDb"
-	                                | "musicEqFrequencyHz"
-	                                | "musicEqQ"
-	                                | "musicLowCutHz"
-	                                | "musicHighCutHz"
-	                              >
-	                            ]
-	                          }
-	                          onChange={(event) => {
-	                            updateSectionFeedbackState("sound-library", {
-	                              error: null,
-	                              message: null,
-	                            });
-	                            const value = Number(event.target.value);
-	                            setSoundDesignSettings({
-	                              ...soundDesignSettings,
-	                              [control.key]: Math.max(
-	                                control.min,
-	                                Math.min(control.max, Number.isFinite(value) ? value : control.min),
-	                              ),
-	                            });
-	                          }}
-	                        />
-	                      </div>
-	                    ))}
-	                  </div>
-	                </div>
+		                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+		                  {[
+		                    { key: "defaultDuckingDb", label: "Default ducking (dB)", min: -24, max: 0, step: 1 },
+		                    { key: "maxConcurrentOneShots", label: "Max concurrent one-shots", min: 1, max: 8, step: 1 },
+		                    { key: "musicDuckingDb", label: "Music ducking (dB)", min: -24, max: 0, step: 1 },
+		                    { key: "musicEqCutDb", label: "Music mid EQ cut (dB)", min: -18, max: 0, step: 1 },
+		                    { key: "musicEqFrequencyHz", label: "Music EQ frequency (Hz)", min: 120, max: 8000, step: 50 },
+		                    { key: "musicEqQ", label: "Music EQ Q", min: 0.1, max: 10, step: 0.1 },
+		                    { key: "musicLowCutHz", label: "Music low cut (Hz, 0 off)", min: 0, max: 500, step: 5 },
+		                    { key: "musicHighCutHz", label: "Music high cut (Hz, 0 off)", min: 0, max: 20000, step: 100 },
+		                  ].map((control) => (
+		                    <div key={control.key} className="space-y-2">
+		                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+		                        {control.label}
+		                      </label>
+		                      <Input
+		                        type="number"
+		                        min={control.min}
+		                        max={control.max}
+		                        step={control.step}
+		                        value={
+		                          soundDesignSettings[
+		                            control.key as keyof Pick<
+		                              SoundDesignSettings,
+		                              | "defaultDuckingDb"
+		                              | "maxConcurrentOneShots"
+		                              | "musicDuckingDb"
+		                              | "musicEqCutDb"
+		                              | "musicEqFrequencyHz"
+		                              | "musicEqQ"
+		                              | "musicLowCutHz"
+		                              | "musicHighCutHz"
+		                            >
+		                          ]
+		                        }
+		                        onChange={(event) => {
+		                          updateSectionFeedbackState("sound-library", {
+		                            error: null,
+		                            message: null,
+		                          });
+		                          const value = Number(event.target.value);
+		                          setSoundDesignSettings({
+		                            ...soundDesignSettings,
+		                            [control.key]: Math.max(
+		                              control.min,
+		                              Math.min(control.max, Number.isFinite(value) ? value : control.min),
+		                            ),
+		                          });
+		                        }}
+		                      />
+		                    </div>
+		                  ))}
+		                </div>
 	              </Card>
             )}
 
-            {activeSection === "generate-sound-design" ? (
-              <>
-                <Card className="space-y-5 p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-medium text-foreground">
-                    Audio Library
-                  </h3>
-                  <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
-                    Manage reusable music and SFX assets in one place. Select a
-                    row to edit metadata, readiness, planning hints, and audio
-                    previews in the detail panel.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={addMusic}
-                    disabled={sectionFeedback["music-library"].saving}
-                  >
-                    Add music
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={addSound}
-                    disabled={sectionFeedback["sound-library"].saving}
-                  >
-                    Add SFX
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                {[
-                  { label: "Music", value: audioLibraryHealth.musicCount },
-                  { label: "SFX", value: audioLibraryHealth.sfxCount },
-                  { label: "Ready", value: audioLibraryHealth.readyCount },
-                  {
-                    label: "Missing audio",
-                    value: audioLibraryHealth.missingAudioCount,
-                  },
-                  {
-                    label: "Missing metadata",
-                    value: audioLibraryHealth.missingMetadataCount,
-                  },
-                ].map((item) => (
-                  <div
-                    key={item.label}
-                    className="rounded-lg border border-border bg-background/50 px-3 py-2"
-                  >
-                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                      {item.label}
-                    </div>
-                    <div className="mt-1 text-lg font-semibold text-foreground">
-                      {item.value}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-                </Card>
-
-                <Card className="space-y-5 p-5">
-                  <Button
-                    type="button"
-                    variant="outline"
+	            {activeSection === "generate-sound-design" ? (
+	              <>
+	                <Card className="space-y-5 p-5">
+	                  <div className="flex flex-wrap items-center justify-between gap-3">
+	                    <h3 className="text-sm font-medium text-foreground">
+	                      Selected sound
+	                    </h3>
+	                    <div className="flex flex-wrap items-center justify-end gap-2">
+	                      {audioLibraryHealth.missingAudioCount > 0 ? (
+	                        <Badge variant="warning">
+	                          {audioLibraryHealth.missingAudioCount} missing audio
+	                        </Badge>
+	                      ) : null}
+	                      {audioLibraryHealth.missingMetadataCount > 0 ? (
+	                        <Badge variant="warning">
+	                          {audioLibraryHealth.missingMetadataCount} missing metadata
+	                        </Badge>
+	                      ) : null}
+	                      <Button
+	                        variant="outline"
+	                        onClick={addMusic}
+	                        disabled={sectionFeedback["music-library"].saving}
+	                      >
+	                        Add music
+	                      </Button>
+	                      <Button
+	                        variant="outline"
+	                        onClick={addSound}
+	                        disabled={sectionFeedback["sound-library"].saving}
+	                      >
+	                        Add SFX
+	                      </Button>
+	                    </div>
+	                  </div>
+	                  <Button
+	                    type="button"
+	                    variant="outline"
                     className="h-auto w-full justify-between px-3 py-2 text-left"
                     onClick={() => {
                       setPendingAudioLibrarySelection(
@@ -6742,95 +6614,29 @@ export function ShortFormVideoSettingsView({
                   </DialogContent>
                 </DialogOverlay>
 
-	                {selectedAudioLibraryKind === "sfx" && selectedSound ? (
-	                  <Card className="space-y-4 p-5" data-audio-library-pane="detail">
-	                    <div className="flex flex-wrap items-start justify-between gap-3">
-	                      <h3 className="text-base font-semibold text-foreground">
-	                        {selectedSound.name}
-	                      </h3>
-	                      {selectedAudioClipDirty ? (
-	                        <SectionActions
-	                          dirty={selectedAudioClipDirty}
-	                          saving={sectionFeedback["sound-library"].saving}
-	                          saveLabel="Save audio clip"
-	                          onSave={() => void saveSelectedAudioClip()}
-	                          onReset={resetSelectedAudioClip}
-	                        />
-	                      ) : null}
-	                    </div>
-	                    <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/70 bg-background/60 p-3">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                          <Badge
-                            variant={
-                              selectedSound.audioRelativePath
-                                ? "secondary"
-                                : "outline"
-                            }
-                          >
-                            {selectedSound.audioRelativePath
-                              ? "Audio ready"
-                              : "Needs audio"}
-                          </Badge>
-                          <Badge variant="outline">
-                            {getSoundLibraryCategoryLabel(
-                              selectedSound.category,
-                            )}
-                          </Badge>
-                          {selectedSoundFilteredIndex >= 0 ? (
-                            <span className="text-muted-foreground">
-                              Match {selectedSoundFilteredIndex + 1} of{" "}
-                              {filteredSoundLibrary.length}
-                            </span>
-                          ) : (
-                            <span className="text-amber-100">
-                              Outside current filters
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Duplicate variants without reuploading audio, and step
-                          through the filtered queue while tuning metadata and
-                          source sync points.
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => duplicateSound(selectedSound.id)}
-                        >
-                          Duplicate sound
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => selectAdjacentSound(-1)}
-                          disabled={
-                            filteredSoundLibrary.length === 0 ||
-                            selectedSoundFilteredIndex <= 0
-                          }
-                        >
-                          Previous match
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => selectAdjacentSound(1)}
-                          disabled={
-                            filteredSoundLibrary.length === 0 ||
-                            selectedSoundFilteredIndex < 0 ||
-                            selectedSoundFilteredIndex >=
-                              filteredSoundLibrary.length - 1
-                          }
-                        >
-                          Next match
-                        </Button>
-                      </div>
-                    </div>
+		                {selectedAudioLibraryKind === "sfx" && selectedSound ? (
+		                  <Card className="space-y-4 p-5" data-audio-library-pane="detail">
+		                    <div className="flex flex-wrap items-start justify-between gap-3">
+		                      <h3 className="text-base font-semibold text-foreground">
+		                        {selectedSound.name}
+		                      </h3>
+		                      <div className="flex flex-wrap items-center justify-end gap-2">
+		                        {getSoundReadiness(selectedSound) !== "ready" ? (
+		                          <Badge variant="warning">
+		                            {getSoundReadiness(selectedSound)}
+		                          </Badge>
+		                        ) : null}
+		                        {selectedAudioClipDirty ? (
+		                          <SectionActions
+		                            dirty={selectedAudioClipDirty}
+		                            saving={sectionFeedback["sound-library"].saving}
+		                            saveLabel="Save audio clip"
+		                            onSave={() => void saveSelectedAudioClip()}
+		                            onReset={resetSelectedAudioClip}
+		                          />
+		                        ) : null}
+		                      </div>
+		                    </div>
 
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
@@ -6848,40 +6654,36 @@ export function ShortFormVideoSettingsView({
                           placeholder="Sharp whoosh"
                         />
                       </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Category
-                        </label>
-                        <>
-                          <Input
-                            list="sound-library-category-suggestions"
-                            value={selectedSound.category}
-                            onChange={(event) =>
-                              updateSelectedSound((sound) => ({
-                                ...sound,
-                                category: event.target.value,
-                              }))
-                            }
-                            placeholder="Transition"
-                          />
-                          <datalist id="sound-library-category-suggestions">
-                            {soundLibraryCategorySuggestions.map((category) => (
-                              <option key={category} value={category} />
-                            ))}
-                          </datalist>
-                        </>
-                        {selectedSoundCategorySummary ? (
-                          <p className="text-[11px] text-muted-foreground">
-                            {selectedSoundCategorySummary.totalCount} sound
-                            {selectedSoundCategorySummary.totalCount === 1
-                              ? ""
-                              : "s"}{" "}
-                            in this category,{" "}
-                            {selectedSoundCategorySummary.missingAudioCount}{" "}
-                            still missing audio.
-                          </p>
-                        ) : null}
-                      </div>
+	                      <div className="space-y-2">
+	                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                          Category
+	                        </label>
+	                        <Select
+	                          value={selectedSound.category}
+	                          onChange={(event) =>
+	                            updateSelectedSound((sound) => ({
+	                              ...sound,
+	                              category: event.target.value,
+	                            }))
+	                          }
+	                        >
+	                          {selectedSound.category.trim() &&
+	                          !soundLibraryCategorySummaries.some(
+	                            (summary) => summary.value === selectedSound.category,
+	                          ) ? (
+	                            <option value={selectedSound.category}>
+	                              {getSoundLibraryCategoryLabel(selectedSound.category)}
+	                            </option>
+	                          ) : null}
+	                          {soundLibraryCategorySummaries
+	                            .filter((summary) => summary.key !== "music")
+	                            .map((summary) => (
+	                              <option key={summary.key} value={summary.value}>
+	                                {summary.label}
+	                              </option>
+	                            ))}
+	                        </Select>
+	                      </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -6893,30 +6695,7 @@ export function ShortFormVideoSettingsView({
                       >
                         Delete sound
                       </Button>
-                      {selectedSound.category.trim() ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() =>
-                            setSoundLibraryCategoryFilter(
-                              selectedSound.category,
-                            )
-                          }
-                        >
-                          Filter to this category
-                        </Button>
-                      ) : (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() =>
-                            setSoundLibraryCategoryFilter("__uncategorized__")
-                          }
-                        >
-                          Show uncategorized
-                        </Button>
-                      )}
-                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-background/80">
+	                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-background/80">
                         <span>
                           {selectedSoundUpload?.isUploading
                             ? "Uploading…"
@@ -6940,10 +6719,10 @@ export function ShortFormVideoSettingsView({
                       </label>
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Timing type
+	                    <div className="grid gap-4 md:grid-cols-2">
+	                      <div className="space-y-2">
+	                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                          Timing type
                         </label>
                         <Select
                           value={selectedSound.timingType}
@@ -6957,14 +6736,10 @@ export function ShortFormVideoSettingsView({
                         >
                           <option value="point">Point</option>
                           <option value="bed">Bed</option>
-                          <option value="riser">Riser</option>
-                        </Select>
-                      </div>
-                      <div className="space-y-2 rounded-md border border-border/70 bg-background/50 p-3 text-xs text-muted-foreground">
-                        <div className="font-medium uppercase tracking-wide text-foreground">Timestamp placement</div>
-                        <p>Sound-design XML places effects with absolute start/end/duration timestamps. Captions and visual timing are planning context only.</p>
-                      </div>
-                    </div>
+	                          <option value="riser">Riser</option>
+	                        </Select>
+	                      </div>
+	                    </div>
 
                     <div className="space-y-2">
                       <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -9881,62 +9656,6 @@ export function ShortFormVideoSettingsView({
     setSoundLibraryFileFilter("all");
     setSelectedSoundId(nextSound.id);
     setSelectedAudioLibraryKind("sfx");
-  }
-
-  function duplicateSound(soundId: string) {
-    if (!soundDesignSettings) return;
-    const source = soundDesignSettings.library.find(
-      (sound) => sound.id === soundId,
-    );
-    if (!source) return;
-    updateSectionFeedbackState("sound-library", { error: null, message: null });
-    const name = buildUniqueSoundName(soundDesignSettings.library, source.name);
-    const duplicate: SoundLibraryEntry = {
-      ...source,
-      id: buildUniqueSoundId(soundDesignSettings.library, name),
-      name,
-      semanticTypes: [...source.semanticTypes],
-      tags: [...source.tags],
-      stylePalettes: source.stylePalettes ? [...source.stylePalettes] : undefined,
-      layerRoles: source.layerRoles ? [...source.layerRoles] : undefined,
-      waveformPeaks: source.waveformPeaks
-        ? [...source.waveformPeaks]
-        : undefined,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    const sourceIndex = soundDesignSettings.library.findIndex(
-      (sound) => sound.id === soundId,
-    );
-    const nextLibrary = [...soundDesignSettings.library];
-    nextLibrary.splice(sourceIndex + 1, 0, duplicate);
-    setSoundDesignSettings({
-      ...soundDesignSettings,
-      library: nextLibrary,
-    });
-    setSoundLibrarySearchQuery("");
-    setSoundLibraryFileFilter("all");
-    setSelectedSoundId(duplicate.id);
-    setSelectedAudioLibraryKind("sfx");
-  }
-
-  function selectAdjacentSound(direction: -1 | 1) {
-    if (!filteredSoundLibrary.length) return;
-    const fallbackIndex = direction > 0 ? 0 : filteredSoundLibrary.length - 1;
-    const currentIndex =
-      selectedSoundFilteredIndex >= 0
-        ? selectedSoundFilteredIndex
-        : fallbackIndex - direction;
-    const nextIndex = clampNumber(
-      currentIndex + direction,
-      0,
-      filteredSoundLibrary.length - 1,
-    );
-    const nextSound = filteredSoundLibrary[nextIndex];
-    if (nextSound) {
-      setSelectedSoundId(nextSound.id);
-      setSelectedAudioLibraryKind("sfx");
-    }
   }
 
   function deleteSound(soundId: string) {
