@@ -4,6 +4,8 @@ export interface XmlVisualEditState {
   number: number;
   visualId?: string;
   imageId?: string;
+  startTime?: string;
+  endTime?: string;
   prompt?: string;
   basedOn?: string;
   cameraZoom?: string;
@@ -16,6 +18,8 @@ export interface SaveXmlVisualEditsInput {
   sceneIndex: number;
   visualId?: string;
   imageId?: string;
+  startTime?: string;
+  endTime?: string;
   prompt?: string;
   basedOn?: string;
   cameraZoom?: string;
@@ -272,6 +276,8 @@ export function readXmlVisualEditStates(scriptPath: string): XmlVisualEditState[
       number: index + 1,
       visualId,
       imageId: imageId || undefined,
+      startTime: visual.attributes.start?.trim() || "",
+      endTime: visual.attributes.end?.trim() || "",
       prompt,
       basedOn: image?.attributes.basedOn?.trim() || "",
       cameraZoom: visual.attributes.cameraZoom?.trim() || "",
@@ -358,6 +364,8 @@ export function saveXmlVisualEdits(scriptPath: string, input: SaveXmlVisualEdits
   }
 
   for (const [name, value] of [
+    ["start", input.startTime],
+    ["end", input.endTime],
     ["cameraZoom", input.cameraZoom],
     ["cameraZoomStart", input.cameraZoomStart],
     ["cameraZoomEnd", input.cameraZoomEnd],

@@ -145,6 +145,8 @@ export interface SceneImageArtifact {
   basedOnImageId?: string;
   reusedExistingAsset?: boolean;
   visualId?: string;
+  xmlStartTime?: string;
+  xmlEndTime?: string;
   xmlPrompt?: string;
   xmlBasedOn?: string;
   cameraZoom?: string;
@@ -1411,6 +1413,12 @@ function parseVisualTimingHint(duration?: string) {
     : {};
 }
 
+function parseEditableVisualSeconds(value?: string) {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function getFileMtimeMs(filePath: string) {
   if (!fs.existsSync(filePath)) return 0;
 
@@ -2612,8 +2620,14 @@ function getSceneImagesStage(projectId: string, options?: { pending?: boolean })
   }
   const manifestScenes = manifest.data.map((scene) => {
     const xmlEditState = xmlEditStates.get(scene.number);
+    const xmlStartSeconds = parseEditableVisualSeconds(xmlEditState?.startTime);
+    const xmlEndSeconds = parseEditableVisualSeconds(xmlEditState?.endTime);
     return {
       ...scene,
+      ...(xmlEditState?.startTime !== undefined ? { xmlStartTime: xmlEditState.startTime } : {}),
+      ...(xmlEditState?.endTime !== undefined ? { xmlEndTime: xmlEditState.endTime } : {}),
+      ...(xmlStartSeconds !== undefined ? { startTime: xmlStartSeconds } : {}),
+      ...(xmlEndSeconds !== undefined ? { endTime: xmlEndSeconds } : {}),
       ...(xmlEditState?.prompt !== undefined ? { xmlPrompt: xmlEditState.prompt } : {}),
       ...(xmlEditState?.basedOn !== undefined ? { xmlBasedOn: xmlEditState.basedOn } : {}),
       ...(xmlEditState?.cameraZoom !== undefined ? { cameraZoom: xmlEditState.cameraZoom } : {}),

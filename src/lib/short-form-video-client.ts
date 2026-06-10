@@ -180,6 +180,8 @@ export interface Scene {
   basedOnImageId?: string;
   reusedExistingAsset?: boolean;
   visualId?: string;
+  xmlStartTime?: string;
+  xmlEndTime?: string;
   xmlPrompt?: string;
   xmlBasedOn?: string;
   cameraZoom?: string;
@@ -732,6 +734,8 @@ function normalizeScene(value: unknown): Scene | null {
     basedOnImageId: asOptionalString(obj.basedOnImageId),
     reusedExistingAsset: typeof obj.reusedExistingAsset === 'boolean' ? obj.reusedExistingAsset : undefined,
     visualId: asOptionalString(obj.visualId),
+    xmlStartTime: asOptionalString(obj.xmlStartTime),
+    xmlEndTime: asOptionalString(obj.xmlEndTime),
     xmlPrompt: asOptionalString(obj.xmlPrompt),
     xmlBasedOn: asOptionalString(obj.xmlBasedOn),
     cameraZoom: asOptionalString(obj.cameraZoom),

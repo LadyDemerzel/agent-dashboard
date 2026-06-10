@@ -221,6 +221,8 @@ interface SoundDesignReviewVariant {
 }
 
 interface VisualXmlDraft {
+  startTime: string;
+  endTime: string;
   prompt: string;
   basedOn: string;
   cameraZoomMode: "static" | "animated";
@@ -234,6 +236,8 @@ interface SavedVisualXmlState {
   number: number;
   visualId?: string;
   imageId?: string;
+  startTime?: string;
+  endTime?: string;
   prompt?: string;
   basedOn?: string;
   cameraZoom?: string;
@@ -528,6 +532,54 @@ function formatMs(value: number) {
 function formatSeconds(value?: number) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "—";
   return `${value.toFixed(2)}s`;
+}
+
+function formatEditableSeconds(value?: number) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "";
+  return value.toFixed(2);
+}
+
+function parseVisualTimingSeconds(value?: string) {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function getVisualTimingGap(
+  previous: VisualXmlDraft | undefined,
+  next: VisualXmlDraft | undefined,
+) {
+  const previousEnd = parseVisualTimingSeconds(previous?.endTime);
+  const nextStart = parseVisualTimingSeconds(next?.startTime);
+  if (previousEnd === undefined || nextStart === undefined) return null;
+  const gapSeconds = nextStart - previousEnd;
+  return gapSeconds > 0.001 ? gapSeconds : null;
+}
+
+function getVisualTimingGapSummary(
+  scenes: Scene[],
+  draftByScene: Record<string, VisualXmlDraft>,
+) {
+  const involvedSceneIds = new Set<string>();
+  let gapCount = 0;
+
+  for (let index = 1; index < scenes.length; index += 1) {
+    const previous = scenes[index - 1];
+    const current = scenes[index];
+    if (!previous || !current) continue;
+
+    const previousDraft =
+      draftByScene[previous.id] ?? getSceneVisualXmlDraft(previous);
+    const currentDraft = draftByScene[current.id] ?? getSceneVisualXmlDraft(current);
+    const gapSeconds = getVisualTimingGap(previousDraft, currentDraft);
+    if (!gapSeconds) continue;
+
+    gapCount += 1;
+    involvedSceneIds.add(previous.id);
+    involvedSceneIds.add(current.id);
+  }
+
+  return { gapCount, involvedVisualCount: involvedSceneIds.size };
 }
 
 function getSoundDesignEventEffectiveNudgeMs(
@@ -879,6 +931,47 @@ const visualSelectClass =
 const visualRerenderButtonClass =
   "w-full border-[#343439] bg-[#29292e] text-foreground hover:bg-[#33333a] active:bg-[#37373d]";
 
+function VisualTimingFields({
+  draft,
+  disabled,
+  onChange,
+}: {
+  draft: VisualXmlDraft;
+  disabled?: boolean;
+  onChange: (nextDraft: VisualXmlDraft) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <VisualDetailSection title="Start time">
+        <Input
+          type="text"
+          inputMode="decimal"
+          value={draft.startTime}
+          onChange={(event) =>
+            onChange({ ...draft, startTime: event.target.value })
+          }
+          placeholder="0.00"
+          className={visualFieldClass}
+          disabled={disabled}
+        />
+      </VisualDetailSection>
+      <VisualDetailSection title="End time">
+        <Input
+          type="text"
+          inputMode="decimal"
+          value={draft.endTime}
+          onChange={(event) =>
+            onChange({ ...draft, endTime: event.target.value })
+          }
+          placeholder="1.20"
+          className={visualFieldClass}
+          disabled={disabled}
+        />
+      </VisualDetailSection>
+    </div>
+  );
+}
+
 function highlightXmlTag(tag: string, keyPrefix: string): ReactNode[] {
   const tokens =
     tag.match(/<\/?|\/?>|[\w:-]+|=|"[^"]*"|'[^']*'|\s+|[^\s]/g) ?? [];
@@ -1166,6 +1259,8 @@ function getSceneVisualXmlDraft(scene: Scene): VisualXmlDraft {
   const cameraZoomStart = scene.cameraZoomStart ?? "";
   const cameraZoomEnd = scene.cameraZoomEnd ?? "";
   return {
+    startTime: scene.xmlStartTime ?? formatEditableSeconds(scene.startTime),
+    endTime: scene.xmlEndTime ?? formatEditableSeconds(scene.endTime),
     prompt: scene.xmlPrompt ?? scene.notes ?? "",
     basedOn: scene.xmlBasedOn ?? scene.basedOnImageId ?? "",
     cameraZoomMode: cameraZoomStart || cameraZoomEnd ? "animated" : "static",
@@ -1182,6 +1277,8 @@ function getSceneDraftSignature(scene: Scene) {
     scene.id,
     scene.visualId || "",
     scene.imageId || "",
+    draft.startTime,
+    draft.endTime,
     draft.prompt,
     draft.basedOn,
     draft.cameraZoomMode,
@@ -4197,6 +4294,8 @@ function SceneImagesSection({
               sceneId: scene.id,
               imageId: scene.imageId,
               visualId: scene.visualId,
+              startTime: draft.startTime,
+              endTime: draft.endTime,
               ...(scene.visualType === "motion_graphic"
                 ? { motionGraphicXml: draft.motionGraphicXml }
                 : {
@@ -4213,6 +4312,8 @@ function SceneImagesSection({
       setVisualXmlDraftByScene((prev) => ({
         ...prev,
         [scene.id]: {
+          startTime: savedVisual?.startTime ?? draft.startTime,
+          endTime: savedVisual?.endTime ?? draft.endTime,
           prompt: savedVisual?.prompt ?? draft.prompt,
           basedOn: savedVisual?.basedOn ?? draft.basedOn,
           cameraZoomMode:
@@ -4251,6 +4352,14 @@ function SceneImagesSection({
   }
 
   const sceneProgress = project.sceneImages.sceneProgress;
+  const timingGapSummary = useMemo(
+    () =>
+      getVisualTimingGapSummary(
+        project.sceneImages.scenes,
+        visualXmlDraftByScene,
+      ),
+    [project.sceneImages.scenes, visualXmlDraftByScene],
+  );
   const defaultStyleLabel =
     styleOptions.find((style) => style.id === defaultStyleId)?.name ||
     "default style";
@@ -4564,6 +4673,33 @@ function SceneImagesSection({
               </p>
             </div>
           ) : null}
+          {timingGapSummary.gapCount > 0 ? (
+            <div
+              className="rounded-lg border bg-orange-500/10 p-4 shadow-[0_0_16px_rgba(249,115,22,0.18)]"
+              style={{ borderColor: "rgb(249 115 22)" }}
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-orange-100">
+                    Timing gaps detected
+                  </p>
+                  <p className="mt-1 text-xs text-orange-200/90">
+                    {timingGapSummary.gapCount} timing gap
+                    {timingGapSummary.gapCount === 1 ? "" : "s"} across{" "}
+                    {timingGapSummary.involvedVisualCount} visual
+                    {timingGapSummary.involvedVisualCount === 1 ? "" : "s"}.
+                  </p>
+                </div>
+                <Badge
+                  variant="outline"
+                  className="w-fit border-orange-400 bg-orange-500/20 text-orange-100"
+                >
+                  {timingGapSummary.gapCount} gap
+                  {timingGapSummary.gapCount === 1 ? "" : "s"}
+                </Badge>
+              </div>
+            </div>
+          ) : null}
           {project.sceneImages.scenes.length > 0 ? (
             <div className="overflow-x-auto pb-2">
               <div className="flex min-w-max gap-4">
@@ -4588,6 +4724,36 @@ function SceneImagesSection({
                   const visualXmlDraft = visualXmlDraftByScene[scene.id] ?? {
                     ...getSceneVisualXmlDraft(scene),
                   };
+                  const currentStartTime =
+                    scene.xmlStartTime ?? formatEditableSeconds(scene.startTime);
+                  const currentEndTime =
+                    scene.xmlEndTime ?? formatEditableSeconds(scene.endTime);
+                  const previousScene = project.sceneImages.scenes[sceneIndex - 1];
+                  const nextScene = project.sceneImages.scenes[sceneIndex + 1];
+                  const previousDraft = previousScene
+                    ? visualXmlDraftByScene[previousScene.id] ??
+                      getSceneVisualXmlDraft(previousScene)
+                    : undefined;
+                  const nextDraft = nextScene
+                    ? visualXmlDraftByScene[nextScene.id] ??
+                      getSceneVisualXmlDraft(nextScene)
+                    : undefined;
+                  const previousTimingGap = getVisualTimingGap(
+                    previousDraft,
+                    visualXmlDraft,
+                  );
+                  const nextTimingGap = getVisualTimingGap(
+                    visualXmlDraft,
+                    nextDraft,
+                  );
+                  const hasTimingGap = Boolean(previousTimingGap || nextTimingGap);
+                  const timingGapCardStyle = hasTimingGap
+                    ? {
+                        borderColor: "rgb(249 115 22)",
+                        boxShadow:
+                          "0 0 14px rgba(249, 115, 22, 0.18)",
+                      }
+                    : undefined;
                   const isMotionGraphic = scene.visualType === "motion_graphic";
                   const basedOnOptions = project.sceneImages.scenes
                     .slice(0, sceneIndex)
@@ -4616,13 +4782,20 @@ function SceneImagesSection({
                     visualXmlDraft.basedOn.trim() &&
                     !basedOnOptionValues.has(visualXmlDraft.basedOn.trim());
                   const visualXmlDirty = isMotionGraphic
-                    ? visualXmlDraft.motionGraphicXml.trim() !== currentMotionGraphicXml.trim()
-                    : visualXmlDraft.prompt.trim() !== currentImagePrompt.trim() ||
+                    ? visualXmlDraft.startTime.trim() !== currentStartTime.trim() ||
+                      visualXmlDraft.endTime.trim() !== currentEndTime.trim() ||
+                      visualXmlDraft.motionGraphicXml.trim() !==
+                        currentMotionGraphicXml.trim()
+                    : visualXmlDraft.startTime.trim() !== currentStartTime.trim() ||
+                      visualXmlDraft.endTime.trim() !== currentEndTime.trim() ||
+                      visualXmlDraft.prompt.trim() !== currentImagePrompt.trim() ||
                       visualXmlDraft.basedOn.trim() !== currentBasedOn.trim() ||
                       visualXmlDraft.cameraZoomMode !== currentCameraZoomMode ||
                       visualXmlDraft.cameraZoom.trim() !== currentCameraZoom.trim() ||
-                      visualXmlDraft.cameraZoomStart.trim() !== currentCameraZoomStart.trim() ||
-                      visualXmlDraft.cameraZoomEnd.trim() !== currentCameraZoomEnd.trim();
+                      visualXmlDraft.cameraZoomStart.trim() !==
+                        currentCameraZoomStart.trim() ||
+                      visualXmlDraft.cameraZoomEnd.trim() !==
+                        currentCameraZoomEnd.trim();
                   const dependencyTree = !isMotionGraphic
                     ? buildVisualDependencyTree(project.sceneImages.scenes, scene)
                     : null;
@@ -4630,33 +4803,50 @@ function SceneImagesSection({
                   return (
                     <div
                       key={scene.id}
-                      className={`w-[260px] shrink-0 space-y-3 rounded-lg border bg-background/60 p-3 ${visualXmlDirty ? "border-amber-500 shadow-sm shadow-amber-500/20" : "border-border"}`}
+                      className="flex shrink-0 items-start gap-4"
                     >
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <p className="text-xs text-muted-foreground">
-                              Visual {scene.number}
-                            </p>
-                            {visualXmlDirty ? (
-                              <span
-                                aria-label="Unsaved changes"
-                                className="h-2 w-2 rounded-full bg-amber-500"
-                              />
-                            ) : null}
-                          </div>
-                          <div className="shrink-0">
-                            {sceneBusy ? (
-                              <StatusBadge status="in-progress" compact />
-                            ) : (
-                              <StatusBadge status="completed" compact />
-                            )}
-                          </div>
+                      {previousTimingGap ? (
+                        <div className="mt-24 flex h-9 shrink-0 items-center gap-2 rounded-md border border-orange-500 bg-orange-500/15 px-3 text-xs font-medium text-orange-200 shadow-[0_0_8px_rgba(249,115,22,0.18)]">
+                          <span aria-hidden="true">←</span>
+                          <span>Timing gap</span>
+                          <span aria-hidden="true">→</span>
                         </div>
-                        <p className="break-words text-sm font-medium text-foreground">
-                          {scene.caption}
-                        </p>
-                      </div>
+                      ) : null}
+                      <div
+                        className={`w-[260px] shrink-0 space-y-3 rounded-lg border bg-background/60 p-3 ${
+                          hasTimingGap
+                            ? "border border-orange-500 bg-orange-500/5"
+                            : visualXmlDirty
+                              ? "border-amber-500 shadow-sm shadow-amber-500/20"
+                              : "border-border"
+                        }`}
+                        style={timingGapCardStyle}
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                              <p className="text-xs text-muted-foreground">
+                                Visual {scene.number}
+                              </p>
+                              {visualXmlDirty ? (
+                                <span
+                                  aria-label="Unsaved changes"
+                                  className="h-2 w-2 rounded-full bg-amber-500"
+                                />
+                              ) : null}
+                            </div>
+                            <div className="shrink-0">
+                              {sceneBusy ? (
+                                <StatusBadge status="in-progress" compact />
+                              ) : (
+                                <StatusBadge status="completed" compact />
+                              )}
+                            </div>
+                          </div>
+                          <p className="break-words text-sm font-medium text-foreground">
+                            {scene.caption}
+                          </p>
+                        </div>
                       {sceneBusy ? (
                         <div className="relative aspect-[9/16] w-full overflow-hidden rounded-md border border-dashed border-border bg-muted/40">
                           <Skeleton className="h-full w-full rounded-none" />
@@ -4720,25 +4910,37 @@ function SceneImagesSection({
                             <p>Reused existing asset</p>
                           </VisualDetailSection>
                         ) : null}
+                        <VisualTimingFields
+                          draft={visualXmlDraft}
+                          disabled={sceneBusy}
+                          onChange={(nextDraft) =>
+                            setVisualXmlDraftByScene((prev) => ({
+                              ...prev,
+                              [scene.id]: nextDraft,
+                            }))
+                          }
+                        />
                         {isMotionGraphic ? (
-                          <VisualDetailSection title="Motion graphic XML">
-                            <div className="space-y-1">
-                              <HighlightedXmlTextarea
-                                value={visualXmlDraft.motionGraphicXml}
-                                onChange={(e) =>
-                                  setVisualXmlDraftByScene((prev) => ({
-                                    ...prev,
-                                    [scene.id]: {
-                                      ...visualXmlDraft,
-                                      motionGraphicXml: e.target.value,
-                                    },
-                                  }))
-                                }
-                                placeholder="Edit the inline <motionGraphic> XML for this visual"
-                                disabled={sceneBusy}
-                              />
-                            </div>
-                          </VisualDetailSection>
+                          <>
+                            <VisualDetailSection title="Motion graphic XML">
+                              <div className="space-y-1">
+                                <HighlightedXmlTextarea
+                                  value={visualXmlDraft.motionGraphicXml}
+                                  onChange={(e) =>
+                                    setVisualXmlDraftByScene((prev) => ({
+                                      ...prev,
+                                      [scene.id]: {
+                                        ...visualXmlDraft,
+                                        motionGraphicXml: e.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder="Edit the inline <motionGraphic> XML for this visual"
+                                  disabled={sceneBusy}
+                                />
+                              </div>
+                            </VisualDetailSection>
+                          </>
                         ) : (
                           <>
                             <VisualDetailSection title="Image prompt">
@@ -4989,6 +5191,7 @@ function SceneImagesSection({
                         </DropdownMenu>
                       )}
                     </div>
+                  </div>
                   );
                 })}
               </div>

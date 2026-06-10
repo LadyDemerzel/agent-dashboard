@@ -374,6 +374,8 @@ export async function POST(
         sceneIndex,
         imageId,
         visualId,
+        ...(typeof body.startTime === "string" ? { startTime: body.startTime } : {}),
+        ...(typeof body.endTime === "string" ? { endTime: body.endTime } : {}),
         ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
         ...(typeof body.basedOn === "string" ? { basedOn: body.basedOn } : {}),
         ...(typeof body.cameraZoom === "string" ? { cameraZoom: body.cameraZoom } : {}),
