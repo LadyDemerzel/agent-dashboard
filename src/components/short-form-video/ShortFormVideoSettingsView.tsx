@@ -6641,12 +6641,24 @@ export function ShortFormVideoSettingsView({
 	                        const selected =
 	                          pendingAudioLibrarySelection?.kind === "sfx" &&
 	                          pendingAudioLibrarySelection.id === sound.id;
-	                        const readiness = getSoundReadiness(sound);
-	                        const categoryLabel = getSoundLibraryCategoryLabel(
-	                          sound.category,
-	                        );
-	                        return (
-	                          <button
+		                        const readiness = getSoundReadiness(sound);
+		                        const categoryLabel = getSoundLibraryCategoryLabel(
+		                          sound.category,
+		                        );
+		                        const cacheBust = sound.uploadedAt
+		                          ? Date.parse(sound.uploadedAt)
+		                          : undefined;
+		                        const audioUrl =
+		                          sound.audioUrl ||
+		                          buildSavedSoundAudioUrl(
+		                            sound,
+		                            typeof cacheBust === "number" &&
+		                              Number.isFinite(cacheBust)
+		                              ? cacheBust
+		                              : undefined,
+		                          );
+		                        return (
+		                          <button
 	                            key={sound.id}
 	                            type="button"
 	                            data-audio-asset-id={sound.id}
@@ -6686,10 +6698,21 @@ export function ShortFormVideoSettingsView({
 	                                    {tag}
 	                                  </span>
 	                                ))}
-	                              </div>
-	                            ) : null}
-	                          </button>
-	                        );
+		                              </div>
+		                            ) : null}
+		                            {audioUrl ? (
+		                              <audio
+		                                controls
+		                                preload="none"
+		                                className="mt-2 w-full"
+		                                src={audioUrl}
+		                                onClick={(event) =>
+		                                  event.stopPropagation()
+		                                }
+		                              />
+		                            ) : null}
+		                          </button>
+		                        );
 	                      })}
 	                      {filteredMusicLibrary.length > 0 ? (
 	                        <>
