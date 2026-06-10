@@ -757,6 +757,12 @@ function pickSoundMixDefaults(settings: SoundDesignSettings | null) {
 type SoundLibraryCategoryFilter = "all" | "__uncategorized__" | string;
 
 type SoundLibraryFileFilter = "all" | "with-audio" | "missing-audio";
+type AudioLibraryAvailabilityFilter =
+  | "all"
+  | "planning"
+  | "not-planning"
+  | "generation"
+  | "not-generation";
 type AudioLibraryTypeFilter = "all" | "music" | "sfx";
 type AudioLibrarySelectionKind = "music" | "sfx";
 
@@ -2336,6 +2342,19 @@ function matchesSoundLibraryFileFilter(
 ) {
   if (filter === "with-audio") return Boolean(sound.audioRelativePath);
   if (filter === "missing-audio") return !sound.audioRelativePath;
+  return true;
+}
+
+function matchesAudioLibraryAvailabilityFilter(
+  asset:
+    | Pick<SoundLibraryEntry, "availableForPlanning" | "availableForGeneration">
+    | Pick<MusicLibraryEntry, "availableForPlanning" | "availableForGeneration">,
+  filter: AudioLibraryAvailabilityFilter,
+) {
+  if (filter === "planning") return asset.availableForPlanning === true;
+  if (filter === "not-planning") return asset.availableForPlanning !== true;
+  if (filter === "generation") return asset.availableForGeneration === true;
+  if (filter === "not-generation") return asset.availableForGeneration !== true;
   return true;
 }
 
@@ -4320,6 +4339,8 @@ export function ShortFormVideoSettingsView({
   const [soundLibraryFileFilter, setSoundLibraryFileFilter] = useState<
     "all" | "with-audio" | "missing-audio"
   >("all");
+  const [audioLibraryAvailabilityFilter, setAudioLibraryAvailabilityFilter] =
+    useState<AudioLibraryAvailabilityFilter>("all");
   const [musicMoodFilter, setMusicMoodFilter] = useState("all");
   const [musicEnergyFilter, setMusicEnergyFilter] = useState("all");
   const [selectedCaptionStyleId, setSelectedCaptionStyleId] = useState<
@@ -5171,27 +5192,37 @@ export function ShortFormVideoSettingsView({
   const soundLibraryBaseMatches = useMemo(() => {
     if (!soundDesignSettings) return [];
     return soundDesignSettings.library.filter(
-      (sound) =>
-        matchesSoundLibraryFileFilter(sound, soundLibraryFileFilter) &&
-        matchesSoundLibrarySearch(sound, normalizedSoundLibrarySearchTokens),
-    );
-  }, [
-    normalizedSoundLibrarySearchTokens,
-    soundDesignSettings,
-    soundLibraryFileFilter,
+	      (sound) =>
+	        matchesSoundLibraryFileFilter(sound, soundLibraryFileFilter) &&
+	        matchesAudioLibraryAvailabilityFilter(
+	          sound,
+	          audioLibraryAvailabilityFilter,
+	        ) &&
+	        matchesSoundLibrarySearch(sound, normalizedSoundLibrarySearchTokens),
+	    );
+	  }, [
+	    audioLibraryAvailabilityFilter,
+	    normalizedSoundLibrarySearchTokens,
+	    soundDesignSettings,
+	    soundLibraryFileFilter,
   ]);
   const musicLibraryBaseMatches = useMemo(() => {
     if (!videoRender) return [];
     return videoRender.musicTracks.filter(
-      (track) =>
-        matchesMusicLibraryFileFilter(track, soundLibraryFileFilter) &&
-        (musicMoodFilter === "all" || track.mood === musicMoodFilter) &&
-        (musicEnergyFilter === "all" || track.energy === musicEnergyFilter) &&
-        matchesMusicLibrarySearch(track, normalizedSoundLibrarySearchTokens),
-    );
-  }, [
-    musicEnergyFilter,
-    musicMoodFilter,
+	      (track) =>
+	        matchesMusicLibraryFileFilter(track, soundLibraryFileFilter) &&
+	        matchesAudioLibraryAvailabilityFilter(
+	          track,
+	          audioLibraryAvailabilityFilter,
+	        ) &&
+	        (musicMoodFilter === "all" || track.mood === musicMoodFilter) &&
+	        (musicEnergyFilter === "all" || track.energy === musicEnergyFilter) &&
+	        matchesMusicLibrarySearch(track, normalizedSoundLibrarySearchTokens),
+	    );
+	  }, [
+	    audioLibraryAvailabilityFilter,
+	    musicEnergyFilter,
+	    musicMoodFilter,
     normalizedSoundLibrarySearchTokens,
     soundLibraryFileFilter,
     videoRender,
@@ -6550,24 +6581,26 @@ export function ShortFormVideoSettingsView({
 		                        onClick={() => {
 		                          setSoundLibrarySearchQuery("");
 		                          setAudioLibraryTypeFilter("all");
-		                          setSoundLibraryCategoryFilter("all");
-		                          setSoundLibraryFileFilter("all");
-		                          setMusicMoodFilter("all");
-		                          setMusicEnergyFilter("all");
-		                        }}
+			                          setSoundLibraryCategoryFilter("all");
+			                          setSoundLibraryFileFilter("all");
+			                          setAudioLibraryAvailabilityFilter("all");
+			                          setMusicMoodFilter("all");
+			                          setMusicEnergyFilter("all");
+			                        }}
 		                        disabled={
 		                          !soundLibrarySearchQuery &&
-		                          audioLibraryTypeFilter === "all" &&
-		                          soundLibraryCategoryFilter === "all" &&
-		                          soundLibraryFileFilter === "all" &&
-		                          musicMoodFilter === "all" &&
-		                          musicEnergyFilter === "all"
-		                        }
+			                          audioLibraryTypeFilter === "all" &&
+			                          soundLibraryCategoryFilter === "all" &&
+			                          soundLibraryFileFilter === "all" &&
+			                          audioLibraryAvailabilityFilter === "all" &&
+			                          musicMoodFilter === "all" &&
+			                          musicEnergyFilter === "all"
+			                        }
 		                      >
 		                        Clear filters
 		                      </Button>
 		                    </div>
-		                    <div className="grid gap-2 md:grid-cols-3">
+			                    <div className="grid gap-2 md:grid-cols-4">
 	                      <div className="space-y-1">
 	                        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
 	                          Mood
@@ -6604,9 +6637,9 @@ export function ShortFormVideoSettingsView({
 	                          ))}
 	                        </Select>
 	                      </div>
-	                      <div className="space-y-1">
-	                        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-	                          Category
+		                      <div className="space-y-1">
+		                        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+		                          Category
 	                        </label>
 	                        <Select
 	                          value={soundLibraryCategoryFilter}
@@ -6622,9 +6655,28 @@ export function ShortFormVideoSettingsView({
 	                              {summary.label}
 	                            </option>
 	                          ))}
-	                        </Select>
-	                      </div>
-	                    </div>
+		                        </Select>
+		                      </div>
+		                      <div className="space-y-1">
+		                        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+		                          Availability
+		                        </label>
+		                        <Select
+		                          value={audioLibraryAvailabilityFilter}
+		                          onChange={(event) =>
+		                            setAudioLibraryAvailabilityFilter(
+		                              event.target.value as AudioLibraryAvailabilityFilter,
+		                            )
+		                          }
+		                        >
+		                          <option value="all">All availability</option>
+		                          <option value="planning">Available for planning</option>
+		                          <option value="not-planning">Not available for planning</option>
+		                          <option value="generation">Available for generation</option>
+		                          <option value="not-generation">Not available for generation</option>
+		                        </Select>
+		                      </div>
+		                    </div>
 	                  </div>
 
 	                  <div className="flex min-h-0 flex-1 flex-col gap-2">
