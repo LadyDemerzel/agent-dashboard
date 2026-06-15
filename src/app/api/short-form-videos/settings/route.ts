@@ -379,8 +379,8 @@ export async function PATCH(request: NextRequest) {
     if (typeof candidate.reviewPrompt !== "string" || !candidate.reviewPrompt.trim()) {
       return NextResponse.json({ success: false, error: "Text-script full review prompt template must be a non-empty string" }, { status: 400 });
     }
-    if (typeof candidate.defaultMaxIterations !== "number" || Number.isNaN(candidate.defaultMaxIterations) || candidate.defaultMaxIterations < 1 || candidate.defaultMaxIterations > 8) {
-      return NextResponse.json({ success: false, error: "Default text-script max iterations must be a number between 1 and 8" }, { status: 400 });
+    if (typeof candidate.defaultMaxIterations !== "number" || !Number.isFinite(candidate.defaultMaxIterations) || candidate.defaultMaxIterations < 1) {
+      return NextResponse.json({ success: false, error: "Default text-script max iterations must be a positive number" }, { status: 400 });
     }
     if (typeof candidate.enforceNaturalContractions !== "boolean") {
       return NextResponse.json({ success: false, error: "Text-script contraction post-processing must be enabled or disabled" }, { status: 400 });

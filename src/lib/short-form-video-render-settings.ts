@@ -360,10 +360,6 @@ function normalizeString(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
-function normalizeBoolean(value: unknown, fallback = false) {
-  return typeof value === "boolean" ? value : fallback;
-}
-
 function normalizeMode(value: unknown): ShortFormQwenVoiceMode {
   return value === "custom-voice" ? "custom-voice" : "voice-design";
 }

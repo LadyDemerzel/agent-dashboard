@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { spawnSync } from "child_process";
 import { extractBody, generateFrontMatter, normalizeFrontMatterContent, parseFrontMatter } from "@/lib/frontmatter";
 import {
   resolveShortFormVoiceSelection,
@@ -102,6 +103,14 @@ interface XmlScriptRunStatusFile extends XmlScriptRunStatus {
   mtimeMs: number;
 }
 
+interface XmlScriptRunProcess {
+  runId: string;
+  projectId: string;
+  pid?: number;
+  processGroupId?: number;
+  startedAt: string;
+}
+
 interface XmlScriptFrontMatterRepairResult {
   content: string;
   repaired: boolean;
@@ -110,6 +119,14 @@ interface XmlScriptFrontMatterRepairResult {
 
 const XML_SCRIPT_STALE_RUNNING_MS = 30 * 60 * 1000;
 const XML_SCRIPT_STALE_NO_PROGRESS_MS = 2 * 60 * 1000;
+const XML_SCRIPT_WORKER_PATH = path.join(
+  process.env.HOME || "/Users/ittaisvidler",
+  "tenxsolo",
+  "systems",
+  "agent-dashboard",
+  "scripts",
+  "xml-script-worker.mjs",
+);
 
 function readJson<T>(filePath: string): T | undefined {
   if (!fs.existsSync(filePath)) return undefined;
@@ -188,6 +205,119 @@ export function getXmlScriptWorkDir(projectId: string) {
 
 export function getXmlScriptRunsDir(projectId: string) {
   return path.join(getProjectDir(projectId), ".xml-script-runs");
+}
+
+function getXmlScriptRunFilePath(projectId: string, runId: string, suffix: "job" | "status" | "process") {
+  return path.join(getXmlScriptRunsDir(projectId), `${runId}.${suffix}.json`);
+}
+
+function writeJsonFile(filePath: string, value: unknown) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(value, null, 2), "utf-8");
+}
+
+export function writeXmlScriptRunProcessInfo(projectId: string, runId: string, pid?: number) {
+  writeJsonFile(getXmlScriptRunFilePath(projectId, runId, "process"), {
+    runId,
+    projectId,
+    pid,
+    processGroupId: pid,
+    startedAt: new Date().toISOString(),
+  } satisfies XmlScriptRunProcess);
+}
+
+function findXmlWorkerPidForJobPath(jobPath: string) {
+  const result = spawnSync("ps", ["-axo", "pid=,command="], {
+    encoding: "utf-8",
+    maxBuffer: 1024 * 1024,
+  });
+  if (result.error || result.status !== 0) return undefined;
+
+  const normalizedJobPath = path.resolve(jobPath);
+  for (const line of (result.stdout || "").split("\n")) {
+    const match = line.match(/^\s*(\d+)\s+(.+)$/);
+    if (!match) continue;
+    const pid = Number.parseInt(match[1], 10);
+    const command = match[2] || "";
+    if (
+      Number.isFinite(pid) &&
+      pid !== process.pid &&
+      command.includes(XML_SCRIPT_WORKER_PATH) &&
+      command.includes(normalizedJobPath)
+    ) {
+      return pid;
+    }
+  }
+
+  return undefined;
+}
+
+function findRunningXmlScriptRun(projectId: string) {
+  return readRunStatuses(projectId).find((status) => status.status === "running")?.runId;
+}
+
+function markXmlScriptRunStopped(projectId: string, runId: string, message: string) {
+  const statusPath = getXmlScriptRunFilePath(projectId, runId, "status");
+  const existing = readJson<Record<string, unknown>>(statusPath) || {};
+  const now = new Date().toISOString();
+  writeJsonFile(statusPath, {
+    ...existing,
+    runId,
+    projectId,
+    status: "failed",
+    failedAt: now,
+    stoppedAt: now,
+    errorMessage: message,
+  });
+}
+
+export function stopXmlScriptRun(projectId: string, runId?: string) {
+  const targetRunId = runId || findRunningXmlScriptRun(projectId);
+  if (!targetRunId) {
+    return { stopped: false, reason: "No active XML script pipeline run was found." };
+  }
+
+  const jobPath = getXmlScriptRunFilePath(projectId, targetRunId, "job");
+  const status = readJson<XmlScriptRunStatus>(getXmlScriptRunFilePath(projectId, targetRunId, "status"));
+  if (status?.status && status.status !== "running") {
+    return {
+      stopped: false,
+      runId: targetRunId,
+      reason: "The XML script run is no longer running.",
+    };
+  }
+  const processInfo = readJson<XmlScriptRunProcess>(
+    getXmlScriptRunFilePath(projectId, targetRunId, "process"),
+  );
+  const pid = processInfo?.pid || findXmlWorkerPidForJobPath(jobPath);
+  const message = "Stopped by user from the dashboard.";
+
+  if (!pid || !Number.isFinite(pid)) {
+    markXmlScriptRunStopped(projectId, targetRunId, message);
+    return {
+      stopped: false,
+      runId: targetRunId,
+      reason: "The XML script run was marked stopped, but no worker process id was available.",
+    };
+  }
+
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      markXmlScriptRunStopped(projectId, targetRunId, message);
+      return {
+        stopped: false,
+        runId: targetRunId,
+        reason: "The XML script run was marked stopped, but the worker process was no longer running.",
+      };
+    }
+  }
+
+  markXmlScriptRunStopped(projectId, targetRunId, message);
+  return { stopped: true, runId: targetRunId };
 }
 
 export function ensureXmlScriptDocument(projectId: string, topic: string) {
@@ -340,7 +470,13 @@ function readLatestRunStatus(projectId: string, artifactPaths: string[], tasks?:
   if (statuses.length === 0) return undefined;
 
   const latestArtifactTimestamp = getLatestArtifactTimestamp(artifactPaths);
-  const resolved = statuses.find((status) => !isStaleRunningRun(status, latestArtifactTimestamp));
+  const resolved = [...statuses]
+    .sort((a, b) => {
+      const aStartedAt = toTimestamp(a.startedAt) ?? a.mtimeMs;
+      const bStartedAt = toTimestamp(b.startedAt) ?? b.mtimeMs;
+      return bStartedAt - aStartedAt || b.mtimeMs - a.mtimeMs;
+    })
+    .find((status) => !isStaleRunningRun(status, latestArtifactTimestamp));
   return resolved;
 }
 

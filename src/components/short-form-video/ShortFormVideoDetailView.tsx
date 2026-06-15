@@ -1984,6 +1984,7 @@ function XMLScriptSection({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [stoppingXmlTask, setStoppingXmlTask] = useState(false);
   const [visualsRunIntent, setVisualsRunIntent] = useState<
     "initial" | "regenerate" | "revise" | null
   >(null);
@@ -2369,6 +2370,38 @@ function XMLScriptSection({
     }
   }
 
+  async function stopXmlTask() {
+    if (stoppingXmlTask || !doc?.pending) return;
+
+    setStoppingXmlTask(true);
+    try {
+      const payload = await parseJsonResponse<{ xmlScript?: XmlScriptDoc }>(
+        await fetch(`/api/short-form-videos/${project.id}/xml-script`, {
+          method: "DELETE",
+        }),
+        "Failed to stop XML workflow task",
+      );
+      const nextDoc = payload.data?.xmlScript || null;
+      if (nextDoc) {
+        await mutateXmlScript({ success: true, data: nextDoc }, { revalidate: false });
+        setDoc(nextDoc);
+        setDraft(nextDoc.content || "");
+      } else {
+        await mutateXmlScript();
+      }
+      setError(null);
+      void onProjectRefresh().catch(() => undefined);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to stop XML workflow task",
+      );
+      await mutateXmlScript().catch(() => undefined);
+      void onProjectRefresh().catch(() => undefined);
+    } finally {
+      setStoppingXmlTask(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       {error ? (
@@ -2391,7 +2424,7 @@ function XMLScriptSection({
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => void triggerTask("narration")}
-            disabled={saving || doc?.pending}
+            disabled={saving || stoppingXmlTask || doc?.pending}
           >
             {saving
               ? "Starting…"
@@ -2402,7 +2435,9 @@ function XMLScriptSection({
           <Button
             variant="outline"
             onClick={() => void triggerTask("silence")}
-            disabled={saving || doc?.pending || !doc?.originalAudioUrl}
+            disabled={
+              saving || stoppingXmlTask || doc?.pending || !doc?.originalAudioUrl
+            }
           >
             {saving
               ? "Starting…"
@@ -2410,6 +2445,17 @@ function XMLScriptSection({
                 ? "Re-run pause removal + alignment"
                 : "Run pause removal + alignment"}
           </Button>
+          {doc?.pending ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void stopXmlTask()}
+              disabled={stoppingXmlTask}
+            >
+              <Square aria-hidden="true" className="h-4 w-4" />
+              {stoppingXmlTask ? "Stopping…" : "Stop narration audio"}
+            </Button>
+          ) : null}
         </div>
         <CompactSettingCard
           title="Narration voice"
@@ -2735,7 +2781,7 @@ function XMLScriptSection({
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => void triggerTask("captions")}
-            disabled={saving || doc?.pending}
+            disabled={saving || stoppingXmlTask || doc?.pending}
           >
             {saving
               ? "Starting…"
@@ -2743,6 +2789,17 @@ function XMLScriptSection({
                 ? "Re-plan captions"
                 : "Plan captions"}
           </Button>
+          {doc?.pending ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void stopXmlTask()}
+              disabled={stoppingXmlTask}
+            >
+              <Square aria-hidden="true" className="h-4 w-4" />
+              {stoppingXmlTask ? "Stopping…" : "Stop XML workflow"}
+            </Button>
+          ) : null}
         </div>
         <CompactSettingCard
           title="Max words per caption"
@@ -2880,7 +2937,7 @@ function XMLScriptSection({
             initialLabel="Plan visuals"
             rerunLabel="Re-plan visuals"
             rerunWithNotesLabel="Re-plan visuals with revision notes"
-            loading={saving || Boolean(doc?.pending)}
+            loading={saving || stoppingXmlTask || Boolean(doc?.pending)}
             loadingLabel={visualsLoadingLabel}
             onInitialRun={() => {
               setVisualsRunIntent("initial");
@@ -2899,9 +2956,20 @@ function XMLScriptSection({
             <Button
               variant="secondary"
               onClick={() => void saveManual("approved")}
-              disabled={saving}
+              disabled={saving || stoppingXmlTask}
             >
               Approve XML script
+            </Button>
+          ) : null}
+          {doc?.pending ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void stopXmlTask()}
+              disabled={stoppingXmlTask}
+            >
+              <Square aria-hidden="true" className="h-4 w-4" />
+              {stoppingXmlTask ? "Stopping…" : "Stop XML workflow"}
             </Button>
           ) : null}
         </div>

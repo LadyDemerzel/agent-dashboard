@@ -1626,11 +1626,47 @@ function buildTimelineImageRuntimeXml(xml) {
         throw new Error(`Visual ${visualId} cannot contain both inline <image> and motion graphic definitions.`);
       }
       const imageId = normalizeInlineImageId(getXmlAttribute(inlineImage, "id"), visualId);
-      if ((legacyAssetXmlById.has(imageId) || inlineAssetXmlById.has(imageId)) && referenceToImage.get(imageId)?.firstVisualIndex !== visualIndex) {
+      const imageBody = Number.isInteger(inlineImage.openEnd) && Number.isInteger(inlineImage.closeStart)
+        ? xml.slice(inlineImage.openEnd, inlineImage.closeStart).trim()
+        : "";
+      const imageAttrs = { ...inlineImage.attributes, id: imageId };
+      const duplicateReference = referenceToImage.get(imageId);
+      const duplicateImageDefinedEarlier =
+        (legacyAssetXmlById.has(imageId) || inlineAssetXmlById.has(imageId)) &&
+        duplicateReference?.firstVisualIndex !== visualIndex;
+      const inlineImageOnlyNamesExistingAsset =
+        duplicateImageDefinedEarlier &&
+        duplicateReference?.imageId &&
+        duplicateReference.firstVisualIndex < visualIndex &&
+        !imageBody &&
+        !collapseWhitespace(getXmlAttribute(inlineImage, "basedOn"));
+
+      if (inlineImageOnlyNamesExistingAsset) {
+        visualAttrs.imageId = duplicateReference.imageId;
+        delete visualAttrs.reuseImageId;
+        delete visualAttrs.imageRef;
+
+        const visualBodyWithoutImage = xml
+          .slice(visual.openEnd, visual.closeStart ?? visual.openEnd)
+          .replace(getXmlElementOuterXml(xml, inlineImage), "")
+          .trim();
+        const visualAttrText = renderXmlAttributes(visualAttrs);
+        visualReplacements.push({
+          start: visual.start,
+          end: visual.end,
+          value: visualBodyWithoutImage
+            ? `<visual ${visualAttrText}>\n${visualBodyWithoutImage}\n    </visual>`
+            : `<visual ${visualAttrText} />`,
+        });
+        visuals.push({ index: visualIndex, visualId, imageId: duplicateReference.imageId });
+        transformed = true;
+        continue;
+      }
+
+      if (duplicateImageDefinedEarlier) {
         throw new Error(`Inline image id "${imageId}" is defined more than once. Use imageId="${imageId}" on later visuals to reuse it.`);
       }
 
-      const imageAttrs = { ...inlineImage.attributes, id: imageId };
       const basedOnRaw = getXmlAttribute(inlineImage, "basedOn");
       if (basedOnRaw) {
         const parent = referenceToImage.get(basedOnRaw);
@@ -1644,9 +1680,6 @@ function buildTimelineImageRuntimeXml(xml) {
         assetDependencies.set(imageId, undefined);
       }
 
-      const imageBody = Number.isInteger(inlineImage.openEnd) && Number.isInteger(inlineImage.closeStart)
-        ? xml.slice(inlineImage.openEnd, inlineImage.closeStart).trim()
-        : "";
       const renderedAttrs = renderXmlAttributes(imageAttrs);
       inlineAssetXmlById.set(imageId, `<image ${renderedAttrs}>${imageBody ? `\n${imageBody}\n    ` : ""}</image>`);
       referenceToImage.set(imageId, { imageId, firstVisualIndex: visualIndex });

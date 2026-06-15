@@ -44,6 +44,27 @@ function runExpansion(xml, indexes) {
   }
 }
 
+function runTimelineRuntimeTransform(xml) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "short-form-timeline-runtime-"));
+  const xmlPath = path.join(dir, "visuals.xml");
+  fs.writeFileSync(xmlPath, xml, "utf-8");
+
+  try {
+    const result = spawnSync(process.execPath, [workerPath, xmlPath], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        SHORT_FORM_STAGE_WORKER_TIMELINE_IMAGE_RUNTIME_TEST: "1",
+      },
+      encoding: "utf-8",
+    });
+    assert(result.status === 0, `timeline image runtime transform failed: ${result.stderr || result.stdout}`);
+    return JSON.parse(result.stdout.trim());
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 assert(
   workflowRouteSource.includes('if (stage === "scene-images" && project.autoRun?.status === "active")') &&
     workflowRouteSource.includes("stopShortFormAutoRun(id);"),
@@ -118,5 +139,26 @@ assert(
   `timeline inline image expansion should include reuse and recursive descendants, got ${JSON.stringify(timelineParentExpansion)}`,
 );
 assert(!timelineParentExpansion.includes(5), "timeline inline sibling visual must not be reset by parent rerender");
+
+const duplicateEmptyInlineReuse = runTimelineRuntimeTransform(`
+<video version="2">
+  <timeline>
+    <visual id="source-visual">
+      <image id="shared-img" characterDriven="false"><prompt>Source prompt</prompt></image>
+    </visual>
+    <visual id="reuse-visual">
+      <image id="shared-img" characterDriven="false" />
+    </visual>
+  </timeline>
+</video>
+`);
+assert(
+  duplicateEmptyInlineReuse.xml.includes('<visual id="reuse-visual" imageId="shared-img" />'),
+  "empty later inline image with an existing id should be normalized to imageId reuse.",
+);
+assert(
+  duplicateEmptyInlineReuse.xml.match(/<image id="shared-img"/g)?.length === 1,
+  "runtime XML should keep only the first real shared-img image asset.",
+);
 
 console.log("Short-form visual dependency rerender verification passed.");

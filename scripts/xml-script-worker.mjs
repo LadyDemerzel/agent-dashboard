@@ -58,7 +58,6 @@ const DEFAULT_VOICE_SELECTION = {
   previewText: DEFAULT_VOICE_REFERENCE_TEXT,
 };
 const DEFAULT_QWEN_VOICE_DESIGN_WARMUP_TEXT = "Hi there. Ready when you are.";
-const DEFAULT_QWEN_VOICE_DESIGN_MAX_CHARS = 1200;
 // Qwen voice-clone on Apple Silicon/MPS reliably handles short chunks. Large
 // one-shot clone generations can spend minutes in pre-generation and exit 70.
 const DEFAULT_QWEN_VOICE_CLONE_MAX_CHARS = 260;

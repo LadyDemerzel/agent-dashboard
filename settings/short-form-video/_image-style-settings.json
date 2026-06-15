@@ -1,6 +1,6 @@
 {
   "defaultVisualGenerationModelId": "openclaw-gpt-image-2",
-  "defaultStyleId": "new-style-4-1775227624029",
+  "defaultStyleId": "new-style-3-1775170050853",
   "styles": [
     {
       "id": "default-charcoal",
@@ -46,10 +46,10 @@
       "testImagePrompt": "Single full-frame side-profile portrait in a dark studio, subtle posture cue through neck alignment, natural negative space near the top.",
       "references": [],
       "lastTestImage": {
-        "runId": "fec7e9e9-51dc-4b29-beaa-6fbac4e9d13d",
-        "updatedAt": "2026-05-27T00:06:29.254Z",
-        "cleanRelativePath": "fec7e9e9-51dc-4b29-beaa-6fbac4e9d13d/output/scene-01-uncaptioned-1080x1920.png",
-        "previewRelativePath": "fec7e9e9-51dc-4b29-beaa-6fbac4e9d13d/output/scene-01-captioned-1080x1920.png"
+        "runId": "3191a519-f5e5-44db-9216-0aa13c3da3f2",
+        "updatedAt": "2026-06-12T02:14:24.309Z",
+        "cleanRelativePath": "3191a519-f5e5-44db-9216-0aa13c3da3f2/output/scene-01-uncaptioned-1080x1920.png",
+        "previewRelativePath": "3191a519-f5e5-44db-9216-0aa13c3da3f2/output/scene-01-captioned-1080x1920.png"
       }
     },
     {

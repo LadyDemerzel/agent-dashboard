@@ -11,7 +11,17 @@ import {
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
-import { ChevronDown, MoreVertical, Pencil, Search, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  Pause,
+  Play,
+  MoreVertical,
+  Pencil,
+  Search,
+  Trash2,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { RefreshIconButton } from "@/components/RefreshIconButton";
 import { Button } from "@/components/ui/button";
@@ -2587,391 +2597,403 @@ function formatSecondsLabel(value?: number) {
   return `${value < 1 ? value.toFixed(3) : value.toFixed(2)}s`;
 }
 
-function snapWaveformRatio(
-  rawRatio: number,
-  peaks: number[],
-  searchRadius: number,
-) {
-  const maxIndex = peaks.length - 1;
-  if (maxIndex <= 0) return clampNumber(rawRatio, 0, 1);
-
-  const targetIndex = clampNumber(rawRatio * maxIndex, 0, maxIndex);
-  let bestIndex = Math.round(targetIndex);
-  let bestScore = -Infinity;
-
-  for (let offset = -searchRadius; offset <= searchRadius; offset += 1) {
-    const candidateIndex = clampNumber(
-      Math.round(targetIndex + offset),
-      0,
-      maxIndex,
-    );
-    const peak = peaks[candidateIndex] ?? 0;
-    const distance = Math.abs(candidateIndex - targetIndex);
-    const score = peak * 1.25 - distance * 0.16;
-    if (score > bestScore) {
-      bestScore = score;
-      bestIndex = candidateIndex;
-    }
-  }
-
-  return bestIndex / maxIndex;
+function buildPlaceholderWaveformPeaks(count: number) {
+  return Array.from({ length: count }, (_, index) => {
+    const phase = index / Math.max(1, count - 1);
+    const carrier = Math.sin(phase * Math.PI * 8) * 0.22;
+    const texture = Math.sin(phase * Math.PI * 29) * 0.08;
+    return clampNumber(0.34 + carrier + texture, 0.08, 0.72);
+  });
 }
 
-function WaveformPreview({
+function buildAudioBufferPeaks(buffer: AudioBuffer, bucketCount: number) {
+  const safeBucketCount = Math.max(32, Math.min(512, Math.round(bucketCount)));
+  const peaks = Array.from({ length: safeBucketCount }, () => 0);
+  const channelCount = Math.max(1, buffer.numberOfChannels);
+  const samplesPerBucket = Math.max(1, Math.floor(buffer.length / safeBucketCount));
+
+  for (let bucketIndex = 0; bucketIndex < safeBucketCount; bucketIndex += 1) {
+    const start = bucketIndex * samplesPerBucket;
+    const end =
+      bucketIndex === safeBucketCount - 1
+        ? buffer.length
+        : Math.min(buffer.length, start + samplesPerBucket);
+    let peak = 0;
+    for (let channelIndex = 0; channelIndex < channelCount; channelIndex += 1) {
+      const data = buffer.getChannelData(channelIndex);
+      for (let sampleIndex = start; sampleIndex < end; sampleIndex += 1) {
+        const sample = Math.abs(data[sampleIndex] || 0);
+        if (sample > peak) peak = sample;
+      }
+    }
+    peaks[bucketIndex] = Math.round(clampNumber(peak, 0, 1) * 1000) / 1000;
+  }
+
+  return peaks;
+}
+
+function AudioWaveformPlayer({
+  audioUrl,
   peaks,
-  anchorRatio,
   durationSeconds,
-  timingType,
-  currentTimeSeconds,
-  onSeekAudio,
+  anchorRatio,
+  showAnchor = false,
+  compact = false,
   onAnchorChange,
 }: {
+  audioUrl: string;
   peaks?: number[];
-  anchorRatio?: number;
   durationSeconds?: number;
-  timingType?: SoundLibraryEntry["timingType"];
-  currentTimeSeconds?: number;
-  onSeekAudio?: (seconds: number) => void;
+  anchorRatio?: number;
+  showAnchor?: boolean;
+  compact?: boolean;
   onAnchorChange?: (ratio: number) => void;
 }) {
-  const activePointerScopeRef = useRef<"overview" | "detail" | null>(null);
-  const safeRatio = clampNumber(
+  const playerRef = useRef<HTMLDivElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const draggingRef = useRef(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [loadedDuration, setLoadedDuration] = useState(
+    typeof durationSeconds === "number" && durationSeconds > 0
+      ? durationSeconds
+      : 0,
+  );
+  const [zoom, setZoom] = useState(1);
+  const [decodedPeaks, setDecodedPeaks] = useState<{
+    audioUrl: string;
+    peaks: number[];
+  } | null>(null);
+
+  useEffect(() => {
+    if (peaks && peaks.length > 0) return;
+    let cancelled = false;
+    async function decodePeaks() {
+      try {
+        const response = await fetch(audioUrl);
+        if (!response.ok) return;
+        const arrayBuffer = await response.arrayBuffer();
+        const AudioContextClass =
+          window.AudioContext ||
+          (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+            .webkitAudioContext;
+        if (!AudioContextClass) return;
+        const audioContext = new AudioContextClass();
+        const buffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+        await audioContext.close().catch(() => undefined);
+        if (cancelled) return;
+        setLoadedDuration((current) => current || buffer.duration || 0);
+        setDecodedPeaks({
+          audioUrl,
+          peaks: buildAudioBufferPeaks(buffer, compact ? 128 : 256),
+        });
+      } catch {
+        if (!cancelled) setDecodedPeaks(null);
+      }
+    }
+    void decodePeaks();
+    return () => {
+      cancelled = true;
+    };
+  }, [audioUrl, compact, peaks]);
+
+  const duration =
+    loadedDuration ||
+    (typeof durationSeconds === "number" && durationSeconds > 0
+      ? durationSeconds
+      : 0);
+  const decodedWaveformPeaks =
+    decodedPeaks?.audioUrl === audioUrl ? decodedPeaks.peaks : null;
+  const waveformPeaks =
+    peaks && peaks.length > 0
+      ? peaks
+      : decodedWaveformPeaks && decodedWaveformPeaks.length > 0
+        ? decodedWaveformPeaks
+        : buildPlaceholderWaveformPeaks(compact ? 96 : 192);
+  const safeCurrentRatio =
+    duration > 0 ? clampNumber(currentTime / duration, 0, 1) : 0;
+  const safeAnchorRatio = clampNumber(
     typeof anchorRatio === "number" && Number.isFinite(anchorRatio)
       ? anchorRatio
       : 0,
     0,
     1,
   );
-  const hasRealWaveform = Boolean(peaks && peaks.length > 0);
-  const bars = hasRealWaveform
-    ? peaks!.slice(0, 240)
-    : Array.from({ length: 240 }, () => 0.18);
-  const maxBarIndex = Math.max(1, bars.length - 1);
-  const anchorIndex = Math.round(safeRatio * maxBarIndex);
-  const anchorSeconds =
-    typeof durationSeconds === "number" && Number.isFinite(durationSeconds)
-      ? clampNumber(durationSeconds * safeRatio, 0, durationSeconds)
-      : undefined;
-  const playheadRatio =
-    typeof durationSeconds === "number" &&
-    durationSeconds > 0 &&
-    typeof currentTimeSeconds === "number" &&
-    Number.isFinite(currentTimeSeconds)
-      ? clampNumber(currentTimeSeconds / durationSeconds, 0, 1)
-      : undefined;
-  const playheadIndex =
-    typeof playheadRatio === "number"
-      ? Math.round(playheadRatio * maxBarIndex)
-      : null;
-  const detailBarCount = Math.min(40, bars.length);
-  const detailStartIndex = clampNumber(
-    anchorIndex - Math.floor(detailBarCount / 2),
+  const visibleRatio = 1 / zoom;
+  const viewStartRatio = clampNumber(
+    safeCurrentRatio - visibleRatio / 2,
     0,
-    Math.max(0, bars.length - detailBarCount),
+    Math.max(0, 1 - visibleRatio),
   );
-  const detailBars = bars.slice(
-    detailStartIndex,
-    detailStartIndex + detailBarCount,
+  const viewEndRatio = clampNumber(viewStartRatio + visibleRatio, 0, 1);
+  const startIndex = Math.floor(viewStartRatio * waveformPeaks.length);
+  const endIndex = Math.max(
+    startIndex + 2,
+    Math.ceil(viewEndRatio * waveformPeaks.length),
   );
-  const fineNudgeRatio =
-    typeof durationSeconds === "number" && durationSeconds > 0
-      ? 0.005 / durationSeconds
-      : 0.005;
-  const coarseNudgeRatio =
-    typeof durationSeconds === "number" && durationSeconds > 0
-      ? 0.025 / durationSeconds
-      : 0.025;
+  const visiblePeaks = waveformPeaks.slice(startIndex, endIndex);
 
-  function commitAnchor(nextRatio: number, scope: "overview" | "detail") {
-    if (!onAnchorChange) return;
-    const clamped = clampNumber(nextRatio, 0, 1);
-    const snapped =
-      hasRealWaveform && timingType === "point"
-        ? snapWaveformRatio(clamped, bars, scope === "detail" ? 2 : 5)
-        : clamped;
-    onAnchorChange(Number(snapped.toFixed(3)));
-  }
-
-  function resolvePointerRatio(
-    event: React.PointerEvent<HTMLButtonElement>,
-    scope: "overview" | "detail",
-  ) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    if (rect.width <= 0) return null;
-    const pointerRatio = clampNumber(
-      (event.clientX - rect.left) / rect.width,
-      0,
-      1,
-    );
-    if (scope === "overview" || detailBars.length <= 1) {
-      return pointerRatio;
+  function seekToRatio(ratio: number) {
+    const nextRatio = clampNumber(ratio, 0, 1);
+    const nextTime = duration > 0 ? nextRatio * duration : 0;
+    if (audioRef.current && duration > 0) {
+      audioRef.current.currentTime = nextTime;
     }
-    return (
-      (detailStartIndex + pointerRatio * (detailBars.length - 1)) / maxBarIndex
+    setCurrentTime(nextTime);
+  }
+
+  function resolvePointerRatio(event: React.PointerEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return safeCurrentRatio;
+    const localRatio = clampNumber((event.clientX - rect.left) / rect.width, 0, 1);
+    return viewStartRatio + localRatio * (viewEndRatio - viewStartRatio);
+  }
+
+  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    event.stopPropagation();
+    draggingRef.current = true;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    seekToRatio(resolvePointerRatio(event));
+  }
+
+  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (!draggingRef.current || (event.buttons & 1) === 0) return;
+    event.stopPropagation();
+    seekToRatio(resolvePointerRatio(event));
+  }
+
+  function handlePointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    draggingRef.current = false;
+    event.stopPropagation();
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  const updateZoom = useCallback((nextZoom: number | ((currentZoom: number) => number)) => {
+    setZoom((currentZoom) =>
+      clampNumber(
+        typeof nextZoom === "function" ? nextZoom(currentZoom) : nextZoom,
+        1,
+        10,
+      ),
     );
-  }
+  }, []);
 
-  function handlePointerDown(scope: "overview" | "detail") {
-    return (event: React.PointerEvent<HTMLButtonElement>) => {
-      if (!onAnchorChange) return;
-      activePointerScopeRef.current = scope;
-      event.currentTarget.setPointerCapture(event.pointerId);
-      const nextRatio = resolvePointerRatio(event, scope);
-      if (nextRatio !== null) {
-        commitAnchor(nextRatio, scope);
-      }
+  useEffect(() => {
+    const element = playerRef.current;
+    if (!element) return;
+    let lastGestureScale = 1;
+
+    function getGestureScale(event: Event) {
+      const scale = (event as Event & { scale?: unknown }).scale;
+      return typeof scale === "number" && Number.isFinite(scale) ? scale : null;
+    }
+
+    function handleWheel(event: WheelEvent) {
+      if (!event.metaKey && !event.ctrlKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      updateZoom((currentZoom) => currentZoom + (event.deltaY < 0 ? 0.5 : -0.5));
+    }
+
+    function handleGestureStart(event: Event) {
+      event.preventDefault();
+      event.stopPropagation();
+      lastGestureScale = getGestureScale(event) || 1;
+    }
+
+    function handleGestureChange(event: Event) {
+      event.preventDefault();
+      event.stopPropagation();
+      const scale = getGestureScale(event);
+      if (!scale) return;
+      const delta = scale - lastGestureScale;
+      if (Math.abs(delta) < 0.03) return;
+      updateZoom((currentZoom) => currentZoom + (delta > 0 ? 0.35 : -0.35));
+      lastGestureScale = scale;
+    }
+
+    function handleGestureEnd(event: Event) {
+      event.preventDefault();
+      event.stopPropagation();
+      lastGestureScale = 1;
+    }
+
+    element.addEventListener("wheel", handleWheel, { passive: false });
+    element.addEventListener("gesturestart", handleGestureStart, { passive: false });
+    element.addEventListener("gesturechange", handleGestureChange, { passive: false });
+    element.addEventListener("gestureend", handleGestureEnd, { passive: false });
+
+    return () => {
+      element.removeEventListener("wheel", handleWheel);
+      element.removeEventListener("gesturestart", handleGestureStart);
+      element.removeEventListener("gesturechange", handleGestureChange);
+      element.removeEventListener("gestureend", handleGestureEnd);
     };
+  }, [updateZoom]);
+
+  async function togglePlayback(event: React.MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation();
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      await audio.play().catch(() => undefined);
+    } else {
+      audio.pause();
+    }
   }
 
-  function handlePointerMove(scope: "overview" | "detail") {
-    return (event: React.PointerEvent<HTMLButtonElement>) => {
-      if (
-        !onAnchorChange ||
-        activePointerScopeRef.current !== scope ||
-        (event.buttons & 1) === 0
-      )
-        return;
-      const nextRatio = resolvePointerRatio(event, scope);
-      if (nextRatio !== null) {
-        commitAnchor(nextRatio, scope);
-      }
-    };
-  }
+  const anchorLeft =
+    showAnchor && safeAnchorRatio >= viewStartRatio && safeAnchorRatio <= viewEndRatio
+      ? ((safeAnchorRatio - viewStartRatio) / (viewEndRatio - viewStartRatio)) * 100
+      : null;
+  const playheadLeft =
+    ((safeCurrentRatio - viewStartRatio) / (viewEndRatio - viewStartRatio)) * 100;
 
-  function handlePointerUp(scope: "overview" | "detail") {
-    return (event: React.PointerEvent<HTMLButtonElement>) => {
-      if (activePointerScopeRef.current === scope) {
-        activePointerScopeRef.current = null;
-      }
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }
-    };
-  }
-
-  function renderWaveformTrack(
-    trackBars: number[],
-    scope: "overview" | "detail",
-    startIndex: number,
-    label: string,
-    helper: string,
-    heightClassName: string,
-  ) {
-    const trackIndexCount = Math.max(1, trackBars.length - 1);
-    const anchorLeft = clampNumber(
-      (anchorIndex - startIndex) / trackIndexCount,
-      0,
-      1,
-    );
-    const playheadLeft =
-      playheadIndex === null
-        ? null
-        : clampNumber((playheadIndex - startIndex) / trackIndexCount, 0, 1);
-
-    return (
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
-          <span>{label}</span>
-          <span className="normal-case tracking-normal">{helper}</span>
-        </div>
-        <button
+  return (
+    <div
+      ref={playerRef}
+      className={cn(
+        "space-y-2 rounded-lg border border-border bg-background/70 p-2",
+        compact ? "mt-2" : "p-3",
+      )}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <audio
+        ref={audioRef}
+        src={audioUrl}
+        preload="metadata"
+        onLoadedMetadata={(event) => {
+          const nextDuration = event.currentTarget.duration;
+          if (Number.isFinite(nextDuration) && nextDuration > 0) {
+            setLoadedDuration(nextDuration);
+          }
+          setCurrentTime(event.currentTarget.currentTime || 0);
+        }}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => setIsPlaying(false)}
+        onTimeUpdate={(event) =>
+          setCurrentTime(event.currentTarget.currentTime || 0)
+        }
+      />
+      <div className="flex items-center gap-2">
+        <Button
           type="button"
-          onPointerDown={handlePointerDown(scope)}
-          onPointerMove={handlePointerMove(scope)}
-          onPointerUp={handlePointerUp(scope)}
-          onPointerCancel={handlePointerUp(scope)}
-          className={`relative flex w-full touch-none select-none items-end gap-px overflow-hidden rounded-lg border px-2 py-2 text-left ${heightClassName} ${onAnchorChange ? "cursor-ew-resize border-cyan-400/30 bg-background/80 hover:border-cyan-300/50" : "border-border bg-background/70"}`}
+          variant="ghost"
+          size="icon"
+          className={compact ? "h-7 w-7" : "h-8 w-8"}
+          onClick={togglePlayback}
+          aria-label={isPlaying ? "Pause audio" : "Play audio"}
         >
-          {trackBars.map((peak, index) => (
+          {isPlaying ? (
+            <Pause aria-hidden="true" className="h-4 w-4" />
+          ) : (
+            <Play aria-hidden="true" className="h-4 w-4" />
+          )}
+        </Button>
+        <div
+          role="slider"
+          aria-label="Audio waveform playhead"
+          aria-valuemin={0}
+          aria-valuemax={duration || 0}
+          aria-valuenow={currentTime}
+          tabIndex={0}
+          className={cn(
+            "relative flex flex-1 touch-none select-none items-end gap-px overflow-hidden rounded-md border border-border/80 bg-background px-2 py-1.5 outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            compact ? "h-12" : "h-20",
+          )}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft") {
+              event.preventDefault();
+              seekToRatio(
+                duration > 0 ? (currentTime - (event.shiftKey ? 1 : 0.1)) / duration : 0,
+              );
+            } else if (event.key === "ArrowRight") {
+              event.preventDefault();
+              seekToRatio(
+                duration > 0 ? (currentTime + (event.shiftKey ? 1 : 0.1)) / duration : 0,
+              );
+            }
+          }}
+        >
+          {visiblePeaks.map((peak, index) => (
             <div
-              key={`${scope}-${startIndex + index}-${peak}`}
-              className="flex-1 rounded-sm bg-cyan-400/70"
+              key={`${startIndex}-${index}-${peak}`}
+              className="flex-1 rounded-sm bg-cyan-400/75"
               style={{
-                height: `${Math.max(scope === "detail" ? 14 : 8, Math.round(Math.max(0.05, peak) * 100))}%`,
+                height: `${Math.max(10, Math.round(Math.max(0.04, peak) * 100))}%`,
               }}
             />
           ))}
-          {playheadLeft !== null ? (
+          {anchorLeft !== null ? (
             <div
-              className="pointer-events-none absolute inset-y-1 w-px bg-fuchsia-300/80"
-              style={{ left: `calc(${playheadLeft * 100}% - 0.5px)` }}
+              className="pointer-events-none absolute inset-y-1 w-0.5 bg-amber-300"
+              style={{ left: `calc(${anchorLeft}% - 1px)` }}
             />
           ) : null}
-          {onAnchorChange ? (
-            <>
-              <div
-                className="pointer-events-none absolute inset-y-1 w-0.5 bg-amber-300"
-                style={{ left: `calc(${anchorLeft * 100}% - 1px)` }}
-              />
-              <div
-                className="pointer-events-none absolute top-1 -translate-x-1/2 rounded bg-amber-300/20 px-2 py-0.5 text-[10px] font-medium text-amber-100"
-                style={{ left: `${anchorLeft * 100}%` }}
-              >
-                Anchor
-              </div>
-            </>
-          ) : null}
-        </button>
+          <div
+            className="pointer-events-none absolute inset-y-1 w-px bg-fuchsia-300"
+            style={{ left: `calc(${clampNumber(playheadLeft, 0, 100)}% - 0.5px)` }}
+          />
+        </div>
       </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {renderWaveformTrack(
-        bars,
-        "overview",
-        0,
-        "Overview",
-        hasRealWaveform && timingType === "point"
-          ? "Drag anywhere, point sounds snap to nearby peaks."
-          : "Drag or click to place the source sync point.",
-        "h-20",
-      )}
-      {hasRealWaveform
-        ? renderWaveformTrack(
-            detailBars,
-            "detail",
-            detailStartIndex,
-            "Fine trim",
-            "Zoomed around the current sync point for tighter placement.",
-            "h-24",
-          )
-        : null}
-      {onAnchorChange ? (
-        <div className="space-y-2 rounded-lg border border-border/70 bg-background/50 p-3 text-xs text-muted-foreground">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span>
-              Anchor position:{" "}
-              <span className="font-medium text-foreground">
-                {Math.round(safeRatio * 100)}%
-              </span>
-              {typeof anchorSeconds === "number" ? (
-                <span> ({formatSecondsLabel(anchorSeconds)})</span>
-              ) : null}
-              {typeof playheadRatio === "number" ? (
-                <span>
-                  {" "}
-                  · playhead {formatSecondsLabel(currentTimeSeconds)}
-                </span>
-              ) : null}
-            </span>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  commitAnchor(safeRatio - coarseNudgeRatio, "detail")
-                }
-              >
-                -25ms
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  commitAnchor(safeRatio - fineNudgeRatio, "detail")
-                }
-              >
-                -5ms
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  commitAnchor(safeRatio + fineNudgeRatio, "detail")
-                }
-              >
-                +5ms
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  commitAnchor(safeRatio + coarseNudgeRatio, "detail")
-                }
-              >
-                +25ms
-              </Button>
-              {typeof durationSeconds === "number" && durationSeconds > 0 ? (
-                <Input
-                  type="number"
-                  min={0}
-                  max={durationSeconds}
-                  step={0.01}
-                  value={
-                    typeof anchorSeconds === "number"
-                      ? anchorSeconds.toFixed(3)
-                      : ""
-                  }
-                  onChange={(event) => {
-                    const nextSeconds = Number(event.target.value);
-                    if (!Number.isFinite(nextSeconds)) return;
-                    commitAnchor(nextSeconds / durationSeconds, "detail");
-                  }}
-                  className="h-8 w-24 text-xs"
-                />
-              ) : null}
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+        <span>
+          {formatSecondsLabel(currentTime)}
+          {duration > 0 ? ` / ${formatSecondsLabel(duration)}` : ""}
+          {showAnchor && duration > 0
+            ? ` · anchor ${formatSecondsLabel(duration * safeAnchorRatio)}`
+            : ""}
+        </span>
+        <div className="flex items-center gap-1">
+          {showAnchor && onAnchorChange && duration > 0 ? (
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => commitAnchor(0, "overview")}
+              onClick={(event) => {
+                event.stopPropagation();
+                onAnchorChange(Number(safeCurrentRatio.toFixed(3)));
+              }}
             >
-              Start
+              Set anchor at playhead
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => commitAnchor(0.5, "overview")}
-            >
-              Middle
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => commitAnchor(1, "overview")}
-            >
-              End
-            </Button>
-            {typeof playheadRatio === "number" ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => commitAnchor(playheadRatio, "detail")}
-              >
-                Set from playhead
-              </Button>
-            ) : null}
-            {typeof anchorSeconds === "number" && onSeekAudio ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => onSeekAudio(anchorSeconds)}
-              >
-                Preview sync point
-              </Button>
-            ) : null}
-          </div>
+          ) : null}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={(event) => {
+              event.stopPropagation();
+              updateZoom(zoom - 0.5);
+            }}
+            aria-label="Zoom waveform out"
+          >
+            <ZoomOut aria-hidden="true" className="h-3.5 w-3.5" />
+          </Button>
+          <span className="w-10 text-center tabular-nums">{zoom.toFixed(1)}x</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={(event) => {
+              event.stopPropagation();
+              updateZoom(zoom + 0.5);
+            }}
+            aria-label="Zoom waveform in"
+          >
+            <ZoomIn aria-hidden="true" className="h-3.5 w-3.5" />
+          </Button>
         </div>
-      ) : null}
-      {!hasRealWaveform ? (
-        <div className="text-xs text-muted-foreground">
-          Waveform peaks are unavailable for this asset, so the editor is
-          showing a simplified placeholder track.
-        </div>
-      ) : null}
+      </div>
     </div>
   );
 }
@@ -4344,8 +4366,6 @@ export function ShortFormVideoSettingsView({
   const [soundUploadsById, setSoundUploadsById] = useState<
     Record<string, SoundUploadState>
   >({});
-  const selectedSoundAudioRef = useRef<HTMLAudioElement | null>(null);
-  const [selectedSoundAudioTime, setSelectedSoundAudioTime] = useState(0);
   const [sectionFeedback, setSectionFeedback] = useState<
     Record<SettingsSectionId, SectionFeedback>
   >(createEmptySectionFeedback());
@@ -5382,12 +5402,6 @@ export function ShortFormVideoSettingsView({
     );
   }, [selectedSound]);
 
-  useEffect(() => {
-    setSelectedSoundAudioTime(0);
-    if (selectedSoundAudioRef.current) {
-      selectedSoundAudioRef.current.currentTime = 0;
-    }
-  }, [savedSoundAudioUrl, selectedSound?.id]);
   const selectedStyleTest = selectedStyle
     ? styleTestsById[selectedStyle.id]
     : undefined;
@@ -5477,21 +5491,6 @@ export function ShortFormVideoSettingsView({
       reusedExisting: null,
     });
   }, [selectedMusicId]);
-
-  function seekSelectedSoundAudio(nextTimeSeconds: number) {
-    const audio = selectedSoundAudioRef.current;
-    if (!audio) return;
-    const maxTime =
-      Number.isFinite(audio.duration) && audio.duration > 0
-        ? audio.duration
-        : typeof selectedSound?.durationSeconds === "number" &&
-            selectedSound.durationSeconds > 0
-          ? selectedSound.durationSeconds
-          : nextTimeSeconds;
-    const clampedTime = clampNumber(nextTimeSeconds, 0, maxTime);
-    audio.currentTime = clampedTime;
-    setSelectedSoundAudioTime(clampedTime);
-  }
 
   const dirtyBySection = useMemo<Record<SettingsSectionId, boolean>>(() => {
     const imageTemplateDirty =
@@ -5871,7 +5870,6 @@ export function ShortFormVideoSettingsView({
                 <Input
                   type="number"
                   min={1}
-                  max={8}
                   value={textScriptSettings.defaultMaxIterations}
                   onChange={(event) => {
                     updateSectionFeedbackState("text-script-prompts", {
@@ -5880,10 +5878,7 @@ export function ShortFormVideoSettingsView({
                     });
                     setTextScriptSettings({
                       ...textScriptSettings,
-                      defaultMaxIterations: Math.max(
-                        1,
-                        Math.min(8, Number(event.target.value) || 1),
-                      ),
+                      defaultMaxIterations: Math.max(1, Number(event.target.value) || 1),
                     });
                   }}
                   className="max-w-xs"
@@ -6646,20 +6641,29 @@ export function ShortFormVideoSettingsView({
 		                              ? cacheBust
 		                              : undefined,
 		                          );
-		                        return (
-		                          <button
-	                            key={sound.id}
-	                            type="button"
-	                            data-audio-asset-id={sound.id}
-	                            data-audio-asset-kind="sfx"
-	                            onClick={() => {
-	                              setPendingAudioLibrarySelection({
-	                                kind: "sfx",
-	                                id: sound.id,
-	                              });
-	                            }}
-	                            className={`w-full cursor-pointer rounded-lg border px-3 py-3 text-left transition active:scale-[0.997] active:bg-primary/15 ${selected ? "border-primary/70 bg-primary/15 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/50 hover:bg-primary/5 hover:shadow-sm"}`}
-	                          >
+			                        return (
+			                          <div
+		                            key={sound.id}
+		                            role="button"
+		                            tabIndex={0}
+		                            data-audio-asset-id={sound.id}
+		                            data-audio-asset-kind="sfx"
+		                            onClick={() => {
+		                              setPendingAudioLibrarySelection({
+		                                kind: "sfx",
+		                                id: sound.id,
+		                              });
+		                            }}
+		                            onKeyDown={(event) => {
+		                              if (event.key !== "Enter" && event.key !== " ") return;
+		                              event.preventDefault();
+		                              setPendingAudioLibrarySelection({
+		                                kind: "sfx",
+		                                id: sound.id,
+		                              });
+		                            }}
+		                            className={`w-full cursor-pointer rounded-lg border px-3 py-3 text-left transition active:scale-[0.997] active:bg-primary/15 ${selected ? "border-primary/70 bg-primary/15 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/50 hover:bg-primary/5 hover:shadow-sm"}`}
+		                          >
 	                            <div className="flex items-start justify-between gap-3">
 	                              <div className="min-w-0">
 	                                <div className="truncate text-sm font-medium text-foreground">
@@ -6689,20 +6693,17 @@ export function ShortFormVideoSettingsView({
 	                                ))}
 		                              </div>
 		                            ) : null}
-		                            {audioUrl ? (
-		                              <audio
-		                                controls
-		                                preload="none"
-		                                className="mt-2 w-full"
-		                                src={audioUrl}
-		                                onClick={(event) =>
-		                                  event.stopPropagation()
-		                                }
-		                              />
-		                            ) : null}
-		                          </button>
-		                        );
-	                      })}
+			                            {audioUrl ? (
+			                              <AudioWaveformPlayer
+			                                audioUrl={audioUrl}
+			                                peaks={sound.waveformPeaks}
+			                                durationSeconds={sound.durationSeconds}
+			                                compact
+			                              />
+			                            ) : null}
+			                          </div>
+			                        );
+		                      })}
 	                      {filteredMusicLibrary.length > 0 ? (
 	                        <>
 	                          {filteredMusicLibrary.map((track) => {
@@ -6724,20 +6725,29 @@ export function ShortFormVideoSettingsView({
                               track.durationSeconds ||
                               track.generatedDurationSeconds ||
                               undefined;
-                            return (
-                              <button
-                                key={track.id}
-                                type="button"
-                                data-audio-asset-id={track.id}
-                                data-audio-asset-kind="music"
-                                onClick={() => {
-                                  setPendingAudioLibrarySelection({
-                                    kind: "music",
-                                    id: track.id,
-                                  });
-                                }}
-                                className={`w-full cursor-pointer rounded-lg border px-3 py-3 text-left transition active:scale-[0.997] active:bg-primary/15 ${selected ? "border-primary/70 bg-primary/15 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/50 hover:bg-primary/5 hover:shadow-sm"}`}
-                              >
+	                            return (
+	                              <div
+	                                key={track.id}
+	                                role="button"
+	                                tabIndex={0}
+	                                data-audio-asset-id={track.id}
+	                                data-audio-asset-kind="music"
+	                                onClick={() => {
+	                                  setPendingAudioLibrarySelection({
+	                                    kind: "music",
+	                                    id: track.id,
+	                                  });
+	                                }}
+	                                onKeyDown={(event) => {
+	                                  if (event.key !== "Enter" && event.key !== " ") return;
+	                                  event.preventDefault();
+	                                  setPendingAudioLibrarySelection({
+	                                    kind: "music",
+	                                    id: track.id,
+	                                  });
+	                                }}
+	                                className={`w-full cursor-pointer rounded-lg border px-3 py-3 text-left transition active:scale-[0.997] active:bg-primary/15 ${selected ? "border-primary/70 bg-primary/15 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/50 hover:bg-primary/5 hover:shadow-sm"}`}
+	                              >
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="min-w-0">
                                     <div className="truncate text-sm font-medium text-foreground">
@@ -6768,18 +6778,7 @@ export function ShortFormVideoSettingsView({
                                     ) : null}
                                   </div>
                                 </div>
-                                {audioUrl ? (
-                                  <audio
-                                    controls
-                                    preload="none"
-                                    className="mt-2 w-full"
-                                    src={audioUrl}
-                                    onClick={(event) =>
-                                      event.stopPropagation()
-                                    }
-                                  />
-                                ) : null}
-                                <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+	                                <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
                                   {durationSeconds ? (
                                     <span className="rounded bg-muted/60 px-2 py-0.5 text-muted-foreground">
                                       {formatSecondsLabel(durationSeconds)}
@@ -6807,9 +6806,16 @@ export function ShortFormVideoSettingsView({
                                     >
                                       {tag}
                                     </span>
-                                  ))}
-                                </div>
-                                <div className="mt-2 line-clamp-2 text-[11px] text-muted-foreground">
+	                                  ))}
+	                                </div>
+	                                {audioUrl ? (
+	                                  <AudioWaveformPlayer
+	                                    audioUrl={audioUrl}
+	                                    durationSeconds={durationSeconds}
+	                                    compact
+	                                  />
+	                                ) : null}
+	                                <div className="mt-2 line-clamp-2 text-[11px] text-muted-foreground">
                                   {[
                                     track.emotionalArc,
                                     track.intensityCurve,
@@ -6821,8 +6827,8 @@ export function ShortFormVideoSettingsView({
                                     .filter(Boolean)
                                     .join(" · ") || "Saved music track"}
                                 </div>
-	                              </button>
-	                            );
+		                              </div>
+		                            );
 	                          })}
 	                        </>
 	                      ) : null}
@@ -7106,14 +7112,11 @@ export function ShortFormVideoSettingsView({
 
 	                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
 	                      <div className="flex flex-wrap items-start justify-between gap-3">
-	                        <div>
-	                          <h4 className="text-sm font-medium text-foreground">
-	                            Audio
-	                          </h4>
-	                          <p className="mt-1 text-xs text-muted-foreground">
-	                            Upload, preview, and document the saved source file for this SFX asset.
-	                          </p>
-	                        </div>
+		                        <div>
+		                          <h4 className="text-sm font-medium text-foreground">
+		                            Audio
+		                          </h4>
+		                        </div>
 	                        <div className="text-xs text-muted-foreground">
 	                          {selectedSound.durationSeconds
 	                            ? `${selectedSound.durationSeconds}s`
@@ -7150,10 +7153,26 @@ export function ShortFormVideoSettingsView({
 	                          />
 	                        </label>
 	                      </div>
-	                      <div className="grid gap-4 md:grid-cols-2">
-	                        <div className="space-y-2">
-	                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-	                            Source
+		                      <div className="grid gap-4 md:grid-cols-2">
+		                        <div className="space-y-2 md:col-span-2">
+		                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+		                            Audio file path
+		                          </label>
+		                          <Input
+		                            value={selectedSound.audioRelativePath || ""}
+		                            onChange={(event) =>
+		                              updateSelectedSound((sound) => ({
+		                                ...sound,
+		                                audioRelativePath:
+		                                  event.target.value || undefined,
+		                              }))
+		                            }
+		                            placeholder="relative path under _sound-library"
+		                          />
+		                        </div>
+		                        <div className="space-y-2">
+		                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+		                            Source
 	                          </label>
 	                          <Input
 	                            value={selectedSound.source || ""}
@@ -7188,63 +7207,21 @@ export function ShortFormVideoSettingsView({
 	                          message={selectedSoundUpload.error}
 	                        />
 	                      ) : null}
-	                      <div className="space-y-2">
-	                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-	                          <span className="font-medium uppercase tracking-wide text-muted-foreground">
-	                            Waveform sync point
-	                          </span>
-	                          <span className="text-muted-foreground">
-	                            {Math.round((selectedSound.anchorRatio || 0) * 100)}
-	                            %
-	                            {selectedSound.durationSeconds
-	                              ? ` · ${(selectedSound.durationSeconds * (selectedSound.anchorRatio || 0)).toFixed(2)}s`
-	                              : ""}
-	                          </span>
-	                        </div>
-	                        <WaveformPreview
-	                          peaks={selectedSound.waveformPeaks}
-	                          anchorRatio={selectedSound.anchorRatio}
-	                          durationSeconds={selectedSound.durationSeconds}
-	                          timingType={selectedSound.timingType}
-	                          currentTimeSeconds={selectedSoundAudioTime}
-	                          onSeekAudio={seekSelectedSoundAudio}
-	                          onAnchorChange={(ratio) =>
-	                            updateSelectedSound((sound) => ({
-	                              ...sound,
-	                              anchorRatio: Number(ratio.toFixed(3)),
-	                            }))
-	                          }
-	                        />
-	                        <p className="text-xs text-muted-foreground">
-	                          This source sync point gives the resolver a direct reference
-	                          point inside the source sound. Drag the marker to the
-	                          real transient or entry, then use the playhead and
-	                          fine-trim strip to tighten point-based assets.
-	                        </p>
-	                      </div>
-	                      {savedSoundAudioUrl ? (
-	                        <audio
-	                          ref={selectedSoundAudioRef}
-	                          controls
-	                          className="w-full"
-	                          src={savedSoundAudioUrl}
-	                          onLoadedMetadata={(event) =>
-	                            setSelectedSoundAudioTime(
-	                              event.currentTarget.currentTime || 0,
-	                            )
-	                          }
-	                          onTimeUpdate={(event) =>
-	                            setSelectedSoundAudioTime(
-	                              event.currentTarget.currentTime || 0,
-	                            )
-	                          }
-	                          onSeeked={(event) =>
-	                            setSelectedSoundAudioTime(
-	                              event.currentTarget.currentTime || 0,
-	                            )
-	                          }
-	                        />
-	                      ) : (
+		                      {savedSoundAudioUrl ? (
+		                        <AudioWaveformPlayer
+		                          audioUrl={savedSoundAudioUrl}
+		                          peaks={selectedSound.waveformPeaks}
+		                          durationSeconds={selectedSound.durationSeconds}
+		                          anchorRatio={selectedSound.anchorRatio}
+		                          showAnchor
+		                          onAnchorChange={(ratio) =>
+		                            updateSelectedSound((sound) => ({
+		                              ...sound,
+		                              anchorRatio: Number(ratio.toFixed(3)),
+		                            }))
+		                          }
+		                        />
+		                      ) : (
 	                        <div className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
 	                          No audio file saved yet. Upload one to make this
 	                          library entry usable in project Generate Sound Design
@@ -7649,16 +7626,11 @@ export function ShortFormVideoSettingsView({
 		                    </div>
 		                    <div className="space-y-3 rounded-lg border border-border bg-background/60 p-4">
 	                      <div className="flex flex-wrap items-start justify-between gap-3">
-	                        <div>
-                          <h4 className="text-sm font-medium text-foreground">
-                            Audio
-                          </h4>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {getMusicSourceType(selectedMusic) === "ai-generated"
-                              ? "Generate and preview the reusable AI soundtrack file for this music prompt."
-                              : "Preview uses the stored imported audio file path for this music asset."}
-                          </p>
-                        </div>
+		                        <div>
+	                          <h4 className="text-sm font-medium text-foreground">
+	                            Audio
+	                          </h4>
+	                        </div>
                         {getMusicSourceType(selectedMusic) === "ai-generated" ? (
                           <Button
                             type="button"
@@ -7709,10 +7681,10 @@ export function ShortFormVideoSettingsView({
 	                          </div>
 	                        </div>
 	                      ) : null}
-	                      <div className="grid gap-4 md:grid-cols-[1fr,160px]">
-	                        <div className="space-y-2">
-	                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            {getMusicSourceType(selectedMusic) === "ai-generated"
+		                      <div className="grid gap-4">
+		                        <div className="space-y-2">
+		                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+	                            {getMusicSourceType(selectedMusic) === "ai-generated"
                               ? "Generated audio file path"
                               : "Audio file path"}
                           </label>
@@ -7725,68 +7697,26 @@ export function ShortFormVideoSettingsView({
                                   event.target.value || undefined,
                               }))
                             }
-                            placeholder="relative path under _music-library"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            {getMusicSourceType(selectedMusic) === "ai-generated"
-                              ? "Preview duration"
-                              : "Duration"}
-                          </label>
-                          <Input
-                            type="number"
-                            min={getMusicSourceType(selectedMusic) === "ai-generated" ? 6 : 0}
-                            max={getMusicSourceType(selectedMusic) === "ai-generated" ? 30 : 1800}
-                            step={0.1}
-                            value={
-                              getMusicSourceType(selectedMusic) === "ai-generated"
-                                ? selectedMusic.previewDurationSeconds ||
-                                  selectedMusic.generatedDurationSeconds ||
-                                  ""
-                                : selectedMusic.durationSeconds ||
-                                  selectedMusic.generatedDurationSeconds ||
-                                  ""
-                            }
-                            onChange={(event) =>
-                              updateSelectedMusic((track) => ({
-                                ...track,
-                                ...(getMusicSourceType(track) === "ai-generated"
-                                  ? {
-                                      previewDurationSeconds:
-                                        event.target.value === ""
-                                          ? undefined
-                                          : Math.max(
-                                              6,
-                                              Math.min(
-                                                30,
-                                                Number(event.target.value) || 0,
-                                              ),
-                                            ),
-                                    }
-                                  : {
-                                      durationSeconds:
-                                        event.target.value === ""
-                                          ? undefined
-                                          : Math.max(
-                                              0,
-                                              Number(event.target.value) || 0,
-                                            ),
-                                    }),
-                              }))
-                            }
-                          />
-                        </div>
-                      </div>
-                      {musicPreview.error ? (
-                        <ValidationNotice
-                          title="Saved soundtrack failed"
-                          message={musicPreview.error}
-                        />
-                      ) : null}
-                      {savedMusicAudioUrl ? (
-                        <audio controls preload="none" className="w-full" src={savedMusicAudioUrl} />
-                      ) : (
+		                            placeholder="relative path under _music-library"
+		                          />
+		                        </div>
+	                      </div>
+		                      {musicPreview.error ? (
+		                        <ValidationNotice
+		                          title="Saved soundtrack failed"
+		                          message={musicPreview.error}
+		                        />
+		                      ) : null}
+		                      {savedMusicAudioUrl ? (
+		                        <AudioWaveformPlayer
+		                          audioUrl={savedMusicAudioUrl}
+		                          durationSeconds={
+		                            selectedMusic.durationSeconds ||
+		                            selectedMusic.generatedDurationSeconds ||
+		                            selectedMusic.previewDurationSeconds
+		                          }
+		                        />
+		                      ) : (
                         <div className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
                           No previewable audio file exists for this music asset
                           yet. {getMusicSourceType(selectedMusic) === "ai-generated"

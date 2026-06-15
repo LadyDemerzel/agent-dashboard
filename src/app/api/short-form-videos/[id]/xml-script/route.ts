@@ -11,10 +11,13 @@ import {
   getXmlScriptPath,
   getXmlScriptRunsDir,
   getXmlScriptWorkDir,
+  stopXmlScriptRun,
   updateXmlScriptFrontMatterStatus,
+  writeXmlScriptRunProcessInfo,
   writeXmlScriptDocument,
 } from "@/lib/short-form-xml-script";
 import { updateProjectMeta } from "@/lib/short-form-videos";
+import { stopShortFormAutoRun } from "@/lib/short-form-auto-run-orchestrator";
 import {
   getShortFormVideoRenderSettings,
   resolveShortFormPauseRemovalSettings,
@@ -235,6 +238,7 @@ export async function POST(
     detached: true,
     stdio: "ignore",
   });
+  writeXmlScriptRunProcessInfo(id, runId, child.pid);
   child.unref();
 
   const taskLabel = task === "narration"
@@ -314,4 +318,44 @@ export async function PATCH(
       { status: 500 }
     );
   }
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const project = getShortFormProject(id);
+  if (!project) {
+    return NextResponse.json({ success: false, error: "Project not found" }, { status: 404 });
+  }
+
+  const result = stopXmlScriptRun(id);
+  if (project.autoRun?.status === "active") {
+    stopShortFormAutoRun(id);
+  }
+  updateProjectMeta(id, {});
+
+  const expectedPauseRemoval = resolveShortFormPauseRemovalSettings({
+    ...(typeof project.pauseRemovalMinSilenceDurationSecondsOverride === "number"
+      ? { minSilenceDurationSeconds: project.pauseRemovalMinSilenceDurationSecondsOverride }
+      : {}),
+    ...(typeof project.pauseRemovalSilenceThresholdDbOverride === "number"
+      ? { silenceThresholdDb: project.pauseRemovalSilenceThresholdDbOverride }
+      : {}),
+  });
+
+  return NextResponse.json({
+    success: true,
+    message: result.stopped
+      ? "XML script pipeline stopped"
+      : "XML script pipeline marked stopped",
+    data: {
+      result,
+      xmlScript: getXmlScriptDocument(id, {
+        expectedVoiceId: project.selectedVoiceId,
+        expectedPauseRemoval,
+      }),
+    },
+  });
 }

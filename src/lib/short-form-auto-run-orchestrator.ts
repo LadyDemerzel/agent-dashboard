@@ -18,6 +18,7 @@ import {
 } from "@/lib/status";
 import {
   getStageFilePath,
+  getLatestStageRequest,
   getProjectDir,
   getProjectMetaPath,
   getShortFormProject,
@@ -30,6 +31,8 @@ import {
   type StageDocumentSummary,
 } from "@/lib/short-form-videos";
 import type { ShortFormDetailRouteSection } from "@/lib/short-form-video-navigation";
+import { stopShortFormStageRun } from "@/lib/short-form-stage-runner";
+import { stopXmlScriptRun } from "@/lib/short-form-xml-script";
 
 type ApiEnvelope<T = unknown> = {
   success: boolean;
@@ -1309,13 +1312,14 @@ async function runNarrationAudio(
   autoRunId: string,
   signal: AbortSignal,
   step: ShortFormAutoRunStepDefinition,
+  options?: AutoRunStepRunOptions,
 ) {
   let current = assertAutoRunActive(projectId, autoRunId, signal);
   if (!approved(current.script.status)) {
     throw new Error("Approve Text Script before auto-running Narration Audio.");
   }
   current = await waitForActiveXmlPipelineToSettle(projectId, autoRunId, signal, step, current);
-  if (current.xmlScript.audioUrl) return current;
+  if (!options?.force && current.xmlScript.audioUrl) return current;
 
   const response = await postJson(
     baseUrl,
@@ -1325,7 +1329,7 @@ async function runNarrationAudio(
     signal,
   );
   const runId = response.runId;
-  return waitForProject(
+  current = await waitForProject(
     projectId,
     autoRunId,
     signal,
@@ -1338,6 +1342,8 @@ async function runNarrationAudio(
       nextProject.xmlScript.pipeline?.runId === runId &&
       nextProject.xmlScript.pipeline?.status === "failed",
   );
+  await waitForXmlScriptRunVerified(projectId, signal, step, runId);
+  return current;
 }
 
 async function runPlanCaptions(
@@ -1346,10 +1352,11 @@ async function runPlanCaptions(
   autoRunId: string,
   signal: AbortSignal,
   step: ShortFormAutoRunStepDefinition,
+  options?: AutoRunStepRunOptions,
 ) {
   let current = assertAutoRunActive(projectId, autoRunId, signal);
   current = await waitForActiveXmlPipelineToSettle(projectId, autoRunId, signal, step, current);
-  if (current.xmlScript.captions?.length) return current;
+  if (!options?.force && current.xmlScript.captions?.length) return current;
 
   const response = await postJson(
     baseUrl,
@@ -1359,7 +1366,7 @@ async function runPlanCaptions(
     signal,
   );
   const runId = response.runId;
-  return waitForProject(
+  current = await waitForProject(
     projectId,
     autoRunId,
     signal,
@@ -1372,6 +1379,8 @@ async function runPlanCaptions(
       nextProject.xmlScript.pipeline?.runId === runId &&
       nextProject.xmlScript.pipeline?.status === "failed",
   );
+  await waitForXmlScriptRunVerified(projectId, signal, step, runId);
+  return current;
 }
 
 async function runPlanVisuals(
@@ -1412,17 +1421,12 @@ async function runPlanVisuals(
       autoRunId,
       signal,
       step,
-      (nextProject) => {
-        const xmlStep = nextProject.xmlScript.pipeline?.steps.find((item) => item.id === "xml");
-        return (
-          nextProject.xmlScript.pipeline?.runId === runId &&
-          !hasActiveXmlPipeline(nextProject) &&
-          xmlStep?.status === "completed" &&
-          nextProject.xmlScript.exists &&
-          nextProject.xmlScript.content.trim().length > 0 &&
-          freshAtOrAfter(nextProject.xmlScript.updatedAt, requestedAt)
-        );
-      },
+      (nextProject) =>
+        nextProject.xmlScript.pipeline?.runId === runId &&
+        !hasActiveXmlPipeline(nextProject) &&
+        nextProject.xmlScript.exists &&
+        nextProject.xmlScript.content.trim().length > 0 &&
+        freshAtOrAfter(nextProject.xmlScript.updatedAt, requestedAt),
       (nextProject) =>
         nextProject.xmlScript.pipeline?.runId === runId &&
         nextProject.xmlScript.pipeline?.status === "failed",
@@ -1835,9 +1839,9 @@ async function runStep(
     case "text-script":
       return runTextScript(baseUrl, projectId, autoRunId, signal, step, current, stepOptions);
     case "generate-narration-audio":
-      return runNarrationAudio(baseUrl, projectId, autoRunId, signal, step);
+      return runNarrationAudio(baseUrl, projectId, autoRunId, signal, step, stepOptions);
     case "plan-captions":
-      return runPlanCaptions(baseUrl, projectId, autoRunId, signal, step);
+      return runPlanCaptions(baseUrl, projectId, autoRunId, signal, step, stepOptions);
     case "plan-visuals":
       return runPlanVisuals(baseUrl, projectId, autoRunId, signal, step, current, stepOptions);
     case "generate-visuals":
@@ -2030,6 +2034,25 @@ export function stopShortFormAutoRun(projectId: string) {
   const job = jobs.get(autoRun.id);
   job?.controller.abort();
   jobs.delete(autoRun.id);
+
+  const currentStep = autoRun.currentStep;
+  if (
+    currentStep === "generate-narration-audio" ||
+    currentStep === "plan-captions" ||
+    currentStep === "plan-visuals"
+  ) {
+    stopXmlScriptRun(projectId);
+  } else if (currentStep === "research") {
+    stopShortFormStageRun(projectId, "research", getLatestStageRequest(projectId, "research")?.runId);
+  } else if (currentStep === "text-script") {
+    stopShortFormStageRun(projectId, "script", getLatestStageRequest(projectId, "script")?.runId);
+  } else if (currentStep === "generate-visuals") {
+    stopShortFormStageRun(projectId, "scene-images", getLatestStageRequest(projectId, "scene-images")?.runId);
+  } else if (currentStep === "plan-sound-design" || currentStep === "generate-sound-design") {
+    stopShortFormStageRun(projectId, "sound-design", getLatestStageRequest(projectId, "sound-design")?.runId);
+  } else if (currentStep === "final-video") {
+    stopShortFormStageRun(projectId, "video", getLatestStageRequest(projectId, "video")?.runId);
+  }
 
   return updateAutoRun(projectId, autoRun, {
     status: "stopped",

@@ -429,7 +429,7 @@ function normalize(
 ): ShortFormTextScriptSettings {
   const defaultMaxIterationsRaw = candidate?.defaultMaxIterations;
   const defaultMaxIterations = typeof defaultMaxIterationsRaw === "number" && Number.isFinite(defaultMaxIterationsRaw)
-    ? Math.max(1, Math.min(8, Math.round(defaultMaxIterationsRaw)))
+    ? Math.max(1, Math.round(defaultMaxIterationsRaw))
     : DEFAULT_SHORT_FORM_TEXT_SCRIPT_SETTINGS.defaultMaxIterations;
   const enforceNaturalContractions = typeof candidate?.enforceNaturalContractions === "boolean"
     ? candidate.enforceNaturalContractions
