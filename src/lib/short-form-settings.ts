@@ -15,6 +15,7 @@ import {
   appendSoundLibraryUrls,
   getShortFormSoundDesignSettings,
 } from "@/lib/short-form-sound-design-settings";
+import { getShortFormAgentTargetSettings } from "@/lib/short-form-agent-targets";
 
 export function getShortFormSettingsPayload() {
   return {
@@ -28,5 +29,6 @@ export function getShortFormSettingsPayload() {
     motionGraphics: getShortFormMotionGraphicsSettings(),
     supportedMotionGraphicRenderers: SUPPORTED_MOTION_GRAPHIC_RENDERERS,
     soundDesign: appendSoundLibraryUrls(getShortFormSoundDesignSettings()),
+    agentTargets: getShortFormAgentTargetSettings(),
   };
 }

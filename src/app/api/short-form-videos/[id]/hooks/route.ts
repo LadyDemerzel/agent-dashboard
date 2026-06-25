@@ -198,6 +198,7 @@ export async function POST(
       label: `short-form-hooks-${id}`,
       sessionKeyBase: `hook:short-form:${id}:hooks`,
       task,
+      agentTarget: project.agentTargets.effective.hooks,
       requestedAt,
       requiredArtifacts: [getHooksPath(id)],
     });

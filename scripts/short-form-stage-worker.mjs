@@ -15,6 +15,12 @@ import {
   buildCaptionOverlayFramePlan,
   formatCaptionOverlayFrameAudit,
 } from "./short-form-caption-overlay-track.mjs";
+import {
+  CLAUDE_CODE_TARGET_ID,
+  normalizeAgentTargetId,
+  runClaudeCodePrompt,
+  runOpenClawAgentPrompt,
+} from "./short-form-agent-target-runner.mjs";
 
 const jobPath = process.argv[2];
 
@@ -2902,46 +2908,31 @@ function buildTextScriptGraderPrompt(config, options) {
 
 async function spawnWorkflowAttempt({
   agentId,
+  agentTarget,
   label,
   message,
   model,
   sessionKey,
 }) {
+  const normalizedTarget = normalizeAgentTargetId(agentTarget, agentId === "oracle" ? "openclaw-oracle" : "openclaw-scribe");
+  if (normalizedTarget === CLAUDE_CODE_TARGET_ID) {
+    return runClaudeCodePrompt({
+      prompt: message,
+      cwd: AGENT_DASHBOARD_ROOT,
+    });
+  }
+
   const { url, token } = getGatewayConfig();
-  if (!token) {
-    throw new Error("Hooks token not found in config");
-  }
-
-  const response = await fetch(`${url}/hooks/agent`, {
-    method: "POST",
-    signal: AbortSignal.timeout(HOOK_WEBHOOK_TIMEOUT_MS),
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      message,
-      agentId,
-      name: label,
-      sessionKey,
-      wakeMode: "now",
-      deliver: false,
-      model,
-    }),
+  return runOpenClawAgentPrompt({
+    url,
+    token,
+    timeoutMs: HOOK_WEBHOOK_TIMEOUT_MS,
+    message,
+    agentId,
+    name: label,
+    sessionKey,
+    model,
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Webhook failed: ${response.status} ${errorText}`);
-  }
-
-  const result = await response.json();
-  const status = typeof result?.status === "string" ? result.status.toLowerCase() : "";
-  if (result?.ok === false || status === "error" || result?.error || result?.errorMessage) {
-    const summary = result?.summary || result?.errorMessage || result?.error || JSON.stringify(result);
-    throw new Error(`Hook agent run failed: ${summary}`);
-  }
-  return result;
 }
 
 async function runTextScriptAgentStep(job, options) {
@@ -2949,13 +2940,16 @@ async function runTextScriptAgentStep(job, options) {
   const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0
     ? job.preferredModels
     : ["openai/gpt-5.5"];
+  const agentTarget = normalizeAgentTargetId(job.agentTarget, options.agentId === "oracle" ? "openclaw-oracle" : "openclaw-scribe");
+  const attemptModels = agentTarget === CLAUDE_CODE_TARGET_ID ? ["opus-4.8/xhigh"] : models;
   let lastError = "Unknown error";
 
-  for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {
-    const model = models[modelIndex];
+  for (let modelIndex = 0; modelIndex < attemptModels.length; modelIndex += 1) {
+    const model = attemptModels[modelIndex];
     const attempt = {
       index: attempts.length + 1,
       mode: "text-script-agent",
+      agentTarget,
       step: options.step,
       iterationNumber: options.iterationNumber,
       model,
@@ -2967,6 +2961,7 @@ async function runTextScriptAgentStep(job, options) {
       const stepStartedAt = Date.now();
       const spawnResult = await spawnWorkflowAttempt({
         agentId: options.agentId,
+        agentTarget,
         label: `${job.label}-${options.step}-${String(options.iterationNumber).padStart(2, "0")}-attempt-${modelIndex + 1}`,
         message: options.prompt,
         model,
@@ -4851,6 +4846,7 @@ async function waitForArtifacts(job, requiredArtifacts, requestedAtMs, timeoutMs
 }
 
 async function spawnAttempt(job, model, attemptIndex) {
+  const agentTarget = normalizeAgentTargetId(job.agentTarget, job.agentId === "oracle" ? "openclaw-oracle" : "openclaw-scribe");
   const isRetry = attemptIndex > 0;
   const retryNotice = isRetry
     ? [
@@ -4862,6 +4858,7 @@ async function spawnAttempt(job, model, attemptIndex) {
 
   return spawnWorkflowAttempt({
     agentId: job.agentId,
+    agentTarget,
     label: `${job.label}-attempt-${attemptIndex + 1}`,
     message: isRetry ? `${retryNotice}\n\n${job.task}` : job.task,
     model,
@@ -5271,11 +5268,14 @@ async function main() {
   const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0
     ? job.preferredModels
     : ["openai/gpt-5.5"];
+  const agentTarget = normalizeAgentTargetId(job.agentTarget, job.agentId === "oracle" ? "openclaw-oracle" : "openclaw-scribe");
+  const attemptModels = agentTarget === CLAUDE_CODE_TARGET_ID ? ["opus-4.8/xhigh"] : models;
 
-  for (let index = 0; index < models.length; index += 1) {
-    const model = models[index];
+  for (let index = 0; index < attemptModels.length; index += 1) {
+    const model = attemptModels[index];
     const attempt = {
       index: index + 1,
+      agentTarget,
       model,
       startedAt: new Date().toISOString(),
     };

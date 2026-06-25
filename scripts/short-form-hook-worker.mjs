@@ -2,9 +2,18 @@
 
 import fs from "fs";
 import path from "path";
+import {
+  CLAUDE_CODE_TARGET_ID,
+  normalizeAgentTargetId,
+  openClawAgentIdForTarget,
+  runClaudeCodePrompt,
+  runOpenClawAgentPrompt,
+} from "./short-form-agent-target-runner.mjs";
 
 const jobPath = process.argv[2];
 const HOOK_WEBHOOK_TIMEOUT_MS = 30_000;
+const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
+const AGENT_DASHBOARD_ROOT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard");
 
 if (!jobPath) {
   process.exit(1);
@@ -31,8 +40,7 @@ function getGatewayConfig() {
   let url = "http://127.0.0.1:18789";
   let token = "";
 
-  const homeDir = process.env.HOME || "/Users/ittaisvidler";
-  const configPath = path.join(homeDir, ".openclaw", "openclaw.json");
+  const configPath = path.join(HOME_DIR, ".openclaw", "openclaw.json");
 
   if (fs.existsSync(configPath)) {
     try {
@@ -73,11 +81,7 @@ async function waitForArtifacts(requiredArtifacts, requestedAtMs, timeoutMs, pol
 }
 
 async function spawnAttempt(job, model, attemptIndex) {
-  const { url, token } = getGatewayConfig();
-  if (!token) {
-    throw new Error("Hooks token not found in config");
-  }
-
+  const agentTarget = normalizeAgentTargetId(job.agentTarget, "openclaw-scribe");
   const isRetry = attemptIndex > 0;
   const retryNotice = isRetry
     ? [
@@ -87,36 +91,25 @@ async function spawnAttempt(job, model, attemptIndex) {
       ].join("\n\n")
     : "";
 
-  const response = await fetch(`${url}/hooks/agent`, {
-    method: "POST",
-    signal: AbortSignal.timeout(HOOK_WEBHOOK_TIMEOUT_MS),
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      message: isRetry ? `${retryNotice}\n\n${job.task}` : job.task,
-      agentId: "scribe",
-      name: `${job.label}-attempt-${attemptIndex + 1}`,
-      sessionKey: `${job.sessionKeyBase}:${job.runId}:attempt-${attemptIndex + 1}`,
-      wakeMode: "now",
-      deliver: false,
-      model,
-    }),
+  const message = isRetry ? `${retryNotice}\n\n${job.task}` : job.task;
+  if (agentTarget === CLAUDE_CODE_TARGET_ID) {
+    return runClaudeCodePrompt({
+      prompt: message,
+      cwd: AGENT_DASHBOARD_ROOT,
+    });
+  }
+
+  const { url, token } = getGatewayConfig();
+  return runOpenClawAgentPrompt({
+    url,
+    token,
+    timeoutMs: HOOK_WEBHOOK_TIMEOUT_MS,
+    message,
+    agentId: openClawAgentIdForTarget(agentTarget, "scribe"),
+    name: `${job.label}-attempt-${attemptIndex + 1}`,
+    sessionKey: `${job.sessionKeyBase}:${job.runId}:attempt-${attemptIndex + 1}`,
+    model,
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Webhook failed: ${response.status} ${errorText}`);
-  }
-
-  const result = await response.json();
-  const status = typeof result?.status === "string" ? result.status.toLowerCase() : "";
-  if (result?.ok === false || status === "error" || result?.error || result?.errorMessage) {
-    const summary = result?.summary || result?.errorMessage || result?.error || JSON.stringify(result);
-    throw new Error(`Hook agent run failed: ${summary}`);
-  }
-  return result;
 }
 
 async function main() {
@@ -137,11 +130,14 @@ async function main() {
   const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0
     ? job.preferredModels
     : ["openai/gpt-5.5"];
+  const agentTarget = normalizeAgentTargetId(job.agentTarget, "openclaw-scribe");
+  const attemptModels = agentTarget === CLAUDE_CODE_TARGET_ID ? ["opus-4.8/xhigh"] : models;
 
-  for (let index = 0; index < models.length; index += 1) {
-    const model = models[index];
+  for (let index = 0; index < attemptModels.length; index += 1) {
+    const model = attemptModels[index];
     const attempt = {
       index: index + 1,
+      agentTarget,
       model,
       startedAt: new Date().toISOString(),
     };

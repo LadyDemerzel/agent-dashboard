@@ -41,6 +41,12 @@ import {
   saveShortFormSoundDesignSettings,
   type ShortFormSoundDesignSettings,
 } from "@/lib/short-form-sound-design-settings";
+import {
+  SHORT_FORM_AGENT_TARGET_SCOPES,
+  getShortFormAgentTargetSettings,
+  isShortFormAgentTargetId,
+  saveShortFormAgentTargetSettings,
+} from "@/lib/short-form-agent-targets";
 import { getShortFormSettingsPayload } from "@/lib/short-form-settings";
 
 export const dynamic = "force-dynamic";
@@ -118,9 +124,10 @@ export async function PATCH(request: NextRequest) {
   const xmlVisualPlanning = body && typeof body === "object" && !Array.isArray(body) ? body.xmlVisualPlanning : undefined;
   const motionGraphics = body && typeof body === "object" && !Array.isArray(body) ? body.motionGraphics : undefined;
   const soundDesign = body && typeof body === "object" && !Array.isArray(body) ? body.soundDesign : undefined;
+  const agentTargets = body && typeof body === "object" && !Array.isArray(body) ? body.agentTargets : undefined;
 
-  if (prompts === undefined && hook === undefined && imageStyles === undefined && videoRender === undefined && textScript === undefined && xmlVisualPlanning === undefined && motionGraphics === undefined && soundDesign === undefined) {
-    return NextResponse.json({ success: false, error: "prompts, hook, imageStyles, videoRender, textScript, xmlVisualPlanning, motionGraphics, or soundDesign is required" }, { status: 400 });
+  if (prompts === undefined && hook === undefined && imageStyles === undefined && videoRender === undefined && textScript === undefined && xmlVisualPlanning === undefined && motionGraphics === undefined && soundDesign === undefined && agentTargets === undefined) {
+    return NextResponse.json({ success: false, error: "prompts, hook, imageStyles, videoRender, textScript, xmlVisualPlanning, motionGraphics, soundDesign, or agentTargets is required" }, { status: 400 });
   }
 
   if (prompts !== undefined) {
@@ -597,6 +604,26 @@ export async function PATCH(request: NextRequest) {
     }
 
     saveShortFormSoundDesignSettings(candidate);
+  }
+
+  if (agentTargets !== undefined) {
+    if (!agentTargets || typeof agentTargets !== "object" || Array.isArray(agentTargets)) {
+      return NextResponse.json({ success: false, error: "agentTargets must be an object" }, { status: 400 });
+    }
+    const rawDefaults = "defaults" in agentTargets && agentTargets.defaults && typeof agentTargets.defaults === "object" && !Array.isArray(agentTargets.defaults)
+      ? agentTargets.defaults as Record<string, unknown>
+      : {};
+    const current = getShortFormAgentTargetSettings();
+    const defaults = { ...current.defaults };
+    for (const scope of SHORT_FORM_AGENT_TARGET_SCOPES) {
+      const value = rawDefaults[scope];
+      if (value === undefined) continue;
+      if (!isShortFormAgentTargetId(value)) {
+        return NextResponse.json({ success: false, error: `Unsupported agent target for ${scope}` }, { status: 400 });
+      }
+      defaults[scope] = value;
+    }
+    saveShortFormAgentTargetSettings({ defaults });
   }
 
   return NextResponse.json({

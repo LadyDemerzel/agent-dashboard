@@ -1,0 +1,9 @@
+{
+  "defaults": {
+    "hooks": "openclaw-scribe",
+    "research": "openclaw-oracle",
+    "text-script": "openclaw-scribe",
+    "plan-visuals": "openclaw-scribe",
+    "sound-design": "openclaw-scribe"
+  }
+}

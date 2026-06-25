@@ -1,11 +1,19 @@
 import fs from "fs";
 import path from "path";
+import {
+  CLAUDE_CODE_TARGET_ID,
+  normalizeAgentTargetId,
+  openClawAgentIdForTarget,
+  runClaudeCodePrompt,
+  runOpenClawAgentPrompt,
+} from "./short-form-agent-target-runner.mjs";
 
 const isDirectRun = Boolean(process.argv[1]) && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname);
 const jobPath = isDirectRun ? process.argv[2] : null;
 if (isDirectRun && !jobPath) process.exit(1);
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
 const HOOK_WEBHOOK_TIMEOUT_MS = 30_000;
+const AGENT_DASHBOARD_ROOT = path.join(HOME_DIR, "tenxsolo", "systems", "agent-dashboard");
 const OPENCLAW_CONFIG_CANDIDATES = [
   path.join(HOME_DIR, ".openclaw", "openclaw.json"),
   "/Users/ittaisvidler/.openclaw/openclaw.json",
@@ -59,42 +67,25 @@ function describeError(error) {
 }
 
 async function spawnAuthoringAttempt(job, model, attemptIndex) {
-  const { url, token } = getGatewayConfig();
-  if (!token) {
-    throw new Error("Hooks token not found in config");
+  const agentTarget = normalizeAgentTargetId(job.agentTarget, "openclaw-scribe");
+  if (agentTarget === CLAUDE_CODE_TARGET_ID) {
+    return runClaudeCodePrompt({
+      prompt: job.prompt,
+      cwd: AGENT_DASHBOARD_ROOT,
+    });
   }
-  const body = JSON.stringify({
+
+  const { url, token } = getGatewayConfig();
+  return runOpenClawAgentPrompt({
+    url,
+    token,
+    timeoutMs: HOOK_WEBHOOK_TIMEOUT_MS,
     message: job.prompt,
-    agentId: "scribe",
+    agentId: openClawAgentIdForTarget(agentTarget, "scribe"),
     name: `sound-design-${job.projectId}-attempt-${attemptIndex + 1}`,
     sessionKey: `hook:short-form:${job.projectId}:sound-design:${job.runId}:attempt-${attemptIndex + 1}`,
-    wakeMode: "now",
-    deliver: false,
     model,
   });
-
-  const response = await fetch(`${url}/hooks/agent`, {
-    method: "POST",
-    signal: AbortSignal.timeout(HOOK_WEBHOOK_TIMEOUT_MS),
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body,
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Webhook failed: ${response.status} ${errorText}`);
-  }
-
-  const result = await response.json();
-  const status = typeof result?.status === "string" ? result.status.toLowerCase() : "";
-  if (result?.ok === false || status === "error" || result?.error || result?.errorMessage) {
-    const summary = result?.summary || result?.errorMessage || result?.error || JSON.stringify(result);
-    throw new Error(`Hook agent run failed: ${summary}`);
-  }
-  return result;
 }
 
 function readSoundDesignArtifactBody(filePath) {
@@ -211,11 +202,14 @@ async function main() {
   });
 
   const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0 ? job.preferredModels : ["openai/gpt-5.5"];
+  const agentTarget = normalizeAgentTargetId(job.agentTarget, "openclaw-scribe");
+  const attemptModels = agentTarget === CLAUDE_CODE_TARGET_ID ? ["opus-4.8/xhigh"] : models;
   let lastError = null;
 
-  for (const [index, model] of models.entries()) {
+  for (const [index, model] of attemptModels.entries()) {
     const attempt = {
       index: index + 1,
+      agentTarget,
       model,
       startedAt: new Date().toISOString(),
       promptLength: typeof job.prompt === "string" ? job.prompt.length : 0,

@@ -46,6 +46,10 @@ import {
 import { getSoundDesignHandoffState } from "@/lib/short-form-sound-design-handoff";
 import { buildShortFormSoundDesignPrompt } from "@/lib/short-form-sound-design-settings";
 import { saveXmlVisualEdits } from "@/lib/short-form-xml-visual-editor";
+import {
+  getOpenClawAgentIdForTarget,
+  type ShortFormAgentTargetId,
+} from "@/lib/short-form-agent-targets";
 
 export const dynamic = "force-dynamic";
 
@@ -72,6 +76,12 @@ function getStageTitle(stage: ShortFormStageKey) {
     case "video":
       return "Video";
   }
+}
+
+function getAgentTargetScopeForStage(stage: ShortFormStageKey) {
+  if (stage === "research") return "research" as const;
+  if (stage === "script") return "text-script" as const;
+  return undefined;
 }
 
 function getPendingKey(stage: ShortFormStageKey): ShortFormStageKey | "scene-images" {
@@ -507,10 +517,19 @@ export async function POST(
   }
 
   try {
+    const agentTargetScope = getAgentTargetScopeForStage(stage);
+    const agentTarget: ShortFormAgentTargetId | undefined = agentTargetScope
+      ? project.agentTargets.effective[agentTargetScope]
+      : undefined;
+    const fallbackAgentId = STAGE_AGENT[stage] === "oracle" ? "oracle" : "scribe";
+    const runAgentId = agentTarget
+      ? getOpenClawAgentIdForTarget(agentTarget, fallbackAgentId)
+      : STAGE_AGENT[stage];
     const run = enqueueShortFormStageRun({
       projectId: id,
       stage,
-      agentId: STAGE_AGENT[stage],
+      agentId: runAgentId,
+      ...(agentTarget ? { agentTarget } : {}),
       label: `short-form-${stage}-${id}`,
       sessionKeyBase: `hook:short-form:${id}:${stage}`,
       task,

@@ -3,6 +3,13 @@
 import fs from "fs";
 import path from "path";
 import { spawn, spawnSync } from "child_process";
+import {
+  CLAUDE_CODE_TARGET_ID,
+  normalizeAgentTargetId,
+  openClawAgentIdForTarget,
+  runClaudeCodePrompt,
+  runOpenClawAgentPrompt,
+} from "./short-form-agent-target-runner.mjs";
 
 const HOME_DIR = process.env.HOME || "/Users/ittaisvidler";
 const HOOK_WEBHOOK_TIMEOUT_MS = 30_000;
@@ -856,41 +863,25 @@ function getGatewayConfig() {
 }
 
 async function spawnAuthoringAttempt(job, model, attemptIndex) {
+  const agentTarget = normalizeAgentTargetId(job.agentTarget, "openclaw-scribe");
+  if (agentTarget === CLAUDE_CODE_TARGET_ID) {
+    return runClaudeCodePrompt({
+      prompt: job.prompt,
+      cwd: AGENT_DASHBOARD_ROOT,
+    });
+  }
+
   const { url, token } = getGatewayConfig();
-  if (!token) {
-    throw new Error("Hooks token not found in config");
-  }
-
-  const response = await fetch(`${url}/hooks/agent`, {
-    method: "POST",
-    signal: AbortSignal.timeout(HOOK_WEBHOOK_TIMEOUT_MS),
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      message: job.prompt,
-      agentId: "scribe",
-      name: `xml-script-${job.projectId}-attempt-${attemptIndex + 1}`,
-      sessionKey: `hook:short-form:${job.projectId}:xml-script:${job.runId}:attempt-${attemptIndex + 1}`,
-      wakeMode: "now",
-      deliver: false,
-      model,
-    }),
+  return runOpenClawAgentPrompt({
+    url,
+    token,
+    timeoutMs: HOOK_WEBHOOK_TIMEOUT_MS,
+    message: job.prompt,
+    agentId: openClawAgentIdForTarget(agentTarget, "scribe"),
+    name: `xml-script-${job.projectId}-attempt-${attemptIndex + 1}`,
+    sessionKey: `hook:short-form:${job.projectId}:xml-script:${job.runId}:attempt-${attemptIndex + 1}`,
+    model,
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Webhook failed: ${response.status} ${errorText}`);
-  }
-
-  const result = await response.json();
-  const status = typeof result?.status === "string" ? result.status.toLowerCase() : "";
-  if (result?.ok === false || status === "error" || result?.error || result?.errorMessage) {
-    const summary = result?.summary || result?.errorMessage || result?.error || JSON.stringify(result);
-    throw new Error(`Hook agent run failed: ${summary}`);
-  }
-  return result;
 }
 
 function readXmlArtifactBody(filePath) {
@@ -1273,10 +1264,12 @@ async function main() {
       writeTextIfChanged(promptPath, job.prompt);
       updateStatus();
       const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0 ? job.preferredModels : ["openai/gpt-5.5"];
+      const agentTarget = normalizeAgentTargetId(job.agentTarget, "openclaw-scribe");
+      const attemptModels = agentTarget === CLAUDE_CODE_TARGET_ID ? ["opus-4.8/xhigh"] : models;
       let verified = false;
-      for (let index = 0; index < models.length; index += 1) {
-        const model = models[index];
-        const attempt = { step: "xml-authoring", model, startedAt: new Date().toISOString() };
+      for (let index = 0; index < attemptModels.length; index += 1) {
+        const model = attemptModels[index];
+        const attempt = { step: "xml-authoring", agentTarget, model, startedAt: new Date().toISOString() };
         const previousXmlArtifact = snapshotXmlAuthoringArtifact(job.xmlScriptPath);
         const authoringStartedAtMs = Date.now();
         attempts.push(attempt);

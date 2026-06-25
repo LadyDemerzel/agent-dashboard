@@ -201,6 +201,7 @@ export async function POST(
   fs.writeFileSync(jobPath, JSON.stringify({
     runId,
     projectId: id,
+    agentTarget: project.agentTargets.effective["plan-visuals"],
     projectTopic: project.topic,
     textScriptPath,
     xmlScriptPath: getXmlScriptPath(id),

@@ -8,6 +8,7 @@ import type { ShortFormCaptionAnimationPresetEntry } from "@/lib/short-form-capt
 import type { ShortFormCaptionStyleEntry } from "@/lib/short-form-video-render-settings";
 import type { ShortFormVisualGenerationModelId } from "@/lib/short-form-visual-generation";
 import type { ShortFormMotionGraphicsSettings } from "@/lib/short-form-motion-graphics";
+import type { ShortFormAgentTargetId } from "@/lib/short-form-agent-targets";
 
 export interface DirectSceneImagesConfig {
   scriptPath: string;
@@ -81,6 +82,7 @@ export interface ShortFormStageRunJob {
   projectId: string;
   stage: ShortFormStageKey;
   agentId: "oracle" | "scribe" | "workflow";
+  agentTarget?: ShortFormAgentTargetId;
   label: string;
   task: string;
   requestedAt: string;

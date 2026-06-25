@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
 import { randomUUID } from "crypto";
+import type { ShortFormAgentTargetId } from "@/lib/short-form-agent-targets";
 
 export interface ShortFormHookRunJob {
   kind: "hooks";
@@ -9,6 +10,7 @@ export interface ShortFormHookRunJob {
   projectId: string;
   label: string;
   task: string;
+  agentTarget?: ShortFormAgentTargetId;
   requestedAt: string;
   requiredArtifacts: string[];
   preferredModels: string[];

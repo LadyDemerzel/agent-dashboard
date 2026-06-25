@@ -182,6 +182,7 @@ export async function POST(
   fs.writeFileSync(jobPath, JSON.stringify({
     runId,
     projectId: id,
+    agentTarget: project.agentTargets.effective["sound-design"],
     prompt: buildShortFormSoundDesignPrompt(project.id, {
       topic: project.topic || project.title || "Untitled short-form video",
       selectedHook: project.selectedHookText || "No selected hook yet",

@@ -6,6 +6,11 @@ import { getSoundDesignHandoffState } from "@/lib/short-form-sound-design-handof
 import { isShortFormVisualGenerationModelId } from "@/lib/short-form-visual-generation";
 import { normalizeShortFormAutoRunState } from "@/lib/short-form-auto-run";
 import { reconcileStaleShortFormAutoRun } from "@/lib/short-form-auto-run-orchestrator";
+import {
+  SHORT_FORM_AGENT_TARGET_SCOPES,
+  isShortFormAgentTargetId,
+  type ShortFormAgentTargetOverrides,
+} from "@/lib/short-form-agent-targets";
 
 export const dynamic = "force-dynamic";
 
@@ -87,6 +92,31 @@ export async function PATCH(
     : body.autoRun && typeof body.autoRun === "object" && !Array.isArray(body.autoRun)
       ? normalizeShortFormAutoRunState(body.autoRun)
       : undefined;
+  let agentTargetOverrides: ShortFormAgentTargetOverrides | null | undefined;
+  if (body.agentTargetOverrides === null) {
+    agentTargetOverrides = null;
+  } else if (body.agentTargetOverrides !== undefined) {
+    if (!body.agentTargetOverrides || typeof body.agentTargetOverrides !== "object" || Array.isArray(body.agentTargetOverrides)) {
+      return NextResponse.json({ success: false, error: "agentTargetOverrides must be an object" }, { status: 400 });
+    }
+    const incoming = body.agentTargetOverrides as Record<string, unknown>;
+    const nextOverrides: ShortFormAgentTargetOverrides = {
+      ...project.agentTargets.overrides,
+    };
+    for (const scope of SHORT_FORM_AGENT_TARGET_SCOPES) {
+      const value = incoming[scope];
+      if (value === undefined) continue;
+      if (value === null) {
+        delete nextOverrides[scope];
+        continue;
+      }
+      if (!isShortFormAgentTargetId(value)) {
+        return NextResponse.json({ success: false, error: `Unsupported agent target for ${scope}` }, { status: 400 });
+      }
+      nextOverrides[scope] = value;
+    }
+    agentTargetOverrides = nextOverrides;
+  }
 
   if (selectedImageStyleId !== undefined) {
     const resolved = resolveShortFormImageStyle(selectedImageStyleId);
@@ -204,6 +234,9 @@ export async function PATCH(
       : {}),
     ...(autoRun !== undefined
       ? { autoRun: autoRun === null ? undefined : autoRun }
+      : {}),
+    ...(agentTargetOverrides !== undefined
+      ? { agentTargetOverrides: agentTargetOverrides === null ? undefined : agentTargetOverrides }
       : {}),
   });
 

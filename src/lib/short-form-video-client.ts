@@ -2,6 +2,14 @@ import {
   normalizeShortFormAutoRunState,
   type ShortFormAutoRunState,
 } from "@/lib/short-form-auto-run";
+import {
+  DEFAULT_SHORT_FORM_AGENT_TARGETS,
+  SHORT_FORM_AGENT_TARGET_SCOPES,
+  isShortFormAgentTargetId,
+  type ShortFormAgentTargetId,
+  type ShortFormAgentTargetMap,
+  type ShortFormAgentTargetOverrides,
+} from "@/lib/short-form-agent-target-types";
 
 export interface HookOption {
   id: string;
@@ -337,6 +345,11 @@ export interface ShortFormProjectClient {
   captionMaxWordsOverride?: number;
   pauseRemovalMinSilenceDurationSecondsOverride?: number;
   pauseRemovalSilenceThresholdDbOverride?: number;
+  agentTargets: {
+    defaults: ShortFormAgentTargetMap;
+    overrides: ShortFormAgentTargetOverrides;
+    effective: ShortFormAgentTargetMap;
+  };
   autoRun?: ShortFormAutoRunState;
   hooks: {
     pending: boolean;
@@ -393,6 +406,26 @@ function asString(value: unknown, fallback = ''): string {
 
 function asOptionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function normalizeAgentTargetMap(value: unknown): ShortFormAgentTargetMap {
+  const obj = asObject(value);
+  return SHORT_FORM_AGENT_TARGET_SCOPES.reduce<ShortFormAgentTargetMap>((targets, scope) => {
+    const candidate = obj[scope];
+    targets[scope] = isShortFormAgentTargetId(candidate) ? candidate : DEFAULT_SHORT_FORM_AGENT_TARGETS[scope];
+    return targets;
+  }, { ...DEFAULT_SHORT_FORM_AGENT_TARGETS });
+}
+
+function normalizeAgentTargetOverrides(value: unknown): ShortFormAgentTargetOverrides {
+  const obj = asObject(value);
+  return SHORT_FORM_AGENT_TARGET_SCOPES.reduce<ShortFormAgentTargetOverrides>((targets, scope) => {
+    const candidate = obj[scope];
+    if (isShortFormAgentTargetId(candidate)) {
+      targets[scope] = candidate as ShortFormAgentTargetId;
+    }
+    return targets;
+  }, {});
 }
 
 function asBoolean(value: unknown, fallback = false): boolean {
@@ -837,6 +870,11 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
     pauseRemovalSilenceThresholdDbOverride: typeof obj.pauseRemovalSilenceThresholdDbOverride === 'number'
       ? obj.pauseRemovalSilenceThresholdDbOverride
       : undefined,
+    agentTargets: {
+      defaults: normalizeAgentTargetMap(asObject(obj.agentTargets).defaults),
+      overrides: normalizeAgentTargetOverrides(asObject(obj.agentTargets).overrides),
+      effective: normalizeAgentTargetMap(asObject(obj.agentTargets).effective),
+    },
     autoRun: normalizeShortFormAutoRunState(obj.autoRun),
     hooks: {
       pending: asBoolean(hooks.pending),

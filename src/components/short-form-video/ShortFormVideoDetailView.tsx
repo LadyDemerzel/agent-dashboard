@@ -50,6 +50,7 @@ import {
   CompactSettingCard,
   CompactSettingLink,
 } from "@/components/short-form-video/CompactSettingCard";
+import { AgentTargetSelect } from "@/components/short-form-video/AgentTargetSelect";
 import { AutoGenerateRestButton } from "@/components/short-form-video/AutoGenerateRestButton";
 import { SyntaxHighlightedCode } from "@/components/short-form-video/SyntaxHighlightedCode";
 import {
@@ -85,6 +86,10 @@ import {
 } from "@/lib/short-form-video-navigation";
 import { getDetailRouteItems } from "@/lib/short-form-secondary-nav";
 import { dispatchShortFormProjectOptimisticUpdate } from "@/lib/short-form-project-events";
+import type {
+  ShortFormAgentTargetId,
+  ShortFormAgentTargetScope,
+} from "@/lib/short-form-agent-target-types";
 import {
   getShortFormVisualGenerationModelOptions,
   type ShortFormVisualGenerationModelId,
@@ -1222,6 +1227,65 @@ function VideoPipelinePanel({ project }: { project: Project }) {
   );
 }
 
+function ProjectAgentTargetCard({
+  project,
+  scope,
+  title,
+  disabled,
+  onRefresh,
+}: {
+  project: Project;
+  scope: ShortFormAgentTargetScope;
+  title: string;
+  disabled?: boolean;
+  onRefresh: () => Promise<unknown>;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const override = project.agentTargets.overrides[scope];
+  const globalDefault = project.agentTargets.defaults[scope];
+
+  async function saveAgentTarget(target: ShortFormAgentTargetId | undefined) {
+    setSaving(true);
+    setError(null);
+    try {
+      await parseJsonResponse(
+        await fetch(`/api/short-form-videos/${project.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentTargetOverrides: {
+              [scope]: target || null,
+            },
+          }),
+        }),
+        "Failed to save workflow agent",
+      );
+      await onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save workflow agent");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="space-y-3 p-4">
+      <AgentTargetSelect
+        value={override}
+        onChange={(target) => void saveAgentTarget(target)}
+        disabled={disabled || saving}
+        label={title}
+        allowGlobalDefault
+        globalDefault={globalDefault}
+      />
+      {error ? (
+        <ValidationNotice title="Agent selection failed" message={error} />
+      ) : null}
+    </Card>
+  );
+}
+
 function HookSection({
   project,
   refresh,
@@ -1473,6 +1537,14 @@ ${option.text}`)
       {error ? (
         <ValidationNotice title="Hook action failed" message={error} />
       ) : null}
+
+      <ProjectAgentTargetCard
+        project={project}
+        scope="hooks"
+        title="Hook generation agent"
+        disabled={project.hooks.pending}
+        onRefresh={refresh}
+      />
 
       {project.hooks.agentRun || project.hooks.pending ? (
         <AgentSessionLogsAccordion
@@ -2751,6 +2823,13 @@ function XMLScriptSection({
 
       {section === "plan-visuals" ? (
         <div id="plan-visuals" className="space-y-4">
+        <ProjectAgentTargetCard
+          project={project}
+          scope="plan-visuals"
+          title="Plan Visuals agent"
+          disabled={Boolean(doc?.pending)}
+          onRefresh={onProjectRefresh}
+        />
         <div className="flex flex-wrap items-center gap-2">
           <WorkflowArtifactActionButton
             hasArtifact={Boolean(doc?.exists)}
@@ -2899,6 +2978,8 @@ function StageReviewSection({
   allowRerunWithNotes = true,
   wrapDocumentInCard = false,
   sessionLogsAgentId,
+  project,
+  agentTargetScope,
 }: {
   projectId: string;
   title: string;
@@ -2924,6 +3005,8 @@ function StageReviewSection({
   allowRerunWithNotes?: boolean;
   wrapDocumentInCard?: boolean;
   sessionLogsAgentId?: "oracle" | "scribe" | "workflow";
+  project?: Project;
+  agentTargetScope?: ShortFormAgentTargetScope;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(doc.content);
@@ -3158,6 +3241,16 @@ function StageReviewSection({
         <ValidationNotice
           title={`${title} action failed`}
           message={actionError}
+        />
+      ) : null}
+
+      {project && agentTargetScope ? (
+        <ProjectAgentTargetCard
+          project={project}
+          scope={agentTargetScope}
+          title={`${title} agent`}
+          disabled={doc.pending || showRevisionPending}
+          onRefresh={onRefresh}
         />
       ) : null}
 
@@ -5891,6 +5984,13 @@ function SoundDesignSection({
   if (mode === "plan") {
     return (
       <section id="plan-sound-design" className="scroll-mt-24 space-y-5">
+        <ProjectAgentTargetCard
+          project={project}
+          scope="sound-design"
+          title="Plan Sound Design agent"
+          disabled={project.soundDesign.pending}
+          onRefresh={refresh}
+        />
         <div className="flex flex-wrap items-start gap-2">
           <div className="flex flex-col items-start gap-2">
             <WorkflowArtifactActionButton
@@ -7320,6 +7420,8 @@ export function ShortFormVideoDetailView({
             triggerLabel="Generate research"
             triggerDescription="This should create a research deliverable tailored to the selected hook."
             onRefresh={refreshProject}
+            project={currentProject}
+            agentTargetScope="research"
             simplifiedReviewActions
             wrapDocumentInCard
             sessionLogsAgentId="oracle"
@@ -7338,6 +7440,8 @@ export function ShortFormVideoDetailView({
             triggerLabel="Generate text script"
             triggerDescription="This should create the plain narration script only. The following pages handle narration audio, captions, and visuals planning."
             onRefresh={refreshProject}
+            project={currentProject}
+            agentTargetScope="text-script"
             simplifiedReviewActions
             extra={
               <TextScriptHistoryPanel

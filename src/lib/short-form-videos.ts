@@ -33,6 +33,12 @@ import {
   type ShortFormAutoRunState,
 } from "@/lib/short-form-auto-run";
 import { readXmlVisualEditStates } from "@/lib/short-form-xml-visual-editor";
+import {
+  resolveShortFormAgentTargets,
+  normalizeShortFormAgentTargetOverrides,
+  type ResolvedShortFormAgentTargets,
+  type ShortFormAgentTargetOverrides,
+} from "@/lib/short-form-agent-targets";
 
 export type ShortFormStageKey = "research" | "script" | "scene-images" | "sound-design" | "video";
 export type PendingStageKey = "hooks" | ShortFormStageKey;
@@ -230,6 +236,7 @@ export interface ShortFormProjectMeta {
   pauseRemovalSilenceThresholdDbOverride?: number;
   latestHookRequest?: HookRequestContext;
   latestStageRequests?: Partial<Record<ShortFormStageKey, StageRequestContext>>;
+  agentTargetOverrides?: ShortFormAgentTargetOverrides;
   autoRun?: ShortFormAutoRunState;
 }
 
@@ -370,6 +377,7 @@ export interface ShortFormProject {
   pauseRemovalMinSilenceDurationSecondsOverride?: number;
   pauseRemovalSilenceThresholdDbOverride?: number;
   autoRun?: ShortFormAutoRunState;
+  agentTargets: ResolvedShortFormAgentTargets;
   currentStage: string;
   pendingStages: PendingStageKey[];
   hooks: {
@@ -3415,6 +3423,7 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
   const resolvedVoice = resolveShortFormVoiceSelection(nextMeta.selectedVoiceId);
   const resolvedMusic = resolveShortFormMusicSelection(nextMeta.selectedMusicId);
   const resolvedCaptionStyle = resolveShortFormCaptionStyleSelection(nextMeta.selectedCaptionStyleId);
+  const agentTargets = resolveShortFormAgentTargets(nextMeta.agentTargetOverrides);
   const resolvedPauseRemoval = resolveShortFormPauseRemovalSettings({
     ...(typeof nextMeta.pauseRemovalMinSilenceDurationSecondsOverride === "number"
       ? { minSilenceDurationSeconds: nextMeta.pauseRemovalMinSilenceDurationSecondsOverride }
@@ -3464,6 +3473,7 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
     captionMaxWordsOverride: nextMeta.captionMaxWordsOverride,
     pauseRemovalMinSilenceDurationSecondsOverride: nextMeta.pauseRemovalMinSilenceDurationSecondsOverride,
     pauseRemovalSilenceThresholdDbOverride: nextMeta.pauseRemovalSilenceThresholdDbOverride,
+    agentTargets,
     autoRun: nextMeta.autoRun
       ? {
           ...nextMeta.autoRun,

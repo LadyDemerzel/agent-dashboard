@@ -50,6 +50,7 @@ import {
   WorkflowSectionHeader,
 } from "@/components/short-form-video/WorkflowShared";
 import { CaptionStylePreview } from "@/components/short-form-video/CaptionStylePreview";
+import { AgentTargetSelect } from "@/components/short-form-video/AgentTargetSelect";
 import { useShortFormSettingsShellNav } from "@/components/short-form-video/ShortFormVideoSettingsShell";
 import { apiDataFetcher, realtimeSWRConfig } from "@/lib/swr-fetcher";
 import { usePageScrollRestoration } from "@/components/usePageScrollRestoration";
@@ -75,6 +76,11 @@ import {
   formatMotionGraphicAnimationTimingControls,
   getMotionGraphicTimingControlConfig,
 } from "@/lib/short-form-motion-graphic-timing-controls";
+import type {
+  ShortFormAgentTargetId,
+  ShortFormAgentTargetSettings,
+  ShortFormAgentTargetScope,
+} from "@/lib/short-form-agent-target-types";
 
 type PromptKey =
   | "hooksGenerate"
@@ -843,6 +849,7 @@ interface SettingsResponse {
     motionGraphics: MotionGraphicsSettings;
     supportedMotionGraphicRenderers: string[];
     soundDesign: SoundDesignSettings;
+    agentTargets: ShortFormAgentTargetSettings;
   };
   error?: string;
 }
@@ -4346,6 +4353,10 @@ export function ShortFormVideoSettingsView({
     useState<SoundDesignSettings | null>(initialSettings?.soundDesign || null);
   const [initialSoundDesignSettings, setInitialSoundDesignSettings] =
     useState<SoundDesignSettings | null>(initialSettings?.soundDesign || null);
+  const [agentTargetSettings, setAgentTargetSettings] =
+    useState<ShortFormAgentTargetSettings | null>(initialSettings?.agentTargets || null);
+  const [initialAgentTargetSettings, setInitialAgentTargetSettings] =
+    useState<ShortFormAgentTargetSettings | null>(initialSettings?.agentTargets || null);
   const [selectedStyleId, setSelectedStyleId] = useState<string | null>(
     initialSettings?.imageStyles.defaultStyleId ||
       initialSettings?.imageStyles.styles[0]?.id ||
@@ -4894,6 +4905,8 @@ export function ShortFormVideoSettingsView({
       );
       setSoundDesignSettings(data.soundDesign);
       setInitialSoundDesignSettings(data.soundDesign);
+      setAgentTargetSettings(data.agentTargets);
+      setInitialAgentTargetSettings(data.agentTargets);
       setSelectedStyleId(
         (current) =>
           current ||
@@ -5850,9 +5863,31 @@ export function ShortFormVideoSettingsView({
     videoRender?.voices.length,
   ]);
 
+  const renderGlobalAgentTargetCard = (
+    scope: ShortFormAgentTargetScope,
+    title: string,
+  ) => (
+    <Card className="space-y-3 p-4">
+      <div>
+        <h3 className="text-sm font-medium text-foreground">{title}</h3>
+      </div>
+      <AgentTargetSelect
+        value={agentTargetSettings?.defaults[scope]}
+        onChange={(target) => {
+          if (!target) return;
+          void saveAgentTargetDefault(scope, target);
+        }}
+        disabled={!agentTargetSettings}
+        label="Default agent"
+      />
+    </Card>
+  );
+
   const hookGuidelinesPromptSection = hookSettings ? (
     <section id="hook-guidelines" className="scroll-mt-24">
       <div className="space-y-6">
+        {renderGlobalAgentTargetCard("hooks", "Hook generation agent")}
+
         <PromptTemplateEditorCard
           title="Guidelines for writing hooks template"
           value={hookSettings.hookWritingGuidelinesTemplate}
@@ -5930,6 +5965,9 @@ export function ShortFormVideoSettingsView({
     return (
       <section key={group.id} id={group.id} className="scroll-mt-24">
         <div className="space-y-6">
+          {group.id === "prompt-research"
+            ? renderGlobalAgentTargetCard("research", "Research agent")
+            : null}
           {group.keys.map((key) => {
             const definition = promptDefinitionsByKey[key];
             const templateId = key as PromptTemplateId;
@@ -5981,6 +6019,8 @@ export function ShortFormVideoSettingsView({
       <div className="space-y-6">
         {textScriptSettings ? (
           <div className="space-y-6">
+            {renderGlobalAgentTargetCard("text-script", "Text Script agent")}
+
             <Card className="space-y-4 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -6152,6 +6192,8 @@ export function ShortFormVideoSettingsView({
       <div className="space-y-6">
         {xmlVisualPlanningSettings ? (
           <div className="space-y-6">
+            {renderGlobalAgentTargetCard("plan-visuals", "Plan Visuals agent")}
+
             <PromptTemplateEditorCard
               title="Guidelines for planning visuals template"
               value={xmlVisualPlanningSettings.planningGuidelinesTemplate}
@@ -6366,6 +6408,8 @@ export function ShortFormVideoSettingsView({
           <div className="space-y-6">
             {activeSection === "plan-sound-design" ? (
             <div className="space-y-6">
+              {renderGlobalAgentTargetCard("sound-design", "Plan Sound Design agent")}
+
               <PromptTemplateEditorCard
                 title="Full Plan Sound Design prompt template"
                 description="The actual full top-level prompt template the dashboard sends to Scribe when Plan Sound Design runs. Keep labels, file-writing rules, and placeholder usage inline here when you want them enforced every time."
@@ -8510,6 +8554,40 @@ export function ShortFormVideoSettingsView({
     }
   }
 
+  async function saveAgentTargetDefault(
+    scope: ShortFormAgentTargetScope,
+    target: ShortFormAgentTargetId,
+  ) {
+    if (!agentTargetSettings) return null;
+    const nextSettings: ShortFormAgentTargetSettings = {
+      defaults: {
+        ...agentTargetSettings.defaults,
+        [scope]: target,
+      },
+    };
+    setAgentTargetSettings(nextSettings);
+    try {
+      const data = await parseResponse(
+        await fetch("/api/short-form-videos/settings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ agentTargets: nextSettings }),
+        }),
+      );
+      setAgentTargetSettings(data.agentTargets);
+      setInitialAgentTargetSettings(data.agentTargets);
+      return data;
+    } catch (err) {
+      setAgentTargetSettings(initialAgentTargetSettings);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to save default workflow agent",
+      );
+      throw err;
+    }
+  }
+
   function resetPromptTemplate(templateId: PromptTemplateId) {
     if (!isPromptTemplateDirty(templateId)) return;
     const confirmed = window.confirm(
@@ -8609,6 +8687,8 @@ export function ShortFormVideoSettingsView({
     data: NonNullable<SettingsResponse["data"]>,
   ) {
     setDefinitions(data.definitions);
+    setAgentTargetSettings(data.agentTargets);
+    setInitialAgentTargetSettings(data.agentTargets);
 
     if (
       sectionId === "tts-voice" ||
