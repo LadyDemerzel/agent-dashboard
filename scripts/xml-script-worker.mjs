@@ -228,6 +228,17 @@ function updateMarkdownFrontMatterStatus(filePath, status) {
   fs.writeFileSync(filePath, `---\n${withUpdatedAt}${body}`, "utf-8");
 }
 
+function readMarkdownFrontMatterStatus(filePath) {
+  if (!fs.existsSync(filePath)) return "";
+  const content = fs.readFileSync(filePath, "utf-8");
+  if (!content.startsWith("---\n")) return "";
+  const closingIndex = content.indexOf("\n---", 4);
+  if (closingIndex === -1) return "";
+  const frontMatter = content.slice(4, closingIndex);
+  const match = frontMatter.match(/^status:\s*(.+)$/m);
+  return match?.[1]?.trim().replace(/^["']|["']$/g, "") || "";
+}
+
 function normalizeScriptText(content) {
   return stripFrontMatter(content)
     .replace(/\r/g, "")
@@ -1293,7 +1304,15 @@ async function main() {
     }
 
     if (task === "full" || task === "visuals") {
-      updateMarkdownFrontMatterStatus(job.xmlScriptPath, "needs review");
+      const currentStatus = readMarkdownFrontMatterStatus(job.xmlScriptPath);
+      const statusAfterVerified = job.autoApproveOnComplete
+        ? currentStatus === "published"
+          ? "published"
+          : "approved"
+        : currentStatus === "approved" || currentStatus === "published"
+          ? currentStatus
+          : "needs review";
+      updateMarkdownFrontMatterStatus(job.xmlScriptPath, statusAfterVerified);
     }
     writeJson(statusPath, { status: "verified", runId: job.runId, projectId: job.projectId, task, startedAt, verifiedAt: new Date().toISOString(), attempts });
   } catch (error) {

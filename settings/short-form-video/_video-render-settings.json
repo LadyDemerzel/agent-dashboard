@@ -46,12 +46,12 @@
       "referenceGeneratedAt": "2026-04-16T14:52:03.496Z"
     }
   ],
-  "defaultMusicTrackId": "music-ambient-piano-loop-120",
   "musicVolume": 0.81,
   "musicTracks": [
     {
       "id": "music-cinematic-contemplative-piano",
       "name": "Cinematic contemplative piano",
+      "sourceType": "imported",
       "prompt": "Slow contemplative cinematic piano, calm introspective character, deliberate pacing, measured harmonic progression, instrumental, no vocals.",
       "notes": "Cinematic calm-keys cue for reflective beats, cool-downs, and emotional resets between heavier sections.",
       "previewDurationSeconds": 30,
@@ -105,6 +105,7 @@
     {
       "id": "music-ambient-piano-loop-120",
       "name": "Ambient piano loop 120 BPM",
+      "sourceType": "imported",
       "prompt": "Serene ambient piano loop, introspective calming character, slow 120 BPM pulse, atmospheric accompaniment, instrumental, no vocals.",
       "notes": "Short loop-friendly ambient piano. Stream-loop under quiet sections; layer with a sub-bed for added weight.",
       "previewDurationSeconds": 8,
@@ -155,6 +156,7 @@
     {
       "id": "music-suspense-investigation-orchestral",
       "name": "Suspense investigation orchestral",
+      "sourceType": "imported",
       "prompt": "Suspenseful orchestral underscore, slow-burn investigation tension, minor tonality, moderate tempo, mysterious atmosphere, instrumental, no vocals.",
       "notes": "Investigation-style tension underscore. Use for warning beats, problem reveals, and slow setup.",
       "previewDurationSeconds": 30,
@@ -207,6 +209,7 @@
     {
       "id": "music-orchestral-suspense-120",
       "name": "Dark orchestral suspense 120 BPM",
+      "sourceType": "imported",
       "prompt": "Dark orchestral suspense composition, dramatic tension, 120 BPM moderate-driving tempo, minor key, horror and thriller character, instrumental, no vocals.",
       "notes": "Heavier dark-orchestral cue with more momentum than the investigation track. Use for high-stakes warning or escalating tension.",
       "previewDurationSeconds": 30,
@@ -272,6 +275,7 @@
     {
       "id": "music-playful-comedic-orchestral",
       "name": "Playful comedic orchestral",
+      "sourceType": "imported",
       "prompt": "Upbeat orchestral composition with comedic lighthearted character, layered instrumental arrangement, moderate-to-brisk tempo, major key, instrumental, no vocals.",
       "notes": "Comedic orchestral cue. Use for playful beats, light contrast moments, and pratfall-style mistakes.",
       "previewDurationSeconds": 30,
@@ -323,6 +327,7 @@
     {
       "id": "music-lofi-melody-85bpm",
       "name": "Lo-fi melody 85 BPM",
+      "sourceType": "imported",
       "prompt": "Relaxed 85 BPM lo-fi melody loop, contemplative hip-hop-influenced aesthetic, understated instrumental charm, instrumental, no vocals.",
       "notes": "Warm lo-fi melody loop for instruction and how-to sections that need quiet rhythmic motion.",
       "previewDurationSeconds": 23,
@@ -375,6 +380,7 @@
     {
       "id": "music-lofi-jazz-organ-95",
       "name": "Lo-fi jazz organ 95 BPM",
+      "sourceType": "imported",
       "prompt": "Relaxed 95 BPM jazz organ loop, mellow chill hip-hop aesthetic, lo-fi character, warm and sophisticated, instrumental, no vocals.",
       "notes": "Jazz-organ lo-fi for sophisticated warm beats — proof sections with a chill feel, or instruction with personality.",
       "previewDurationSeconds": 30,
@@ -1259,7 +1265,7 @@
   ],
   "captionMaxWords": 3,
   "pauseRemoval": {
-    "minSilenceDurationSeconds": 0.2,
+    "minSilenceDurationSeconds": 0.5,
     "silenceThresholdDb": -40
   }
 }

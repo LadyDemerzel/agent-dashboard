@@ -297,6 +297,21 @@ function htmlElement(id, className, style, content = "", attrs = "") {
   return `<div id="${id}" class="clip ${className}" data-track-index="1" ${attrs} style="${style}">${content}</div>`;
 }
 
+function estimateSingleLineTextWidth(text, fontSize) {
+  return splitDisplayWords(text).join(" ").split("").reduce((total, char) => {
+    if (char === " ") return total + fontSize * 0.32;
+    if (/[\dA-Z]/.test(char)) return total + fontSize * 0.62;
+    if (/[ilI.,:;!|]/.test(char)) return total + fontSize * 0.28;
+    return total + fontSize * 0.54;
+  }, 0);
+}
+
+function fitSingleLineFontSize(text, maxFontSize, maxWidth, minFontSize = 30) {
+  const estimatedWidth = estimateSingleLineTextWidth(text, maxFontSize);
+  if (!Number.isFinite(estimatedWidth) || estimatedWidth <= maxWidth) return maxFontSize;
+  return Math.max(minFontSize, Math.floor(maxFontSize * (maxWidth / estimatedWidth)));
+}
+
 function textBlock(id, lines, x, y, options = {}) {
   const size = options.size ?? 58;
   const lineGap = options.lineGap ?? 16;
@@ -312,16 +327,21 @@ function textBlock(id, lines, x, y, options = {}) {
   );
 }
 
-function singleLineTextBlock(id, text, _x, y, options = {}) {
-  const size = options.size ?? 58;
-  const right = options.right ?? 0;
+function singleLineTextBlock(id, text, x, y, options = {}) {
+  const maxSize = options.size ?? 58;
   const normalized = asText(text);
+  const maxWidth = options.width;
+  const size = maxWidth ? fitSingleLineFontSize(normalized, maxSize, maxWidth, options.minSize ?? 30) : maxSize;
+  const position = options.right !== undefined ? `right:${options.right}px;` : `left:${x}px;`;
+  const widthStyle = maxWidth
+    ? `width:${maxWidth}px;max-width:${maxWidth}px;overflow:hidden;text-overflow:ellipsis;`
+    : "width:max-content;overflow:visible;";
   const align = options.align || "left";
   const color = options.color || PALETTE.offWhite;
   return htmlElement(
     id,
     `text-block single-line-text ${options.className || ""}`,
-    `right:${right}px;top:${y}px;width:max-content;font-size:${size}px;line-height:${size + (options.lineGap ?? 16)}px;text-align:${align};color:${color};white-space:nowrap;overflow:visible;`,
+    `${position}top:${y}px;${widthStyle}font-size:${size}px;line-height:${size + (options.lineGap ?? 16)}px;text-align:${align};color:${color};white-space:nowrap;`,
     `<div>${escapeHtml(normalized)}</div>`,
   );
 }
@@ -771,14 +791,16 @@ function timelineGraphic(args, timeline) {
   const groupBottom = Math.max(...stepExtents.map((extent) => extent.bottom));
   const titleSize = steps.length <= 3 ? 54 : 48;
   const titleLineGap = 14;
-  const titleLines = title ? wrap(title, 23, 2) : [];
-  const titleHeight = titleLines.length > 0
-    ? titleLines.length * titleSize + Math.max(0, titleLines.length - 1) * titleLineGap
+  const titleWidth = 828;
+  const hasTitle = Boolean(title);
+  const fittedTitleSize = hasTitle ? fitSingleLineFontSize(title, titleSize, titleWidth, 30) : titleSize;
+  const titleHeight = hasTitle
+    ? fittedTitleSize
     : 0;
-  const titleGap = titleLines.length > 0 ? 76 : 0;
+  const titleGap = hasTitle ? 76 : 0;
   const contentHeight = titleHeight + titleGap + (groupBottom - groupTop);
   const contentTop = Math.round((HEIGHT - contentHeight) / 2);
-  const startY = titleLines.length > 0
+  const startY = hasTitle
     ? contentTop + titleHeight + titleGap - groupTop
     : Math.round(HEIGHT / 2 - (groupTop + groupBottom) / 2);
   const ruleCenterYs = stepExtents.map((extent) => startY + extent.ruleCenterY);
@@ -786,11 +808,11 @@ function timelineGraphic(args, timeline) {
   const lastRuleCenterY = ruleCenterYs[ruleCenterYs.length - 1];
   const verticalRuleHeight = Math.max(1, lastRuleCenterY - firstRuleCenterY);
   const stepRevealFinishTimes = stepRevealTimes.map((revealAt) => revealAt + stepRevealDuration);
-  const html = titleLines.length > 0
-    ? [textBlock("timeline-title", titleLines, 126, contentTop, { width: 828, size: titleSize, lineGap: titleLineGap, align: "left" })]
+  const html = hasTitle
+    ? [singleLineTextBlock("timeline-title", title, 126, contentTop, { width: titleWidth, size: titleSize, minSize: 30, lineGap: titleLineGap, align: "left", className: "timeline-title-single-line" })]
     : [];
   html.push(htmlElement("timeline-rule", "rule", `left:${verticalRuleX}px;top:${firstRuleCenterY}px;width:${verticalRuleW}px;height:${verticalRuleHeight}px;background:${PALETTE.faintGrey};transform-origin:center top;`));
-  if (titleLines.length > 0) reveal(timeline, "#timeline-title", timingValue(args, "title", 0.24), { y: 30, duration: 0.42 });
+  if (hasTitle) reveal(timeline, "#timeline-title", timingValue(args, "title", 0.24), { y: 30, duration: 0.42 });
   timeline.push(`tl.set("#timeline-rule", {opacity:0, scaleY:0}, 0);`);
   if (steps.length > 1) {
     timeline.push(`tl.set("#timeline-rule", {opacity:1, scaleY:0}, ${stepRevealFinishTimes[0].toFixed(3)});`);
@@ -856,11 +878,13 @@ function listGraphic(args, timeline) {
   const boxSize = 64;
   const titleSize = items.length <= 4 ? 58 : 50;
   const titleLineGap = 14;
-  const titleLines = title ? wrap(title, 22, 2) : [];
-  const titleHeight = titleLines.length > 0
-    ? titleLines.length * titleSize + Math.max(0, titleLines.length - 1) * titleLineGap
+  const titleWidth = 828;
+  const hasTitle = Boolean(title);
+  const fittedTitleSize = hasTitle ? fitSingleLineFontSize(title, titleSize, titleWidth, 30) : titleSize;
+  const titleHeight = hasTitle
+    ? fittedTitleSize
     : 0;
-  const titleGap = titleLines.length > 0 ? 72 : 0;
+  const titleGap = hasTitle ? 72 : 0;
   const layouts = items.map((item) => {
     const lines = wrap(item.text, textMaxChars);
     const textHeight = lines.length * textLineHeight;
@@ -876,10 +900,10 @@ function listGraphic(args, timeline) {
   const totalH = titleHeight + titleGap + listH;
   const startY = Math.round((HEIGHT - totalH) / 2);
   const listStartY = startY + titleHeight + titleGap;
-  const html = titleLines.length > 0
-    ? [textBlock("list-title", titleLines, 126, startY, { width: 828, size: titleSize, lineGap: titleLineGap, align: "left" })]
+  const html = hasTitle
+    ? [singleLineTextBlock("list-title", title, 126, startY, { width: titleWidth, size: titleSize, minSize: 30, lineGap: titleLineGap, align: "left", className: "list-title-single-line" })]
     : [];
-  if (titleLines.length > 0) reveal(timeline, "#list-title", timingValue(args, "title", 0.24), { y: 30, duration: 0.42 });
+  if (hasTitle) reveal(timeline, "#list-title", timingValue(args, "title", 0.24), { y: 30, duration: 0.42 });
   let cursorY = startY;
   cursorY = listStartY;
   items.forEach((item, index) => {
@@ -982,7 +1006,7 @@ function causeEffect(args, timeline) {
   const arrowHeight = 156;
   const arrowMargin = 84;
   const arrowWidth = 128;
-  const arrowStrokeWidth = 16;
+  const arrowShapePath = "M55 8 H73 V96 H96 L64 146 L32 96 H55 Z";
   const causeRevealAt = timingValue(args, "cause", 0.5);
   const arrowStart = timingValue(args, "arrow", 1.12);
   const effectRevealAt = timingValue(args, "effect", 1.86);
@@ -1009,7 +1033,7 @@ function causeEffect(args, timeline) {
   );
   const html = [
     textHtml("cause-card", causeBlock, centerBlockX(causeBlock), causeBlockY),
-    htmlElement("cause-arrow", "arrow", `left:${centerX - arrowWidth / 2}px;top:${arrowTopY}px;width:${arrowWidth}px;height:${arrowHeight}px;`, `<svg width="${arrowWidth}" height="${arrowHeight}" viewBox="0 0 ${arrowWidth} ${arrowHeight}"><path id="cause-arrow-path" d="M64 8 V${arrowHeight - 34} M30 ${arrowHeight - 68} L64 ${arrowHeight - 10} L98 ${arrowHeight - 68}" fill="none" stroke="${PALETTE.darkNeutralArrow}" stroke-width="${arrowStrokeWidth}" stroke-linecap="round" stroke-linejoin="round"/></svg>`),
+    htmlElement("cause-arrow", "arrow", `left:${centerX - arrowWidth / 2}px;top:${arrowTopY}px;width:${arrowWidth}px;height:${arrowHeight}px;`, `<svg width="${arrowWidth}" height="${arrowHeight}" viewBox="0 0 ${arrowWidth} ${arrowHeight}"><path id="cause-arrow-path" d="${arrowShapePath}" fill="${PALETTE.darkNeutralArrow}"/></svg>`),
     textHtml("effect-card", effectBlock, centerBlockX(effectBlock), effectBlockY),
   ];
   reveal(timeline, "#cause-card", causeRevealAt, { y: -22, duration: 0.44 });

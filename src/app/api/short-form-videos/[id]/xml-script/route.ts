@@ -144,6 +144,11 @@ export async function POST(
   const body = await request.json().catch(() => ({}));
   const task = normalizeXmlWorkflowTask(body.task);
   const notes = typeof body.notes === "string" ? body.notes.trim() : "";
+  const source = typeof body.source === "string" ? body.source.trim() : "";
+  const autoApproveOnComplete =
+    task === "visuals" &&
+    source === "generate-visuals-edit-button" &&
+    body.autoApproveOnComplete === true;
   const textScriptPath = getStageFilePath(id, "script");
   if (!fs.existsSync(textScriptPath)) {
     return NextResponse.json({ success: false, error: "Text script is missing. Generate or save the text script first." }, { status: 400 });
@@ -225,6 +230,8 @@ export async function POST(
     captionMaxWords,
     pauseRemoval,
     requestedAt,
+    source,
+    autoApproveOnComplete,
   }, null, 2), "utf-8");
   writeJson(statusPath, { status: "running", runId, projectId: id, task, startedAt: requestedAt, attempts: [] });
 

@@ -2,6 +2,7 @@ import {
   getShortFormPromptDefinitions,
   getShortFormWorkflowPrompts,
 } from "@/lib/short-form-workflow-prompts";
+import { getShortFormHookSettings } from "@/lib/short-form-hook-settings";
 import { getShortFormImageStyleSettings } from "@/lib/short-form-image-styles";
 import { getShortFormVideoRenderSettings } from "@/lib/short-form-video-render-settings";
 import { getShortFormTextScriptSettings } from "@/lib/short-form-text-script-settings";
@@ -19,6 +20,7 @@ export function getShortFormSettingsPayload() {
   return {
     prompts: getShortFormWorkflowPrompts(),
     definitions: getShortFormPromptDefinitions(),
+    hook: getShortFormHookSettings(),
     imageStyles: getShortFormImageStyleSettings(),
     videoRender: getShortFormVideoRenderSettings(),
     textScript: getShortFormTextScriptSettings(),

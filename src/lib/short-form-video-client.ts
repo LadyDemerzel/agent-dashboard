@@ -6,13 +6,11 @@ import {
 export interface HookOption {
   id: string;
   text: string;
-  rationale?: string;
 }
 
 export interface HookGeneration {
   id: string;
   createdAt: string;
-  description?: string;
   options: HookOption[];
 }
 
@@ -346,6 +344,7 @@ export interface ShortFormProjectClient {
     selectedHookId?: string;
     selectedHookText?: string;
     validationError?: string;
+    agentRun?: StageAgentRunClient;
   };
   research: StageDoc;
   script: StageDoc & { textScriptRuns?: TextScriptRunClient[]; textScriptLatestRunId?: string; textScriptMaxIterationsOverride?: number };
@@ -410,7 +409,6 @@ function normalizeHookOption(value: unknown): HookOption | null {
   return {
     id,
     text,
-    rationale: asOptionalString(obj.rationale),
   };
 }
 
@@ -427,7 +425,6 @@ function normalizeHookGeneration(value: unknown): HookGeneration | null {
   return {
     id,
     createdAt,
-    description: asOptionalString(obj.description),
     options,
   };
 }
@@ -637,35 +634,37 @@ function normalizeTextScriptRun(value: unknown): TextScriptRunClient | undefined
   };
 }
 
+function normalizeAgentRun(runObj: Record<string, unknown>): StageAgentRunClient | undefined {
+  return Object.keys(runObj).length > 0
+    ? {
+        runId: asOptionalString(runObj.runId),
+        source:
+          runObj.source === 'workflow-run' || runObj.source === 'agent-session'
+            ? runObj.source
+            : undefined,
+        status:
+          runObj.status === 'running' ||
+          runObj.status === 'verified' ||
+          runObj.status === 'failed'
+            ? runObj.status
+            : undefined,
+        sessionId: asOptionalString(runObj.sessionId),
+        sessionKey: asOptionalString(runObj.sessionKey),
+        startedAt: asOptionalString(runObj.startedAt),
+        failedAt: asOptionalString(runObj.failedAt),
+        completedAt: asOptionalString(runObj.completedAt),
+        lastEventAt: asOptionalString(runObj.lastEventAt),
+        errorMessage: asOptionalString(runObj.errorMessage),
+        completionReason: asOptionalString(runObj.completionReason),
+      }
+    : undefined;
+}
+
 function normalizeStageDoc(value: unknown): StageDoc {
   const obj = asObject(value);
   const revisionObj = asObject(obj.revision);
   const agentRunObj = asObject(revisionObj.agentRun);
   const directAgentRunObj = asObject(obj.agentRun);
-  const normalizeAgentRun = (runObj: Record<string, unknown>): StageAgentRunClient | undefined =>
-    Object.keys(runObj).length > 0
-      ? {
-          runId: asOptionalString(runObj.runId),
-          source:
-            runObj.source === 'workflow-run' || runObj.source === 'agent-session'
-              ? runObj.source
-              : undefined,
-          status:
-            runObj.status === 'running' ||
-            runObj.status === 'verified' ||
-            runObj.status === 'failed'
-              ? runObj.status
-              : undefined,
-          sessionId: asOptionalString(runObj.sessionId),
-          sessionKey: asOptionalString(runObj.sessionKey),
-          startedAt: asOptionalString(runObj.startedAt),
-          failedAt: asOptionalString(runObj.failedAt),
-          completedAt: asOptionalString(runObj.completedAt),
-          lastEventAt: asOptionalString(runObj.lastEventAt),
-          errorMessage: asOptionalString(runObj.errorMessage),
-          completionReason: asOptionalString(runObj.completionReason),
-        }
-      : undefined;
 
   const revision: StageRevisionClient | undefined = Object.keys(revisionObj).length > 0
     ? {
@@ -845,6 +844,7 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
       selectedHookId: asOptionalString(hooks.selectedHookId),
       selectedHookText: asOptionalString(hooks.selectedHookText),
       validationError: asOptionalString(hooks.validationError),
+      agentRun: normalizeAgentRun(asObject(hooks.agentRun)),
     },
     research,
     script: {

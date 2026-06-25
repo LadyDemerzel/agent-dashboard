@@ -5,7 +5,6 @@ import { getVersionedShortFormSettingsPath } from "@/lib/short-form-settings-pat
 
 export type ShortFormPromptKey =
   | "hooksGenerate"
-  | "hooksMore"
   | "researchGenerate"
   | "researchRevise"
   | "sceneImagesGenerate"
@@ -26,13 +25,7 @@ export const SHORT_FORM_PROMPT_DEFINITIONS: ShortFormPromptDefinition[] = [
   {
     key: "hooksGenerate",
     title: "Hook generation",
-    description: "Initial hook generation request sent to Scribe/content-hooks.",
-    stage: "hooks",
-  },
-  {
-    key: "hooksMore",
-    title: "More hooks",
-    description: "Additional hook generation when the user requests another batch.",
+    description: "Initial hook generation request sent to Scribe.",
     stage: "hooks",
   },
   {
@@ -84,19 +77,8 @@ const DEFAULT_SHORT_FORM_WORKFLOW_PROMPTS: ShortFormWorkflowPrompts = {
     "You are working on a short-form video project in the Agent Dashboard web app.",
     "Topic: {{topic}}",
     "{{selectedHookLine}}",
-    "Generate multiple short-form video hooks for this topic using the content-hooks skill.",
-    "{{priorHooksBlock}}",
-    "Produce 5 strong hook options optimized for vertical short-form video.",
-    "Each option should be punchy, immediately visual, and no more than 10 words long.",
-    "Keep hook punctuation minimal: no dashes, colons, semicolons, or periods. Apostrophes, quotes, and parentheses are okay if truly needed.",
-    "{{hooksPayloadHint}}",
-    "Project directory: {{projectDir}}",
-  ].join("\n\n"),
-  hooksMore: [
-    "You are working on a short-form video project in the Agent Dashboard web app.",
-    "Topic: {{topic}}",
-    "{{selectedHookLine}}",
-    "Generate additional hooks. Extra direction from user: {{descriptionOrFallback}}",
+    "{{hookWritingGuidelines}}",
+    "Generate multiple short-form video hooks for this topic using only the hook-writing guidelines above.",
     "{{priorHooksBlock}}",
     "Produce 5 strong hook options optimized for vertical short-form video.",
     "Each option should be punchy, immediately visual, and no more than 10 words long.",
@@ -351,6 +333,7 @@ export function saveShortFormWorkflowPrompts(nextPrompts: Partial<ShortFormWorkf
     ...stored,
     [WORKFLOW_PROMPT_MIGRATIONS_KEY]: buildMigrationMetadata(stored),
   };
+  delete nextStored.hooksMore;
 
   for (const key of SHORT_FORM_PROMPT_KEYS) {
     nextStored[key] = merged[key];

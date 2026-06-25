@@ -40,13 +40,11 @@ export type PendingStageKey = "hooks" | ShortFormStageKey;
 export interface HookOption {
   id: string;
   text: string;
-  rationale?: string;
 }
 
 export interface HookGeneration {
   id: string;
   createdAt: string;
-  description?: string;
   options: HookOption[];
 }
 
@@ -167,6 +165,21 @@ export interface SceneImageProgressSummary {
 
 interface GeneratedSceneImageArtifact extends SceneImageArtifact {
   duration?: string;
+}
+
+interface ExpectedScriptVisualScene {
+  id: string;
+  number: number;
+  caption: string;
+  startTime?: number;
+  endTime?: number;
+  imageId?: string;
+  visualId?: string;
+  visualType?: "image" | "motion_graphic";
+  motionGraphicTemplateId?: string;
+  motionGraphicRendererId?: string;
+  prompt?: string;
+  basedOnImageId?: string;
 }
 
 export interface StageRequestContext {
@@ -365,6 +378,7 @@ export interface ShortFormProject {
     selectedHookId?: string;
     selectedHookText?: string;
     validationError?: string;
+    agentRun?: StageAgentRunSummary;
   };
   research: StageDocumentSummary;
   script: StageDocumentSummary & { textScriptRuns?: TextScriptRunSummary[]; textScriptLatestRunId?: string; textScriptMaxIterationsOverride?: number };
@@ -881,7 +895,6 @@ function validateHooksPayload(payload: unknown): JsonReadResult<HookGeneration[]
 
     const id = (generation as { id?: unknown }).id;
     const createdAt = (generation as { createdAt?: unknown }).createdAt;
-    const description = (generation as { description?: unknown }).description;
     const options = (generation as { options?: unknown }).options;
 
     if (!isNonEmptyString(id)) {
@@ -890,10 +903,6 @@ function validateHooksPayload(payload: unknown): JsonReadResult<HookGeneration[]
 
     if (!isNonEmptyString(createdAt) || !isIsoDateString(createdAt)) {
       return { data: [], error: `${prefix}.createdAt must be a valid ISO-8601 timestamp.` };
-    }
-
-    if (!isOptionalString(description)) {
-      return { data: [], error: `${prefix}.description must be a string when provided.` };
     }
 
     if (!Array.isArray(options) || options.length === 0) {
@@ -912,8 +921,6 @@ function validateHooksPayload(payload: unknown): JsonReadResult<HookGeneration[]
 
       const optionId = (option as { id?: unknown }).id;
       const text = (option as { text?: unknown }).text;
-      const rationale = (option as { rationale?: unknown }).rationale;
-
       if (!isNonEmptyString(optionId)) {
         return { data: [], error: `${optionPrefix}.id must be a non-empty string.` };
       }
@@ -922,21 +929,15 @@ function validateHooksPayload(payload: unknown): JsonReadResult<HookGeneration[]
         return { data: [], error: `${optionPrefix}.text must be a non-empty string.` };
       }
 
-      if (!isOptionalString(rationale)) {
-        return { data: [], error: `${optionPrefix}.rationale must be a string when provided.` };
-      }
-
       normalizedOptions.push({
         id: optionId,
         text: text.trim(),
-        ...(typeof rationale === "string" && rationale.trim() ? { rationale: rationale.trim() } : {}),
       });
     }
 
     normalized.push({
       id,
       createdAt,
-      ...(typeof description === "string" && description.trim() ? { description: description.trim() } : {}),
       options: normalizedOptions,
     });
   }
@@ -974,6 +975,8 @@ function validateSceneManifestPayload(payload: unknown): JsonReadResult<SceneIma
     const id = (scene as { id?: unknown }).id;
     const number = (scene as { number?: unknown }).number;
     const caption = (scene as { caption?: unknown }).caption;
+    const startTime = (scene as { startTime?: unknown }).startTime;
+    const endTime = (scene as { endTime?: unknown }).endTime;
     const image = (scene as { image?: unknown }).image;
     const previewImage = (scene as { previewImage?: unknown }).previewImage;
     const previewVideo = (scene as { previewVideo?: unknown }).previewVideo;
@@ -1013,10 +1016,26 @@ function validateSceneManifestPayload(payload: unknown): JsonReadResult<SceneIma
     const previewVideoError = validateRelativeMediaPath(previewVideo, `${prefix}.previewVideo`);
     if (previewVideoError) return { data: [], error: previewVideoError };
 
-    if (!image && !previewImage && !previewVideo) {
+    if (
+      startTime !== undefined &&
+      (typeof startTime !== "number" || !Number.isFinite(startTime))
+    ) {
+      return { data: [], error: `${prefix}.startTime must be a finite number when provided.` };
+    }
+
+    if (
+      endTime !== undefined &&
+      (typeof endTime !== "number" || !Number.isFinite(endTime))
+    ) {
+      return { data: [], error: `${prefix}.endTime must be a finite number when provided.` };
+    }
+
+    const hasPlannedVisualReference =
+      isNonEmptyString(visualId) || isNonEmptyString(imageId);
+    if (!image && !previewImage && !previewVideo && !hasPlannedVisualReference) {
       return {
         data: [],
-        error: `${prefix} must include at least one of image, previewImage, or previewVideo so the storyboard can be reviewed.`,
+        error: `${prefix} must include media or a planned XML visual reference so the storyboard can be reviewed.`,
       };
     }
 
@@ -1040,6 +1059,8 @@ function validateSceneManifestPayload(payload: unknown): JsonReadResult<SceneIma
       id,
       number: Number(number),
       caption: caption.trim(),
+      ...(typeof startTime === "number" ? { startTime } : {}),
+      ...(typeof endTime === "number" ? { endTime } : {}),
       ...(typeof image === "string" && image.trim() ? { image: image.trim() } : {}),
       ...(typeof previewImage === "string" && previewImage.trim() ? { previewImage: previewImage.trim() } : {}),
       ...(typeof previewVideo === "string" && previewVideo.trim() ? { previewVideo: previewVideo.trim() } : {}),
@@ -1587,17 +1608,215 @@ function buildSceneImagesReviewDocument(projectId: string, scenes: Array<{ numbe
   ].join("\n");
 }
 
-export function synchronizeSceneImagesArtifacts(projectId: string) {
-  const generated = readGeneratedSceneManifestResult(projectId);
-  if (generated.error || generated.data.length === 0) return;
+function promptAppearsUnchanged(expectedPrompt?: string, existingNotes?: string) {
+  const needle = normalizeVisualMatchText(expectedPrompt);
+  if (!needle || needle.length < 24) return true;
+  const haystack = normalizeVisualMatchText(existingNotes);
+  if (!haystack) return true;
+  return haystack.includes(needle) || (needle.length > 80 && haystack.includes(needle.slice(0, 80)));
+}
+
+function expectedVisualMatchesExisting(expected: ExpectedScriptVisualScene, existing: SceneImageArtifact) {
+  if (expected.visualType === "motion_graphic") {
+    if (existing.visualType !== "motion_graphic") return false;
+    if (
+      expected.motionGraphicTemplateId &&
+      existing.motionGraphicTemplateId &&
+      expected.motionGraphicTemplateId !== existing.motionGraphicTemplateId
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  if (existing.visualType === "motion_graphic") return false;
+  return promptAppearsUnchanged(expected.prompt, existing.notes);
+}
+
+function visualTimeDistance(expected: ExpectedScriptVisualScene, existing: SceneImageArtifact) {
+  const expectedStart = expected.startTime;
+  const existingStart = existing.startTime;
+  const expectedEnd = expected.endTime;
+  const existingEnd = existing.endTime;
+  if (
+    typeof expectedStart !== "number" ||
+    typeof existingStart !== "number" ||
+    typeof expectedEnd !== "number" ||
+    typeof existingEnd !== "number"
+  ) {
+    return undefined;
+  }
+  return Math.abs(expectedStart - existingStart) + Math.abs(expectedEnd - existingEnd);
+}
+
+function scoreVisualManifestMatch(expected: ExpectedScriptVisualScene, existing: SceneImageArtifact) {
+  if (!expectedVisualMatchesExisting(expected, existing)) return 0;
+
+  const expectedCaption = normalizeVisualMatchText(expected.caption);
+  const existingCaption = normalizeVisualMatchText(existing.caption);
+  const sameCaption = Boolean(expectedCaption && expectedCaption === existingCaption);
+  const timeDistance = visualTimeDistance(expected, existing);
+  const closeTime = typeof timeDistance === "number" && timeDistance <= 0.15;
+
+  if (expected.visualId && existing.visualId && expected.visualId === existing.visualId) {
+    return closeTime || sameCaption ? 100 : 0;
+  }
+  if (expected.imageId && existing.imageId && expected.imageId === existing.imageId) {
+    return closeTime || sameCaption ? 95 : 0;
+  }
+  if (sameCaption && closeTime) return 88;
+  if (expected.prompt && existing.notes && promptAppearsUnchanged(expected.prompt, existing.notes)) return sameCaption ? 84 : 72;
+  if (sameCaption) return 70;
+  if (closeTime) return 52;
+
+  return 0;
+}
+
+function findBestManifestMatch(
+  expected: ExpectedScriptVisualScene,
+  existingScenes: SceneImageArtifact[],
+  usedExistingIndexes: Set<number>,
+) {
+  let best: { scene: SceneImageArtifact; index: number; score: number } | undefined;
+  existingScenes.forEach((scene, index) => {
+    if (usedExistingIndexes.has(index)) return;
+    const score = scoreVisualManifestMatch(expected, scene);
+    if (score <= 0) return;
+    if (!best || score > best.score) {
+      best = { scene, index, score };
+    }
+  });
+  return best;
+}
+
+function sceneManifestMatchesExpectedXmlPlan(
+  scenes: SceneImageArtifact[],
+  expectedScenes: ExpectedScriptVisualScene[],
+) {
+  if (expectedScenes.length === 0) return true;
+  if (scenes.length !== expectedScenes.length) return false;
+
+  return expectedScenes.every((expected, index) => {
+    const scene = scenes[index];
+    if (!scene || scene.number !== expected.number) return false;
+    return scoreVisualManifestMatch(expected, scene) > 0;
+  });
+}
+
+function sceneHasManifestMedia(scene?: SceneImageArtifact) {
+  return Boolean(scene?.image || scene?.previewImage || scene?.previewVideo);
+}
+
+function buildReconciledSceneFromExpected(expected: ExpectedScriptVisualScene, existing?: SceneImageArtifact): SceneImageArtifact {
+  return {
+    id: expected.id,
+    number: expected.number,
+    caption: expected.caption,
+    ...(typeof expected.startTime === "number" ? { startTime: expected.startTime } : {}),
+    ...(typeof expected.endTime === "number" ? { endTime: expected.endTime } : {}),
+    ...(sceneHasManifestMedia(existing) && existing?.image ? { image: existing.image } : {}),
+    ...(sceneHasManifestMedia(existing) && existing?.previewImage ? { previewImage: existing.previewImage } : {}),
+    ...(sceneHasManifestMedia(existing) && existing?.previewVideo ? { previewVideo: existing.previewVideo } : {}),
+    ...(expected.visualType ? { visualType: expected.visualType } : existing?.visualType ? { visualType: existing.visualType } : {}),
+    ...(expected.motionGraphicTemplateId ? { motionGraphicTemplateId: expected.motionGraphicTemplateId } : existing?.motionGraphicTemplateId ? { motionGraphicTemplateId: existing.motionGraphicTemplateId } : {}),
+    ...(expected.motionGraphicRendererId ? { motionGraphicRendererId: expected.motionGraphicRendererId } : existing?.motionGraphicRendererId ? { motionGraphicRendererId: existing.motionGraphicRendererId } : {}),
+    ...(existing?.motionGraphicId ? { motionGraphicId: existing.motionGraphicId } : {}),
+    ...(existing?.notes ? { notes: existing.notes } : expected.prompt ? { notes: expected.prompt } : {}),
+    ...(expected.imageId ? { imageId: expected.imageId } : {}),
+    ...(expected.basedOnImageId ? { basedOnImageId: expected.basedOnImageId } : existing?.basedOnImageId ? { basedOnImageId: existing.basedOnImageId } : {}),
+    ...(typeof existing?.reusedExistingAsset === "boolean" ? { reusedExistingAsset: existing.reusedExistingAsset } : {}),
+    ...(expected.visualId ? { visualId: expected.visualId } : {}),
+  };
+}
+
+function writeSceneImagesManifest(projectId: string, scenes: SceneImageArtifact[]) {
+  const primaryPath = getSceneManifestPath(projectId);
+  const strictManifest = {
+    scenes: scenes.map(({ id, number, caption, startTime, endTime, image, previewImage, previewVideo, visualType, motionGraphicId, motionGraphicTemplateId, motionGraphicRendererId, notes, imageId, basedOnImageId, reusedExistingAsset, visualId }) => ({
+      id,
+      number,
+      caption,
+      ...(typeof startTime === "number" ? { startTime } : {}),
+      ...(typeof endTime === "number" ? { endTime } : {}),
+      ...(image ? { image } : {}),
+      ...(previewImage ? { previewImage } : {}),
+      ...(previewVideo ? { previewVideo } : {}),
+      ...(visualType ? { visualType } : {}),
+      ...(motionGraphicId ? { motionGraphicId } : {}),
+      ...(motionGraphicTemplateId ? { motionGraphicTemplateId } : {}),
+      ...(motionGraphicRendererId ? { motionGraphicRendererId } : {}),
+      ...(notes ? { notes } : {}),
+      ...(imageId ? { imageId } : {}),
+      ...(basedOnImageId ? { basedOnImageId } : {}),
+      ...(typeof reusedExistingAsset === "boolean" ? { reusedExistingAsset } : {}),
+      ...(visualId ? { visualId } : {}),
+    })),
+  };
+  fs.writeFileSync(primaryPath, JSON.stringify(strictManifest, null, 2), "utf-8");
+}
+
+function reconcileSceneImagesManifestWithXmlPlan(
+  projectId: string,
+  options?: { candidateScenes?: SceneImageArtifact[] },
+) {
+  const scriptPath = getXmlScriptPath(projectId);
+  const primaryPath = getSceneManifestPath(projectId);
+  if (!fs.existsSync(scriptPath) || !fs.existsSync(primaryPath)) return;
 
   const primary = readPrimarySceneManifestResult(projectId);
+  if (primary.error || primary.data.length === 0) return;
+
+  const expected = readExpectedScriptVisualSpec(projectId).scenes;
+  if (expected.length === 0) return;
+
+  const candidateScenes = [
+    ...(options?.candidateScenes || []),
+    ...primary.data,
+  ];
+  const usedExistingIndexes = new Set<number>();
+  const reconciled = expected.map((scene) => {
+    const best = findBestManifestMatch(scene, candidateScenes, usedExistingIndexes);
+    if (best) usedExistingIndexes.add(best.index);
+    return buildReconciledSceneFromExpected(scene, best?.scene);
+  });
+
+  const currentSerialized = JSON.stringify({ scenes: primary.data });
+  const nextSerialized = JSON.stringify({ scenes: reconciled });
+  if (currentSerialized === nextSerialized) return;
+
+  writeSceneImagesManifest(projectId, reconciled);
+  fs.writeFileSync(getStageFilePath(projectId, "scene-images"), buildSceneImagesReviewDocument(projectId, reconciled), "utf-8");
+}
+
+export function synchronizeSceneImagesArtifacts(projectId: string) {
+  const scriptPath = getXmlScriptPath(projectId);
   const primaryPath = getSceneManifestPath(projectId);
+  if (
+    fs.existsSync(scriptPath) &&
+    fs.existsSync(primaryPath) &&
+    getFileMtimeMs(scriptPath) > getFileMtimeMs(primaryPath) + 1000
+  ) {
+    reconcileSceneImagesManifestWithXmlPlan(projectId);
+    return;
+  }
+
+  const generated = readGeneratedSceneManifestResult(projectId);
+  if (generated.error || generated.data.length === 0) {
+    reconcileSceneImagesManifestWithXmlPlan(projectId);
+    return;
+  }
+
+  const primary = readPrimarySceneManifestResult(projectId);
   const generatedPath = getSceneGeneratorManifestPath(projectId);
   const docPath = getStageFilePath(projectId, "scene-images");
 
   const generatedMtime = getFileMtimeMs(generatedPath);
   const primaryMtime = getFileMtimeMs(primaryPath);
+  const expectedScenes = readExpectedScriptVisualSpec(projectId).scenes;
+  const generatedMatchesCurrentXml = sceneManifestMatchesExpectedXmlPlan(
+    generated.data,
+    expectedScenes,
+  );
   const latestRequest = getLatestStageRequest(projectId, "scene-images");
   const latestRequestMs = latestRequest?.requestedAt ? Date.parse(latestRequest.requestedAt) : Number.NaN;
   const generatedIsForLatestRequest = Number.isFinite(latestRequestMs)
@@ -1612,41 +1831,40 @@ export function synchronizeSceneImagesArtifacts(projectId: string) {
     !requiredSceneIndexes.every((number) => generatedSceneIndexes.has(number));
 
   if (generatedIsPartialLatestRun) {
+    reconcileSceneImagesManifestWithXmlPlan(projectId, {
+      candidateScenes: generated.data,
+    });
     return;
   }
 
+  const generatedCanOverwritePrimary =
+    generatedMatchesCurrentXml &&
+    (
+      Boolean(primary.error) ||
+      primary.data.length === 0 ||
+      generatedMtime > primaryMtime + 1000
+    );
   const shouldSyncManifest =
-    generatedMtime > primaryMtime + 1000 ||
-    sceneManifestNeedsSync(projectId, primary, generated.data);
+    generatedCanOverwritePrimary &&
+    (
+      generatedMtime > primaryMtime + 1000 ||
+      sceneManifestNeedsSync(projectId, primary, generated.data)
+    );
 
   if (shouldSyncManifest) {
-    const strictManifest = {
-      scenes: generated.data.map(({ id, number, caption, startTime, endTime, image, previewImage, previewVideo, visualType, motionGraphicId, motionGraphicTemplateId, motionGraphicRendererId, notes, imageId, basedOnImageId, reusedExistingAsset, visualId }) => ({
-        id,
-        number,
-        caption,
-        ...(typeof startTime === "number" ? { startTime } : {}),
-        ...(typeof endTime === "number" ? { endTime } : {}),
-        ...(image ? { image } : {}),
-        ...(previewImage ? { previewImage } : {}),
-        ...(previewVideo ? { previewVideo } : {}),
-        ...(visualType ? { visualType } : {}),
-        ...(motionGraphicId ? { motionGraphicId } : {}),
-        ...(motionGraphicTemplateId ? { motionGraphicTemplateId } : {}),
-        ...(motionGraphicRendererId ? { motionGraphicRendererId } : {}),
-        ...(notes ? { notes } : {}),
-        ...(imageId ? { imageId } : {}),
-        ...(basedOnImageId ? { basedOnImageId } : {}),
-        ...(typeof reusedExistingAsset === "boolean" ? { reusedExistingAsset } : {}),
-        ...(visualId ? { visualId } : {}),
-      })),
-    };
-    fs.writeFileSync(primaryPath, JSON.stringify(strictManifest, null, 2), "utf-8");
+    writeSceneImagesManifest(projectId, generated.data);
   }
 
-  if (sceneImagesDocNeedsSync(projectId, generated.data, shouldSyncManifest, generatedMtime, docPath)) {
+  if (
+    generatedMatchesCurrentXml &&
+    sceneImagesDocNeedsSync(projectId, generated.data, shouldSyncManifest, generatedMtime, docPath)
+  ) {
     fs.writeFileSync(docPath, buildSceneImagesReviewDocument(projectId, generated.data), "utf-8");
   }
+
+  reconcileSceneImagesManifestWithXmlPlan(projectId, {
+    candidateScenes: generated.data,
+  });
 }
 
 function readSceneManifestResult(projectId: string): JsonReadResult<SceneImageArtifact[]> {
@@ -1757,6 +1975,22 @@ function normalizeXmlText(value: string) {
     .trim();
 }
 
+function normalizeVisualMatchText(value?: string) {
+  return typeof value === "string"
+    ? value
+        .toLowerCase()
+        .replace(/&amp;/g, "&")
+        .replace(/[^a-z0-9]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+    : "";
+}
+
+function extractXmlPromptText(value: string) {
+  const promptBody = value.match(/<prompt\b[^>]*>([\s\S]*?)<\/prompt>/i)?.[1] || "";
+  return normalizeXmlText(promptBody);
+}
+
 function parseXmlAttributes(raw: string) {
   const attributes: Record<string, string> = {};
   if (!raw.trim()) return attributes;
@@ -1774,7 +2008,7 @@ function readExpectedScriptVisualSpec(projectId: string) {
   const scriptPath = getXmlScriptPath(projectId);
   if (!fs.existsSync(scriptPath)) {
     return {
-      scenes: [] as Array<{ id: string; number: number; caption: string; imageId?: string; visualId?: string }>,
+      scenes: [] as ExpectedScriptVisualScene[],
       assetDependencies: new Map<string, string | undefined>(),
     };
   }
@@ -1784,6 +2018,7 @@ function readExpectedScriptVisualSpec(projectId: string) {
     const assetsBody = xml.match(/<assets\b[^>]*>([\s\S]*?)<\/assets>/i)?.[1] || "";
     const timelineBody = xml.match(/<timeline\b[^>]*>([\s\S]*?)<\/timeline>/i)?.[1] || "";
     const rawAssetDependencies = new Map<string, string | undefined>();
+    const assetPrompts = new Map<string, string>();
 
     for (const match of assetsBody.matchAll(/<image\b([^>]*)>([\s\S]*?)<\/image>/gi)) {
       const attributes = parseXmlAttributes(match[1] || "");
@@ -1791,6 +2026,8 @@ function readExpectedScriptVisualSpec(projectId: string) {
       if (!imageId) continue;
       const basedOnImageId = attributes.basedOn?.trim();
       rawAssetDependencies.set(imageId, basedOnImageId || undefined);
+      const prompt = extractXmlPromptText(match[2] || "");
+      if (prompt) assetPrompts.set(imageId, prompt);
     }
 
     const visualMatches = Array.from(timelineBody.matchAll(/<visual\b([^>]*?)(?:\/>|>([\s\S]*?)<\/visual>)/gi));
@@ -1809,19 +2046,33 @@ function readExpectedScriptVisualSpec(projectId: string) {
       const inlineImage = visualBody.match(/<image\b([^>]*?)(?:\/>|>([\s\S]*?)<\/image>)/i);
       const inlineImageAttributes = inlineImage ? parseXmlAttributes(inlineImage[1] || "") : {};
       const inlineImageId = inlineImage ? (inlineImageAttributes.id?.trim() || visualId || `visual-${number}`) : "";
+      const inlineImagePrompt = inlineImage ? extractXmlPromptText(inlineImage[2] || "") : "";
       if (inlineImageId) {
         rawAssetDependencies.set(inlineImageId, inlineImageAttributes.basedOn?.trim() || undefined);
         referenceToImageId.set(inlineImageId, inlineImageId);
         if (visualId) referenceToImageId.set(visualId, inlineImageId);
+        if (inlineImagePrompt) assetPrompts.set(inlineImageId, inlineImagePrompt);
       }
       const rawImageReference = attributes.imageId?.trim();
       const imageId = inlineImageId || (rawImageReference ? referenceToImageId.get(rawImageReference) || rawImageReference : "");
+      const motionGraphicAttributes = parseXmlAttributes(visualBody.match(/<motionGraphic\b([^>]*)/i)?.[1] || "");
+      const visualType = attributes.visualType === "motion_graphic" || /<motionGraphic\b/i.test(visualBody)
+        ? "motion_graphic" as const
+        : "image" as const;
+      const basedOnImageId = imageId ? rawAssetDependencies.get(imageId) : undefined;
       return {
         id: `scene-${number}`,
         number,
         caption,
+        ...(parseEditableVisualSeconds(attributes.start) !== undefined ? { startTime: parseEditableVisualSeconds(attributes.start) } : {}),
+        ...(parseEditableVisualSeconds(attributes.end) !== undefined ? { endTime: parseEditableVisualSeconds(attributes.end) } : {}),
+        visualType,
         ...(imageId ? { imageId } : {}),
         ...(visualId ? { visualId } : {}),
+        ...(basedOnImageId ? { basedOnImageId } : {}),
+        ...(assetPrompts.get(imageId) ? { prompt: assetPrompts.get(imageId) } : {}),
+        ...(motionGraphicAttributes.templateId ? { motionGraphicTemplateId: motionGraphicAttributes.templateId.trim() } : {}),
+        ...(motionGraphicAttributes.rendererId ? { motionGraphicRendererId: motionGraphicAttributes.rendererId.trim() } : {}),
       };
     });
     for (const scene of scenes) {
@@ -1837,7 +2088,7 @@ function readExpectedScriptVisualSpec(projectId: string) {
     return { scenes, assetDependencies };
   } catch {
     return {
-      scenes: [] as Array<{ id: string; number: number; caption: string; imageId?: string; visualId?: string }>,
+      scenes: [] as ExpectedScriptVisualScene[],
       assetDependencies: new Map<string, string | undefined>(),
     };
   }
@@ -1934,10 +2185,16 @@ function buildSceneImagesProgressState(projectId: string, scenes: SceneImageArti
   const revision = doc.revision;
   const isPending = Boolean(doc.pending || revision?.isPending);
   if (!isPending) {
+    const resolvedScenes = scenes.map((scene) => ({
+      ...scene,
+      status: sceneHasManifestMedia(scene) ? "completed" as const : "in-progress" as const,
+    }));
+    const completed = resolvedScenes.filter((scene) => scene.status === "completed").length;
+    const total = resolvedScenes.length;
     return {
-      scenes: scenes.map((scene) => ({ ...scene, status: "completed" as const })),
-      sceneProgress: scenes.length > 0
-        ? { total: scenes.length, completed: scenes.length, pending: 0, scope: "all" as const }
+      scenes: resolvedScenes,
+      sceneProgress: total > 0
+        ? { total, completed, pending: Math.max(total - completed, 0), scope: "all" as const }
         : undefined,
     };
   }
@@ -3112,10 +3369,12 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
   const hooksResult = readHooksResult(projectId);
   const latestHookRequest = meta.latestHookRequest;
   const hookArtifactFresh = hasFreshHooksArtifact(projectId, latestHookRequest?.requestedAt);
-  const hookRun = hookArtifactFresh
-    ? undefined
-    : findRelevantHookWorkflowRun(projectId, latestHookRequest?.requestedAt, latestHookRequest?.runId);
-  const hookRunError = hookRun?.status === "failed"
+  const hookRun = findRelevantHookWorkflowRun(
+    projectId,
+    latestHookRequest?.requestedAt,
+    latestHookRequest?.runId,
+  );
+  const hookRunError = !hookArtifactFresh && hookRun?.status === "failed"
     ? hookRun.errorMessage || "The latest hook generation run finished without writing hooks.json."
     : undefined;
   const research = { ...readStageDocument(projectId, "research", { pending: Boolean(meta.pendingResearch) }), pending: Boolean(meta.pendingResearch) };
@@ -3225,6 +3484,7 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
       selectedHookId,
       selectedHookText,
       validationError: hooksResult.error || hookRunError,
+      agentRun: hookRun,
     },
     research: resolvedResearch,
     script: resolvedScript,

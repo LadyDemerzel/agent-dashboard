@@ -361,7 +361,7 @@ export function getShortFormSettingsNavItems(summary?: ShortFormSettingsNavSumma
 
   return [
     buildItem('topic', 'Topic', 'topic', 'WRITING', 'No dashboard-wide settings are needed before a project topic exists.', 'No settings', []),
-    buildItem('hook', 'Hook', 'hook', 'WRITING', 'Hook generation and more-hooks prompt templates.', '2 prompts', ['prompt-hooks']),
+    buildItem('hook', 'Hook', 'hook', 'WRITING', 'Hook generation and shared helper prompt templates.', '3 prompts', ['prompt-hooks']),
     buildItem('research', 'Research', 'research', 'WRITING', 'Research generation and revision prompt templates.', '2 prompts', ['prompt-research']),
     buildItem('text-script', 'Text Script', 'text-script', 'WRITING', 'Text-script loop prompts, iteration defaults, and post-processing rules.', '3 prompts', ['text-script-prompts']),
     buildItem('generate-narration-audio', 'Generate Narration Audio', 'narration', 'NARRATION', 'Narration voice library plus silence-trimming defaults.', `${summary?.voiceCount || 0} voices`, ['tts-voice', 'pause-removal']),

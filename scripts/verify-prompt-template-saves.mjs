@@ -11,6 +11,7 @@ const settingsDir = path.join(
 
 const settingsFiles = [
   "_workflow-settings.json",
+  "_hook-settings.json",
   "_text-script-settings.json",
   "_xml-visual-planning-settings.json",
   "_image-style-settings.json",
@@ -153,10 +154,57 @@ async function main() {
     partialWorkflowSentinel,
     "single workflow prompt partial save",
   );
+  assertNoOwnProperty(data.prompts, "hooksMore", "settings API workflow prompts");
+  const promptsAfterPartialWorkflowSave = data.prompts;
+
+  const partialHookGuidelinesSentinel = `${sentinelBase}: partial-hook-guidelines-template`;
+  data = await patchSettings({
+    hook: {
+      hookWritingGuidelinesTemplate: appendSentinel(
+        initial.hook.hookWritingGuidelinesTemplate,
+        partialHookGuidelinesSentinel,
+      ),
+    },
+  });
+  assertContains(
+    data.hook.hookWritingGuidelinesTemplate,
+    partialHookGuidelinesSentinel,
+    "single hook-writing guidelines prompt partial save",
+  );
   assertEqual(
-    data.prompts.hooksMore,
-    initial.prompts.hooksMore,
-    "adjacent workflow prompt after partial save",
+    data.hook.hooksPayloadHintTemplate,
+    initial.hook.hooksPayloadHintTemplate,
+    "adjacent hook payload hint prompt after guidelines partial save",
+  );
+  assertEqual(
+    data.prompts.hooksGenerate,
+    promptsAfterPartialWorkflowSave.hooksGenerate,
+    "hook generation workflow prompt after hook guidelines partial save",
+  );
+
+  const partialHookPayloadSentinel = `${sentinelBase}: partial-hook-payload-template`;
+  data = await patchSettings({
+    hook: {
+      hooksPayloadHintTemplate: appendSentinel(
+        initial.hook.hooksPayloadHintTemplate,
+        partialHookPayloadSentinel,
+      ),
+    },
+  });
+  assertContains(
+    data.hook.hooksPayloadHintTemplate,
+    partialHookPayloadSentinel,
+    "single hook payload hint prompt partial save",
+  );
+  assertContains(
+    data.hook.hookWritingGuidelinesTemplate,
+    partialHookGuidelinesSentinel,
+    "hook-writing guidelines prompt after payload hint partial save",
+  );
+  assertEqual(
+    data.prompts.hooksGenerate,
+    promptsAfterPartialWorkflowSave.hooksGenerate,
+    "hook generation workflow prompt after hook payload hint partial save",
   );
 
   const partialTextSentinel = `${sentinelBase}: partial-text-script-template`;
@@ -360,6 +408,43 @@ async function main() {
     assertContains(data.prompts[definition.key], workflowSentinel, `workflow prompt ${definition.key} after GET`);
   }
 
+  const hookGuidelinesSentinel = `${sentinelBase}: hook-guidelines`;
+  const hookPayloadSentinel = `${sentinelBase}: hook-payload`;
+  data = await patchSettings({
+    hook: {
+      ...initial.hook,
+      hookWritingGuidelinesTemplate: appendSentinel(
+        initial.hook.hookWritingGuidelinesTemplate,
+        hookGuidelinesSentinel,
+      ),
+      hooksPayloadHintTemplate: appendSentinel(
+        initial.hook.hooksPayloadHintTemplate,
+        hookPayloadSentinel,
+      ),
+    },
+  });
+  assertContains(
+    data.hook.hookWritingGuidelinesTemplate,
+    hookGuidelinesSentinel,
+    "hook-writing guidelines prompt",
+  );
+  assertContains(
+    data.hook.hooksPayloadHintTemplate,
+    hookPayloadSentinel,
+    "hook payload hint prompt",
+  );
+  data = await getSettings();
+  assertContains(
+    data.hook.hookWritingGuidelinesTemplate,
+    hookGuidelinesSentinel,
+    "hook-writing guidelines prompt after GET",
+  );
+  assertContains(
+    data.hook.hooksPayloadHintTemplate,
+    hookPayloadSentinel,
+    "hook payload hint prompt after GET",
+  );
+
   const textSentinel = `${sentinelBase}: text-script`;
   data = await patchSettings({
     textScript: {
@@ -547,7 +632,7 @@ async function main() {
   assertContains(data.soundDesign.promptTemplate, soundSentinel, "sound-design prompt");
   assertContains(data.soundDesign.revisionPromptTemplate, soundSentinel, "sound-design revision prompt");
 
-  console.log("Verified prompt-template saves for workflow, research, text-script, XML visual-planning, image, and sound-design settings.");
+  console.log("Verified prompt-template saves for workflow, hook, research, text-script, XML visual-planning, image, and sound-design settings.");
 }
 
 try {

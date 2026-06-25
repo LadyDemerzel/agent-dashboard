@@ -234,7 +234,7 @@ def codex_oauth_agent_candidates(runtime_config: dict[str, Any] | None = None) -
     for fallback_agent_id in ("ralph", "main"):
         if fallback_agent_id not in candidates:
             candidates.append(fallback_agent_id)
-    return [agent_id for agent_id in candidates if agent_has_codex_oauth_profile(agent_id)]
+    return [agent_id for agent_id in candidates if SAFE_AGENT_ID_RE.match(agent_id)]
 
 
 def resolve_codex_oauth_agent_id() -> str | None:
@@ -242,7 +242,7 @@ def resolve_codex_oauth_agent_id() -> str | None:
     return candidates[0] if candidates else None
 
 def is_usable_codex_oauth_profile(credential: dict[str, Any]) -> bool:
-    if credential.get("provider") != "openai-codex" or credential.get("type") != "oauth":
+    if credential.get("provider") not in {"openai-codex", "openai"} or credential.get("type") != "oauth":
         return False
     oauth_ref = credential.get("oauthRef")
     if isinstance(oauth_ref, dict) and oauth_ref.get("source") and oauth_ref.get("id"):
@@ -320,7 +320,11 @@ def build_codex_oauth_auth_config(agent_id: str, runtime_config: dict[str, Any])
     profiles: dict[str, dict[str, Any]] = {}
     for profile_id in profile_ids:
         credential = store_profiles.get(profile_id)
-        profile: dict[str, Any] = {"provider": "openai-codex", "mode": "oauth"}
+        provider = credential.get("provider") if isinstance(credential, dict) else None
+        profile: dict[str, Any] = {
+            "provider": provider if provider in {"openai", "openai-codex"} else "openai",
+            "mode": "oauth",
+        }
         if isinstance(credential, dict) and isinstance(credential.get("email"), str):
             profile["email"] = credential["email"]
         profiles[profile_id] = profile
@@ -329,10 +333,9 @@ def build_codex_oauth_auth_config(agent_id: str, runtime_config: dict[str, Any])
         "profiles": profiles,
         "order": {
             "openai-codex": profile_ids,
-            # The OpenAI image provider transparently routes openai/gpt-image-* through
-            # openai-codex OAuth when this order is present. Without it, a legacy
-            # default profile can shadow the working identity profile and surface as
-            # "No API key found for provider openai-codex".
+            # The OpenAI image provider routes openai/gpt-image-* through Codex
+            # OAuth/subscription auth. Keep legacy openai-codex order metadata for
+            # older portable profile stores, while probing the current openai provider.
             "openai": profile_ids,
         },
     }
@@ -387,16 +390,16 @@ try {
   const configPath = process.env.OPENCLAW_CONFIG_PATH || path.join(process.env.HOME || '', '.openclaw', 'openclaw.json');
   const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   const agentDir = path.join(process.env.HOME || '', '.openclaw', 'agents', agentId, 'agent');
-  const auth = await resolveApiKeyForProvider({ provider: 'openai-codex', cfg, agentDir });
+  const auth = await resolveApiKeyForProvider({ provider: 'openai', cfg, agentDir });
   console.log(JSON.stringify({
-    ok: Boolean(auth?.apiKey),
+    ok: Boolean(auth?.apiKey) && auth?.mode === 'oauth',
     agentId,
     agentDir,
     source: auth?.source,
     mode: auth?.mode,
     profileId: auth?.profileId
   }));
-  if (!auth?.apiKey) process.exitCode = 1;
+  if (!auth?.apiKey || auth?.mode !== 'oauth') process.exitCode = 1;
 } catch (error) {
   console.log(JSON.stringify({
     ok: false,
@@ -455,10 +458,10 @@ def prepare_openclaw_image_env(args: argparse.Namespace) -> tuple[dict[str, str]
         configured = ", ".join(configured_agent_ids(runtime_config)) or "none"
         raise RuntimeError(
             f"Refusing to generate {args.model}: dashboard image generation defaults to Codex OAuth/subscription only, "
-            f"but no OpenAI Codex OAuth profile is available for the default OpenClaw agent '{default_agent_id}' "
+            f"but no candidate OpenClaw agent was available to probe for the default OpenClaw agent '{default_agent_id}' "
             f"or configured fallback agents ({configured}). "
             "A direct fallback would use OPENAI_API_KEY/CODEX_API_KEY and bill API usage. "
-            "Run `openclaw models status --agent main --probe --probe-provider openai-codex` to verify Codex OAuth, "
+            "Run `openclaw models status --agent main --probe --probe-provider openai` to verify Codex OAuth, "
             "or sign in/copy a portable OpenAI Codex OAuth profile for the agent that runs dashboard jobs. "
             f"Set {API_KEY_BILLING_OPT_IN_ENV}=1 only if direct OpenAI API-key billing is intended."
         )
@@ -490,9 +493,9 @@ def prepare_openclaw_image_env(args: argparse.Namespace) -> tuple[dict[str, str]
     temp_dir.cleanup()
     failure_detail = "; ".join(probe_failures[-3:]) or "no probe details"
     raise RuntimeError(
-        f"Refusing to generate {args.model}: OpenAI Codex OAuth profile metadata exists, but OpenClaw could not resolve an OAuth access token "
+        f"Refusing to generate {args.model}: OpenClaw could not resolve an OAuth access token "
         f"from the temporary dashboard config without OPENAI_API_KEY/CODEX_API_KEY. Probe failures: {failure_detail}. "
-        "Run `openclaw models status --agent main --probe --probe-provider openai-codex` to verify or refresh the Codex OAuth login."
+        "Run `openclaw models status --agent main --probe --probe-provider openai` to verify or refresh the Codex OAuth login."
     )
 
 def strip_ansi(value: str) -> str:

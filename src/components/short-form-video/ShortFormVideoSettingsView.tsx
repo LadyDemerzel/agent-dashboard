@@ -78,7 +78,6 @@ import {
 
 type PromptKey =
   | "hooksGenerate"
-  | "hooksMore"
   | "researchGenerate"
   | "researchRevise"
   | "sceneImagesGenerate"
@@ -90,6 +89,10 @@ type TextScriptPromptTemplateKey =
   | "generatePrompt"
   | "revisePrompt"
   | "reviewPrompt";
+
+type HookPromptTemplateKey =
+  | "hookWritingGuidelinesTemplate"
+  | "hooksPayloadHintTemplate";
 
 type XmlVisualPlanningPromptTemplateKey =
   | "planningGuidelinesTemplate"
@@ -110,6 +113,7 @@ type ImagePromptTemplateKey =
 
 type PromptTemplateId =
   | PromptKey
+  | `hook.${HookPromptTemplateKey}`
   | `textScript.${TextScriptPromptTemplateKey}`
   | `xmlVisualPlanning.${XmlVisualPlanningPromptTemplateKey}`
   | `soundDesign.${SoundDesignPromptTemplateKey}`
@@ -628,6 +632,11 @@ interface TextScriptSettings {
   reviewPrompt: string;
 }
 
+interface HookSettings {
+  hookWritingGuidelinesTemplate: string;
+  hooksPayloadHintTemplate: string;
+}
+
 interface XmlVisualPlanningSettings {
   planningGuidelinesTemplate: string;
   motionGraphicTemplatePromptTemplate: string;
@@ -826,6 +835,7 @@ interface SettingsResponse {
   data?: {
     prompts: Record<PromptKey, string>;
     definitions: PromptDefinition[];
+    hook: HookSettings;
     imageStyles: ImageStyleSettings;
     videoRender: VideoRenderSettings;
     textScript: TextScriptSettings;
@@ -1131,6 +1141,32 @@ function createXmlVisualPlanningPromptPreviewValues({
     values = mergePromptTemplatePreviewValues(values, {
       planningVisualsGuidelines: renderPromptTemplatePreviewString(
         xmlVisualPlanningSettings.planningGuidelinesTemplate,
+        values,
+      ),
+    });
+  }
+
+  return values;
+}
+
+function createHookPromptPreviewValues(
+  hookSettings: HookSettings | null,
+) {
+  let values = { ...PROMPT_GROUP_PREVIEW_VALUES["prompt-hooks"] };
+
+  if (hookSettings?.hooksPayloadHintTemplate) {
+    values = mergePromptTemplatePreviewValues(values, {
+      hooksPayloadHint: renderPromptTemplatePreviewString(
+        hookSettings.hooksPayloadHintTemplate,
+        values,
+      ),
+    });
+  }
+
+  if (hookSettings?.hookWritingGuidelinesTemplate) {
+    values = mergePromptTemplatePreviewValues(values, {
+      hookWritingGuidelines: renderPromptTemplatePreviewString(
+        hookSettings.hookWritingGuidelinesTemplate,
         values,
       ),
     });
@@ -1572,8 +1608,8 @@ const PROMPT_GROUPS: Array<{
     id: "prompt-hooks",
     title: "Hook prompts",
     description:
-      "Templates still used for hook generation and “more hooks” requests.",
-    keys: ["hooksGenerate", "hooksMore"],
+      "Template used for both initial hook generation and follow-up hook requests.",
+    keys: ["hooksGenerate"],
   },
   {
     id: "prompt-research",
@@ -1586,19 +1622,30 @@ const PROMPT_GROUPS: Array<{
 const PROMPT_GROUP_PLACEHOLDER_ROWS: Record<"prompt-hooks" | "prompt-research", PromptPlaceholderRow[]> = {
   "prompt-hooks": [
     {
-      placeholder: "{{topic}}",
-      explanation: "The short-form project topic.",
-      example: "Facial posture reset",
-    },
-    {
-      placeholder: "{{selectedHookLine}}",
-      explanation: "A preformatted selected-hook line when one exists; otherwise an empty string.",
-      example: "Currently selected hook: Your face may look uneven from tiny muscle habits",
-    },
-    {
       placeholder: "{{descriptionOrFallback}}",
-      explanation: "Extra direction supplied when requesting more hooks, or the fallback text `None.`.",
+      explanation: "Extra direction supplied with a hook request, or the fallback text `None.`.",
       example: "Make these more curiosity-driven and less clinical.",
+    },
+    {
+      placeholder: "{{hookWritingGuidelines}}",
+      explanation:
+        "The fully rendered Guidelines for writing hooks template. Use this wherever the shared hook-writing rules should appear.",
+      example:
+        "# Guidelines for writing short-form hooks\nYou are writing spoken opener hooks for vertical short-form video...",
+    },
+    {
+      placeholder: "{{hooksPath}}",
+      explanation:
+        "Absolute path to the hooks.json artifact that Scribe must append to or create.",
+      example:
+        "/Users/ittaisvidler/.../short-form-videos/project-id/hooks.json",
+    },
+    {
+      placeholder: "{{hooksPayloadHint}}",
+      explanation:
+        "The fully rendered Hook payload hint template. Use this wherever the file-writing and validation instructions should appear.",
+      example:
+        "Save the result to .../hooks.json as strict JSON with this shape...",
     },
     {
       placeholder: "{{priorHooksBlock}}",
@@ -1606,14 +1653,19 @@ const PROMPT_GROUP_PLACEHOLDER_ROWS: Record<"prompt-hooks" | "prompt-research", 
       example: "Previously generated hooks (avoid duplicates...):\n- Your face may look uneven from tiny muscle habits",
     },
     {
-      placeholder: "{{hooksPayloadHint}}",
-      explanation: "The visible JSON file-writing and validation instructions for the hooks artifact.",
-      example: "Save the result to .../hooks.json as strict JSON with this shape...",
-    },
-    {
       placeholder: "{{projectDir}}",
       explanation: "Absolute project root for the short-form deliverable.",
       example: "/Users/ittaisvidler/.../short-form-videos/project-id",
+    },
+    {
+      placeholder: "{{selectedHookLine}}",
+      explanation: "A preformatted selected-hook line when one exists; otherwise an empty string.",
+      example: "Currently selected hook: Your face may look uneven from tiny muscle habits",
+    },
+    {
+      placeholder: "{{topic}}",
+      explanation: "The short-form project topic.",
+      example: "Facial posture reset",
     },
   ],
   "prompt-research": [
@@ -1875,8 +1927,9 @@ const NANO_BANANA_PROMPT_PREVIEW_VALUES =
   createPromptTemplatePreviewValues(NANO_BANANA_PLACEHOLDER_ROWS);
 
 const PROMPT_TEMPLATE_IDS = [
+  "hook.hookWritingGuidelinesTemplate",
+  "hook.hooksPayloadHintTemplate",
   "hooksGenerate",
-  "hooksMore",
   "researchGenerate",
   "researchRevise",
   "textScript.generatePrompt",
@@ -1918,7 +1971,7 @@ const SETTINGS_PAGE_META: Record<
     title: "Hook",
     description:
       "Edit the hook-generation prompts used when the Hook workflow page asks Scribe for hook options.",
-    summaryLabel: "2 prompt templates",
+    summaryLabel: "3 prompt templates",
     sectionIds: ["prompt-hooks"],
   },
   research: {
@@ -4254,6 +4307,10 @@ export function ShortFormVideoSettingsView({
     useState<TextScriptSettings | null>(initialSettings?.textScript || null);
   const [initialTextScriptSettings, setInitialTextScriptSettings] =
     useState<TextScriptSettings | null>(initialSettings?.textScript || null);
+  const [hookSettings, setHookSettings] =
+    useState<HookSettings | null>(initialSettings?.hook || null);
+  const [initialHookSettings, setInitialHookSettings] =
+    useState<HookSettings | null>(initialSettings?.hook || null);
   const [xmlVisualPlanningSettings, setXmlVisualPlanningSettings] =
     useState<XmlVisualPlanningSettings | null>(initialSettings?.xmlVisualPlanning || null);
   const [
@@ -4817,6 +4874,8 @@ export function ShortFormVideoSettingsView({
       setInitialVideoRender(data.videoRender);
       setTextScriptSettings(data.textScript);
       setInitialTextScriptSettings(data.textScript);
+      setHookSettings(data.hook);
+      setInitialHookSettings(data.hook);
       setXmlVisualPlanningSettings(data.xmlVisualPlanning);
       setInitialXmlVisualPlanningSettings(data.xmlVisualPlanning);
       setMotionGraphicsSettings(data.motionGraphics);
@@ -4936,6 +4995,10 @@ export function ShortFormVideoSettingsView({
         motionGraphicsSettings,
       }),
     [motionGraphicsSettings, xmlVisualPlanningSettings],
+  );
+  const hookPromptPreviewValues = useMemo(
+    () => createHookPromptPreviewValues(hookSettings),
+    [hookSettings],
   );
   const soundDesignPromptPreviewValues = useMemo(
     () =>
@@ -5787,6 +5850,82 @@ export function ShortFormVideoSettingsView({
     videoRender?.voices.length,
   ]);
 
+  const hookGuidelinesPromptSection = hookSettings ? (
+    <section id="hook-guidelines" className="scroll-mt-24">
+      <div className="space-y-6">
+        <PromptTemplateEditorCard
+          title="Guidelines for writing hooks template"
+          value={hookSettings.hookWritingGuidelinesTemplate}
+          onChange={(value) =>
+            setPromptTemplateValue(
+              "hook.hookWritingGuidelinesTemplate",
+              value,
+            )
+          }
+          {...getPromptTemplateFocusHandlers(
+            "hook.hookWritingGuidelinesTemplate",
+          )}
+          feedback={promptTemplateFeedback["hook.hookWritingGuidelinesTemplate"]}
+          dirty={isPromptTemplateDirty("hook.hookWritingGuidelinesTemplate")}
+          saving={
+            promptTemplateFeedback["hook.hookWritingGuidelinesTemplate"].saving
+          }
+          onSave={() =>
+            void savePromptTemplate("hook.hookWritingGuidelinesTemplate")
+          }
+          onReset={() =>
+            resetPromptTemplate("hook.hookWritingGuidelinesTemplate")
+          }
+          minHeightClassName="min-h-[520px]"
+          previewValues={hookPromptPreviewValues}
+        >
+          <p>
+            This shared template is rendered first, then injected into Hook
+            generation wherever{" "}
+            <code>{"{{hookWritingGuidelines}}"}</code> appears.
+          </p>
+          <p>
+            Use this for hook-writing frameworks, quality bars, platform rules,
+            and reusable taste guidance that should stay synchronized between
+            initial and follow-up hook runs.
+          </p>
+        </PromptTemplateEditorCard>
+
+        <PromptTemplateEditorCard
+          title="Hook payload hint template"
+          value={hookSettings.hooksPayloadHintTemplate}
+          onChange={(value) =>
+            setPromptTemplateValue("hook.hooksPayloadHintTemplate", value)
+          }
+          {...getPromptTemplateFocusHandlers("hook.hooksPayloadHintTemplate")}
+          feedback={promptTemplateFeedback["hook.hooksPayloadHintTemplate"]}
+          dirty={isPromptTemplateDirty("hook.hooksPayloadHintTemplate")}
+          saving={
+            promptTemplateFeedback["hook.hooksPayloadHintTemplate"].saving
+          }
+          onSave={() =>
+            void savePromptTemplate("hook.hooksPayloadHintTemplate")
+          }
+          onReset={() =>
+            resetPromptTemplate("hook.hooksPayloadHintTemplate")
+          }
+          minHeightClassName="min-h-[360px]"
+          previewValues={hookPromptPreviewValues}
+        >
+          <p>
+            This template is rendered into{" "}
+            <code>{"{{hooksPayloadHint}}"}</code> before Hook generation is
+            rendered.
+          </p>
+          <p>
+            Use this for the hooks.json path, output JSON shape, validation
+            requirements, and append-vs-overwrite instructions.
+          </p>
+        </PromptTemplateEditorCard>
+      </div>
+    </section>
+  ) : null;
+
   const promptSections = PROMPT_GROUPS.map((group) => {
     return (
       <section key={group.id} id={group.id} className="scroll-mt-24">
@@ -5810,9 +5949,9 @@ export function ShortFormVideoSettingsView({
                 onReset={() => resetPromptTemplate(templateId)}
                 minHeightClassName="min-h-[220px]"
                 previewValues={
-                  PROMPT_GROUP_PREVIEW_VALUES[
-                    group.id as "prompt-hooks" | "prompt-research"
-                  ]
+                  group.id === "prompt-hooks"
+                    ? hookPromptPreviewValues
+                    : PROMPT_GROUP_PREVIEW_VALUES["prompt-research"]
                 }
               >
                 {definition?.stage ? (
@@ -8070,7 +8209,7 @@ export function ShortFormVideoSettingsView({
 
   function splitPromptTemplateId(templateId: PromptTemplateId) {
     const [scope, key] = templateId.split(".") as [
-      "textScript" | "xmlVisualPlanning" | "soundDesign" | "imageStyles",
+      "hook" | "textScript" | "xmlVisualPlanning" | "soundDesign" | "imageStyles",
       string,
     ];
     return { scope, key };
@@ -8082,6 +8221,9 @@ export function ShortFormVideoSettingsView({
     }
 
     const { scope, key } = splitPromptTemplateId(templateId);
+    if (scope === "hook") {
+      return hookSettings?.[key as HookPromptTemplateKey] || "";
+    }
     if (scope === "textScript") {
       return (
         textScriptSettings?.[key as TextScriptPromptTemplateKey] || ""
@@ -8108,6 +8250,9 @@ export function ShortFormVideoSettingsView({
     }
 
     const { scope, key } = splitPromptTemplateId(templateId);
+    if (scope === "hook") {
+      return initialHookSettings?.[key as HookPromptTemplateKey] || "";
+    }
     if (scope === "textScript") {
       return (
         initialTextScriptSettings?.[
@@ -8159,6 +8304,17 @@ export function ShortFormVideoSettingsView({
     }
 
     const { scope, key } = splitPromptTemplateId(templateId);
+    if (scope === "hook") {
+      setHookSettings((current) =>
+        current
+          ? {
+              ...current,
+              [key as HookPromptTemplateKey]: value,
+            }
+          : current,
+      );
+      return;
+    }
     if (scope === "textScript") {
       setTextScriptSettings((current) =>
         current
@@ -8215,6 +8371,9 @@ export function ShortFormVideoSettingsView({
     }
 
     const { scope, key } = splitPromptTemplateId(templateId);
+    if (scope === "hook") {
+      return { hook: { [key]: value } };
+    }
     if (scope === "textScript") {
       return { textScript: { [key]: value } };
     }
@@ -8240,6 +8399,17 @@ export function ShortFormVideoSettingsView({
     }
 
     const { scope, key } = splitPromptTemplateId(templateId);
+    if (scope === "hook") {
+      const hookKey = key as HookPromptTemplateKey;
+      const value = data.hook[hookKey];
+      setHookSettings((current) =>
+        current ? { ...current, [hookKey]: value } : data.hook,
+      );
+      setInitialHookSettings((current) =>
+        current ? { ...current, [hookKey]: value } : data.hook,
+      );
+      return;
+    }
     if (scope === "textScript") {
       const textScriptKey = key as TextScriptPromptTemplateKey;
       const value = data.textScript[textScriptKey];
@@ -10344,7 +10514,10 @@ export function ShortFormVideoSettingsView({
       ) : null}
 
       {activeSection === "hook" ? (
-        <div className="space-y-6">{promptSections[0]}</div>
+        <div className="space-y-6">
+          {hookGuidelinesPromptSection}
+          {promptSections[0]}
+        </div>
       ) : null}
 
       {activeSection === "research" ? (

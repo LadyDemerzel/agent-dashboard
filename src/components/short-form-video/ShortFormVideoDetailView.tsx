@@ -12,16 +12,19 @@ import {
 import Link from "next/link";
 import {
   ChevronDown,
+  Loader2,
   RefreshCw,
   RotateCcw,
   Square,
   TerminalSquare,
+  Trash2,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
 import { DiffViewer } from "@/components/DiffViewer";
 import { EditIconButton } from "@/components/EditIconButton";
+import { IconTooltipButton } from "@/components/IconTooltipButton";
 import { RefreshIconButton } from "@/components/RefreshIconButton";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -69,6 +72,10 @@ import {
   type StageDoc,
   type TextScriptRunClient,
 } from "@/lib/short-form-video-client";
+import {
+  buildVisualDependencyTree,
+  type VisualDependencyTreeNode,
+} from "@/lib/short-form-visual-dependencies";
 import { getSoundDesignHandoffState } from "@/lib/short-form-sound-design-handoff";
 import { generateClientDiff } from "@/lib/diff-client";
 import { usePageScrollRestoration } from "@/components/usePageScrollRestoration";
@@ -291,7 +298,7 @@ const DETAIL_PAGE_META: Record<
   hook: {
     title: "Hook",
     description:
-      "Scribe generates multiple hook options using the content-hooks skill from the topic. In the default view, only the approved hook stays visible. Use Change hook to open the full editor, compare options, add manual hooks, generate more, and explicitly save the final selection.",
+      "Scribe generates multiple hook options from the editable hook prompt templates. Compare options, add manual hooks, generate more, and explicitly save the final selection.",
   },
   research: {
     title: "Research",
@@ -1093,120 +1100,11 @@ function HighlightedXmlTextarea({
   );
 }
 
-interface VisualDependencyTreeNode {
-  scene: Scene;
-  relation: "ancestor" | "current" | "descendant";
-  children: VisualDependencyTreeNode[];
-}
-
-interface VisualDependencyTree {
-  root: VisualDependencyTreeNode;
-  hasAncestors: boolean;
-  hasDescendants: boolean;
-}
-
-function getImageVisualReferenceValues(scene: Scene): string[] {
-  return [scene.visualId, scene.imageId, scene.id].filter(
-    (value): value is string => Boolean(value),
-  );
-}
-
-function getImageVisualBasedOnValue(scene: Scene): string {
-  return scene.xmlBasedOn ?? scene.basedOnImageId ?? "";
-}
-
-function buildVisualDependencyTree(
-  scenes: Scene[],
-  currentScene: Scene,
-): VisualDependencyTree {
-  const imageScenes = scenes.filter(
-    (scene) => scene.visualType !== "motion_graphic",
-  );
-  const sceneByReference = new Map<string, Scene>();
-  for (const scene of imageScenes) {
-    for (const value of getImageVisualReferenceValues(scene)) {
-      sceneByReference.set(value, scene);
-    }
-  }
-
-  const getParent = (scene: Scene): Scene | undefined => {
-    const basedOn = getImageVisualBasedOnValue(scene).trim();
-    if (!basedOn) {
-      return undefined;
-    }
-    const parent = sceneByReference.get(basedOn);
-    return parent && parent.id !== scene.id ? parent : undefined;
-  };
-
-  const childrenByParentId = new Map<string, Scene[]>();
-  for (const scene of imageScenes) {
-    const parent = getParent(scene);
-    if (!parent) {
-      continue;
-    }
-    const children = childrenByParentId.get(parent.id) ?? [];
-    children.push(scene);
-    childrenByParentId.set(parent.id, children);
-  }
-
-  const buildDescendants = (
-    scene: Scene,
-    visited: Set<string>,
-  ): VisualDependencyTreeNode[] => {
-    const children = childrenByParentId.get(scene.id) ?? [];
-    return children
-      .filter((child) => !visited.has(child.id))
-      .map((child) => {
-        const nextVisited = new Set(visited);
-        nextVisited.add(child.id);
-        return {
-          scene: child,
-          relation: "descendant" as const,
-          children: buildDescendants(child, nextVisited),
-        };
-      });
-  };
-
-  const ancestorScenes: Scene[] = [];
-  const ancestorVisited = new Set<string>([currentScene.id]);
-  let parent = getParent(currentScene);
-  while (parent && !ancestorVisited.has(parent.id)) {
-    ancestorScenes.unshift(parent);
-    ancestorVisited.add(parent.id);
-    parent = getParent(parent);
-  }
-
-  const currentDescendants = buildDescendants(
-    currentScene,
-    new Set([currentScene.id]),
-  );
-
-  let root: VisualDependencyTreeNode = {
-    scene: currentScene,
-    relation: "current",
-    children: currentDescendants,
-  };
-
-  for (const ancestor of [...ancestorScenes].reverse()) {
-    root = {
-      scene: ancestor,
-      relation: "ancestor",
-      children: [root],
-    };
-  }
-
-  return {
-    root,
-    hasAncestors: ancestorScenes.length > 0,
-    hasDescendants: currentDescendants.length > 0,
-  };
-}
-
 function VisualDependencyTreeView({
   node,
   depth = 0,
 }: {
-  node: VisualDependencyTreeNode;
+  node: VisualDependencyTreeNode<Scene>;
   depth?: number;
 }) {
   const isCurrent = node.relation === "current";
@@ -1214,7 +1112,7 @@ function VisualDependencyTreeView({
     <div
       className={cn(
         "space-y-1",
-        depth > 0 && "border-l border-[#343439] pl-2",
+        depth > 0 && "border-l border-[#343439] pl-3",
       )}
     >
       <div
@@ -1225,20 +1123,22 @@ function VisualDependencyTreeView({
             : "border-[#343439] bg-[#242428] text-muted-foreground",
         )}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-start gap-2">
           <span
             className={cn(
-              "h-1.5 w-1.5 shrink-0 rounded-full",
+              "mt-[0.35rem] h-1.5 w-1.5 shrink-0 rounded-full",
               isCurrent ? "bg-primary" : "bg-muted-foreground/60",
             )}
           />
-          <span className={cn("font-medium", isCurrent && "text-primary")}>
-            Visual {node.scene.number}
-          </span>
+          <div className="min-w-0">
+            <span className={cn("block font-medium", isCurrent && "text-primary")}>
+              Visual {node.scene.number}
+            </span>
+            <p className="mt-0.5 break-words text-left text-[10px] leading-snug">
+              {node.scene.caption}
+            </p>
+          </div>
         </div>
-        <p className="mt-0.5 break-words text-[10px] leading-snug">
-          {node.scene.caption}
-        </p>
       </div>
       {node.children.length > 0 ? (
         <div className="space-y-1">
@@ -1331,13 +1231,13 @@ function HookSection({
 }) {
   const [description, setDescription] = useState("");
   const [manualHookText, setManualHookText] = useState("");
-  const [manualHookRationale, setManualHookRationale] = useState("");
   const [editingHookId, setEditingHookId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
-  const [editingRationale, setEditingRationale] = useState("");
-  const [expanded, setExpanded] = useState(!project.hooks.selectedHookId);
   const [draftSelectedHookId, setDraftSelectedHookId] = useState<string | null>(
     project.hooks.selectedHookId ?? null,
+  );
+  const [deletingHookIds, setDeletingHookIds] = useState<Set<string>>(
+    () => new Set(),
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1346,7 +1246,6 @@ function HookSection({
     generation.options.map((option) => ({
       ...option,
       generationId: generation.id,
-      generationDescription: generation.description,
       isManual: generation.id.startsWith("manual-"),
     })),
   );
@@ -1355,53 +1254,32 @@ function HookSection({
     [hooks],
   );
   const savedSelectedHookId = project.hooks.selectedHookId ?? null;
-  const savedSelectedHook = savedSelectedHookId
-    ? (hooksById.get(savedSelectedHookId) ?? null)
-    : null;
   const editingOriginal = editingHookId
     ? (hooksById.get(editingHookId) ?? null)
     : null;
   const normalizedEditingText = editingText.trim();
-  const normalizedEditingRationale = editingRationale.trim();
   const hasDraftEdit = Boolean(
     editingHookId &&
     editingOriginal &&
-    (normalizedEditingText !== editingOriginal.text ||
-      normalizedEditingRationale !== (editingOriginal.rationale ?? "")),
+    normalizedEditingText !== editingOriginal.text,
   );
   const hasInvalidDraftEdit = Boolean(editingHookId && !normalizedEditingText);
   const draftSelectionChanged =
     (draftSelectedHookId ?? null) !== savedSelectedHookId;
   const hasUnsavedChanges = draftSelectionChanged || hasDraftEdit;
-  const compactView = Boolean(savedSelectedHook && !expanded);
-  const visibleHooks =
-    compactView && savedSelectedHook ? [savedSelectedHook] : hooks;
-  const hookStatus = project.hooks.pending
-    ? "working"
-    : hasUnsavedChanges
-      ? "needs review"
-      : project.hooks.selectedHookText
-        ? "approved"
-        : hooks.length > 0
-          ? "needs review"
-          : "draft";
+  const canCancelHookChanges = Boolean(editingHookId) || hasUnsavedChanges;
+  const canSaveHookChanges = hasUnsavedChanges && !hasInvalidDraftEdit;
   const manualMutationsBlocked =
     project.hooks.pending || Boolean(project.hooks.validationError);
+  const hookRunInProgress =
+    project.hooks.pending || project.hooks.agentRun?.status === "running";
 
   useEffect(() => {
-    setExpanded(!project.hooks.selectedHookId);
     setDraftSelectedHookId(project.hooks.selectedHookId ?? null);
     setEditingHookId(null);
     setEditingText("");
-    setEditingRationale("");
     setError(null);
   }, [project.id, project.hooks.selectedHookId]);
-
-  useEffect(() => {
-    if (!expanded && !editingHookId) {
-      setDraftSelectedHookId(savedSelectedHookId);
-    }
-  }, [savedSelectedHookId, expanded, editingHookId]);
 
   async function trigger(action: "generate" | "more") {
     setSaving(true);
@@ -1446,13 +1324,11 @@ function HookSection({
           body: JSON.stringify({
             action: "add",
             text: manualHookText,
-            rationale: manualHookRationale,
           }),
         }),
         "Failed to add hook",
       );
       setManualHookText("");
-      setManualHookRationale("");
       setDraftSelectedHookId(
         payload.data?.hooks?.selectedHookId ??
           payload.data?.selectedHookId ??
@@ -1470,30 +1346,19 @@ function HookSection({
     option: HookOption & {
       isManual: boolean;
       generationId: string;
-      generationDescription?: string;
     },
   ) {
     setEditingHookId(option.id);
     setEditingText(option.text);
-    setEditingRationale(option.rationale || "");
     setError(null);
   }
 
   function cancelEdit() {
     setEditingHookId(null);
     setEditingText("");
-    setEditingRationale("");
   }
 
-  function startChangingHook() {
-    setExpanded(true);
-    setDraftSelectedHookId(savedSelectedHookId);
-    cancelEdit();
-    setError(null);
-  }
-
-  function cancelExpandedMode() {
-    setExpanded(false);
+  function cancelHookChanges() {
     setDraftSelectedHookId(savedSelectedHookId);
     cancelEdit();
     setError(null);
@@ -1506,7 +1371,6 @@ function HookSection({
     }
 
     if (!hasUnsavedChanges) {
-      setExpanded(false);
       return;
     }
 
@@ -1523,7 +1387,6 @@ function HookSection({
               action: "edit",
               hookId: editingHookId,
               text: normalizedEditingText,
-              rationale: normalizedEditingRationale,
             }),
           }),
           "Failed to save hook changes",
@@ -1545,7 +1408,6 @@ function HookSection({
       }
 
       cancelEdit();
-      setExpanded(false);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save hook");
@@ -1563,7 +1425,11 @@ ${option.text}`)
       return;
     }
 
-    setSaving(true);
+    setDeletingHookIds((current) => {
+      const next = new Set(current);
+      next.add(option.id);
+      return next;
+    });
     setError(null);
 
     try {
@@ -1587,7 +1453,11 @@ ${option.text}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete hook");
     } finally {
-      setSaving(false);
+      setDeletingHookIds((current) => {
+        const next = new Set(current);
+        next.delete(option.id);
+        return next;
+      });
     }
   }
 
@@ -1602,6 +1472,16 @@ ${option.text}`)
 
       {error ? (
         <ValidationNotice title="Hook action failed" message={error} />
+      ) : null}
+
+      {project.hooks.agentRun || project.hooks.pending ? (
+        <AgentSessionLogsAccordion
+          projectId={project.id}
+          agentId="scribe"
+          agentRun={project.hooks.agentRun}
+          working={hookRunInProgress}
+          title="Hook generation session logs"
+        />
       ) : null}
 
       {hooks.length === 0 ? (
@@ -1627,236 +1507,176 @@ ${option.text}`)
 
       {hooks.length > 0 ? (
         <>
-          {expanded ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-background/60 px-4 py-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={hasUnsavedChanges ? "secondary" : "outline"}>
-                  {hasUnsavedChanges
-                    ? "Unsaved changes"
-                    : "Editing hook selection"}
-                </Badge>
-                {savedSelectedHook ? (
-                  <Badge variant="outline">Approved hook saved</Badge>
-                ) : null}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {savedSelectedHook ? (
-                  <Button
-                    variant="outline"
-                    onClick={cancelExpandedMode}
-                    disabled={saving}
-                  >
-                    Cancel
-                  </Button>
-                ) : null}
-                <Button
-                  onClick={() => void saveHook()}
-                  disabled={saving || hasInvalidDraftEdit || !hasUnsavedChanges}
-                >
-                  {saving ? "Saving…" : "Save hook"}
-                </Button>
-              </div>
-            </div>
-          ) : savedSelectedHook ? (
-            <div className="flex justify-end">
-              <Button
-                variant="outline"
-                onClick={startChangingHook}
-                disabled={saving || project.hooks.pending}
-              >
-                Change hook
-              </Button>
-            </div>
-          ) : null}
-
-          <div className="grid gap-3">
-            {visibleHooks.map((option) => {
-              const isSavedSelected = option.id === savedSelectedHookId;
-              const isDraftSelected = option.id === draftSelectedHookId;
-              const editing = expanded && editingHookId === option.id;
-              const cardClass = isDraftSelected
-                ? isSavedSelected
-                  ? "border-emerald-500 bg-emerald-500/10"
-                  : "border-amber-500 bg-amber-500/10"
-                : isSavedSelected
-                  ? "border-emerald-500/60 bg-emerald-500/5"
-                  : "border-border";
-
-              return (
-                <div
-                  key={option.id}
-                  className={`rounded-lg border p-4 transition-colors ${cardClass}`}
-                >
-                  {editing ? (
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {isSavedSelected ? (
-                          <Badge variant="outline">Saved</Badge>
-                        ) : null}
-                        {isDraftSelected ? (
-                          <Badge variant="secondary">Draft selection</Badge>
-                        ) : null}
-                        {option.isManual ? (
-                          <Badge variant="outline">Manual</Badge>
-                        ) : null}
-                      </div>
-                      <Textarea
-                        value={editingText}
-                        onChange={(event) => setEditingText(event.target.value)}
-                        className="min-h-[90px]"
-                        placeholder="Hook text (up to 10 words)"
-                      />
-                      <Input
-                        value={editingRationale}
-                        onChange={(event) =>
-                          setEditingRationale(event.target.value)
-                        }
-                        placeholder="Optional rationale"
-                      />
-                      <div className="flex flex-wrap gap-2">
+          <div className="rounded-lg border border-border">
+            <table className="w-full table-fixed text-left text-sm">
+              <thead className="border-b border-border text-xs font-medium uppercase text-muted-foreground">
+                <tr>
+                  <th className="min-w-0 px-4 py-3">Hook</th>
+                  <th className="w-36 px-3 py-3 sm:w-48">
+                    <span className="sr-only">Actions</span>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {canCancelHookChanges ? (
                         <Button
                           variant="outline"
-                          onClick={cancelEdit}
+                          size="sm"
+                          onClick={cancelHookChanges}
                           disabled={saving}
+                          className="normal-case"
                         >
-                          Done editing
+                          Cancel
                         </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <button
-                        type="button"
-                        onClick={() => selectHook(option)}
-                        disabled={saving || !expanded}
-                        className={`flex-1 text-left ${expanded ? "" : "cursor-default"}`}
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          {isSavedSelected ? (
-                            <Badge variant="outline">Saved</Badge>
-                          ) : null}
-                          {isDraftSelected && expanded ? (
-                            <Badge variant="secondary">Draft selection</Badge>
-                          ) : null}
-                          {option.isManual ? (
-                            <Badge variant="outline">Manual</Badge>
-                          ) : null}
-                        </div>
-                        <p className="mt-2 text-sm text-foreground">
-                          {option.text}
-                        </p>
-                        {option.rationale ? (
-                          <p className="mt-2 text-xs text-muted-foreground">
-                            {option.rationale}
-                          </p>
-                        ) : null}
-                      </button>
-                      {expanded ? (
-                        <div className="flex shrink-0 flex-wrap gap-2">
-                          <EditIconButton
-                            onClick={() => beginEdit(option)}
-                            disabled={saving || manualMutationsBlocked}
-                            tooltip="Edit hook"
-                          />
-                          <Button
-                            variant="outline"
-                            onClick={() => void deleteHook(option)}
-                            disabled={saving || manualMutationsBlocked}
-                          >
-                            Delete
-                          </Button>
-                        </div>
+                      ) : null}
+                      {canSaveHookChanges ? (
+                        <Button
+                          size="sm"
+                          onClick={() => void saveHook()}
+                          disabled={saving}
+                          className="normal-case"
+                        >
+                          {saving ? "Saving…" : "Save hook"}
+                        </Button>
                       ) : null}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {hooks.map((option) => {
+                  const isSavedSelected = option.id === savedSelectedHookId;
+                  const isDraftSelected = option.id === draftSelectedHookId;
+                  const editing = editingHookId === option.id;
+                  const deleting = deletingHookIds.has(option.id);
+                  const rowClass = isDraftSelected
+                    ? isSavedSelected
+                      ? "bg-emerald-500/10"
+                      : "bg-amber-500/10"
+                    : isSavedSelected
+                      ? "bg-emerald-500/5"
+                      : "";
+
+                  return (
+                    <tr key={option.id} className={rowClass}>
+                      <td className="min-w-0 px-4 py-3 align-top">
+                        {editing ? (
+                          <Textarea
+                            value={editingText}
+                            onChange={(event) =>
+                              setEditingText(event.target.value)
+                            }
+                            className="min-h-[90px]"
+                            placeholder="Hook text (up to 10 words)"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => selectHook(option)}
+                            disabled={saving || deleting}
+                            className={cn(
+                              "block w-full min-w-0 cursor-pointer whitespace-normal break-words text-left text-base font-medium text-foreground hover:text-primary",
+                            )}
+                          >
+                            <span className="break-words">{option.text}</span>
+                            {option.isManual ? (
+                              <Badge variant="outline" className="ml-2 align-middle">
+                                manual
+                              </Badge>
+                            ) : null}
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <div className="flex justify-end gap-1">
+                          {editing ? null : (
+                            <EditIconButton
+                              onClick={() => beginEdit(option)}
+                              disabled={
+                                saving || deleting || manualMutationsBlocked
+                              }
+                              tooltip="Edit hook"
+                              className="text-zinc-300 hover:text-zinc-200"
+                            />
+                          )}
+                          <IconTooltipButton
+                            icon={Trash2}
+                            tooltip="Delete hook"
+                            label="Delete hook"
+                            onClick={() => void deleteHook(option)}
+                            disabled={
+                              saving || deleting || manualMutationsBlocked
+                            }
+                            className="text-rose-300 hover:text-rose-200"
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
 
-          {expanded ? (
-            <>
-              <div className="space-y-3 border-t border-border pt-4">
-                <div>
-                  <h3 className="text-sm font-medium text-foreground">
-                    Add hook manually
-                  </h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Manual hooks are saved into this project’s hooks.json
-                    alongside generated batches. If nothing is selected yet, the
-                    newly added hook becomes the selected hook automatically.
-                  </p>
-                </div>
-                <Textarea
-                  value={manualHookText}
-                  onChange={(event) => setManualHookText(event.target.value)}
-                  placeholder="Manual hook text (up to 10 words)"
-                  className="min-h-[90px]"
-                />
-                <Input
-                  value={manualHookRationale}
-                  onChange={(event) =>
-                    setManualHookRationale(event.target.value)
-                  }
-                  placeholder="Optional rationale"
-                />
-                <Button
-                  onClick={() => void addHook()}
-                  disabled={
-                    saving || manualMutationsBlocked || !manualHookText.trim()
-                  }
-                >
-                  {saving ? "Saving…" : "Add manual hook"}
-                </Button>
-              </div>
+          <Card className="space-y-3 p-4">
+            <div>
+              <h3 className="text-sm font-medium text-foreground">
+                Add hook manually
+              </h3>
+            </div>
+            <Textarea
+              value={manualHookText}
+              onChange={(event) => setManualHookText(event.target.value)}
+              placeholder="Manual hook text (up to 10 words)"
+              className="min-h-[90px]"
+            />
+            <Button
+              onClick={() => void addHook()}
+              disabled={
+                saving || manualMutationsBlocked || !manualHookText.trim()
+              }
+            >
+              {saving ? "Saving…" : "Add manual hook"}
+            </Button>
+          </Card>
 
-              <div className="space-y-3 border-t border-border pt-4">
-                <Textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Optional direction for more hooks (e.g. punchier, more contrarian, more curiosity-driven)"
-                  className="min-h-[90px]"
-                />
-                <Button
-                  variant="outline"
-                  onClick={() => void trigger("more")}
-                  disabled={project.hooks.pending || saving}
-                >
-                  {project.hooks.pending || saving
-                    ? "Generating…"
-                    : "Generate more hooks"}
-                </Button>
-                {project.hooks.pending ? (
-                  <PendingNotice label="Generating additional hook options" />
-                ) : null}
-              </div>
-            </>
-          ) : null}
+          <Card className="space-y-3 p-4">
+            <div>
+              <h3 className="text-sm font-medium text-foreground">
+                Generate more hooks
+              </h3>
+            </div>
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Optional direction for more hooks (e.g. punchier, more contrarian, more curiosity-driven)"
+              className="min-h-[90px]"
+            />
+            <Button
+              variant="outline"
+              onClick={() => void trigger("more")}
+              disabled={project.hooks.pending || saving}
+            >
+              {project.hooks.pending || saving
+                ? "Generating…"
+                : "Generate more hooks"}
+            </Button>
+            {project.hooks.pending ? (
+              <PendingNotice label="Generating additional hook options" />
+            ) : null}
+          </Card>
         </>
       ) : null}
 
       {hooks.length === 0 ? (
-        <div className="space-y-3 border-t border-border pt-4">
+        <Card className="space-y-3 p-4">
           <div>
             <h3 className="text-sm font-medium text-foreground">
               Add hook manually
             </h3>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Manual hooks are saved into this project’s hooks.json alongside
-              generated batches. If nothing is selected yet, the newly added
-              hook becomes the selected hook automatically.
-            </p>
           </div>
           <Textarea
             value={manualHookText}
             onChange={(event) => setManualHookText(event.target.value)}
             placeholder="Manual hook text (up to 10 words)"
             className="min-h-[90px]"
-          />
-          <Input
-            value={manualHookRationale}
-            onChange={(event) => setManualHookRationale(event.target.value)}
-            placeholder="Optional rationale"
           />
           <Button
             onClick={() => void addHook()}
@@ -1866,7 +1686,7 @@ ${option.text}`)
           >
             {saving ? "Saving…" : "Add manual hook"}
           </Button>
-        </div>
+        </Card>
       ) : null}
     </div>
   );
@@ -4159,6 +3979,93 @@ function TextScriptHistoryPanel({
   );
 }
 
+function VisualPlanRevisionButton({
+  disabled,
+  loading,
+  onSubmit,
+}: {
+  disabled?: boolean;
+  loading?: boolean;
+  onSubmit: (notes: string) => Promise<unknown>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [notes, setNotes] = useState("");
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handlePointerDown(event: MouseEvent | TouchEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (panelRef.current?.contains(target)) return;
+      if (buttonRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+    };
+  }, [open]);
+
+  async function submit() {
+    const trimmed = notes.trim();
+    if (!trimmed) return;
+    await onSubmit(trimmed);
+    setNotes("");
+    setOpen(false);
+  }
+
+  return (
+    <div className="relative inline-flex shrink-0 self-start">
+      <Button
+        ref={buttonRef}
+        type="button"
+        variant="outline"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => setOpen((value) => !value)}
+        disabled={disabled}
+        className="cursor-pointer"
+      >
+        {loading ? (
+          <Loader2 aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin" />
+        ) : null}
+        <span>{loading ? "Editing visuals…" : "Edit visuals"}</span>
+        <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0" />
+      </Button>
+      {open ? (
+        <Card
+          ref={panelRef}
+          role="dialog"
+          aria-label="Edit visuals revision notes"
+          className="absolute right-0 top-full z-20 mt-2 w-[min(22rem,calc(100vw-2rem))] space-y-3 border-border/80 bg-secondary p-3 shadow-2xl shadow-black/50"
+        >
+          <Textarea
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            placeholder="Tell Scribe how to edit the visuals XML plan…"
+            className="min-h-[96px]"
+            autoFocus
+          />
+          <Button
+            type="button"
+            className="w-full cursor-pointer"
+            onClick={() => void submit()}
+            disabled={disabled || !notes.trim()}
+          >
+            {loading ? "Editing visuals…" : "Edit visuals with revision notes"}
+          </Button>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
 function SceneImagesSection({
   project,
   refresh,
@@ -4167,6 +4074,8 @@ function SceneImagesSection({
   refresh: () => Promise<unknown>;
 }) {
   const [submittingScene, setSubmittingScene] = useState<string | null>(null);
+  const [submittingVisualPlanRevision, setSubmittingVisualPlanRevision] =
+    useState(false);
   const [error, setError] = useState<string | null>(null);
   const [styleOptions, setStyleOptions] = useState<ImageStyleOption[]>([]);
   const [defaultStyleId, setDefaultStyleId] = useState<string>("");
@@ -4188,6 +4097,10 @@ function SceneImagesSection({
     Record<string, number>
   >({});
   const [savingSceneXml, setSavingSceneXml] = useState<string | null>(null);
+  const visualPlanEditWorking = Boolean(
+    submittingVisualPlanRevision ||
+      (project.xmlScript.pending && project.xmlScript.pipeline?.task === "visuals"),
+  );
 
   const { data: imageSettingsPayload } = useSWR<ApiResponse<WorkflowSettingsResponse>>(
     "/api/short-form-videos/settings",
@@ -4417,6 +4330,34 @@ function SceneImagesSection({
       }),
       "Failed to stop generating visuals",
     );
+  }
+
+  async function requestVisualPlanRevision(notes: string) {
+    setSubmittingVisualPlanRevision(true);
+    setError(null);
+
+    try {
+      await parseJsonResponse(
+        await fetch(`/api/short-form-videos/${project.id}/xml-script`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            task: "visuals",
+            notes,
+            source: "generate-visuals-edit-button",
+            autoApproveOnComplete: true,
+          }),
+        }),
+        "Failed to request visual plan edits",
+      );
+      await refresh();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to request visual plan edits",
+      );
+    } finally {
+      setSubmittingVisualPlanRevision(false);
+    }
   }
 
   const sceneProgress = project.sceneImages.sceneProgress;
@@ -4702,43 +4643,70 @@ function SceneImagesSection({
           />
 
           {sceneProgress ? (
-            <div className="rounded-lg border border-border bg-background/60 p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="secondary">
-                  {sceneProgress.completed}/{sceneProgress.total} completed
-                </Badge>
-                {sceneProgress.pending > 0 ? (
-                  <div className="inline-flex items-center gap-2">
-                    <StatusBadge status="working" compact />
-                    <span className="text-xs text-muted-foreground">
-                      {sceneProgress.pending} scene
-                      {sceneProgress.pending === 1 ? "" : "s"}
-                    </span>
-                  </div>
-                ) : null}
-                {sceneProgress.scope === "single" &&
-                sceneProgress.targetSceneId ? (
-                  <Badge variant="outline">
-                    Revising {sceneProgress.targetSceneId}
+            <div
+              className={cn(
+                "sticky top-3 z-30 rounded-lg border border-border bg-background/95 p-3 shadow-lg shadow-black/20 backdrop-blur supports-[backdrop-filter]:bg-background/80",
+                visualPlanEditWorking && "border-blue-400/40 bg-blue-500/10 shadow-[0_0_18px_rgba(59,130,246,0.12)]",
+              )}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <Badge variant="secondary">
+                    {sceneProgress.completed}/{sceneProgress.total} completed
                   </Badge>
-                ) : null}
-                {sceneProgress.scope === "chain" &&
-                (sceneProgress.targetSceneIds?.length || 0) > 0 ? (
-                  <Badge variant="outline">
-                    Revising continuity chain:{" "}
-                    {sceneProgress.targetSceneIds?.join(", ")}
-                  </Badge>
-                ) : null}
+                  {sceneProgress.pending > 0 ? (
+                    <div className="inline-flex items-center gap-2">
+                      <StatusBadge status="working" compact />
+                      <span className="text-xs text-muted-foreground">
+                        {sceneProgress.pending} scene
+                        {sceneProgress.pending === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                  ) : null}
+                  {sceneProgress.scope === "single" &&
+                  sceneProgress.targetSceneId ? (
+                    <Badge variant="outline">
+                      Revising {sceneProgress.targetSceneId}
+                    </Badge>
+                  ) : null}
+                  {sceneProgress.scope === "chain" &&
+                  (sceneProgress.targetSceneIds?.length || 0) > 0 ? (
+                    <Badge variant="outline">
+                      Revising continuity chain:{" "}
+                      {sceneProgress.targetSceneIds?.join(", ")}
+                    </Badge>
+                  ) : null}
+                  {visualPlanEditWorking ? (
+                    <div className="inline-flex items-center gap-2 rounded-full border border-blue-400/30 bg-blue-500/15 px-2.5 py-1 text-xs font-medium text-blue-100">
+                      <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+                      Scribe editing XML plan
+                    </div>
+                  ) : null}
+                </div>
+                <VisualPlanRevisionButton
+                  disabled={
+                    visualPlanEditWorking || Boolean(project.xmlScript.pending)
+                  }
+                  loading={visualPlanEditWorking}
+                  onSubmit={requestVisualPlanRevision}
+                />
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                {sceneProgress.pending > 0
-                  ? sceneProgress.scope === "single"
+              {visualPlanEditWorking ? (
+                <p className="mt-2 text-xs text-blue-100/85">
+                  The visual cards will refresh from the edited XML plan as soon
+                  as the Scribe run verifies. New or changed visuals appear here
+                  before their media is generated.
+                </p>
+              ) : null}
+              {sceneProgress.pending > 0 ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {sceneProgress.scope === "single"
                     ? "The targeted scene is shown as a loading placeholder until the revised image lands on disk. Other scenes remain visible."
                     : sceneProgress.scope === "chain"
                       ? "The targeted scene and any downstream continuity-linked scenes are tracked as part of this rerun. Scenes outside that chain remain visible."
-                      : "Completed scenes stay visible while the remaining scene slots render as loading placeholders."
-                  : "All expected visuals for the latest run are available."}
-              </p>
+                      : "Completed scenes stay visible while the remaining scene slots render as loading placeholders."}
+                </p>
+              ) : null}
             </div>
           ) : null}
           {timingGapSummary.gapCount > 0 ? (
@@ -4772,7 +4740,9 @@ function SceneImagesSection({
             <div className="overflow-x-auto pb-2">
               <div className="flex min-w-max gap-4">
                 {project.sceneImages.scenes.map((scene, sceneIndex) => {
-                  const sceneBusy = scene.status === "in-progress";
+                  const sceneBusy =
+                    scene.status === "in-progress" &&
+                    Boolean(project.sceneImages.pending);
                   const hasPreviewVideo = Boolean(scene.previewVideo);
                   const hasRawImage = Boolean(scene.image);
                   const hasRenderableMedia =
@@ -4823,6 +4793,10 @@ function SceneImagesSection({
                       }
                     : undefined;
                   const isMotionGraphic = scene.visualType === "motion_graphic";
+                  const scenePlanned = !sceneBusy && !hasRenderableMedia;
+                  const plannedStatusLabel = isMotionGraphic
+                    ? "Needs render"
+                    : "Needs image";
                   const basedOnOptions = project.sceneImages.scenes
                     .slice(0, sceneIndex)
                     .filter(
@@ -4906,6 +4880,10 @@ function SceneImagesSection({
                             <div className="shrink-0">
                               {sceneBusy ? (
                                 <StatusBadge status="in-progress" compact />
+                              ) : scenePlanned ? (
+                                <Badge variant="outline" className="px-2 py-0.5 text-[10px] leading-4">
+                                  {plannedStatusLabel}
+                                </Badge>
                               ) : (
                                 <StatusBadge status="completed" compact />
                               )}
@@ -4955,7 +4933,7 @@ function SceneImagesSection({
                         )
                       ) : (
                         <div className="flex aspect-[9/16] w-full items-center justify-center rounded-md border border-dashed border-border text-xs text-muted-foreground">
-                          No image yet
+                          {plannedStatusLabel}
                         </div>
                       )}
                       <div className="space-y-2">

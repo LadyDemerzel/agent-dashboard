@@ -12,6 +12,10 @@ import {
   type HookGeneration,
 } from "@/lib/short-form-videos";
 import { getShortFormWorkflowPrompts, renderShortFormPrompt } from "@/lib/short-form-workflow-prompts";
+import {
+  getShortFormHookSettings,
+  renderShortFormHookPrompt,
+} from "@/lib/short-form-hook-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -37,23 +41,40 @@ function parseHookSelectionId(selectionId?: string) {
   return { generationId, optionId };
 }
 
-function buildHookTask(project: NonNullable<ReturnType<typeof getShortFormProject>>, action: "generate" | "more", description: string) {
+function buildHookTask(project: NonNullable<ReturnType<typeof getShortFormProject>>, description: string) {
   const prompts = getShortFormWorkflowPrompts();
-  const template = action === "more" ? prompts.hooksMore : prompts.hooksGenerate;
+  const hookSettings = getShortFormHookSettings();
+  const template = prompts.hooksGenerate;
   const priorHooks = project.hooks.generations.flatMap((generation) => generation.options.map((option) => option.text));
   const hooksPath = getHooksPath(project.id);
   const projectDir = getProjectDir(project.id);
-  const payloadHint = `Save the result to ${hooksPath} as strict JSON with this shape:\n{\n  "generations": [\n    {\n      "id": "gen-001",\n      "createdAt": "ISO-8601",\n      "description": "optional context",\n      "options": [\n        { "id": "hook-001", "text": "...", "rationale": "..." }\n      ]\n    }\n  ]\n}\nValidation rules:\n- Output valid JSON only. No markdown fences, comments, prose, or trailing commas.\n- generations must be an array.\n- Every generation needs a non-empty id, valid createdAt timestamp, and a non-empty options array.\n- Every option needs non-empty id and text. rationale is optional but must be a string if included.\nIf the file already exists, read it first and append a new generation instead of overwriting earlier generations.`;
 
-  return renderShortFormPrompt(template, {
+  const promptValues = {
     topic: project.topic,
     selectedHookLine: project.selectedHookText ? `Currently selected hook: ${project.selectedHookText}` : "",
     descriptionOrFallback: description || "None.",
     priorHooksBlock: priorHooks.length > 0
       ? `Previously generated hooks (avoid duplicates, but stay adjacent in tone if useful):\n- ${priorHooks.join("\n- ")}`
       : "",
-    hooksPayloadHint: payloadHint,
+    hooksPath,
     projectDir,
+  };
+  const hooksPayloadHint = renderShortFormHookPrompt(
+    hookSettings.hooksPayloadHintTemplate,
+    promptValues,
+  );
+  const hookWritingGuidelines = renderShortFormHookPrompt(
+    hookSettings.hookWritingGuidelinesTemplate,
+    {
+      ...promptValues,
+      hooksPayloadHint,
+    },
+  );
+
+  return renderShortFormPrompt(template, {
+    ...promptValues,
+    hooksPayloadHint,
+    hookWritingGuidelines,
   });
 }
 
@@ -93,17 +114,15 @@ function getFirstHookSelection(generations: HookGeneration[]) {
   return null;
 }
 
-function buildManualGeneration(now: string, text: string, rationale?: string): HookGeneration {
+function buildManualGeneration(now: string, text: string): HookGeneration {
   const stamp = Date.now();
   return {
     id: `manual-${stamp}`,
     createdAt: now,
-    description: "Manual hook added in dashboard",
     options: [
       {
         id: `hook-${stamp}`,
         text,
-        ...(rationale ? { rationale } : {}),
       },
     ],
   };
@@ -168,7 +187,7 @@ export async function POST(
   }
 
   const description = typeof body.description === "string" ? body.description.trim() : "";
-  const task = buildHookTask(project, action === "more" ? "more" : "generate", description);
+  const task = buildHookTask(project, description);
 
   const requestedAt = new Date().toISOString();
   updatePendingStage(id, "hooks", true);
@@ -221,7 +240,6 @@ export async function PATCH(
   const body = await request.json().catch(() => ({}));
   const action = typeof body.action === "string" ? body.action : "";
   const text = normalizeOptionalString(body.text);
-  const rationale = normalizeOptionalString(body.rationale);
 
   if (action !== "add" && action !== "edit") {
     return NextResponse.json({ success: false, error: "Unsupported hook mutation" }, { status: 400 });
@@ -243,7 +261,7 @@ export async function PATCH(
 
   if (action === "add") {
     const now = new Date().toISOString();
-    const generation = buildManualGeneration(now, text, rationale);
+    const generation = buildManualGeneration(now, text);
     const option = generation.options[0]!;
     generations.push(generation);
     saveHooks(id, generations);
@@ -276,7 +294,6 @@ export async function PATCH(
   generations[match.generationIndex]!.options[match.optionIndex] = {
     ...option,
     text,
-    ...(rationale ? { rationale } : {}),
   };
 
   saveHooks(id, generations);

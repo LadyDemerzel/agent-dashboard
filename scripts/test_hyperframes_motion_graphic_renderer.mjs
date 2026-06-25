@@ -35,10 +35,10 @@ const templateConfigs = [
   { rendererId: "pie_chart", previewArgs: { title: "Split", data: [{ label: "A", value: 40, displayValue: "40%" }, { label: "B", value: 60, displayValue: "60%" }] } },
   { rendererId: "line_growth_chart", previewArgs: { title: "Growth trend", direction: "increase", startLabel: "Start", endLabel: "Now", valueLabel: "86" } },
   { rendererId: "comparison_before_after", previewArgs: { before: "Problem state", after: "Improved state" } },
-  { rendererId: "timeline", previewArgs: { title: "Thirty-day ramp", steps: [{ label: "MONTH 12 CHECKPOINT", text: "Setup" }, { label: "DAY 7", text: "Signal" }, { label: "DAY 30", text: "Visible change" }] } },
+  { rendererId: "timeline", previewArgs: { title: "Thirty-day ramp with one long title that should stay on a single line", steps: [{ label: "MONTH 12 CHECKPOINT", text: "Setup" }, { label: "DAY 7", text: "Signal" }, { label: "DAY 30", text: "Visible change" }] } },
   { rendererId: "cause_effect", previewArgs: { cause: "Small habit", effect: "Visible change" } },
   { rendererId: "ranked_podium", previewArgs: { items: ["Most visible change", "Faster feedback", "Cleaner routine"] } },
-  { rendererId: "list", previewArgs: { title: "Daily routine", listType: "checklist", items: ["Set the baseline", "Make the small adjustment that continues even when the routine gets longer", "Repeat it daily"] } },
+  { rendererId: "list", previewArgs: { title: "Daily routine with one long title that should stay on a single line", listType: "checklist", items: ["Set the baseline", "Make the small adjustment that continues even when the routine gets longer", "Repeat it daily"] } },
   { rendererId: "list", previewArgs: { listType: "numbered", items: ["First numbered step", "Second numbered step", "Third numbered step"] } },
   { rendererId: "list", previewArgs: { listType: "bulleted", items: ["First bullet", "Second bullet", "Third bullet"] } },
   { rendererId: "scorecard", previewArgs: { title: "Scorecard", data: [{ label: "Clarity", value: 92, displayValue: "1,234,567 people" }] } },
@@ -71,7 +71,11 @@ try {
     }
     if (config.rendererId === "timeline") {
       assert.ok(html.includes("timeline-title"), "timeline should render the optional title inside the centered content group");
-      assert.ok(html.includes("Thirty-day ramp"), "timeline optional title should preserve configured copy");
+      assert.ok(html.includes("Thirty-day ramp with one long title that should stay on a single line"), "timeline optional title should preserve configured copy");
+      assert.ok(html.includes("timeline-title-single-line"), "timeline title should use the single-line title renderer");
+      assert.ok(html.includes("id=\"timeline-title\""), "timeline should render the title element");
+      assert.match(html, /id="timeline-title"[^>]*style="[^"]*white-space:nowrap/, "timeline title must not wrap when it is long");
+      assert.doesNotMatch(html, /id="timeline-title"[\s\S]*?<div>Thirty-day ramp with one long title that<\/div>\s*<div>/, "timeline title must not split into wrapped line divs");
       assert.ok(!html.includes("timeline-dot"), "timeline must not use the newer dot-based visual style");
       assert.ok(html.includes("timeline-connector-0"), "timeline must preserve short center-out connectors");
       assert.ok(html.includes("width:62px;height:4px"), "timeline connectors must match the old compact rule geometry");
@@ -112,6 +116,10 @@ try {
       assert.ok(textTops[2] - textTops[1] > textTops[1] - textTops[0], "list rows should advance by measured content height instead of one fixed row height");
       assert.equal(boxTops[0] - textTops[0], 3, "single-line checklist text should be vertically centered against the check box");
       assert.equal(boxTops[1] - textTops[1], boxTops[0] - textTops[0], "multi-line checklist check box should align to the first text row instead of the full wrapped text block");
+      assert.ok(html.includes("Daily routine with one long title that should stay on a single line"), "list optional title should preserve configured copy");
+      assert.ok(html.includes("list-title-single-line"), "list title should use the single-line title renderer");
+      assert.match(html, /id="list-title"[^>]*style="[^"]*white-space:nowrap/, "list title must not wrap when it is long");
+      assert.doesNotMatch(html, /id="list-title"[\s\S]*?<div>Daily routine with one long title that<\/div>\s*<div>/, "list title must not split into wrapped line divs");
       assert.ok(!html.includes("height:128px"), "list items should not render a fixed row height");
       assert.ok(!html.includes("height:104px"), "list items should not render the compact fixed row height");
     }
@@ -132,7 +140,11 @@ try {
       assert.ok(!html.includes("cause-effect-card"), "cause_effect must not render boxed cause/effect cards");
       assert.ok(!html.includes("border-radius:20px"), "cause_effect must not show rounded boxes around the cause/effect text");
       assert.ok(html.includes("width:128px;height:156px"), "cause_effect arrow must use the thicker wide arrow geometry");
-      assert.ok(html.includes("stroke-width=\"16\""), "cause_effect arrow must be substantially thicker than the old compact arrow");
+      assert.ok(html.includes("M55 8 H73 V96"), "cause_effect arrow must use a sharp-cornered flat tail cap");
+      assert.ok(!html.includes("Q73 8 73 12"), "cause_effect arrow tail must not keep rounded shaft corners");
+      assert.ok(html.includes("L64 146 L32 96"), "cause_effect arrow must use a filled sharp arrowhead");
+      assert.ok(!html.includes("stroke-linecap=\"round\""), "cause_effect arrow must not use the old fully rounded stroke cap");
+      assert.ok(!html.includes("stroke-width=\"16\""), "cause_effect arrow must not use the old stroked stick-arrow geometry");
       assert.ok(html.includes("rgba(132,130,121,0.84)"), "cause_effect arrow should use a darker neutral arrow color");
       assert.ok(!html.includes("stroke=\"rgba(168,191,208,0.78)\""), "cause_effect arrow should not use the old blue hue");
       assert.ok(html.includes("font-weight:500"), "cause_effect text should render one weight notch above regular");

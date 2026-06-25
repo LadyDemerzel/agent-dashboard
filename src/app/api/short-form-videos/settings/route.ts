@@ -5,6 +5,11 @@ import {
   type ShortFormPromptKey,
 } from "@/lib/short-form-workflow-prompts";
 import {
+  getShortFormHookSettings,
+  saveShortFormHookSettings,
+  type ShortFormHookSettings,
+} from "@/lib/short-form-hook-settings";
+import {
   getShortFormImageStyleSettings,
   normalizeShortFormNanoBananaPromptTemplates,
   saveShortFormImageStyleSettings,
@@ -106,6 +111,7 @@ export async function GET() {
 export async function PATCH(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const prompts = body && typeof body === "object" && !Array.isArray(body) ? body.prompts : undefined;
+  const hook = body && typeof body === "object" && !Array.isArray(body) ? body.hook : undefined;
   const imageStyles = body && typeof body === "object" && !Array.isArray(body) ? body.imageStyles : undefined;
   const videoRender = body && typeof body === "object" && !Array.isArray(body) ? body.videoRender : undefined;
   const textScript = body && typeof body === "object" && !Array.isArray(body) ? body.textScript : undefined;
@@ -113,8 +119,8 @@ export async function PATCH(request: NextRequest) {
   const motionGraphics = body && typeof body === "object" && !Array.isArray(body) ? body.motionGraphics : undefined;
   const soundDesign = body && typeof body === "object" && !Array.isArray(body) ? body.soundDesign : undefined;
 
-  if (prompts === undefined && imageStyles === undefined && videoRender === undefined && textScript === undefined && xmlVisualPlanning === undefined && motionGraphics === undefined && soundDesign === undefined) {
-    return NextResponse.json({ success: false, error: "prompts, imageStyles, videoRender, textScript, xmlVisualPlanning, motionGraphics, or soundDesign is required" }, { status: 400 });
+  if (prompts === undefined && hook === undefined && imageStyles === undefined && videoRender === undefined && textScript === undefined && xmlVisualPlanning === undefined && motionGraphics === undefined && soundDesign === undefined) {
+    return NextResponse.json({ success: false, error: "prompts, hook, imageStyles, videoRender, textScript, xmlVisualPlanning, motionGraphics, or soundDesign is required" }, { status: 400 });
   }
 
   if (prompts !== undefined) {
@@ -138,6 +144,26 @@ export async function PATCH(request: NextRequest) {
     }
 
     saveShortFormWorkflowPrompts(updates);
+  }
+
+  if (hook !== undefined) {
+    if (!hook || typeof hook !== "object" || Array.isArray(hook)) {
+      return NextResponse.json({ success: false, error: "hook must be an object" }, { status: 400 });
+    }
+
+    const candidate = {
+      ...getShortFormHookSettings(),
+      ...(hook as Partial<ShortFormHookSettings>),
+    } satisfies ShortFormHookSettings;
+
+    if (typeof candidate.hookWritingGuidelinesTemplate !== "string" || !candidate.hookWritingGuidelinesTemplate.trim()) {
+      return NextResponse.json({ success: false, error: "Hook-writing guidelines prompt template must be a non-empty string" }, { status: 400 });
+    }
+    if (typeof candidate.hooksPayloadHintTemplate !== "string" || !candidate.hooksPayloadHintTemplate.trim()) {
+      return NextResponse.json({ success: false, error: "Hook payload-hint prompt template must be a non-empty string" }, { status: 400 });
+    }
+
+    saveShortFormHookSettings(candidate);
   }
 
   if (imageStyles !== undefined) {

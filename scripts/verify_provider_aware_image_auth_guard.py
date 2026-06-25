@@ -52,7 +52,12 @@ def main() -> int:
         previous_config_path = os.environ.get("OPENCLAW_CONFIG_PATH")
         script_globals["HOME_DIR"] = temp_home_path
         os.environ["OPENCLAW_CONFIG_PATH"] = str(openclaw_dir / "openclaw.json")
-        script_globals["probe_openclaw_codex_oauth_resolution"] = lambda env, agent_id: (True, f"fake probe resolved {agent_id}")
+        def fake_probe(env, agent_id):
+            if agent_id == "ralph":
+                return True, f"fake probe resolved {agent_id}"
+            return False, f"fake probe rejected {agent_id}"
+
+        script_globals["probe_openclaw_codex_oauth_resolution"] = fake_probe
         try:
             args = SimpleNamespace(model="openai/gpt-image-2")
             env, fake_temp_config_dir = prepare_openclaw_image_env(args)
@@ -73,7 +78,7 @@ def main() -> int:
 
     previous = {name: os.environ.get(name) for name in ("OPENAI_API_KEY", "CODEX_API_KEY", "SHORT_FORM_ALLOW_OPENAI_API_KEY_BILLING")}
 
-    script_globals["probe_openclaw_codex_oauth_resolution"] = lambda env, agent_id: (False, "No API key found for provider \"openai-codex\" (simulated)")
+    script_globals["probe_openclaw_codex_oauth_resolution"] = lambda env, agent_id: (False, "No OAuth profile found for provider \"openai\" (simulated)")
     os.environ.pop("SHORT_FORM_ALLOW_OPENAI_API_KEY_BILLING", None)
     try:
         try:
@@ -82,7 +87,7 @@ def main() -> int:
             message = str(error)
             assert "could not resolve an OAuth access token" in message, "failing auth probe should block before image generation"
             assert "OPENAI_API_KEY/CODEX_API_KEY" in message, "auth failure should mention API keys stayed out of the child env"
-            assert "openai-codex" in message, "auth failure should preserve the real provider name"
+            assert "openai" in message, "auth failure should preserve the real provider name"
         else:
             raise AssertionError("failing OpenClaw Codex OAuth probe did not stop image generation")
     finally:
@@ -105,18 +110,18 @@ def main() -> int:
         assert image_model["primary"] == "openai/gpt-image-2", "guard config changed the requested model"
         assert defaults["mediaGenerationAutoProviderFallback"] is False, "guard config allows image-provider fallback"
         auth = config.get("auth")
-        assert isinstance(auth, dict), "guard config must preserve OpenClaw OAuth profile routing metadata"
-        auth_profiles = auth.get("profiles")
-        assert isinstance(auth_profiles, dict) and auth_profiles, "guard config must include OAuth profile metadata"
-        for profile_id, profile in auth_profiles.items():
-            assert profile_id.startswith("openai-codex:"), f"unexpected non-Codex profile copied: {profile_id}"
-            assert profile.get("provider") == "openai-codex", f"unexpected provider copied for {profile_id}"
-            assert profile.get("mode") == "oauth", f"unexpected non-OAuth profile copied: {profile_id}"
-            assert "key" not in profile and "apiKey" not in profile and "token" not in profile, f"secret material copied into guard config: {profile_id}"
-        for provider in ("openai-codex", "openai"):
-            order = auth.get("order", {}).get(provider)
-            assert isinstance(order, list) and order, f"guard config must route {provider} through Codex OAuth profiles"
-            assert all(profile_id in auth_profiles for profile_id in order), f"guard config has unknown {provider} auth order entries"
+        if auth is not None:
+            assert isinstance(auth, dict), "guard config auth metadata must be an object when present"
+            auth_profiles = auth.get("profiles")
+            assert isinstance(auth_profiles, dict) and auth_profiles, "guard config auth metadata must include OAuth profiles when present"
+            for profile_id, profile in auth_profiles.items():
+                assert profile_id.startswith(("openai-codex:", "openai:")), f"unexpected non-OpenAI profile copied: {profile_id}"
+                assert profile.get("provider") in {"openai-codex", "openai"}, f"unexpected provider copied for {profile_id}"
+                assert profile.get("mode") == "oauth", f"unexpected non-OAuth profile copied: {profile_id}"
+                assert "key" not in profile and "apiKey" not in profile and "token" not in profile, f"secret material copied into guard config: {profile_id}"
+            order = auth.get("order", {}).get("openai")
+            assert isinstance(order, list) and order, "guard config must route openai through OAuth profiles when auth metadata is copied"
+            assert all(profile_id in auth_profiles for profile_id in order), "guard config has unknown openai auth order entries"
         assert config.get("models", {}).get("providers", {}).get("openai") is None, "guard config should not copy direct OpenAI provider config"
 
         providers_result = subprocess.run(
