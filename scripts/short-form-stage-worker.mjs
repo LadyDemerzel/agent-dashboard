@@ -17,6 +17,7 @@ import {
 } from "./short-form-caption-overlay-track.mjs";
 import {
   CLAUDE_CODE_TARGET_ID,
+  DEFAULT_CLAUDE_CODE_ATTEMPT_LABEL,
   normalizeAgentTargetId,
   runClaudeCodePrompt,
   runOpenClawAgentPrompt,
@@ -43,6 +44,8 @@ const DEFAULT_IMAGE_ASPECT_RATIO = "9:16";
 const DEFAULT_IMAGE_HEADER_PERCENT = "28";
 const DEFAULT_IMAGE_STYLE_PRESET = "dark-charcoal-natural-header";
 const DEFAULT_IMAGE_STYLE_PROMPT = "Clean dramatic high-contrast pencil-and-charcoal illustration, premium modern TikTok aesthetic, dark smoky atmospheric background, restrained vivid red accents only on the key focal area, minimal clutter.";
+const DEFAULT_SCENE_IMAGES_COMMAND_TIMEOUT_MS = 3 * 60 * 60_000;
+const SCENE_IMAGES_FAILURE_RECONCILIATION_TIMEOUT_MS = 10 * 60_000;
 const DEFAULT_VOICE_SPEAKER = "Aiden";
 const DEFAULT_VOICE_INSTRUCT = "Educated American male narrator, slightly deeper and lower-pitched, polished and confident, calm authority, crisp social-video pacing, speak only English, no other languages or non-speech sounds.";
 const DEFAULT_VOICE_PREVIEW_TEXT = "Most people think their face shape is fixed, but posture, breathing, and muscular balance change more than you expect. In this lesson, I will walk through the habits that matter most, the mistakes that waste effort, and the small adjustments that create visible changes over time. Keep your shoulders relaxed, your neck long, and your breathing steady as we go step by step.";
@@ -2941,7 +2944,7 @@ async function runTextScriptAgentStep(job, options) {
     ? job.preferredModels
     : ["openai/gpt-5.5"];
   const agentTarget = normalizeAgentTargetId(job.agentTarget, options.agentId === "oracle" ? "openclaw-oracle" : "openclaw-scribe");
-  const attemptModels = agentTarget === CLAUDE_CODE_TARGET_ID ? ["opus-4.8/xhigh"] : models;
+  const attemptModels = agentTarget === CLAUDE_CODE_TARGET_ID ? [DEFAULT_CLAUDE_CODE_ATTEMPT_LABEL] : models;
   let lastError = "Unknown error";
 
   for (let modelIndex = 0; modelIndex < attemptModels.length; modelIndex += 1) {
@@ -4828,6 +4831,111 @@ function hasFreshArtifact(filePath, requestedAtMs) {
   }
 }
 
+function sceneMediaExists(projectId, relativePath) {
+  if (typeof relativePath !== "string" || !relativePath.trim()) return false;
+
+  try {
+    const mediaPath = path.isAbsolute(relativePath)
+      ? relativePath
+      : path.join(getProjectDir(projectId), relativePath);
+    return fs.existsSync(mediaPath);
+  } catch {
+    return false;
+  }
+}
+
+function validateSceneImageMediaArtifacts(job) {
+  if (job.stage !== "scene-images") return;
+
+  const generatedManifestPath = getSceneGeneratorManifestPath(job.projectId);
+  if (fs.existsSync(generatedManifestPath)) {
+    let generated;
+    try {
+      generated = JSON.parse(fs.readFileSync(generatedManifestPath, "utf-8"));
+    } catch (error) {
+      throw new Error(`Generate Visuals produced invalid scenes/manifest.json: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    const generatedScenes = Array.isArray(generated?.scenes) ? generated.scenes : [];
+    if (generatedScenes.length === 0) {
+      throw new Error("Generate Visuals produced scenes/manifest.json with no scenes.");
+    }
+
+    const missingGenerated = [];
+    for (const scene of generatedScenes) {
+      const number = Number(scene?.index);
+      const label = Number.isInteger(number) && number > 0
+        ? `scene-${String(number).padStart(2, "0")}`
+        : "unknown scene";
+      const isMotionGraphic = scene?.visual_type === "motion_graphic";
+      const hasMedia = [
+        scene?.uncaptioned,
+        scene?.raw_legacy,
+        scene?.captioned,
+        scene?.preview_video,
+      ].some((mediaPath) => sceneMediaExists(job.projectId, mediaPath));
+
+      if (!hasMedia) {
+        missingGenerated.push(isMotionGraphic ? `${label} motion graphic video/image` : `${label} image`);
+      }
+    }
+
+    if (missingGenerated.length > 0) {
+      const suffix = missingGenerated.length > 10 ? ` and ${missingGenerated.length - 10} more` : "";
+      throw new Error(`Generate Visuals manifest is incomplete; missing media for ${missingGenerated.slice(0, 10).join(", ")}${suffix}.`);
+    }
+
+    return;
+  }
+
+  const manifestPath = path.join(getProjectDir(job.projectId), "scene-images.json");
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error("Generate Visuals did not produce scene-images.json.");
+  }
+
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+  } catch (error) {
+    throw new Error(`Generate Visuals produced invalid scene-images.json: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  const scenes = Array.isArray(manifest?.scenes) ? manifest.scenes : [];
+  if (scenes.length === 0) {
+    throw new Error("Generate Visuals produced scene-images.json with no scenes.");
+  }
+
+  const missing = [];
+  for (const scene of scenes) {
+    const number = Number(scene?.number);
+    const label = Number.isInteger(number) && number > 0
+      ? `scene-${String(number).padStart(2, "0")}`
+      : String(scene?.id || "unknown scene");
+    const isMotionGraphic = scene?.visualType === "motion_graphic";
+    if (isMotionGraphic) {
+      if (
+        sceneMediaExists(job.projectId, scene?.previewVideo)
+        || sceneMediaExists(job.projectId, scene?.image)
+        || sceneMediaExists(job.projectId, scene?.previewImage)
+      ) {
+        continue;
+      }
+      missing.push(`${label} motion graphic video/image`);
+      continue;
+    }
+
+    if (sceneMediaExists(job.projectId, scene?.image) || sceneMediaExists(job.projectId, scene?.previewImage)) {
+      continue;
+    }
+    missing.push(`${label} image`);
+  }
+
+  if (missing.length > 0) {
+    const suffix = missing.length > 10 ? ` and ${missing.length - 10} more` : "";
+    throw new Error(`Generate Visuals manifest is incomplete; missing media for ${missing.slice(0, 10).join(", ")}${suffix}.`);
+  }
+}
+
 async function waitForArtifacts(job, requiredArtifacts, requestedAtMs, timeoutMs, pollMs) {
   const startedAt = Date.now();
 
@@ -4835,6 +4943,7 @@ async function waitForArtifacts(job, requiredArtifacts, requestedAtMs, timeoutMs
     syncSceneImageArtifacts(job);
     const allPresent = requiredArtifacts.every((filePath) => hasFreshArtifact(filePath, requestedAtMs));
     if (allPresent) {
+      validateSceneImageMediaArtifacts(job);
       return true;
     }
 
@@ -4842,7 +4951,17 @@ async function waitForArtifacts(job, requiredArtifacts, requestedAtMs, timeoutMs
   }
 
   syncSceneImageArtifacts(job);
-  return requiredArtifacts.every((filePath) => hasFreshArtifact(filePath, requestedAtMs));
+  const allPresent = requiredArtifacts.every((filePath) => hasFreshArtifact(filePath, requestedAtMs));
+  if (allPresent) {
+    validateSceneImageMediaArtifacts(job);
+  }
+  return allPresent;
+}
+
+function isRecoverableSceneImagesWorkflowError(job, error) {
+  if (job.directConfig?.kind !== "scene-images") return false;
+  const message = error instanceof Error ? error.message : String(error);
+  return /(?:status\s+143|SIGTERM|ETIMEDOUT|timed out|timeout|terminated|provider returned no images|read ETIMEDOUT)/i.test(message);
 }
 
 async function spawnAttempt(job, model, attemptIndex) {
@@ -4984,7 +5103,7 @@ function runDirectSceneImages(job) {
 
   const shouldRunImageGenerator = motionGraphics.motionVisuals.length === 0 || imageSceneIndexes.length > 0;
   const sceneImagesTimeoutMs = Number.parseInt(
-    process.env.SHORT_FORM_SCENE_IMAGES_COMMAND_TIMEOUT_MS || "3900000",
+    process.env.SHORT_FORM_SCENE_IMAGES_COMMAND_TIMEOUT_MS || String(DEFAULT_SCENE_IMAGES_COMMAND_TIMEOUT_MS),
     10,
   );
   const result = shouldRunImageGenerator
@@ -5252,14 +5371,42 @@ async function main() {
       });
       return;
     } catch (error) {
-      attempt.error = error instanceof Error ? error.message : String(error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       attempt.finishedAt = new Date().toISOString();
       if (job.directConfig.kind === "text-script") {
-        failTextScriptRun(job.directConfig.config, attempt.error);
+        failTextScriptRun(job.directConfig.config, errorMessage);
       }
+      if (isRecoverableSceneImagesWorkflowError(job, error)) {
+        try {
+          const verified = await waitForArtifacts(
+            job,
+            job.requiredArtifacts,
+            requestedAtMs,
+            Math.min(
+              typeof job.verificationTimeoutMs === "number" ? job.verificationTimeoutMs : SCENE_IMAGES_FAILURE_RECONCILIATION_TIMEOUT_MS,
+              SCENE_IMAGES_FAILURE_RECONCILIATION_TIMEOUT_MS,
+            ),
+            typeof job.verificationPollMs === "number" ? job.verificationPollMs : 5000,
+          );
+          if (verified) {
+            attempt.verified = true;
+            attempt.recoveredAfterError = true;
+            attempt.recoveredError = errorMessage;
+            finalizeRun({
+              status: "verified",
+              activeStep: "completed",
+              activeStatusText: "Generate Visuals ready after artifact reconciliation",
+            });
+            return;
+          }
+        } catch (recoveryError) {
+          attempt.recoveryError = recoveryError instanceof Error ? recoveryError.message : String(recoveryError);
+        }
+      }
+      attempt.error = errorMessage;
       finalizeRun({
         status: "failed",
-        errorMessage: attempt.error,
+        errorMessage,
       });
       return;
     }
@@ -5269,7 +5416,7 @@ async function main() {
     ? job.preferredModels
     : ["openai/gpt-5.5"];
   const agentTarget = normalizeAgentTargetId(job.agentTarget, job.agentId === "oracle" ? "openclaw-oracle" : "openclaw-scribe");
-  const attemptModels = agentTarget === CLAUDE_CODE_TARGET_ID ? ["opus-4.8/xhigh"] : models;
+  const attemptModels = agentTarget === CLAUDE_CODE_TARGET_ID ? [DEFAULT_CLAUDE_CODE_ATTEMPT_LABEL] : models;
 
   for (let index = 0; index < attemptModels.length; index += 1) {
     const model = attemptModels[index];

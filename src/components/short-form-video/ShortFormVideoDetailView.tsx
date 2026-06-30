@@ -1176,12 +1176,8 @@ function getSceneVisualXmlDraft(scene: Scene): VisualXmlDraft {
   };
 }
 
-function getSceneDraftSignature(scene: Scene) {
-  const draft = getSceneVisualXmlDraft(scene);
+function getVisualXmlDraftSignature(draft: VisualXmlDraft) {
   return [
-    scene.id,
-    scene.visualId || "",
-    scene.imageId || "",
     draft.startTime,
     draft.endTime,
     draft.prompt,
@@ -1191,6 +1187,16 @@ function getSceneDraftSignature(scene: Scene) {
     draft.cameraZoomStart,
     draft.cameraZoomEnd,
     draft.motionGraphicXml,
+  ].join("\u001f");
+}
+
+function getSceneDraftSignature(scene: Scene) {
+  const draft = getSceneVisualXmlDraft(scene);
+  return [
+    scene.id,
+    scene.visualId || "",
+    scene.imageId || "",
+    getVisualXmlDraftSignature(draft),
   ].join("\u001f");
 }
 
@@ -4186,6 +4192,9 @@ function SceneImagesSection({
   const [visualXmlDraftByScene, setVisualXmlDraftByScene] = useState<
     Record<string, VisualXmlDraft>
   >({});
+  const serverVisualXmlDraftSignatureBySceneRef = useRef<Record<string, string>>(
+    {},
+  );
   const [scenePreviewBustById, setScenePreviewBustById] = useState<
     Record<string, number>
   >({});
@@ -4221,14 +4230,43 @@ function SceneImagesSection({
   }, [imageSettingsPayload]);
 
   useEffect(() => {
-    setVisualXmlDraftByScene(
+    const previousServerSignatures =
+      serverVisualXmlDraftSignatureBySceneRef.current;
+    const nextServerDrafts = Object.fromEntries(
+      project.sceneImages.scenes.map((scene) => [
+        scene.id,
+        getSceneVisualXmlDraft(scene),
+      ]),
+    );
+    const nextServerSignatures = Object.fromEntries(
+      Object.entries(nextServerDrafts).map(([sceneId, draft]) => [
+        sceneId,
+        getVisualXmlDraftSignature(draft),
+      ]),
+    );
+
+    setVisualXmlDraftByScene((previousDrafts) =>
       Object.fromEntries(
-        project.sceneImages.scenes.map((scene) => [
-          scene.id,
-          getSceneVisualXmlDraft(scene),
-        ]),
+        project.sceneImages.scenes.map((scene) => {
+          const serverDraft = nextServerDrafts[scene.id];
+          const previousServerSignature = previousServerSignatures[scene.id];
+          const existingDraft = previousDrafts[scene.id];
+          const existingSignature = existingDraft
+            ? getVisualXmlDraftSignature(existingDraft)
+            : "";
+          const hasUnsavedLocalDraft =
+            Boolean(existingDraft) &&
+            previousServerSignature !== undefined &&
+            existingSignature !== previousServerSignature;
+
+          return [
+            scene.id,
+            hasUnsavedLocalDraft && existingDraft ? existingDraft : serverDraft,
+          ];
+        }),
       ),
     );
+    serverVisualXmlDraftSignatureBySceneRef.current = nextServerSignatures;
   }, [
     project.sceneImages.updatedAt,
     project.sceneImages.scenes.map(getSceneDraftSignature).join("\u001e"),
@@ -4769,6 +4807,12 @@ function SceneImagesSection({
                       {sceneProgress.targetSceneIds?.join(", ")}
                     </Badge>
                   ) : null}
+                  {sceneProgress.scope === "multi" &&
+                  (sceneProgress.targetSceneIds?.length || 0) > 0 ? (
+                    <Badge variant="outline">
+                      Revising visuals: {sceneProgress.targetSceneIds?.join(", ")}
+                    </Badge>
+                  ) : null}
                   {visualPlanEditWorking ? (
                     <div className="inline-flex items-center gap-2 rounded-full border border-blue-400/30 bg-blue-500/15 px-2.5 py-1 text-xs font-medium text-blue-100">
                       <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
@@ -4797,6 +4841,8 @@ function SceneImagesSection({
                     ? "The targeted scene is shown as a loading placeholder until the revised image lands on disk. Other scenes remain visible."
                     : sceneProgress.scope === "chain"
                       ? "The targeted scene and any downstream continuity-linked scenes are tracked as part of this rerun. Scenes outside that chain remain visible."
+                      : sceneProgress.scope === "multi"
+                        ? "Targeted visuals that are currently rerendering are shown as loading placeholders. Other scenes remain visible."
                       : "Completed scenes stay visible while the remaining scene slots render as loading placeholders."}
                 </p>
               ) : null}

@@ -5,6 +5,7 @@ import path from "path";
 import { spawn, spawnSync } from "child_process";
 import {
   CLAUDE_CODE_TARGET_ID,
+  DEFAULT_CLAUDE_CODE_ATTEMPT_LABEL,
   normalizeAgentTargetId,
   openClawAgentIdForTarget,
   runClaudeCodePrompt,
@@ -1265,7 +1266,7 @@ async function main() {
       updateStatus();
       const models = Array.isArray(job.preferredModels) && job.preferredModels.length > 0 ? job.preferredModels : ["openai/gpt-5.5"];
       const agentTarget = normalizeAgentTargetId(job.agentTarget, "openclaw-scribe");
-      const attemptModels = agentTarget === CLAUDE_CODE_TARGET_ID ? ["opus-4.8/xhigh"] : models;
+      const attemptModels = agentTarget === CLAUDE_CODE_TARGET_ID ? [DEFAULT_CLAUDE_CODE_ATTEMPT_LABEL] : models;
       let verified = false;
       for (let index = 0; index < attemptModels.length; index += 1) {
         const model = attemptModels[index];

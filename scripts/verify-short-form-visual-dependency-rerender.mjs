@@ -72,8 +72,8 @@ assert(
 );
 assert(
   workflowRouteSource.includes('stage === "scene-images" && effectiveAction === "request-scene-change"') &&
-    workflowRouteSource.includes("stopShortFormStageRun(id, \"scene-images\", latestSceneImagesRequest?.runId);"),
-  "Targeted visual rerenders should stop the active scene-images worker before enqueueing the replacement chain.",
+    !workflowRouteSource.includes('stopShortFormStageRun(id, "scene-images", latestSceneImagesRequest?.runId);'),
+  "Targeted visual rerenders should not stop unrelated active scene-image workers before enqueueing another visual rerender.",
 );
 assert(
   secondaryShellSource.includes("Stop auto-generation") &&
@@ -85,6 +85,13 @@ assert(
   !detailViewSource.includes("Caption / visual timeline") &&
     !detailViewSource.includes("VisualCaptionTimeline"),
   "Generate Visuals should not render the broken Caption / visual timeline section.",
+);
+assert(
+  detailViewSource.includes("serverVisualXmlDraftSignatureBySceneRef") &&
+    detailViewSource.includes("hasUnsavedLocalDraft") &&
+    detailViewSource.includes("previousServerSignature !== undefined") &&
+    detailViewSource.includes("hasUnsavedLocalDraft && existingDraft ? existingDraft : serverDraft"),
+  "Generate Visuals refreshes must preserve unsaved per-visual XML edits while another visual is rendering.",
 );
 
 const xml = `

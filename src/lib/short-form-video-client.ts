@@ -54,7 +54,7 @@ export interface SceneImageProgressSummaryClient {
   total: number;
   completed: number;
   pending: number;
-  scope: 'all' | 'single' | 'chain';
+  scope: 'all' | 'single' | 'chain' | 'multi';
   targetSceneId?: string;
   targetSceneIds?: string[];
 }
@@ -792,7 +792,13 @@ function normalizeSceneImageProgressSummary(value: unknown): SceneImageProgressS
     total,
     completed,
     pending,
-    scope: obj.scope === 'single' ? 'single' : obj.scope === 'chain' ? 'chain' : 'all',
+    scope: obj.scope === 'single'
+      ? 'single'
+      : obj.scope === 'chain'
+        ? 'chain'
+        : obj.scope === 'multi'
+          ? 'multi'
+          : 'all',
     targetSceneId: asOptionalString(obj.targetSceneId),
     targetSceneIds: Array.isArray(obj.targetSceneIds)
       ? obj.targetSceneIds.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)

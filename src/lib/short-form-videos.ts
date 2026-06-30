@@ -164,7 +164,7 @@ export interface SceneImageProgressSummary {
   total: number;
   completed: number;
   pending: number;
-  scope: "all" | "single" | "chain";
+  scope: "all" | "single" | "chain" | "multi";
   targetSceneId?: string;
   targetSceneIds?: string[];
 }
@@ -198,6 +198,10 @@ export interface StageRequestContext {
   sceneId?: string;
   imageId?: string;
   visualId?: string;
+}
+
+export interface ActiveSceneImageRunRequest extends StageRequestContext {
+  runId: string;
 }
 
 export interface HookRequestContext {
@@ -1395,8 +1399,8 @@ function readGeneratedSceneManifestResult(projectId: string): JsonReadResult<Gen
       return { data: [], error: `${prefix}.text must be a non-empty string.` };
     }
 
-    if (!image && !previewImage) {
-      return { data: [], error: `${prefix} must include at least one generated image path.` };
+    if (!image && !previewImage && !previewVideo) {
+      return { data: [], error: `${prefix} must include at least one generated media path.` };
     }
 
     if (typeof duration !== "undefined" && !isOptionalString(duration)) {
@@ -1715,16 +1719,65 @@ function sceneHasManifestMedia(scene?: SceneImageArtifact) {
   return Boolean(scene?.image || scene?.previewImage || scene?.previewVideo);
 }
 
-function buildReconciledSceneFromExpected(expected: ExpectedScriptVisualScene, existing?: SceneImageArtifact): SceneImageArtifact {
+function getExistingSceneMediaPath(projectId: string, relativePath?: string) {
+  if (!relativePath || !sceneMediaPathExists(projectId, relativePath)) return undefined;
+  return relativePath;
+}
+
+function getExistingDerivedSceneMediaPaths(
+  projectId: string,
+  scene: Pick<SceneImageArtifact, "number" | "visualType">
+) {
+  const derived = getDerivedSceneRelativePaths(scene.number);
+  const isMotionGraphic = scene.visualType === "motion_graphic";
+  return {
+    image: isMotionGraphic ? undefined : getExistingSceneMediaPath(projectId, derived.image),
+    previewImage: isMotionGraphic ? undefined : getExistingSceneMediaPath(projectId, derived.previewImage),
+    previewVideo: isMotionGraphic ? getExistingSceneMediaPath(projectId, derived.previewVideo) : undefined,
+  };
+}
+
+function hydrateSceneMediaFromDerivedPaths<T extends SceneImageArtifact>(
+  projectId: string,
+  scene: T
+): T {
+  const derived = getExistingDerivedSceneMediaPaths(projectId, scene);
+  const image = getExistingSceneMediaPath(projectId, scene.image) || derived.image;
+  const previewImage = getExistingSceneMediaPath(projectId, scene.previewImage) || derived.previewImage;
+  const previewVideo = getExistingSceneMediaPath(projectId, scene.previewVideo) || derived.previewVideo;
+
+  return {
+    ...scene,
+    image,
+    previewImage,
+    previewVideo,
+  };
+}
+
+function buildReconciledSceneFromExpected(
+  projectId: string,
+  expected: ExpectedScriptVisualScene,
+  existing?: SceneImageArtifact
+): SceneImageArtifact {
+  const media = hydrateSceneMediaFromDerivedPaths(projectId, {
+    id: existing?.id || expected.id,
+    number: expected.number,
+    caption: existing?.caption || expected.caption,
+    ...(expected.visualType ? { visualType: expected.visualType } : existing?.visualType ? { visualType: existing.visualType } : {}),
+    ...(existing?.image ? { image: existing.image } : {}),
+    ...(existing?.previewImage ? { previewImage: existing.previewImage } : {}),
+    ...(existing?.previewVideo ? { previewVideo: existing.previewVideo } : {}),
+  });
+
   return {
     id: expected.id,
     number: expected.number,
     caption: expected.caption,
     ...(typeof expected.startTime === "number" ? { startTime: expected.startTime } : {}),
     ...(typeof expected.endTime === "number" ? { endTime: expected.endTime } : {}),
-    ...(sceneHasManifestMedia(existing) && existing?.image ? { image: existing.image } : {}),
-    ...(sceneHasManifestMedia(existing) && existing?.previewImage ? { previewImage: existing.previewImage } : {}),
-    ...(sceneHasManifestMedia(existing) && existing?.previewVideo ? { previewVideo: existing.previewVideo } : {}),
+    ...(media.image ? { image: media.image } : {}),
+    ...(media.previewImage ? { previewImage: media.previewImage } : {}),
+    ...(media.previewVideo ? { previewVideo: media.previewVideo } : {}),
     ...(expected.visualType ? { visualType: expected.visualType } : existing?.visualType ? { visualType: existing.visualType } : {}),
     ...(expected.motionGraphicTemplateId ? { motionGraphicTemplateId: expected.motionGraphicTemplateId } : existing?.motionGraphicTemplateId ? { motionGraphicTemplateId: existing.motionGraphicTemplateId } : {}),
     ...(expected.motionGraphicRendererId ? { motionGraphicRendererId: expected.motionGraphicRendererId } : existing?.motionGraphicRendererId ? { motionGraphicRendererId: existing.motionGraphicRendererId } : {}),
@@ -1785,7 +1838,7 @@ function reconcileSceneImagesManifestWithXmlPlan(
   const reconciled = expected.map((scene) => {
     const best = findBestManifestMatch(scene, candidateScenes, usedExistingIndexes);
     if (best) usedExistingIndexes.add(best.index);
-    return buildReconciledSceneFromExpected(scene, best?.scene);
+    return buildReconciledSceneFromExpected(projectId, scene, best?.scene);
   });
 
   const currentSerialized = JSON.stringify({ scenes: primary.data });
@@ -2160,6 +2213,7 @@ function getDerivedSceneRelativePaths(number: number) {
   return {
     image: `scenes/scene-${padded}-uncaptioned-1080x1920.png`,
     previewImage: `scenes/scene-${padded}-captioned-1080x1920.png`,
+    previewVideo: `scenes/scene-${padded}-motion-graphic.mp4`,
   };
 }
 
@@ -2171,6 +2225,7 @@ function buildSceneArtifactFromDerivedPaths(
   const derived = getDerivedSceneRelativePaths(scene.number);
   const imagePath = path.join(getProjectDir(projectId), derived.image);
   const previewImagePath = path.join(getProjectDir(projectId), derived.previewImage);
+  const previewVideoPath = path.join(getProjectDir(projectId), derived.previewVideo);
   const requireFreshSinceMs = options?.requireFreshSinceMs;
   const imageExists = Number.isFinite(requireFreshSinceMs)
     ? hasFreshFileAtPath(imagePath, requireFreshSinceMs as number)
@@ -2178,6 +2233,9 @@ function buildSceneArtifactFromDerivedPaths(
   const previewExists = Number.isFinite(requireFreshSinceMs)
     ? hasFreshFileAtPath(previewImagePath, requireFreshSinceMs as number)
     : fs.existsSync(previewImagePath);
+  const previewVideoExists = Number.isFinite(requireFreshSinceMs)
+    ? hasFreshFileAtPath(previewVideoPath, requireFreshSinceMs as number)
+    : fs.existsSync(previewVideoPath);
 
   return {
     id: scene.id,
@@ -2186,12 +2244,23 @@ function buildSceneArtifactFromDerivedPaths(
     notes: scene.notes,
     image: imageExists ? toMediaUrl(projectId, derived.image, getProjectMediaVersion(projectId, derived.image)) : undefined,
     previewImage: previewExists ? toMediaUrl(projectId, derived.previewImage, getProjectMediaVersion(projectId, derived.previewImage)) : undefined,
+    previewVideo: previewVideoExists ? toMediaUrl(projectId, derived.previewVideo, getProjectMediaVersion(projectId, derived.previewVideo)) : undefined,
   };
 }
 
-function buildSceneImagesProgressState(projectId: string, scenes: SceneImageArtifact[], doc: StageDocumentSummary) {
+function buildSceneImagesProgressState(
+  projectId: string,
+  scenes: SceneImageArtifact[],
+  doc: StageDocumentSummary,
+  activeRequests: ActiveSceneImageRunRequest[] = [],
+) {
   const revision = doc.revision;
-  const isPending = Boolean(doc.pending || revision?.isPending);
+  const activeSceneRequests = activeRequests.filter((request) => request.action === "request-scene-change" && request.sceneId);
+  const activeFullRequestTimes = activeRequests
+    .filter((request) => request.action !== "request-scene-change" || !request.sceneId)
+    .map((request) => Date.parse(request.requestedAt))
+    .filter((value) => Number.isFinite(value));
+  const isPending = Boolean(doc.pending || revision?.isPending || activeRequests.length > 0);
   if (!isPending) {
     const resolvedScenes = scenes.map((scene) => ({
       ...scene,
@@ -2208,11 +2277,47 @@ function buildSceneImagesProgressState(projectId: string, scenes: SceneImageArti
   }
 
   const requestedAtMs = revision?.requestedAt ? Date.parse(revision.requestedAt) : Number.NaN;
-  const targetSceneIndex = parseSceneIdToIndex(revision?.action === "request-scene-change" ? revision.sceneId ?? undefined : undefined);
   const expectedVisualSpec = readExpectedScriptVisualSpec(projectId);
   const expectedScenes = expectedVisualSpec.scenes;
-  const expandedTargetSceneIndexes = expandRequestedSceneIndexesForDependencies(expectedScenes, expectedVisualSpec.assetDependencies, targetSceneIndex);
-  const trackedSceneIndexes = new Set(expandedTargetSceneIndexes);
+  const targetRequests = [
+    ...(revision?.isPending && revision.action === "request-scene-change" && revision.sceneId && Number.isFinite(requestedAtMs)
+      ? [{ sceneId: revision.sceneId, requestedAtMs }]
+      : []),
+    ...activeSceneRequests
+      .map((request) => ({
+        sceneId: request.sceneId || "",
+        requestedAtMs: Date.parse(request.requestedAt),
+      }))
+      .filter((request) => request.sceneId && Number.isFinite(request.requestedAtMs)),
+  ];
+  const trackedSceneIndexes = new Set<number>();
+  const freshnessBySceneIndex = new Map<number, number>();
+  const expandedTargetSceneIndexes = Array.from(new Set(
+    targetRequests.flatMap((request) => {
+      const targetSceneIndex = parseSceneIdToIndex(request.sceneId);
+      const expanded = expandRequestedSceneIndexesForDependencies(
+        expectedScenes,
+        expectedVisualSpec.assetDependencies,
+        targetSceneIndex,
+      );
+      for (const sceneIndex of expanded) {
+        const existingFreshness = freshnessBySceneIndex.get(sceneIndex);
+        freshnessBySceneIndex.set(
+          sceneIndex,
+          Math.max(existingFreshness || 0, request.requestedAtMs),
+        );
+      }
+      return expanded;
+    }),
+  )).sort((a, b) => a - b);
+  for (const sceneIndex of expandedTargetSceneIndexes) {
+    trackedSceneIndexes.add(sceneIndex);
+  }
+  const fullRunFreshnessMs = activeFullRequestTimes.length > 0
+    ? Math.max(...activeFullRequestTimes)
+    : revision?.isPending && revision.action !== "request-scene-change" && Number.isFinite(requestedAtMs)
+      ? requestedAtMs
+      : Number.NaN;
   const manifestByNumber = new Map(scenes.map((scene) => [scene.number, scene]));
   const orderedNumbers = expectedScenes.length > 0
     ? expectedScenes.map((scene) => scene.number)
@@ -2225,7 +2330,7 @@ function buildSceneImagesProgressState(projectId: string, scenes: SceneImageArti
   }
   orderedNumbers.sort((a, b) => a - b);
 
-  const scoped = trackedSceneIndexes.size > 0;
+  const scoped = trackedSceneIndexes.size > 0 && !Number.isFinite(fullRunFreshnessMs);
   const mergedScenes = orderedNumbers.map((number) => {
     const expected = expectedScenes.find((scene) => scene.number === number);
     const current = manifestByNumber.get(number);
@@ -2236,11 +2341,17 @@ function buildSceneImagesProgressState(projectId: string, scenes: SceneImageArti
       notes: current?.notes,
     };
 
-    const shouldTrackFreshness = Number.isFinite(requestedAtMs) && (!scoped || trackedSceneIndexes.has(number));
+    const scopedFreshnessMs = freshnessBySceneIndex.get(number);
+    const freshnessFloorMs = Number.isFinite(fullRunFreshnessMs)
+      ? fullRunFreshnessMs
+      : Number.isFinite(scopedFreshnessMs)
+        ? scopedFreshnessMs
+        : Number.NaN;
+    const shouldTrackFreshness = Number.isFinite(freshnessFloorMs) && (!scoped || trackedSceneIndexes.has(number));
 
     if (shouldTrackFreshness) {
-      const freshScene = buildSceneArtifactFromDerivedPaths(projectId, base, { requireFreshSinceMs: requestedAtMs });
-      if (freshScene.previewImage || freshScene.image) {
+      const freshScene = buildSceneArtifactFromDerivedPaths(projectId, base, { requireFreshSinceMs: freshnessFloorMs });
+      if (freshScene.previewImage || freshScene.image || freshScene.previewVideo) {
         return { ...current, ...freshScene, status: "completed" as const };
       }
       return { ...base, status: "in-progress" as const };
@@ -2251,7 +2362,7 @@ function buildSceneImagesProgressState(projectId: string, scenes: SceneImageArti
     }
 
     const existingScene = buildSceneArtifactFromDerivedPaths(projectId, base);
-    if (existingScene.previewImage || existingScene.image) {
+    if (existingScene.previewImage || existingScene.image || existingScene.previewVideo) {
       return { ...existingScene, status: "completed" as const };
     }
 
@@ -2265,6 +2376,11 @@ function buildSceneImagesProgressState(projectId: string, scenes: SceneImageArti
   const total = progressScenes.length;
   const pending = Math.max(total - completed, 0);
   const targetSceneIds = expandedTargetSceneIndexes.map((index) => `scene-${index}`);
+  const primaryTargetSceneIds = Array.from(new Set(
+    targetRequests
+      .map((request) => request.sceneId)
+      .filter((sceneId): sceneId is string => Boolean(sceneId)),
+  ));
 
   return {
     scenes: mergedScenes,
@@ -2273,8 +2389,14 @@ function buildSceneImagesProgressState(projectId: string, scenes: SceneImageArti
           total,
           completed,
           pending,
-          scope: trackedSceneIndexes.size > 1 ? "chain" as const : scoped ? "single" as const : "all" as const,
-          ...(revision?.action === "request-scene-change" && revision.sceneId ? { targetSceneId: revision.sceneId } : {}),
+          scope: primaryTargetSceneIds.length > 1
+            ? "multi" as const
+            : trackedSceneIndexes.size > 1
+              ? "chain" as const
+              : scoped
+                ? "single" as const
+                : "all" as const,
+          ...(primaryTargetSceneIds.length === 1 ? { targetSceneId: primaryTargetSceneIds[0] } : {}),
           ...(targetSceneIds.length > 0 ? { targetSceneIds } : {}),
         }
       : undefined,
@@ -2543,6 +2665,98 @@ function findRelevantWorkflowRun(
   }
 
   return undefined;
+}
+
+function readSceneImagesJobRequest(
+  projectId: string,
+  runId: string,
+  fallbackRequestedAt?: string,
+): ActiveSceneImageRunRequest | undefined {
+  const jobPath = path.join(getWorkflowRunDir(projectId), `${runId}.job.json`);
+  const job = readJsonFile<{
+    runId?: string;
+    projectId?: string;
+    stage?: ShortFormStageKey;
+    requestedAt?: string;
+    directConfig?: {
+      kind?: string;
+      config?: {
+        mode?: "generate" | "revise";
+        notes?: string;
+        sceneId?: string;
+        imageId?: string;
+        visualId?: string;
+      };
+    };
+  } | null>(jobPath, null);
+  const config = job?.directConfig?.kind === "scene-images" ? job.directConfig.config : undefined;
+  if (job?.projectId !== projectId || job.stage !== "scene-images" || !config) return undefined;
+
+  const mode = config.mode === "generate" ? "generate" : "revise";
+  const sceneId = typeof config.sceneId === "string" && config.sceneId.trim() ? config.sceneId.trim() : undefined;
+  const requestedAt = typeof job.requestedAt === "string" && job.requestedAt.trim()
+    ? job.requestedAt.trim()
+    : fallbackRequestedAt;
+  if (!requestedAt) return undefined;
+
+  return {
+    runId,
+    requestedAt,
+    action: sceneId ? "request-scene-change" : mode,
+    mode,
+    ...(typeof config.notes === "string" && config.notes.trim() ? { notes: config.notes.trim() } : {}),
+    ...(sceneId ? { sceneId } : {}),
+    ...(typeof config.imageId === "string" && config.imageId.trim() ? { imageId: config.imageId.trim() } : {}),
+    ...(typeof config.visualId === "string" && config.visualId.trim() ? { visualId: config.visualId.trim() } : {}),
+  };
+}
+
+export function getActiveSceneImageRunRequests(projectId: string): ActiveSceneImageRunRequest[] {
+  const runDir = getWorkflowRunDir(projectId);
+  if (!fs.existsSync(runDir)) return [];
+
+  const now = Date.now();
+  const inactivityMs = getStageRunInactivityFailureMs("scene-images");
+  const requests: ActiveSceneImageRunRequest[] = [];
+
+  const statusFiles = fs
+    .readdirSync(runDir)
+    .filter((entry) => entry.endsWith(".status.json"))
+    .map((entry) => {
+      const fullPath = path.join(runDir, entry);
+      let mtimeMs = 0;
+      try {
+        mtimeMs = fs.statSync(fullPath).mtimeMs;
+      } catch {
+        mtimeMs = 0;
+      }
+      return { entry, fullPath, mtimeMs };
+    })
+    .sort((a, b) => a.mtimeMs - b.mtimeMs);
+
+  for (const candidate of statusFiles) {
+    const parsed = readJsonFile<{
+      runId?: string;
+      projectId?: string;
+      stage?: ShortFormStageKey;
+      status?: "running" | "verified" | "failed";
+      startedAt?: string;
+    } | null>(candidate.fullPath, null);
+    if (
+      parsed?.projectId !== projectId ||
+      parsed.stage !== "scene-images" ||
+      parsed.status !== "running" ||
+      !parsed.runId
+    ) {
+      continue;
+    }
+    if (candidate.mtimeMs > 0 && now - candidate.mtimeMs >= inactivityMs) continue;
+
+    const request = readSceneImagesJobRequest(projectId, parsed.runId, parsed.startedAt);
+    if (request) requests.push(request);
+  }
+
+  return requests;
 }
 
 function findRelevantSoundDesignRun(
@@ -2873,6 +3087,7 @@ function buildScenePreviewVideoUrl(projectId: string, sceneId: string) {
 
 function getSceneImagesStage(projectId: string, options?: { pending?: boolean }) {
   synchronizeSceneImagesArtifacts(projectId);
+  const activeRequests = getActiveSceneImageRunRequests(projectId);
   const doc = readStageDocument(projectId, "scene-images", options);
   const manifest = readSceneManifestResult(projectId);
   let xmlEditStates = new Map<number, ReturnType<typeof readXmlVisualEditStates>[number]>();
@@ -2884,11 +3099,12 @@ function getSceneImagesStage(projectId: string, options?: { pending?: boolean })
     xmlEditStates = new Map();
   }
   const manifestScenes = manifest.data.map((scene) => {
-    const xmlEditState = xmlEditStates.get(scene.number);
+    const hydratedScene = hydrateSceneMediaFromDerivedPaths(projectId, scene);
+    const xmlEditState = xmlEditStates.get(hydratedScene.number);
     const xmlStartSeconds = parseEditableVisualSeconds(xmlEditState?.startTime);
     const xmlEndSeconds = parseEditableVisualSeconds(xmlEditState?.endTime);
     return {
-      ...scene,
+      ...hydratedScene,
       ...(xmlEditState?.startTime !== undefined ? { xmlStartTime: xmlEditState.startTime } : {}),
       ...(xmlEditState?.endTime !== undefined ? { xmlEndTime: xmlEditState.endTime } : {}),
       ...(xmlStartSeconds !== undefined ? { startTime: xmlStartSeconds } : {}),
@@ -2899,17 +3115,23 @@ function getSceneImagesStage(projectId: string, options?: { pending?: boolean })
       ...(xmlEditState?.cameraZoomStart !== undefined ? { cameraZoomStart: xmlEditState.cameraZoomStart } : {}),
       ...(xmlEditState?.cameraZoomEnd !== undefined ? { cameraZoomEnd: xmlEditState.cameraZoomEnd } : {}),
       ...(xmlEditState?.motionGraphicXml ? { motionGraphicXml: xmlEditState.motionGraphicXml } : {}),
-      image: scene.image ? toMediaUrl(projectId, scene.image, getProjectMediaVersion(projectId, scene.image)) : undefined,
-      previewImage: scene.previewImage ? toMediaUrl(projectId, scene.previewImage, getProjectMediaVersion(projectId, scene.previewImage)) : undefined,
-      previewVideo: scene.previewVideo
-        ? toMediaUrl(projectId, scene.previewVideo, getProjectMediaVersion(projectId, scene.previewVideo))
-        : scene.visualType !== "motion_graphic" && scene.image
-          ? buildScenePreviewVideoUrl(projectId, scene.id)
+      image: hydratedScene.image ? toMediaUrl(projectId, hydratedScene.image, getProjectMediaVersion(projectId, hydratedScene.image)) : undefined,
+      previewImage: hydratedScene.previewImage ? toMediaUrl(projectId, hydratedScene.previewImage, getProjectMediaVersion(projectId, hydratedScene.previewImage)) : undefined,
+      previewVideo: hydratedScene.previewVideo
+        ? toMediaUrl(projectId, hydratedScene.previewVideo, getProjectMediaVersion(projectId, hydratedScene.previewVideo))
+        : hydratedScene.visualType !== "motion_graphic" && hydratedScene.image
+          ? buildScenePreviewVideoUrl(projectId, hydratedScene.id)
           : undefined,
     };
   });
-  const progressState = buildSceneImagesProgressState(projectId, manifestScenes, doc);
-  return { ...doc, scenes: progressState.scenes, sceneProgress: progressState.sceneProgress, validationError: manifest.error };
+  const progressState = buildSceneImagesProgressState(projectId, manifestScenes, doc, activeRequests);
+  return {
+    ...doc,
+    pending: Boolean(doc.pending || activeRequests.length > 0),
+    scenes: progressState.scenes,
+    sceneProgress: progressState.sceneProgress,
+    validationError: manifest.error,
+  };
 }
 
 function getVideoWorkDir(projectId: string) {
@@ -3364,7 +3586,7 @@ function getPendingStages(
     meta.pendingHooks ? "hooks" : null,
     meta.pendingResearch || state?.research?.revision?.isPending ? "research" : null,
     meta.pendingScript || state?.script?.revision?.isPending ? "script" : null,
-    meta.pendingSceneImages || state?.sceneImages?.revision?.isPending ? "scene-images" : null,
+    meta.pendingSceneImages || state?.sceneImages?.pending || state?.sceneImages?.revision?.isPending ? "scene-images" : null,
     meta.pendingSoundDesign || state?.soundDesign?.revision?.isPending ? "sound-design" : null,
     meta.pendingVideo || state?.video?.revision?.isPending ? "video" : null,
   ].filter((stage): stage is PendingStageKey => Boolean(stage));
@@ -3394,7 +3616,8 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
     textScriptLatestRunId: textScriptRuns[0]?.runId,
     textScriptMaxIterationsOverride: meta.textScriptMaxIterationsOverride,
   };
-  const sceneImages = { ...getSceneImagesStage(projectId, { pending: Boolean(meta.pendingSceneImages) }), pending: Boolean(meta.pendingSceneImages) };
+  const sceneImagesStage = getSceneImagesStage(projectId, { pending: Boolean(meta.pendingSceneImages) });
+  const sceneImages = { ...sceneImagesStage, pending: Boolean(meta.pendingSceneImages || sceneImagesStage.pending) };
   const soundDesign = getSoundDesignStage(projectId, { pending: Boolean(meta.pendingSoundDesign) });  const video = { ...getVideoStage(projectId, { pending: Boolean(meta.pendingVideo) }), pending: Boolean(meta.pendingVideo) };
 
   const nextMeta = reconcilePendingStages(projectId, meta, {
@@ -3441,7 +3664,7 @@ export function getShortFormProject(projectId: string): ShortFormProject | null 
   });
   const resolvedSceneImages = {
     ...sceneImages,
-    pending: Boolean(nextMeta.pendingSceneImages || sceneImages.revision?.isPending),
+    pending: Boolean(nextMeta.pendingSceneImages || sceneImages.pending || sceneImages.revision?.isPending),
   };
   const resolvedVideo = { ...video, pending: Boolean(nextMeta.pendingVideo || video.revision?.isPending) };
 
@@ -3787,9 +4010,10 @@ function getShortFormProjectRow(projectId: string): ShortFormProjectRow | null {
     expectedVoiceId: meta.selectedVoiceId,
     expectedPauseRemoval: resolvedPauseRemoval,
   });
+  const sceneImagesStage = getSceneImagesStage(projectId, { pending: Boolean(meta.pendingSceneImages) });
   const sceneImages = {
-    ...getSceneImagesStage(projectId, { pending: Boolean(meta.pendingSceneImages) }),
-    pending: Boolean(meta.pendingSceneImages),
+    ...sceneImagesStage,
+    pending: Boolean(meta.pendingSceneImages || sceneImagesStage.pending),
   };
   const soundDesign = getSoundDesignStageForRow(projectId, { pending: Boolean(meta.pendingSoundDesign) });
   const video = {
@@ -3815,7 +4039,7 @@ function getShortFormProjectRow(projectId: string): ShortFormProjectRow | null {
   const selectedHookText = resolvedSelectedHook?.text ?? nextMeta.selectedHookText;
   const resolvedResearch = { ...research, pending: Boolean(nextMeta.pendingResearch || research.revision?.isPending) };
   const resolvedScript = { ...script, pending: Boolean(nextMeta.pendingScript || script.revision?.isPending) };
-  const resolvedSceneImages = { ...sceneImages, pending: Boolean(nextMeta.pendingSceneImages || sceneImages.revision?.isPending) };
+  const resolvedSceneImages = { ...sceneImages, pending: Boolean(nextMeta.pendingSceneImages || sceneImages.pending || sceneImages.revision?.isPending) };
   const resolvedSoundDesign = { ...soundDesign, pending: Boolean(nextMeta.pendingSoundDesign || soundDesign.revision?.isPending) };
   const resolvedVideo = { ...video, pending: Boolean(nextMeta.pendingVideo || video.revision?.isPending) };
   const sceneImagesApproved = resolvedSceneImages.status === "approved" || resolvedSceneImages.status === "published";

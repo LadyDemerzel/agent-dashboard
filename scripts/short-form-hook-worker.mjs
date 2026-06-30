@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import {
   CLAUDE_CODE_TARGET_ID,
+  DEFAULT_CLAUDE_CODE_ATTEMPT_LABEL,
   normalizeAgentTargetId,
   openClawAgentIdForTarget,
   runClaudeCodePrompt,
@@ -131,7 +132,7 @@ async function main() {
     ? job.preferredModels
     : ["openai/gpt-5.5"];
   const agentTarget = normalizeAgentTargetId(job.agentTarget, "openclaw-scribe");
-  const attemptModels = agentTarget === CLAUDE_CODE_TARGET_ID ? ["opus-4.8/xhigh"] : models;
+  const attemptModels = agentTarget === CLAUDE_CODE_TARGET_ID ? [DEFAULT_CLAUDE_CODE_ATTEMPT_LABEL] : models;
 
   for (let index = 0; index < attemptModels.length; index += 1) {
     const model = attemptModels[index];

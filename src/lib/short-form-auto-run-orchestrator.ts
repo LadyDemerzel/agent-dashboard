@@ -515,10 +515,10 @@ async function waitForProject(
 
   while (Date.now() < deadline) {
     const nextProject = assertAutoRunActive(projectId, autoRunId, signal);
+    if (predicate(nextProject)) return nextProject;
     if (isFailed ? isFailed(nextProject) : stageFailed(nextProject, step.id)) {
       throw new Error(`${step.label} failed. Open that page for details.`);
     }
-    if (predicate(nextProject)) return nextProject;
     await sleep(4000, signal);
   }
 
@@ -891,6 +891,7 @@ function autoRunFailedStepFromWorkflowRequests(
   autoRun: ShortFormAutoRunState,
 ) {
   for (const stepId of autoRun.selectedSteps) {
+    if (autoRunStepActuallyCompleted(projectId, project, stepId, autoRun)) continue;
     const progress = latestWorkflowProgressForAutoRunStep(projectId, project, autoRun, stepId);
     if (!progress) continue;
     const error = workflowProgressFailureMessage(progress, stepId);

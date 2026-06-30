@@ -41,6 +41,8 @@ export interface ShortFormAutoRunState {
   finishedAt?: string;
 }
 
+const GENERATE_VISUALS_TIMEOUT_MS = 3 * 60 * 60_000;
+
 export const SHORT_FORM_AUTO_RUN_STEPS: ShortFormAutoRunStepDefinition[] = [
   { id: "research", label: "Research", timeoutMs: 12 * 60_000 },
   {
@@ -57,7 +59,13 @@ export const SHORT_FORM_AUTO_RUN_STEPS: ShortFormAutoRunStepDefinition[] = [
   },
   { id: "plan-captions", label: "Plan Captions", timeoutMs: 12 * 60_000 },
   { id: "plan-visuals", label: "Plan Visuals", timeoutMs: 20 * 60_000 },
-  { id: "generate-visuals", label: "Generate Visuals", timeoutMs: 65 * 60_000 },
+  {
+    id: "generate-visuals",
+    label: "Generate Visuals",
+    timeoutMs: GENERATE_VISUALS_TIMEOUT_MS,
+    hardTimeoutMs: GENERATE_VISUALS_TIMEOUT_MS,
+    staleProgressTimeoutMs: GENERATE_VISUALS_TIMEOUT_MS,
+  },
   {
     id: "plan-sound-design",
     label: "Plan Sound Design",
@@ -148,12 +156,14 @@ export function summarizeShortFormAutoRunError(value: unknown, maxLength = 1200)
     .replace(/\r/g, "")
     .trim();
   const runtimeMatch = clean.match(/RuntimeError:\s*([^\n]+)/);
+  const timeoutMatch = clean.match(/([^\n]*(?:ETIMEDOUT|timed out|timeout)[^\n]*)/i);
   const candidateMatch = clean.match(/candidate failed:\s*([^\n]+)/);
   const typeMatch = clean.match(/TypeError:\s*([^\n]+)/);
 
   const parts = [
+    timeoutMatch?.[1],
     runtimeMatch?.[1],
-    candidateMatch?.[1] ? `Provider error: ${candidateMatch[1]}` : undefined,
+    !timeoutMatch?.[1] && candidateMatch?.[1] ? `Provider error: ${candidateMatch[1]}` : undefined,
     !candidateMatch?.[1] && typeMatch?.[1] ? `Provider error: ${typeMatch[1]}` : undefined,
   ]
     .filter((part): part is string => Boolean(part))

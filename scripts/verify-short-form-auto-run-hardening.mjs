@@ -10,6 +10,8 @@ const videosPath = path.join(repoRoot, "src/lib/short-form-videos.ts");
 const videosSource = fs.readFileSync(videosPath, "utf-8");
 const workerPath = path.join(repoRoot, "scripts/short-form-stage-worker.mjs");
 const workerSource = fs.readFileSync(workerPath, "utf-8");
+const agentTargetRunnerPath = path.join(repoRoot, "scripts/short-form-agent-target-runner.mjs");
+const agentTargetRunnerSource = fs.readFileSync(agentTargetRunnerPath, "utf-8");
 const stageRunnerPath = path.join(repoRoot, "src/lib/short-form-stage-runner.ts");
 const stageRunnerSource = fs.readFileSync(stageRunnerPath, "utf-8");
 const xmlWorkerPath = path.join(repoRoot, "scripts/xml-script-worker.mjs");
@@ -121,11 +123,11 @@ assertIncludes(
   "Auto-run must wait for an already-running XML pipeline instead of retrying into a 409 conflict.",
 );
 assertIncludes(
-  "if (current.xmlScript.audioUrl) return current;",
+  "if (!options?.force && current.xmlScript.audioUrl) return current;",
   "Narration auto-run retry must reuse fresh audio after an existing XML pipeline completes.",
 );
 assertIncludes(
-  "if (current.xmlScript.captions?.length) return current;",
+  "if (!options?.force && current.xmlScript.captions?.length) return current;",
   "Caption auto-run retry must reuse fresh captions after an existing XML pipeline completes.",
 );
 const perStepApprovalMatches = source.match(/await reconcileCompletedAutoRunApprovals\(/g) || [];
@@ -175,14 +177,11 @@ if (!soundRouteSource.includes('process.env.SHORT_FORM_RELIABLE_MODEL || "openai
 if (!stageRunnerSource.includes('process.env.SHORT_FORM_RELIABLE_MODEL || "openai/gpt-5.5"')) {
   throw new Error("Workflow-backed stages must default to a Scribe/Oracle-allowed model.");
 }
-for (const [label, body] of [
-  ["Plan Visuals worker", xmlWorkerSource],
-  ["Plan Sound Design worker", soundWorkerSource],
-  ["workflow stage worker", workerSource],
-]) {
-  if (!body.includes('status === "error"') || !body.includes("Hook agent run failed:")) {
-    throw new Error(`${label} must treat hook-level error responses as failed spawns instead of waiting for nonexistent logs/artifacts.`);
-  }
+if (
+  !agentTargetRunnerSource.includes('status === "error"') ||
+  !agentTargetRunnerSource.includes("Agent run failed:")
+) {
+  throw new Error("Shared agent target runner must treat hook-level error responses as failed spawns instead of waiting for nonexistent logs/artifacts.");
 }
 if (!xmlWorkerSource.includes("readXmlArtifactBody")) {
   throw new Error("Plan Visuals XML verification must inspect the XML body, not just xml-script.md mtime.");

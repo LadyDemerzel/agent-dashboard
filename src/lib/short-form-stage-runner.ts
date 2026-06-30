@@ -234,7 +234,7 @@ function getVerificationSettingsForStage(stage: ShortFormStageKey): { verificati
     case "script":
       return { verificationTimeoutMs: 10 * 60_000, verificationPollMs: 5_000 };
     case "scene-images":
-      return { verificationTimeoutMs: 45 * 60_000, verificationPollMs: 15_000 };
+      return { verificationTimeoutMs: 3 * 60 * 60_000, verificationPollMs: 15_000 };
     case "sound-design":
       return { verificationTimeoutMs: 15 * 60_000, verificationPollMs: 10_000 };
     case "video":

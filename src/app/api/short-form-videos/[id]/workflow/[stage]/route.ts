@@ -17,6 +17,7 @@ import { stopShortFormAutoRun } from "@/lib/short-form-auto-run-orchestrator";
 import { ensureXmlScriptDocument, getXmlScriptPath } from "@/lib/short-form-xml-script";
 import {
   ensureStageDocument,
+  getActiveSceneImageRunRequests,
   getLatestStageRequest,
   getProjectDir,
   getSceneManifestPath,
@@ -488,9 +489,10 @@ export async function POST(
   const requestedAt = new Date().toISOString();
 
   if (stage === "scene-images" && effectiveAction === "request-scene-change") {
-    if (project.sceneImages.pending) {
-      const latestSceneImagesRequest = getLatestStageRequest(id, "scene-images");
-      stopShortFormStageRun(id, "scene-images", latestSceneImagesRequest?.runId);
+    for (const activeRequest of getActiveSceneImageRunRequests(id)) {
+      if (activeRequest.action !== "request-scene-change") {
+        stopShortFormStageRun(id, "scene-images", activeRequest.runId);
+      }
     }
     if (project.autoRun?.status === "active") {
       stopShortFormAutoRun(id);
