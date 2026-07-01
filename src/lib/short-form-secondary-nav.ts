@@ -125,7 +125,9 @@ function getDetailSectionStatus(project: Project | null, sectionId: DetailSectio
       return getDetailSectionStatus(project, 'plan-captions') === 'approved' ? 'ready' : 'draft';
     }
     case 'scene-images':
-      return project.sceneImages.pending ? 'working' : project.sceneImages.status || 'draft';
+      if (project.sceneImages.pending) return 'working';
+      if ((project.sceneImages.incompleteSceneNumbers?.length ?? 0) > 0) return 'incomplete';
+      return project.sceneImages.status || 'draft';
     case 'plan-sound-design':
       return project.soundDesign.pending
         ? 'working'

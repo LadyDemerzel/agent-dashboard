@@ -19,6 +19,7 @@ const STATUS_CONFIG: Record<string, { variant: StatusVariant; dot: string; label
   'in-progress': { variant: 'info', dot: 'bg-blue-500', label: 'Working' },
   approved: { variant: 'success', dot: 'bg-emerald-500' },
   completed: { variant: 'success', dot: 'bg-emerald-500' },
+  incomplete: { variant: 'warning', dot: 'bg-amber-500', label: 'Incomplete' },
   skipped: { variant: 'warning', dot: 'bg-amber-500' },
   stopped: { variant: 'warning', dot: 'bg-amber-500' },
   published: { variant: 'info', dot: 'bg-blue-500' },

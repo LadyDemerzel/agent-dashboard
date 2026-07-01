@@ -4856,10 +4856,14 @@ function SceneImagesSection({
                   </Badge>
                   {sceneProgress.pending > 0 ? (
                     <div className="inline-flex items-center gap-2">
-                      <StatusBadge status="working" compact />
+                      <StatusBadge
+                        status={project.sceneImages.pending ? "working" : "incomplete"}
+                        compact
+                      />
                       <span className="text-xs text-muted-foreground">
                         {sceneProgress.pending} scene
                         {sceneProgress.pending === 1 ? "" : "s"}
+                        {project.sceneImages.pending ? "" : " remaining"}
                       </span>
                     </div>
                   ) : null}
