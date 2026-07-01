@@ -2280,7 +2280,7 @@ function buildSceneImagesProgressState(
   scenes: SceneImageArtifact[],
   doc: StageDocumentSummary,
   activeRequests: ActiveSceneImageRunRequest[] = [],
-) {
+): { scenes: SceneImageArtifact[]; sceneProgress: SceneImageProgressSummary | undefined } {
   const revision = doc.revision;
   const activeSceneRequests = activeRequests.filter((request) => request.action === "request-scene-change" && request.sceneId);
   const activeFullRequestTimes = activeRequests
@@ -3156,16 +3156,26 @@ function getSceneImagesStage(projectId: string, options?: { pending?: boolean })
       previewImage: hydratedScene.previewImage ? toMediaUrl(projectId, hydratedScene.previewImage, getProjectMediaVersion(projectId, hydratedScene.previewImage)) : undefined,
       previewVideo: hydratedScene.previewVideo
         ? toMediaUrl(projectId, hydratedScene.previewVideo, getProjectMediaVersion(projectId, hydratedScene.previewVideo))
-        : hydratedScene.visualType !== "motion_graphic" && hydratedScene.image
-          ? buildScenePreviewVideoUrl(projectId, hydratedScene.id)
-          : undefined,
+        : undefined,
     };
   });
   const progressState = buildSceneImagesProgressState(projectId, manifestScenes, doc, activeRequests);
+  // Image scenes have no pre-rendered preview video — their camera-effect preview
+  // (static or animated zoom) is rendered on demand by the scene-preview endpoint.
+  // Apply that URL to every completed image scene here, at the boundary, so it holds
+  // regardless of which branch the progress builder took. The builder rebuilds scenes
+  // from on-disk media (which only knows about pre-rendered motion-graphic mp4s) and
+  // would otherwise leave completed image scenes without a previewVideo mid-run,
+  // pinning them to the static-image fallback until the whole generation finished.
+  const scenes = progressState.scenes.map((scene) =>
+    !scene.previewVideo && scene.visualType !== "motion_graphic" && scene.image
+      ? { ...scene, previewVideo: buildScenePreviewVideoUrl(projectId, scene.id) }
+      : scene,
+  );
   return {
     ...doc,
     pending: Boolean(doc.pending || activeRequests.length > 0),
-    scenes: progressState.scenes,
+    scenes,
     sceneProgress: progressState.sceneProgress,
     validationError: manifest.error,
   };
