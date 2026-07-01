@@ -48,3 +48,13 @@ next-env.d.ts
 
 # runtime state (pid + logs of the persistent dashboard process)
 /.run/
+
+# OpenClaw workspace bootstrap files (this repo is NOT an agent workspace;
+# guard against a stray `openclaw` setup re-seeding them here)
+/.openclaw/
+/AGENTS.md
+/SOUL.md
+/IDENTITY.md
+/USER.md
+/TOOLS.md
+/HEARTBEAT.md
