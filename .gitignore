@@ -41,3 +41,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# temp / debug scratch (rendered frames, browser test profiles, etc.)
+/.tmp/
+/.tmp-debug/
+
+# runtime state (pid + logs of the persistent dashboard process)
+/.run/
