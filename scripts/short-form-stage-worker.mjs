@@ -4844,6 +4844,75 @@ function sceneMediaExists(projectId, relativePath) {
   }
 }
 
+// True when a scene has media that was (re)generated during this run, i.e. newer
+// than the run request. Existence alone is not enough: a stale image left over from
+// a prior generation must not count, otherwise a run that aborted partway looks done.
+function sceneHasFreshMedia(projectId, sceneNumber, requestedAtMs) {
+  if (!Number.isInteger(sceneNumber) || sceneNumber <= 0) return false;
+  const padded = String(sceneNumber).padStart(2, "0");
+  const candidates = [
+    `scenes/scene-${padded}-uncaptioned-1080x1920.png`,
+    `scenes/scene-${padded}-captioned-1080x1920.png`,
+    `scenes/scene-${padded}-motion-graphic.mp4`,
+  ];
+  return candidates.some((relativePath) => {
+    try {
+      const full = path.join(getProjectDir(projectId), relativePath);
+      return fs.existsSync(full) && fs.statSync(full).mtimeMs + 1000 >= requestedAtMs;
+    } catch {
+      return false;
+    }
+  });
+}
+
+// Scenes this run was responsible for that still lack freshly generated media.
+// Scope = the requested subset for a scoped/resume run, otherwise every scene in the
+// runtime XML. Used to (a) refuse to reconcile a broken run to "done" and (b) tell the
+// UI exactly which scenes a Resume should regenerate. Never throws.
+function computeIncompleteSceneImages(job, requestedAtMs) {
+  try {
+    if (job.directConfig?.kind !== "scene-images") return [];
+    const config = job.directConfig.config || {};
+    const runDir = path.join(getProjectDir(job.projectId), ".workflow-runs", job.runId);
+    const runtimeXmlPath = resolveXmlRuntimePath(config.scriptPath, runDir, "scene-images-runtime.xml");
+    const xmlForSpec = fs.existsSync(runtimeXmlPath) ? runtimeXmlPath : config.scriptPath;
+    const { visuals } = parseVisualRuntimeSpec(xmlForSpec);
+    const allSceneNumbers = visuals
+      .map((visual) => Number(visual.index))
+      .filter((value) => Number.isInteger(value) && value > 0);
+    if (allSceneNumbers.length === 0) return [];
+
+    const scopedRequested = [];
+    if (Array.isArray(config.sceneNumbers)) {
+      for (const value of config.sceneNumbers) {
+        const parsed = Number(value);
+        if (Number.isInteger(parsed) && parsed > 0) scopedRequested.push(parsed);
+      }
+    }
+    const singleIndex = parseSceneIdToIndex(config.sceneId);
+    if (singleIndex) scopedRequested.push(singleIndex);
+
+    // Use the raw requested scope, not the dependency-expanded set: completeness is
+    // about the scenes this run committed to producing. Expanding could flag an
+    // already-done base scene that the generator only pulls in as an input.
+    const expected = scopedRequested.length > 0
+      ? [...new Set(scopedRequested)]
+      : allSceneNumbers;
+
+    return expected
+      .filter((number) => !sceneHasFreshMedia(job.projectId, number, requestedAtMs))
+      .sort((a, b) => a - b);
+  } catch {
+    return [];
+  }
+}
+
+function describeIncompleteSceneImages(sceneNumbers) {
+  const labels = sceneNumbers.slice(0, 10).map((number) => `scene-${String(number).padStart(2, "0")}`);
+  const suffix = sceneNumbers.length > 10 ? ` and ${sceneNumbers.length - 10} more` : "";
+  return `${sceneNumbers.length} scene${sceneNumbers.length === 1 ? "" : "s"} still need to be generated: ${labels.join(", ")}${suffix}.`;
+}
+
 function validateSceneImageMediaArtifacts(job) {
   if (job.stage !== "scene-images") return;
 
@@ -4995,7 +5064,13 @@ function runDirectSceneImages(job) {
   ensureDir(runDir);
   ensureDir(config.outputDir);
 
-  const requestedSceneIndexes = [parseSceneIdToIndex(config.sceneId)].filter(Boolean);
+  const singleSceneIndex = parseSceneIdToIndex(config.sceneId);
+  const requestedSceneIndexes = [...new Set([
+    ...(Array.isArray(config.sceneNumbers) ? config.sceneNumbers : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value > 0),
+    ...(singleSceneIndex ? [singleSceneIndex] : []),
+  ])];
   let xmlPromptEditResult = null;
   if (requestedSceneIndexes.length > 0 && typeof config.notes === "string" && config.notes.trim()) {
     xmlPromptEditResult = updateXmlImagePromptForScene(
@@ -5367,7 +5442,7 @@ async function main() {
                 activeStep: "completed",
                 activeStatusText: "Final video ready",
               }
-            : {}),
+            : { incompleteSceneNumbers: [] }),
       });
       return;
     } catch (error) {
@@ -5388,7 +5463,8 @@ async function main() {
             ),
             typeof job.verificationPollMs === "number" ? job.verificationPollMs : 5000,
           );
-          if (verified) {
+          const reconciledIncompleteScenes = computeIncompleteSceneImages(job, requestedAtMs);
+          if (verified && reconciledIncompleteScenes.length === 0) {
             attempt.verified = true;
             attempt.recoveredAfterError = true;
             attempt.recoveredError = errorMessage;
@@ -5396,17 +5472,32 @@ async function main() {
               status: "verified",
               activeStep: "completed",
               activeStatusText: "Generate Visuals ready after artifact reconciliation",
+              incompleteSceneNumbers: [],
             });
             return;
           }
+          // Artifacts on disk are stale/partial for the scenes this run owned — do NOT
+          // reconcile a broken run to "done". Remember which scenes still need work so
+          // the failure below carries the Resume set.
+          attempt.incompleteSceneNumbers = reconciledIncompleteScenes;
         } catch (recoveryError) {
           attempt.recoveryError = recoveryError instanceof Error ? recoveryError.message : String(recoveryError);
         }
       }
-      attempt.error = errorMessage;
+      const incompleteScenes = job.directConfig?.kind === "scene-images"
+        ? (attempt.incompleteSceneNumbers ?? computeIncompleteSceneImages(job, requestedAtMs))
+        : undefined;
+      const failureMessage = incompleteScenes && incompleteScenes.length
+        ? `Generate Visuals stopped before finishing. ${describeIncompleteSceneImages(incompleteScenes)}`
+        : errorMessage;
+      // Keep the concise, user-facing reason on the attempt; preserve the raw
+      // generator output separately for debugging.
+      attempt.error = failureMessage;
+      if (incompleteScenes && incompleteScenes.length) attempt.rawError = errorMessage;
       finalizeRun({
         status: "failed",
-        errorMessage,
+        errorMessage: failureMessage,
+        ...(incompleteScenes ? { incompleteSceneNumbers: incompleteScenes } : {}),
       });
       return;
     }

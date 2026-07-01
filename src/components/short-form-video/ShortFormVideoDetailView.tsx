@@ -11,6 +11,7 @@ import {
 } from "react";
 import Link from "next/link";
 import {
+  AlertTriangle,
   ChevronDown,
   Loader2,
   RefreshCw,
@@ -4175,6 +4176,7 @@ function SceneImagesSection({
   const [submittingScene, setSubmittingScene] = useState<string | null>(null);
   const [submittingVisualPlanRevision, setSubmittingVisualPlanRevision] =
     useState(false);
+  const [resumingGeneration, setResumingGeneration] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [styleOptions, setStyleOptions] = useState<ImageStyleOption[]>([]);
   const [defaultStyleId, setDefaultStyleId] = useState<string>("");
@@ -4463,6 +4465,28 @@ function SceneImagesSection({
     );
   }
 
+  async function resumeGeneration() {
+    setResumingGeneration(true);
+    setError(null);
+    try {
+      await parseJsonResponse(
+        await fetch(`/api/short-form-videos/${project.id}/workflow/scene-images`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "resume" }),
+        }),
+        "Failed to resume visual generation",
+      );
+      await refresh();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to resume visual generation",
+      );
+    } finally {
+      setResumingGeneration(false);
+    }
+  }
+
   async function requestVisualPlanRevision(notes: string) {
     setSubmittingVisualPlanRevision(true);
     setError(null);
@@ -4492,6 +4516,13 @@ function SceneImagesSection({
   }
 
   const sceneProgress = project.sceneImages.sceneProgress;
+  const incompleteSceneNumbers = project.sceneImages.incompleteSceneNumbers ?? [];
+  const hasIncompleteScenes =
+    !project.sceneImages.pending && incompleteSceneNumbers.length > 0;
+  const incompleteSceneLabel = incompleteSceneNumbers
+    .slice(0, 12)
+    .map((number) => `#${number}`)
+    .join(", ");
   const timingGapSummary = useMemo(
     () =>
       getVisualTimingGapSummary(
@@ -4536,6 +4567,44 @@ function SceneImagesSection({
               title="Visual change request failed"
               message={error}
             />
+          ) : null}
+          {hasIncompleteScenes ? (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="text-sm font-medium text-foreground">
+                    Visual generation didn&apos;t finish
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {incompleteSceneNumbers.length} scene
+                    {incompleteSceneNumbers.length === 1 ? "" : "s"} still need
+                    {incompleteSceneNumbers.length === 1 ? "s" : ""} to be generated
+                    {incompleteSceneLabel ? ` (${incompleteSceneLabel}${incompleteSceneNumbers.length > 12 ? "…" : ""})` : ""}
+                    . The scenes already generated are kept — Resume regenerates only what&apos;s missing.
+                  </p>
+                  {project.sceneImages.revision?.warning ? (
+                    <p className="text-xs text-muted-foreground/80">
+                      {project.sceneImages.revision.warning}
+                    </p>
+                  ) : null}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => void resumeGeneration()}
+                  disabled={resumingGeneration || project.sceneImages.pending}
+                  className="shrink-0"
+                >
+                  {resumingGeneration ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                  )}
+                  {resumingGeneration ? "Resuming…" : "Resume generation"}
+                </Button>
+              </div>
+            </div>
           ) : null}
           <CompactSettingCard
             title="Image generation provider/model"

@@ -18,6 +18,9 @@ export interface DirectSceneImagesConfig {
   mode: "generate" | "revise";
   notes?: string;
   sceneId?: string;
+  // Scoped set of scene numbers to (re)generate, e.g. a Resume of the scenes an
+  // aborted run left unfinished. Passed to the generator as --only-scenes.
+  sceneNumbers?: number[];
   imageId?: string;
   visualId?: string;
   imageStyleId: string;

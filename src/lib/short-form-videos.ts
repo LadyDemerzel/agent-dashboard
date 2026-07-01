@@ -192,10 +192,12 @@ export interface StageRequestContext {
   requestedAt: string;
   runId?: string;
   textScriptRunId?: string;
-  action: "generate" | "revise" | "request-scene-change";
+  action: "generate" | "revise" | "request-scene-change" | "resume";
   mode: "generate" | "revise";
   notes?: string;
   sceneId?: string;
+  // Scoped scene numbers for a multi-scene run (Resume of unfinished scenes).
+  sceneNumbers?: number[];
   imageId?: string;
   visualId?: string;
 }
@@ -266,7 +268,7 @@ export interface StageRevisionState {
   threadId?: string;
   sceneId?: string;
   mode?: "generate" | "revise";
-  action?: "generate" | "revise" | "request-scene-change";
+  action?: "generate" | "revise" | "request-scene-change" | "resume";
   isPending: boolean;
   isFailed: boolean;
   isStale: boolean;
@@ -398,6 +400,7 @@ export interface ShortFormProject {
   sceneImages: StageDocumentSummary & {
     scenes: SceneImageArtifact[];
     sceneProgress?: SceneImageProgressSummary;
+    incompleteSceneNumbers?: number[];
   };
   soundDesign: SoundDesignStageSummary;
   video: StageDocumentSummary & {
@@ -2282,9 +2285,14 @@ function buildSceneImagesProgressState(
   activeRequests: ActiveSceneImageRunRequest[] = [],
 ): { scenes: SceneImageArtifact[]; sceneProgress: SceneImageProgressSummary | undefined } {
   const revision = doc.revision;
-  const activeSceneRequests = activeRequests.filter((request) => request.action === "request-scene-change" && request.sceneId);
+  const isScopedAction = (action?: string) => action === "request-scene-change" || action === "resume";
+  const scopedActiveRequests = activeRequests.filter(
+    (request) =>
+      (request.action === "request-scene-change" && request.sceneId) ||
+      (request.action === "resume" && Array.isArray(request.sceneNumbers) && request.sceneNumbers.length > 0),
+  );
   const activeFullRequestTimes = activeRequests
-    .filter((request) => request.action !== "request-scene-change" || !request.sceneId)
+    .filter((request) => !isScopedAction(request.action))
     .map((request) => Date.parse(request.requestedAt))
     .filter((value) => Number.isFinite(value));
   const isPending = Boolean(doc.pending || revision?.isPending || activeRequests.length > 0);
@@ -2306,32 +2314,38 @@ function buildSceneImagesProgressState(
   const requestedAtMs = revision?.requestedAt ? Date.parse(revision.requestedAt) : Number.NaN;
   const expectedVisualSpec = readExpectedScriptVisualSpec(projectId);
   const expectedScenes = expectedVisualSpec.scenes;
-  const targetRequests = [
-    ...(revision?.isPending && revision.action === "request-scene-change" && revision.sceneId && Number.isFinite(requestedAtMs)
-      ? [{ sceneId: revision.sceneId, requestedAtMs }]
-      : []),
-    ...activeSceneRequests
-      .map((request) => ({
-        sceneId: request.sceneId || "",
-        requestedAtMs: Date.parse(request.requestedAt),
-      }))
-      .filter((request) => request.sceneId && Number.isFinite(request.requestedAtMs)),
-  ];
+  // Scene-level scope entries: each targeted scene number + when it was requested.
+  // Covers single-scene revisions and multi-scene Resume runs.
+  const targetSceneEntries: { sceneIndex: number; requestedAtMs: number }[] = [];
+  const addTargetScene = (sceneIndex: number | null | undefined, whenMs: number) => {
+    if (!sceneIndex || !Number.isInteger(sceneIndex) || sceneIndex <= 0 || !Number.isFinite(whenMs)) return;
+    targetSceneEntries.push({ sceneIndex, requestedAtMs: whenMs });
+  };
+  if (revision?.isPending && revision.action === "request-scene-change" && revision.sceneId && Number.isFinite(requestedAtMs)) {
+    addTargetScene(parseSceneIdToIndex(revision.sceneId), requestedAtMs);
+  }
+  for (const request of scopedActiveRequests) {
+    const whenMs = Date.parse(request.requestedAt);
+    if (request.action === "resume" && Array.isArray(request.sceneNumbers)) {
+      for (const number of request.sceneNumbers) addTargetScene(Number(number), whenMs);
+    } else if (request.sceneId) {
+      addTargetScene(parseSceneIdToIndex(request.sceneId), whenMs);
+    }
+  }
   const trackedSceneIndexes = new Set<number>();
   const freshnessBySceneIndex = new Map<number, number>();
   const expandedTargetSceneIndexes = Array.from(new Set(
-    targetRequests.flatMap((request) => {
-      const targetSceneIndex = parseSceneIdToIndex(request.sceneId);
+    targetSceneEntries.flatMap((entry) => {
       const expanded = expandRequestedSceneIndexesForDependencies(
         expectedScenes,
         expectedVisualSpec.assetDependencies,
-        targetSceneIndex,
+        entry.sceneIndex,
       );
       for (const sceneIndex of expanded) {
         const existingFreshness = freshnessBySceneIndex.get(sceneIndex);
         freshnessBySceneIndex.set(
           sceneIndex,
-          Math.max(existingFreshness || 0, request.requestedAtMs),
+          Math.max(existingFreshness || 0, entry.requestedAtMs),
         );
       }
       return expanded;
@@ -2342,7 +2356,7 @@ function buildSceneImagesProgressState(
   }
   const fullRunFreshnessMs = activeFullRequestTimes.length > 0
     ? Math.max(...activeFullRequestTimes)
-    : revision?.isPending && revision.action !== "request-scene-change" && Number.isFinite(requestedAtMs)
+    : revision?.isPending && !isScopedAction(revision.action) && Number.isFinite(requestedAtMs)
       ? requestedAtMs
       : Number.NaN;
   const manifestByNumber = new Map(scenes.map((scene) => [scene.number, scene]));
@@ -2404,9 +2418,7 @@ function buildSceneImagesProgressState(
   const pending = Math.max(total - completed, 0);
   const targetSceneIds = expandedTargetSceneIndexes.map((index) => `scene-${index}`);
   const primaryTargetSceneIds = Array.from(new Set(
-    targetRequests
-      .map((request) => request.sceneId)
-      .filter((sceneId): sceneId is string => Boolean(sceneId)),
+    targetSceneEntries.map((entry) => `scene-${entry.sceneIndex}`),
   ));
 
   return {
@@ -2711,6 +2723,7 @@ function readSceneImagesJobRequest(
         mode?: "generate" | "revise";
         notes?: string;
         sceneId?: string;
+        sceneNumbers?: number[];
         imageId?: string;
         visualId?: string;
       };
@@ -2721,18 +2734,28 @@ function readSceneImagesJobRequest(
 
   const mode = config.mode === "generate" ? "generate" : "revise";
   const sceneId = typeof config.sceneId === "string" && config.sceneId.trim() ? config.sceneId.trim() : undefined;
+  const sceneNumbers = Array.isArray(config.sceneNumbers)
+    ? [...new Set(config.sceneNumbers.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0))]
+    : [];
   const requestedAt = typeof job.requestedAt === "string" && job.requestedAt.trim()
     ? job.requestedAt.trim()
     : fallbackRequestedAt;
   if (!requestedAt) return undefined;
 
+  const action = sceneNumbers.length > 0
+    ? "resume" as const
+    : sceneId
+      ? "request-scene-change" as const
+      : mode;
+
   return {
     runId,
     requestedAt,
-    action: sceneId ? "request-scene-change" : mode,
+    action,
     mode,
     ...(typeof config.notes === "string" && config.notes.trim() ? { notes: config.notes.trim() } : {}),
     ...(sceneId ? { sceneId } : {}),
+    ...(sceneNumbers.length > 0 ? { sceneNumbers } : {}),
     ...(typeof config.imageId === "string" && config.imageId.trim() ? { imageId: config.imageId.trim() } : {}),
     ...(typeof config.visualId === "string" && config.visualId.trim() ? { visualId: config.visualId.trim() } : {}),
   };
@@ -3122,6 +3145,74 @@ function buildScenePreviewVideoUrl(projectId: string, sceneId: string) {
   return `/api/short-form-videos/${projectId}/scene-preview/${encodeURIComponent(sceneId)}`;
 }
 
+function normalizeSceneNumbers(values: unknown[]): number[] {
+  return [...new Set(
+    values.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0),
+  )].sort((a, b) => a - b);
+}
+
+function sceneImageHasFreshMediaOnDisk(projectId: string, sceneNumber: number, floorMs: number) {
+  const fresh = buildSceneArtifactFromDerivedPaths(
+    projectId,
+    { id: `scene-${sceneNumber}`, number: sceneNumber, caption: "" },
+    { requireFreshSinceMs: floorMs },
+  );
+  return Boolean(fresh.image || fresh.previewImage || fresh.previewVideo);
+}
+
+function computeSceneImagesIncompleteFromDisk(projectId: string, floorMs: number): number[] {
+  if (!Number.isFinite(floorMs)) return [];
+  const expected = readExpectedScriptVisualSpec(projectId).scenes;
+  if (expected.length === 0) return [];
+  return expected
+    .filter((scene) => !sceneImageHasFreshMediaOnDisk(projectId, scene.number, floorMs))
+    .map((scene) => scene.number)
+    .sort((a, b) => a - b);
+}
+
+function readLatestSceneImagesRunOutcome(projectId: string) {
+  const runId = readProjectMeta(projectId)?.latestStageRequests?.["scene-images"]?.runId;
+  if (!runId) return undefined;
+  const statusPath = path.join(getWorkflowRunDir(projectId), `${runId}.status.json`);
+  const parsed = readJsonFile<{
+    projectId?: string;
+    stage?: ShortFormStageKey;
+    status?: "running" | "verified" | "failed";
+    startedAt?: string;
+    incompleteSceneNumbers?: unknown;
+    errorMessage?: string;
+  } | null>(statusPath, null);
+  if (parsed?.projectId !== projectId || parsed.stage !== "scene-images") return undefined;
+  const startedAtMs = parsed.startedAt ? Date.parse(parsed.startedAt) : Number.NaN;
+  const hasIncompleteField = Array.isArray(parsed.incompleteSceneNumbers);
+  return {
+    status: parsed.status,
+    startedAtMs,
+    hasIncompleteField,
+    incompleteSceneNumbers: hasIncompleteField
+      ? normalizeSceneNumbers(parsed.incompleteSceneNumbers as unknown[])
+      : undefined,
+    errorMessage: typeof parsed.errorMessage === "string" ? parsed.errorMessage : undefined,
+  };
+}
+
+// Scenes that still need generation after the latest Generate Visuals run. Empty while
+// a run is pending. Prefers the worker-recorded set on the latest run; for runs that
+// predate that field (e.g. an older run that reconciled a partial generation to
+// "verified"), falls back to comparing the plan's scenes against fresh on-disk media.
+function resolveSceneImagesIncompleteSceneNumbers(projectId: string, isPending: boolean): number[] {
+  if (isPending) return [];
+  const outcome = readLatestSceneImagesRunOutcome(projectId);
+  if (!outcome || outcome.status === "running") return [];
+  if (outcome.hasIncompleteField) {
+    return outcome.incompleteSceneNumbers ?? [];
+  }
+  if (outcome.status === "verified" || outcome.status === "failed") {
+    return computeSceneImagesIncompleteFromDisk(projectId, outcome.startedAtMs);
+  }
+  return [];
+}
+
 function getSceneImagesStage(projectId: string, options?: { pending?: boolean }) {
   synchronizeSceneImagesArtifacts(projectId);
   const activeRequests = getActiveSceneImageRunRequests(projectId);
@@ -3172,12 +3263,24 @@ function getSceneImagesStage(projectId: string, options?: { pending?: boolean })
       ? { ...scene, previewVideo: buildScenePreviewVideoUrl(projectId, scene.id) }
       : scene,
   );
+  const pending = Boolean(doc.pending || activeRequests.length > 0);
+  const incompleteSceneNumbers = resolveSceneImagesIncompleteSceneNumbers(projectId, pending);
+  // When a finished run left scenes unfinished, don't let the existence-based progress
+  // read as "all done" — reflect the scenes that still need generation.
+  const sceneProgress = !pending && incompleteSceneNumbers.length > 0 && progressState.sceneProgress
+    ? {
+        ...progressState.sceneProgress,
+        completed: Math.max(progressState.sceneProgress.total - incompleteSceneNumbers.length, 0),
+        pending: Math.min(incompleteSceneNumbers.length, progressState.sceneProgress.total),
+      }
+    : progressState.sceneProgress;
   return {
     ...doc,
-    pending: Boolean(doc.pending || activeRequests.length > 0),
+    pending,
     scenes,
-    sceneProgress: progressState.sceneProgress,
+    sceneProgress,
     validationError: manifest.error,
+    ...(incompleteSceneNumbers.length > 0 ? { incompleteSceneNumbers } : {}),
   };
 }
 
@@ -3511,7 +3614,7 @@ function inferCurrentStage(project: {
   research: StageDocumentSummary;
   script: StageDocumentSummary;
   xmlScript: XmlScriptDocumentSummary;
-  sceneImages: StageDocumentSummary & { scenes: SceneImageArtifact[]; sceneProgress?: SceneImageProgressSummary };
+  sceneImages: StageDocumentSummary & { scenes: SceneImageArtifact[]; sceneProgress?: SceneImageProgressSummary; incompleteSceneNumbers?: number[] };
   soundDesign: SoundDesignStageSummary & { pending?: boolean };
   soundDesignDecision?: "approved" | "skipped";
   soundDesignSkipReason?: string;
@@ -3554,7 +3657,7 @@ function reconcilePendingStages(
     hookArtifactFresh: boolean;
     research: StageDocumentSummary;
     script: StageDocumentSummary;
-    sceneImages: StageDocumentSummary & { scenes: SceneImageArtifact[]; sceneProgress?: SceneImageProgressSummary; validationError?: string };
+    sceneImages: StageDocumentSummary & { scenes: SceneImageArtifact[]; sceneProgress?: SceneImageProgressSummary; validationError?: string; incompleteSceneNumbers?: number[] };
     soundDesign: SoundDesignStageSummary;
     video: StageDocumentSummary & { videoUrl?: string };
   }

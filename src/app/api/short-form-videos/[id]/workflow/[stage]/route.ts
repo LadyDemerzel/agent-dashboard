@@ -371,6 +371,24 @@ export async function POST(
     return NextResponse.json({ success: false, error: "Scene changes only apply to scene-images" }, { status: 400 });
   }
 
+  // Resume regenerates only the scenes an earlier run left unfinished.
+  const isResume = requestedAction === "resume";
+  let resumeSceneNumbers: number[] = [];
+  if (isResume) {
+    if (stage !== "scene-images") {
+      return NextResponse.json({ success: false, error: "Resume only applies to scene-images" }, { status: 400 });
+    }
+    if (project.sceneImages.pending) {
+      return NextResponse.json({ success: false, error: "Generate Visuals is still running." }, { status: 409 });
+    }
+    resumeSceneNumbers = Array.isArray(project.sceneImages.incompleteSceneNumbers)
+      ? project.sceneImages.incompleteSceneNumbers
+      : [];
+    if (resumeSceneNumbers.length === 0) {
+      return NextResponse.json({ success: false, error: "Nothing to resume — every planned scene already has generated visuals." }, { status: 400 });
+    }
+  }
+
   if (requestedAction === "save-visual-xml") {
     if (stage !== "scene-images") {
       return NextResponse.json({ success: false, error: "Visual XML changes only apply to scene-images" }, { status: 400 });
@@ -415,7 +433,13 @@ export async function POST(
   const effectiveImageId = requestedAction === "retry" ? previousRequest?.imageId || "" : imageId;
   const effectiveVisualId = requestedAction === "retry" ? previousRequest?.visualId || "" : visualId;
   const effectiveNotes = requestedAction === "retry" ? previousRequest?.notes || "" : notes;
-  const mode = effectiveAction === "generate" ? "generate" : "revise";
+  const mode = effectiveAction === "generate" || isResume ? "generate" : "revise";
+  // What we persist as the latest request's action (drives scoped-progress + UI).
+  const recordedAction: "generate" | "revise" | "request-scene-change" | "resume" = isResume
+    ? "resume"
+    : effectiveAction === "request-scene-change"
+      ? "request-scene-change"
+      : mode;
   const requestNotes = effectiveAction === "request-scene-change" && effectiveSceneId
     ? effectiveNotes
       ? `Focus on ${effectiveSceneId}. Requested change: ${effectiveNotes}`
@@ -502,10 +526,11 @@ export async function POST(
   updatePendingStage(id, getPendingKey(stage), true);
   updateLatestStageRequest(id, stage, {
     requestedAt,
-    action: effectiveAction === "request-scene-change" ? "request-scene-change" : mode,
+    action: recordedAction,
     mode,
     ...(latestRequestNotes ? { notes: latestRequestNotes } : {}),
     ...(effectiveSceneId ? { sceneId: effectiveSceneId } : {}),
+    ...(isResume && resumeSceneNumbers.length ? { sceneNumbers: resumeSceneNumbers } : {}),
     ...(effectiveImageId ? { imageId: effectiveImageId } : {}),
     ...(effectiveVisualId ? { visualId: effectiveVisualId } : {}),
     ...(textScriptRunId ? { textScriptRunId } : {}),
@@ -574,6 +599,7 @@ export async function POST(
                     ? { notes: requestNotes }
                     : {}),
                 ...(effectiveSceneId ? { sceneId: effectiveSceneId } : {}),
+                ...(isResume && resumeSceneNumbers.length ? { sceneNumbers: resumeSceneNumbers } : {}),
                 ...(effectiveImageId ? { imageId: effectiveImageId } : {}),
                 ...(effectiveVisualId ? { visualId: effectiveVisualId } : {}),
               },
@@ -606,10 +632,11 @@ export async function POST(
     updateLatestStageRequest(id, stage, {
       requestedAt,
       runId: run.runId,
-      action: effectiveAction === "request-scene-change" ? "request-scene-change" : mode,
+      action: recordedAction,
       mode,
       ...(latestRequestNotes ? { notes: latestRequestNotes } : {}),
       ...(effectiveSceneId ? { sceneId: effectiveSceneId } : {}),
+      ...(isResume && resumeSceneNumbers.length ? { sceneNumbers: resumeSceneNumbers } : {}),
       ...(effectiveImageId ? { imageId: effectiveImageId } : {}),
       ...(effectiveVisualId ? { visualId: effectiveVisualId } : {}),
       ...(textScriptRunId ? { textScriptRunId } : {}),

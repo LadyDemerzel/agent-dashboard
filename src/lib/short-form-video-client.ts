@@ -369,7 +369,7 @@ export interface ShortFormProjectClient {
     captions?: CaptionSection[];
     pipeline?: XmlPipelineClient;
   };
-  sceneImages: StageDoc & { scenes: Scene[]; sceneProgress?: SceneImageProgressSummaryClient };
+  sceneImages: StageDoc & { scenes: Scene[]; sceneProgress?: SceneImageProgressSummaryClient; incompleteSceneNumbers?: number[] };
   soundDesign: SoundDesignSummaryClient;
   video: StageDoc & { videoUrl?: string; videoPath?: string; pipeline?: VideoPipelineClient };
 }
@@ -916,6 +916,11 @@ export function normalizeShortFormProject(value: unknown): ShortFormProjectClien
       ...sceneImagesBase,
       scenes,
       sceneProgress: normalizeSceneImageProgressSummary(sceneImagesObj.sceneProgress),
+      incompleteSceneNumbers: Array.isArray(sceneImagesObj.incompleteSceneNumbers)
+        ? (sceneImagesObj.incompleteSceneNumbers as unknown[])
+            .map((value) => Number(value))
+            .filter((value) => Number.isInteger(value) && value > 0)
+        : undefined,
     },
     soundDesign: {
       ...soundDesignBase,
