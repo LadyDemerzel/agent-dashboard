@@ -495,6 +495,33 @@ function getWorkflowRunDir(projectId: string) {
   return path.join(getProjectDir(projectId), ".workflow-runs");
 }
 
+// Returns true when the worker process that owns a workflow run is still alive.
+// Direct workflows (scene-images, video) run as a single blocking call with no
+// progress heartbeat, so their lastEventAt stays pinned at the attempt start for
+// the whole run. A live worker process is the ground truth that the run is still
+// going, so we use it to avoid the inactivity heuristic falsely failing a healthy
+// long-running generation.
+function isWorkflowRunProcessAlive(projectId: string, runId?: string) {
+  if (!runId) return false;
+  const processPath = path.join(getWorkflowRunDir(projectId), `${runId}.process.json`);
+  let pid: number | undefined;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(processPath, "utf-8")) as { pid?: number };
+    pid = typeof parsed.pid === "number" ? parsed.pid : undefined;
+  } catch {
+    return false;
+  }
+  if (!pid || !Number.isFinite(pid)) return false;
+  try {
+    // Signal 0 performs error checking without sending a signal.
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // ESRCH => no such process (dead). EPERM => exists but not ours (alive).
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 function getStageRunInactivityFailureMs(stage: ShortFormStageKey) {
   switch (stage) {
     case "research":
@@ -2996,7 +3023,17 @@ function deriveStageRevisionState(
   const now = Date.now();
   const lastEventMs = agentRun?.lastEventAt ? Date.parse(agentRun.lastEventAt) : Number.NaN;
   const inactivityMs = getStageRunInactivityFailureMs(stage);
-  const runInactive = Number.isFinite(lastEventMs)
+  // A workflow run that is still "running" with a live worker process is not inactive,
+  // even when lastEventAt looks stale. Direct workflows (scene-images, video) run as a
+  // single blocking call and never emit a progress heartbeat, so lastEventAt stays pinned
+  // at the attempt start; without this the inactivity timer fires on a healthy long run
+  // (e.g. a scene-images generation that takes longer than the threshold) and the auto-run
+  // wrongly reports the stage as failed.
+  const workerProcessAlive =
+    Boolean(workflowRun) &&
+    agentRun?.status === "running" &&
+    isWorkflowRunProcessAlive(projectId, agentRun?.runId);
+  const runInactive = !workerProcessAlive && Number.isFinite(lastEventMs)
     ? now - lastEventMs >= inactivityMs
     : false;
   const runCompleted = workflowRun
