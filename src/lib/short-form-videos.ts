@@ -2315,32 +2315,40 @@ function buildSceneImagesProgressState(
   const expectedVisualSpec = readExpectedScriptVisualSpec(projectId);
   const expectedScenes = expectedVisualSpec.scenes;
   // Scene-level scope entries: each targeted scene number + when it was requested.
-  // Covers single-scene revisions and multi-scene Resume runs.
-  const targetSceneEntries: { sceneIndex: number; requestedAtMs: number }[] = [];
-  const addTargetScene = (sceneIndex: number | null | undefined, whenMs: number) => {
+  // A single-scene revision expands to its continuity chain (dependent scenes must be
+  // regenerated too). A Resume targets an explicit, already-complete set of unfinished
+  // scenes, so it must NOT expand — expanding would pull in already-done base scenes and
+  // make them look unfinished again.
+  const targetSceneEntries: { sceneIndex: number; requestedAtMs: number; expand: boolean }[] = [];
+  const addTargetScene = (sceneIndex: number | null | undefined, whenMs: number, expand: boolean) => {
     if (!sceneIndex || !Number.isInteger(sceneIndex) || sceneIndex <= 0 || !Number.isFinite(whenMs)) return;
-    targetSceneEntries.push({ sceneIndex, requestedAtMs: whenMs });
+    targetSceneEntries.push({ sceneIndex, requestedAtMs: whenMs, expand });
   };
+  const hasResumeScope =
+    revision?.action === "resume" ||
+    scopedActiveRequests.some((request) => request.action === "resume");
   if (revision?.isPending && revision.action === "request-scene-change" && revision.sceneId && Number.isFinite(requestedAtMs)) {
-    addTargetScene(parseSceneIdToIndex(revision.sceneId), requestedAtMs);
+    addTargetScene(parseSceneIdToIndex(revision.sceneId), requestedAtMs, true);
   }
   for (const request of scopedActiveRequests) {
     const whenMs = Date.parse(request.requestedAt);
     if (request.action === "resume" && Array.isArray(request.sceneNumbers)) {
-      for (const number of request.sceneNumbers) addTargetScene(Number(number), whenMs);
+      for (const number of request.sceneNumbers) addTargetScene(Number(number), whenMs, false);
     } else if (request.sceneId) {
-      addTargetScene(parseSceneIdToIndex(request.sceneId), whenMs);
+      addTargetScene(parseSceneIdToIndex(request.sceneId), whenMs, true);
     }
   }
   const trackedSceneIndexes = new Set<number>();
   const freshnessBySceneIndex = new Map<number, number>();
   const expandedTargetSceneIndexes = Array.from(new Set(
     targetSceneEntries.flatMap((entry) => {
-      const expanded = expandRequestedSceneIndexesForDependencies(
-        expectedScenes,
-        expectedVisualSpec.assetDependencies,
-        entry.sceneIndex,
-      );
+      const expanded = entry.expand
+        ? expandRequestedSceneIndexesForDependencies(
+            expectedScenes,
+            expectedVisualSpec.assetDependencies,
+            entry.sceneIndex,
+          )
+        : [entry.sceneIndex];
       for (const sceneIndex of expanded) {
         const existingFreshness = freshnessBySceneIndex.get(sceneIndex);
         freshnessBySceneIndex.set(
@@ -2410,7 +2418,11 @@ function buildSceneImagesProgressState(
     return { ...base, status: "in-progress" as const };
   });
 
-  const progressScenes = scoped
+  // A Resume tracks per-scene freshness for the unfinished scenes (so they show as
+  // in-progress until regenerated) but reports progress across the whole video — the
+  // already-done scenes stay counted as completed, so the bar reads e.g. 3/46 climbing,
+  // not a full reset. A single-scene/chain revision stays scoped to its targets.
+  const progressScenes = scoped && !hasResumeScope
     ? mergedScenes.filter((scene) => trackedSceneIndexes.has(scene.number))
     : mergedScenes;
   const completed = progressScenes.filter((scene) => scene.status === "completed").length;
@@ -2428,15 +2440,21 @@ function buildSceneImagesProgressState(
           total,
           completed,
           pending,
-          scope: primaryTargetSceneIds.length > 1
-            ? "multi" as const
-            : trackedSceneIndexes.size > 1
-              ? "chain" as const
-              : scoped
-                ? "single" as const
-                : "all" as const,
-          ...(primaryTargetSceneIds.length === 1 ? { targetSceneId: primaryTargetSceneIds[0] } : {}),
-          ...(targetSceneIds.length > 0 ? { targetSceneIds } : {}),
+          scope: hasResumeScope
+            ? "all" as const
+            : primaryTargetSceneIds.length > 1
+              ? "multi" as const
+              : trackedSceneIndexes.size > 1
+                ? "chain" as const
+                : scoped
+                  ? "single" as const
+                  : "all" as const,
+          ...(hasResumeScope
+            ? {}
+            : {
+                ...(primaryTargetSceneIds.length === 1 ? { targetSceneId: primaryTargetSceneIds[0] } : {}),
+                ...(targetSceneIds.length > 0 ? { targetSceneIds } : {}),
+              }),
         }
       : undefined,
   };

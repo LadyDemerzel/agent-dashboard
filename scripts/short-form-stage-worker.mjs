@@ -5155,7 +5155,14 @@ function runDirectSceneImages(job) {
     args.push("--prompt-templates-json", promptTemplatesJsonPath);
   }
 
-  const sceneIndexes = expandSceneIndexesForDependencies(runtimeXmlPath, requestedSceneIndexes);
+  // A Resume (config.sceneNumbers, no single sceneId) requests an explicit set of
+  // unfinished scenes and must regenerate exactly those — expanding would redo
+  // already-done base scenes the user asked us to keep. A single-scene revision still
+  // expands to its continuity chain.
+  const isResumeScope = Array.isArray(config.sceneNumbers) && config.sceneNumbers.length > 0 && !singleSceneIndex;
+  const sceneIndexes = isResumeScope
+    ? requestedSceneIndexes
+    : expandSceneIndexesForDependencies(runtimeXmlPath, requestedSceneIndexes);
   const motionSceneIndexes = new Set(motionGraphics.motionVisuals.map((visual) => visual.index));
   const imageSceneIndexes = sceneIndexes.length > 0
     ? sceneIndexes.filter((index) => !motionSceneIndexes.has(index))
